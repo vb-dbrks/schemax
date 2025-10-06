@@ -2,12 +2,9 @@ import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { ProjectFile, Catalog, Schema, Table, Column } from '../../shared/model';
 import { Op } from '../../shared/ops';
+import { getVsCodeApi } from '../vscode-api';
 
-declare const acquireVsCodeApi: () => {
-  postMessage: (message: any) => void;
-};
-
-const vscode = acquireVsCodeApi();
+const vscode = getVsCodeApi();
 
 interface DesignerState {
   project: ProjectFile | null;

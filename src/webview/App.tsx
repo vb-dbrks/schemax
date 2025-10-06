@@ -3,12 +3,9 @@ import { useDesignerStore } from './state/useDesignerStore';
 import { Toolbar } from './components/Toolbar';
 import { Sidebar } from './components/Sidebar';
 import { TableDesigner } from './components/TableDesigner';
+import { getVsCodeApi } from './vscode-api';
 
-declare const acquireVsCodeApi: () => {
-  postMessage: (message: any) => void;
-};
-
-const vscode = acquireVsCodeApi();
+const vscode = getVsCodeApi();
 
 export const App: React.FC = () => {
   const { project, setProject } = useDesignerStore();
