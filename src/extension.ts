@@ -9,10 +9,10 @@ let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('[SchemaX] Extension activating...');
   outputChannel = vscode.window.createOutputChannel('SchemaX');
-  outputChannel.appendLine('SchemaX Extension Activated!');
-  outputChannel.appendLine(`Extension path: ${context.extensionPath}`);
+  outputChannel.appendLine('[SchemaX] Extension activating...');
+  outputChannel.appendLine('[SchemaX] Extension Activated!');
+  outputChannel.appendLine(`[SchemaX] Extension path: ${context.extensionPath}`);
 
   // Register commands
   const openDesignerCommand = vscode.commands.registerCommand(
@@ -32,8 +32,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, outputChannel);
 
-  console.log('[SchemaX] Extension activated successfully!');
-  console.log('[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps');
+  outputChannel.appendLine('[SchemaX] Extension activated successfully!');
+  outputChannel.appendLine('[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps, schemax.createSnapshot');
   vscode.window.showInformationMessage('SchemaX Extension Activated!');
   trackEvent('extension_activated');
 }
@@ -75,32 +75,36 @@ async function openDesigner(context: vscode.ExtensionContext) {
   );
 
   // Set webview content
-  console.log('[SchemaX] Setting webview HTML');
+  outputChannel.appendLine('[SchemaX] Setting webview HTML');
   currentPanel.webview.html = getWebviewContent(context, currentPanel.webview);
-  console.log('[SchemaX] Webview HTML set');
+  outputChannel.appendLine('[SchemaX] Webview HTML set');
 
   // Reset when panel is closed
   currentPanel.onDidDispose(() => {
+    outputChannel.appendLine('[SchemaX] Webview panel disposed');
     currentPanel = undefined;
   });
 
   // Handle messages from webview
   currentPanel.webview.onDidReceiveMessage(
     async (message) => {
-      console.log('[SchemaX] Received message from webview:', message.type);
+      outputChannel.appendLine(`[SchemaX] Received message from webview: ${message.type}`);
       switch (message.type) {
         case 'load-project': {
           try {
-            console.log('[SchemaX] Loading project from:', workspaceFolder.uri.fsPath);
+            outputChannel.appendLine(`[SchemaX] Loading project from: ${workspaceFolder.uri.fsPath}`);
             const project = await readProject(workspaceFolder.uri);
-            console.log('[SchemaX] Project loaded, sending to webview');
+            outputChannel.appendLine(`[SchemaX] Project loaded successfully`);
+            outputChannel.appendLine(`[SchemaX] - Catalogs: ${project.state.catalogs.length}`);
+            outputChannel.appendLine(`[SchemaX] - Ops: ${project.ops.length}`);
+            outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots?.length || 0}`);
             currentPanel?.webview.postMessage({
               type: 'project-loaded',
               payload: project,
             });
             trackEvent('project_loaded');
           } catch (error) {
-            console.error('[SchemaX] Failed to load project:', error);
+            outputChannel.appendLine(`[SchemaX] ERROR: Failed to load project: ${error}`);
             vscode.window.showErrorMessage(`Failed to load project: ${error}`);
           }
           break;
@@ -108,17 +112,19 @@ async function openDesigner(context: vscode.ExtensionContext) {
         case 'append-ops': {
           try {
             const ops: Op[] = message.payload;
-            console.log('[SchemaX] Appending ops:', ops.length);
+            outputChannel.appendLine(`[SchemaX] Appending ${ops.length} operation(s)`);
             const updatedProject = await appendOps(workspaceFolder.uri, ops);
-            console.log('[SchemaX] Updated project snapshots count:', updatedProject.snapshots?.length || 0);
-            console.log('[SchemaX] Updated project ops count:', updatedProject.ops.length);
+            outputChannel.appendLine(`[SchemaX] Operations appended successfully`);
+            outputChannel.appendLine(`[SchemaX] - Total ops: ${updatedProject.ops.length}`);
+            outputChannel.appendLine(`[SchemaX] - Snapshots: ${updatedProject.snapshots?.length || 0}`);
+            outputChannel.appendLine(`[SchemaX] - Deployments: ${updatedProject.deployments?.length || 0}`);
             currentPanel?.webview.postMessage({
               type: 'project-updated',
               payload: updatedProject,
             });
             trackEvent('ops_appended', { count: ops.length });
           } catch (error) {
-            console.error('[SchemaX] Failed to append operations:', error);
+            outputChannel.appendLine(`[SchemaX] ERROR: Failed to append operations: ${error}`);
             vscode.window.showErrorMessage(`Failed to append operations: ${error}`);
           }
           break;
@@ -129,6 +135,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
     context.subscriptions
   );
 
+  outputChannel.appendLine('[SchemaX] Designer opened successfully');
   trackEvent('designer_opened');
 }
 
@@ -212,17 +219,25 @@ function getNonce() {
  * Create snapshot command implementation
  */
 async function createSnapshotCommand_impl() {
+  outputChannel.appendLine('[SchemaX] Create snapshot command invoked');
+  
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
+    outputChannel.appendLine('[SchemaX] ERROR: No workspace folder open');
     vscode.window.showErrorMessage('SchemaX: Please open a workspace folder first.');
     return;
   }
 
   try {
+    outputChannel.appendLine(`[SchemaX] Reading project from: ${workspaceFolder.uri.fsPath}`);
     const project = await readProject(workspaceFolder.uri);
     const uncommittedOps = getUncommittedOps(project);
+    
+    outputChannel.appendLine(`[SchemaX] Uncommitted operations: ${uncommittedOps.length}`);
+    outputChannel.appendLine(`[SchemaX] Existing snapshots: ${project.snapshots?.length || 0}`);
 
     if (uncommittedOps.length === 0) {
+      outputChannel.appendLine('[SchemaX] No uncommitted operations, aborting snapshot creation');
       vscode.window.showInformationMessage('No changes to snapshot. All operations are already included in the last snapshot.');
       return;
     }
@@ -237,6 +252,7 @@ async function createSnapshotCommand_impl() {
     });
 
     if (!name) {
+      outputChannel.appendLine('[SchemaX] Snapshot creation cancelled by user');
       return; // User cancelled
     }
 
@@ -245,6 +261,11 @@ async function createSnapshotCommand_impl() {
       prompt: 'Description (optional)',
       placeHolder: 'Describe what changed in this snapshot'
     });
+
+    outputChannel.appendLine(`[SchemaX] Creating snapshot: "${name}"`);
+    if (comment) {
+      outputChannel.appendLine(`[SchemaX] Comment: "${comment}"`);
+    }
 
     // Create snapshot
     await vscode.window.withProgress({
@@ -255,15 +276,24 @@ async function createSnapshotCommand_impl() {
       const updatedProject = await createSnapshot(workspaceFolder.uri, name, undefined, comment);
       const latestSnapshot = updatedProject.snapshots[updatedProject.snapshots.length - 1];
       
+      outputChannel.appendLine(`[SchemaX] Snapshot created successfully!`);
+      outputChannel.appendLine(`[SchemaX] - ID: ${latestSnapshot.id}`);
+      outputChannel.appendLine(`[SchemaX] - Version: ${latestSnapshot.version}`);
+      outputChannel.appendLine(`[SchemaX] - Name: ${latestSnapshot.name}`);
+      outputChannel.appendLine(`[SchemaX] - Operations included: ${latestSnapshot.opsIncluded.length}`);
+      outputChannel.appendLine(`[SchemaX] - Total snapshots: ${updatedProject.snapshots.length}`);
+      
       progress.report({ increment: 100 });
       
       // Notify webview if it's open
       if (currentPanel) {
-        console.log('[SchemaX] Notifying webview of snapshot creation');
+        outputChannel.appendLine('[SchemaX] Notifying webview of snapshot creation');
         currentPanel.webview.postMessage({
           type: 'project-updated',
           payload: updatedProject
         });
+      } else {
+        outputChannel.appendLine('[SchemaX] No webview panel open, skipping notification');
       }
       
       vscode.window.showInformationMessage(
@@ -277,8 +307,11 @@ async function createSnapshotCommand_impl() {
     });
 
   } catch (error) {
+    outputChannel.appendLine(`[SchemaX] ERROR: Snapshot creation failed: ${error}`);
+    if (error instanceof Error) {
+      outputChannel.appendLine(`[SchemaX] Stack trace: ${error.stack}`);
+    }
     vscode.window.showErrorMessage(`Failed to create snapshot: ${error}`);
-    console.error('[SchemaX] Snapshot creation failed:', error);
   }
 }
 
