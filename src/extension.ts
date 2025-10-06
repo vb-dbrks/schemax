@@ -8,7 +8,10 @@ import { trackEvent } from './telemetry';
 let outputChannel: vscode.OutputChannel;
 
 export function activate(context: vscode.ExtensionContext) {
+  console.log('[SchemaX] Extension activating...');
   outputChannel = vscode.window.createOutputChannel('SchemaX');
+  outputChannel.appendLine('SchemaX Extension Activated!');
+  outputChannel.appendLine(`Extension path: ${context.extensionPath}`);
 
   // Register commands
   const openDesignerCommand = vscode.commands.registerCommand(
@@ -23,6 +26,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(openDesignerCommand, showLastOpsCommand, outputChannel);
 
+  console.log('[SchemaX] Extension activated successfully!');
+  console.log('[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps');
+  vscode.window.showInformationMessage('SchemaX Extension Activated!');
   trackEvent('extension_activated');
 }
 

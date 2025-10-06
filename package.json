@@ -11,8 +11,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:schemax.openDesigner",
-    "onCommand:schemax.showLastOps"
+    "*"
   ],
   "main": "./dist/extension.js",
   "contributes": {
