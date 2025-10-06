@@ -9,6 +9,7 @@ interface ColumnGridProps {
 
 export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
   const {
+    addColumn,
     renameColumn,
     dropColumn,
     changeColumnType,
@@ -21,6 +22,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
   const [editingColId, setEditingColId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{name: string, type: string, comment: string}>({name: '', type: '', comment: ''});
   const [dropDialog, setDropDialog] = useState<{colId: string, name: string} | null>(null);
+  const [addDialog, setAddDialog] = useState(false);
 
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
@@ -80,6 +82,14 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
 
   const handleDropColumn = (colId: string, name: string) => {
     setDropDialog({colId, name});
+  };
+
+  const handleAddColumn = (name: string, type: string, nullable: boolean, comment: string) => {
+    if (!name || !type) {
+      return;
+    }
+    addColumn(tableId, name, type, nullable, comment || undefined);
+    setAddDialog(false);
   };
 
   return (
@@ -211,6 +221,14 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
         </tbody>
       </table>
 
+      <button 
+        className="add-property-btn"
+        onClick={() => setAddDialog(true)}
+        style={{marginTop: '12px'}}
+      >
+        + Add Column
+      </button>
+
       {dropDialog && (
         <div className="modal" onClick={() => setDropDialog(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -222,6 +240,55 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                 setDropDialog(null);
               }} style={{backgroundColor: 'var(--vscode-errorForeground)'}}>Drop</button>
               <button onClick={() => setDropDialog(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addDialog && (
+        <div className="modal" onClick={() => setAddDialog(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Add Column</h3>
+            <label>Name:</label>
+            <input
+              type="text"
+              placeholder="Enter column name"
+              autoFocus
+              id="add-col-name"
+            />
+            <label style={{marginTop: '12px'}}>Type:</label>
+            <select id="add-col-type" defaultValue="STRING">
+              <option value="STRING">STRING</option>
+              <option value="INT">INT</option>
+              <option value="BIGINT">BIGINT</option>
+              <option value="DOUBLE">DOUBLE</option>
+              <option value="DECIMAL">DECIMAL</option>
+              <option value="BOOLEAN">BOOLEAN</option>
+              <option value="DATE">DATE</option>
+              <option value="TIMESTAMP">TIMESTAMP</option>
+              <option value="BINARY">BINARY</option>
+              <option value="ARRAY">ARRAY</option>
+              <option value="MAP">MAP</option>
+              <option value="STRUCT">STRUCT</option>
+            </select>
+            <label style={{marginTop: '12px'}}>
+              <input type="checkbox" id="add-col-nullable" defaultChecked /> Nullable
+            </label>
+            <label style={{marginTop: '12px'}}>Comment (optional):</label>
+            <input
+              type="text"
+              placeholder="Column description"
+              id="add-col-comment"
+            />
+            <div className="modal-buttons">
+              <button onClick={() => {
+                const name = (document.getElementById('add-col-name') as HTMLInputElement).value;
+                const type = (document.getElementById('add-col-type') as HTMLSelectElement).value;
+                const nullable = (document.getElementById('add-col-nullable') as HTMLInputElement).checked;
+                const comment = (document.getElementById('add-col-comment') as HTMLInputElement).value;
+                handleAddColumn(name, type, nullable, comment);
+              }}>Add</button>
+              <button onClick={() => setAddDialog(false)}>Cancel</button>
             </div>
           </div>
         </div>

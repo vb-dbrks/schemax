@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { useDesignerStore } from './state/useDesignerStore';
-import { Toolbar } from './components/Toolbar';
 import { Sidebar } from './components/Sidebar';
 import { TableDesigner } from './components/TableDesigner';
 import { SnapshotPanel } from './components/SnapshotPanel';
@@ -56,7 +55,6 @@ export const App: React.FC = () => {
 
   return (
     <div className="app">
-      <Toolbar />
       <div className="content">
         <div className="left-panel">
           <Sidebar />
