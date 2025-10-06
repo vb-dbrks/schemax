@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { ProjectFile, Catalog, Schema, Table, Column } from './shared/model';
+import * as crypto from 'crypto';
+import { ProjectFile, Catalog, Schema, Table, Column, Snapshot } from './shared/model';
 import { Op } from './shared/ops';
+import { v4 as uuidv4 } from 'uuid';
 
 const PROJECT_FILENAME = 'schemax.project.json';
 
@@ -262,6 +264,16 @@ export async function ensureProjectFile(workspaceUri: vscode.Uri): Promise<Proje
         catalogs: [],
       },
       ops: [],
+      snapshots: [],
+      deployments: [],
+      settings: {
+        autoIncrementVersion: true,
+        versionPrefix: 'v',
+        requireSnapshotForProd: true,
+        allowDrift: false,
+        requireComments: false,
+        warnOnBreakingChanges: true,
+      },
       lastSnapshotHash: null,
     };
     await writeProject(workspaceUri, newProject);
@@ -320,5 +332,99 @@ export async function appendOps(workspaceUri: vscode.Uri, ops: Op[]): Promise<Pr
   await writeProject(workspaceUri, project);
   
   return project;
+}
+
+/**
+ * Calculate hash of state for integrity checking
+ */
+function calculateStateHash(state: ProjectFile['state'], ops: string[]): string {
+  const content = JSON.stringify({ state, ops });
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+/**
+ * Get next version number
+ */
+function getNextVersion(currentVersion: string | null, settings: ProjectFile['settings']): string {
+  if (!currentVersion) {
+    return settings.versionPrefix + '0.1.0';
+  }
+  
+  // Parse version (e.g., "v0.1.0" or "0.1.0")
+  const versionMatch = currentVersion.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!versionMatch) {
+    return settings.versionPrefix + '0.1.0';
+  }
+  
+  const [, major, minor, patch] = versionMatch;
+  const nextMinor = parseInt(minor) + 1;
+  
+  return `${settings.versionPrefix}${major}.${nextMinor}.0`;
+}
+
+/**
+ * Create a snapshot of the current state
+ */
+export async function createSnapshot(
+  workspaceUri: vscode.Uri,
+  name: string,
+  version?: string,
+  comment?: string,
+  tags: string[] = []
+): Promise<ProjectFile> {
+  const project = await readProject(workspaceUri);
+  
+  // Determine version
+  const snapshotVersion = version || getNextVersion(
+    project.snapshots.length > 0 ? project.snapshots[project.snapshots.length - 1].version : null,
+    project.settings
+  );
+  
+  // Get all ops since last snapshot
+  const lastSnapshot = project.snapshots[project.snapshots.length - 1];
+  const opsIncluded = lastSnapshot
+    ? project.ops.filter(op => !lastSnapshot.opsIncluded.includes(op.id)).map(op => op.id)
+    : project.ops.map(op => op.id);
+  
+  // Calculate hash
+  const hash = calculateStateHash(project.state, opsIncluded);
+  
+  // Create snapshot
+  const snapshot: Snapshot = {
+    id: `snap_${uuidv4()}`,
+    version: snapshotVersion,
+    name,
+    ts: new Date().toISOString(),
+    createdBy: process.env.USER || process.env.USERNAME || 'unknown',
+    state: JSON.parse(JSON.stringify(project.state)), // Deep clone
+    opsIncluded,
+    previousSnapshot: lastSnapshot ? lastSnapshot.id : null,
+    hash,
+    tags,
+    comment,
+  };
+  
+  // Add to project
+  project.snapshots.push(snapshot);
+  project.lastSnapshotHash = hash;
+  
+  // Write back
+  await writeProject(workspaceUri, project);
+  
+  console.log(`[SchemaX] Created snapshot ${snapshotVersion}: ${name}`);
+  
+  return project;
+}
+
+/**
+ * Get uncommitted operations (ops since last snapshot)
+ */
+export function getUncommittedOps(project: ProjectFile): Op[] {
+  const lastSnapshot = project.snapshots[project.snapshots.length - 1];
+  if (!lastSnapshot) {
+    return project.ops;
+  }
+  
+  return project.ops.filter(op => !lastSnapshot.opsIncluded.includes(op.id));
 }
 

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ensureProjectFile, readProject, appendOps } from './storage';
+import { ensureProjectFile, readProject, appendOps, createSnapshot, getUncommittedOps } from './storage';
 import { Op } from './shared/ops';
 import { trackEvent } from './telemetry';
 
@@ -24,7 +24,12 @@ export function activate(context: vscode.ExtensionContext) {
     () => showLastOps()
   );
 
-  context.subscriptions.push(openDesignerCommand, showLastOpsCommand, outputChannel);
+  const createSnapshotCommand = vscode.commands.registerCommand(
+    'schemax.createSnapshot',
+    () => createSnapshotCommand_impl()
+  );
+
+  context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, outputChannel);
 
   console.log('[SchemaX] Extension activated successfully!');
   console.log('[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps');
@@ -187,5 +192,70 @@ function getNonce() {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }
   return text;
+}
+
+/**
+ * Create snapshot command implementation
+ */
+async function createSnapshotCommand_impl() {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!workspaceFolder) {
+    vscode.window.showErrorMessage('SchemaX: Please open a workspace folder first.');
+    return;
+  }
+
+  try {
+    const project = await readProject(workspaceFolder.uri);
+    const uncommittedOps = getUncommittedOps(project);
+
+    if (uncommittedOps.length === 0) {
+      vscode.window.showInformationMessage('No changes to snapshot. All operations are already included in the last snapshot.');
+      return;
+    }
+
+    // Get snapshot name
+    const name = await vscode.window.showInputBox({
+      prompt: 'Snapshot name',
+      placeHolder: 'e.g., "Added customer tables"',
+      validateInput: (value) => {
+        return value.trim() ? null : 'Snapshot name is required';
+      }
+    });
+
+    if (!name) {
+      return; // User cancelled
+    }
+
+    // Get optional comment
+    const comment = await vscode.window.showInputBox({
+      prompt: 'Description (optional)',
+      placeHolder: 'Describe what changed in this snapshot'
+    });
+
+    // Create snapshot
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Creating snapshot...',
+      cancellable: false
+    }, async (progress) => {
+      const updatedProject = await createSnapshot(workspaceFolder.uri, name, undefined, comment);
+      const latestSnapshot = updatedProject.snapshots[updatedProject.snapshots.length - 1];
+      
+      progress.report({ increment: 100 });
+      
+      vscode.window.showInformationMessage(
+        `Snapshot created: ${latestSnapshot.version} - ${latestSnapshot.name} (${uncommittedOps.length} operations)`
+      );
+      
+      trackEvent('snapshot_created', { 
+        version: latestSnapshot.version, 
+        opsCount: uncommittedOps.length 
+      });
+    });
+
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to create snapshot: ${error}`);
+    console.error('[SchemaX] Snapshot creation failed:', error);
+  }
 }
 

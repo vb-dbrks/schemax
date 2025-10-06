@@ -53,12 +53,20 @@ body {
   overflow: hidden;
 }
 
-/* Sidebar */
-.sidebar {
+.left-panel {
+  display: flex;
+  flex-direction: column;
   width: 300px;
   border-right: 1px solid var(--vscode-panel-border);
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  flex: 1;
   overflow-y: auto;
   padding: 12px;
+  border-bottom: 1px solid var(--vscode-panel-border);
 }
 
 .sidebar h2 {
@@ -413,5 +421,221 @@ body {
 
 .modal-buttons button:last-child:hover {
   background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Snapshot Panel */
+.snapshot-panel {
+  flex: 0 0 auto;
+  max-height: 40%;
+  overflow-y: auto;
+  border-top: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-sideBar-background);
+}
+
+.snapshot-header {
+  padding: 12px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.snapshot-header:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.snapshot-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.uncommitted-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 10px;
+}
+
+.snapshot-list {
+  padding: 12px;
+}
+
+.snapshot-list .empty-state {
+  text-align: center;
+  padding: 20px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.snapshot-list .empty-state p {
+  margin: 4px 0;
+}
+
+.snapshot-list .hint {
+  font-size: 12px;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.snapshot-timeline {
+  position: relative;
+}
+
+.snapshot-item {
+  display: flex;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.snapshot-item.latest .snapshot-version {
+  font-weight: 600;
+}
+
+.snapshot-indicator {
+  flex: 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 12px;
+}
+
+.snapshot-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--vscode-charts-blue);
+  border: 2px solid var(--vscode-sideBar-background);
+  z-index: 1;
+}
+
+.snapshot-item.latest .snapshot-dot {
+  background: var(--vscode-charts-green);
+  box-shadow: 0 0 0 4px rgba(0, 255, 0, 0.2);
+}
+
+.snapshot-line {
+  width: 2px;
+  flex: 1;
+  background: var(--vscode-panel-border);
+  margin-top: 4px;
+  min-height: 30px;
+}
+
+.snapshot-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.snapshot-version {
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.latest-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--vscode-charts-green);
+  color: #fff;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.snapshot-name {
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  margin-bottom: 4px;
+}
+
+.snapshot-comment {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  margin-bottom: 4px;
+}
+
+.snapshot-meta {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 4px;
+}
+
+.snapshot-tags {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.snapshot-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 3px;
+}
+
+.snapshot-deployments {
+  font-size: 11px;
+  color: var(--vscode-charts-blue);
+  margin-top: 4px;
+}
+
+.uncommitted-changes {
+  display: flex;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--vscode-panel-border);
+}
+
+.uncommitted-indicator {
+  flex: 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 12px;
+}
+
+.uncommitted-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--vscode-charts-yellow);
+  border: 2px solid var(--vscode-sideBar-background);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.uncommitted-content {
+  flex: 1;
+}
+
+.uncommitted-title {
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.uncommitted-ops {
+  font-size: 11px;
+  color: var(--vscode-charts-yellow);
+  margin-bottom: 4px;
+}
+
+.uncommitted-hint {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
 }
 

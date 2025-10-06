@@ -3,6 +3,7 @@ import { useDesignerStore } from './state/useDesignerStore';
 import { Toolbar } from './components/Toolbar';
 import { Sidebar } from './components/Sidebar';
 import { TableDesigner } from './components/TableDesigner';
+import { SnapshotPanel } from './components/SnapshotPanel';
 import { getVsCodeApi } from './vscode-api';
 
 const vscode = getVsCodeApi();
@@ -54,7 +55,10 @@ export const App: React.FC = () => {
     <div className="app">
       <Toolbar />
       <div className="content">
-        <Sidebar />
+        <div className="left-panel">
+          <Sidebar />
+          <SnapshotPanel />
+        </div>
         <TableDesigner />
       </div>
     </div>
