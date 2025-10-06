@@ -22,7 +22,10 @@ export const App: React.FC = () => {
       switch (message.type) {
         case 'project-loaded':
         case 'project-updated':
-          console.log('[SchemaX Webview] Setting project:', message.payload);
+          console.log('[SchemaX Webview] Received project update');
+          console.log('[SchemaX Webview] Snapshots count:', message.payload.snapshots?.length || 0);
+          console.log('[SchemaX Webview] Ops count:', message.payload.ops?.length || 0);
+          console.log('[SchemaX Webview] Full project:', message.payload);
           setProject(message.payload);
           setLoading(false);
           break;

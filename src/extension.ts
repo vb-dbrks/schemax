@@ -110,6 +110,8 @@ async function openDesigner(context: vscode.ExtensionContext) {
             const ops: Op[] = message.payload;
             console.log('[SchemaX] Appending ops:', ops.length);
             const updatedProject = await appendOps(workspaceFolder.uri, ops);
+            console.log('[SchemaX] Updated project snapshots count:', updatedProject.snapshots?.length || 0);
+            console.log('[SchemaX] Updated project ops count:', updatedProject.ops.length);
             currentPanel?.webview.postMessage({
               type: 'project-updated',
               payload: updatedProject,

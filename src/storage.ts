@@ -288,7 +288,29 @@ export async function readProject(workspaceUri: vscode.Uri): Promise<ProjectFile
   const filePath = getProjectFilePath(workspaceUri);
   const content = await fs.readFile(filePath, 'utf8');
   const parsed = JSON.parse(content);
-  return ProjectFile.parse(parsed);
+  
+  // Parse with Zod to apply defaults
+  const project = ProjectFile.parse(parsed);
+  
+  // Ensure new fields exist (for backwards compatibility with old files)
+  if (!project.snapshots) {
+    project.snapshots = [];
+  }
+  if (!project.deployments) {
+    project.deployments = [];
+  }
+  if (!project.settings) {
+    project.settings = {
+      autoIncrementVersion: true,
+      versionPrefix: 'v',
+      requireSnapshotForProd: true,
+      allowDrift: false,
+      requireComments: false,
+      warnOnBreakingChanges: true,
+    };
+  }
+  
+  return project;
 }
 
 /**
