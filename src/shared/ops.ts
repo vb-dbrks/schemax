@@ -26,6 +26,7 @@ export type OpType = z.infer<typeof OpType>;
 
 // Operation definition
 export const Op = z.object({
+  id: z.string().optional(), // unique identifier (backwards compatible)
   ts: z.string(), // ISO timestamp
   op: OpType,
   target: z.string(), // id of the object the op applies to

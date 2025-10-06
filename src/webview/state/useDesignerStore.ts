@@ -40,6 +40,9 @@ interface DesignerState {
   setColumnNullable: (tableId: string, colId: string, nullable: boolean) => void;
   setColumnComment: (tableId: string, colId: string, comment: string) => void;
   
+  setTableProperty: (tableId: string, key: string, value: string) => void;
+  unsetTableProperty: (tableId: string, key: string) => void;
+  
   // Helper to find objects
   findCatalog: (catalogId: string) => Catalog | undefined;
   findSchema: (schemaId: string) => { catalog: Catalog; schema: Schema } | undefined;
@@ -64,6 +67,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   addCatalog: (name) => {
     const catalogId = `cat_${uuidv4()}`;
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'add_catalog',
       target: catalogId,
@@ -74,6 +78,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   renameCatalog: (catalogId, newName) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'rename_catalog',
       target: catalogId,
@@ -84,6 +89,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   dropCatalog: (catalogId) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'drop_catalog',
       target: catalogId,
@@ -95,6 +101,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   addSchema: (catalogId, name) => {
     const schemaId = `sch_${uuidv4()}`;
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'add_schema',
       target: schemaId,
@@ -105,6 +112,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   renameSchema: (schemaId, newName) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'rename_schema',
       target: schemaId,
@@ -115,6 +123,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   dropSchema: (schemaId) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'drop_schema',
       target: schemaId,
@@ -126,6 +135,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   addTable: (schemaId, name, format) => {
     const tableId = `tbl_${uuidv4()}`;
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'add_table',
       target: tableId,
@@ -136,6 +146,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   renameTable: (tableId, newName) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'rename_table',
       target: tableId,
@@ -146,6 +157,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   dropTable: (tableId) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'drop_table',
       target: tableId,
@@ -156,6 +168,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   setTableComment: (tableId, comment) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'set_table_comment',
       target: tableId,
@@ -167,6 +180,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   addColumn: (tableId, name, type, nullable, after) => {
     const colId = `col_${uuidv4()}`;
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'add_column',
       target: colId,
@@ -177,6 +191,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   renameColumn: (tableId, colId, newName) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'rename_column',
       target: colId,
@@ -187,6 +202,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   dropColumn: (tableId, colId) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'drop_column',
       target: colId,
@@ -197,6 +213,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   reorderColumns: (tableId, order) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'reorder_columns',
       target: tableId,
@@ -207,6 +224,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   changeColumnType: (tableId, colId, newType) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'change_column_type',
       target: colId,
@@ -217,6 +235,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   setColumnNullable: (tableId, colId, nullable) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'set_nullable',
       target: colId,
@@ -227,10 +246,33 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   setColumnComment: (tableId, colId, comment) => {
     const op: Op = {
+      id: `op_${uuidv4()}`,
       ts: new Date().toISOString(),
       op: 'set_column_comment',
       target: colId,
       payload: { tableId, colId, comment },
+    };
+    emitOps([op]);
+  },
+
+  setTableProperty: (tableId, key, value) => {
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'set_table_property',
+      target: tableId,
+      payload: { tableId, key, value },
+    };
+    emitOps([op]);
+  },
+
+  unsetTableProperty: (tableId, key) => {
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'unset_table_property',
+      target: tableId,
+      payload: { tableId, key },
     };
     emitOps([op]);
   },

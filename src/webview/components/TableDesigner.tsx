@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { ColumnGrid } from './ColumnGrid';
+import { TableProperties } from './TableProperties';
 
 export const TableDesigner: React.FC = () => {
   const { selectedTableId, findTable, setTableComment } = useDesignerStore();
@@ -63,6 +64,10 @@ export const TableDesigner: React.FC = () => {
       <div className="columns-section">
         <h3>Columns ({table.columns.length})</h3>
         <ColumnGrid tableId={table.id} columns={table.columns} />
+      </div>
+
+      <div className="properties-section">
+        <TableProperties tableId={table.id} />
       </div>
 
       {commentDialog && (

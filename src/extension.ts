@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ensureProjectFile, readProject, appendOps, createSnapshot, getUncommittedOps } from './storage';
+import * as storageV2 from './storage-v2';
 import { Op } from './shared/ops';
 import { trackEvent } from './telemetry';
+import { ProjectFile } from './shared/model';
 
 let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
@@ -52,8 +53,8 @@ async function openDesigner(context: vscode.ExtensionContext) {
     return;
   }
 
-  // Ensure project file exists
-  await ensureProjectFile(workspaceFolder.uri);
+  // Ensure project file exists (v2)
+  await storageV2.ensureProjectFile(workspaceFolder.uri);
 
   // If panel already exists, just reveal it
   if (currentPanel) {
@@ -93,14 +94,31 @@ async function openDesigner(context: vscode.ExtensionContext) {
         case 'load-project': {
           try {
             outputChannel.appendLine(`[SchemaX] Loading project from: ${workspaceFolder.uri.fsPath}`);
-            const project = await readProject(workspaceFolder.uri);
-            outputChannel.appendLine(`[SchemaX] Project loaded successfully`);
-            outputChannel.appendLine(`[SchemaX] - Catalogs: ${project.state.catalogs.length}`);
-            outputChannel.appendLine(`[SchemaX] - Ops: ${project.ops.length}`);
-            outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots?.length || 0}`);
+            
+            // Load v2: project metadata + current state (snapshot + changelog)
+            const project = await storageV2.readProject(workspaceFolder.uri);
+            const { state, changelog } = await storageV2.loadCurrentState(workspaceFolder.uri);
+            
+            outputChannel.appendLine(`[SchemaX] Project loaded successfully (v${project.version})`);
+            outputChannel.appendLine(`[SchemaX] - Catalogs: ${state.catalogs.length}`);
+            outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots.length}`);
+            outputChannel.appendLine(`[SchemaX] - Latest snapshot: ${project.latestSnapshot || 'none'}`);
+            outputChannel.appendLine(`[SchemaX] - Changelog ops: ${changelog.ops.length}`);
+            
+            // Send combined data to webview (in v1 format for compatibility)
+            const payloadForWebview = {
+              ...project,
+              state,
+              ops: changelog.ops,
+            };
+            
+            outputChannel.appendLine(`[SchemaX] Sending to webview:`);
+            outputChannel.appendLine(`[SchemaX] - state.catalogs: ${JSON.stringify(state.catalogs.map(c => c.name))}`);
+            outputChannel.appendLine(`[SchemaX] - project.version: ${project.version}`);
+            
             currentPanel?.webview.postMessage({
               type: 'project-loaded',
-              payload: project,
+              payload: payloadForWebview,
             });
             trackEvent('project_loaded');
           } catch (error) {
@@ -112,15 +130,29 @@ async function openDesigner(context: vscode.ExtensionContext) {
         case 'append-ops': {
           try {
             const ops: Op[] = message.payload;
-            outputChannel.appendLine(`[SchemaX] Appending ${ops.length} operation(s)`);
-            const updatedProject = await appendOps(workspaceFolder.uri, ops);
+            outputChannel.appendLine(`[SchemaX] Appending ${ops.length} operation(s) to changelog`);
+            
+            // Append to changelog
+            await storageV2.appendOps(workspaceFolder.uri, ops);
+            
+            // Reload state
+            const project = await storageV2.readProject(workspaceFolder.uri);
+            const { state, changelog } = await storageV2.loadCurrentState(workspaceFolder.uri);
+            
             outputChannel.appendLine(`[SchemaX] Operations appended successfully`);
-            outputChannel.appendLine(`[SchemaX] - Total ops: ${updatedProject.ops.length}`);
-            outputChannel.appendLine(`[SchemaX] - Snapshots: ${updatedProject.snapshots?.length || 0}`);
-            outputChannel.appendLine(`[SchemaX] - Deployments: ${updatedProject.deployments?.length || 0}`);
+            outputChannel.appendLine(`[SchemaX] - Changelog ops: ${changelog.ops.length}`);
+            outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots.length}`);
+            
+            // Send updated data to webview (in v1 format)
+            const payloadForWebview = {
+              ...project,
+              state,
+              ops: changelog.ops,
+            };
+            
             currentPanel?.webview.postMessage({
               type: 'project-updated',
-              payload: updatedProject,
+              payload: payloadForWebview,
             });
             trackEvent('ops_appended', { count: ops.length });
           } catch (error) {
@@ -150,8 +182,8 @@ async function showLastOps() {
   }
 
   try {
-    const project = await readProject(workspaceFolder.uri);
-    const lastOps = project.ops.slice(-20);
+    const changelog = await storageV2.readChangelog(workspaceFolder.uri);
+    const lastOps = changelog.ops.slice(-20);
 
     outputChannel.clear();
     outputChannel.appendLine('SchemaX: Last 20 Emitted Changes');
@@ -230,13 +262,13 @@ async function createSnapshotCommand_impl() {
 
   try {
     outputChannel.appendLine(`[SchemaX] Reading project from: ${workspaceFolder.uri.fsPath}`);
-    const project = await readProject(workspaceFolder.uri);
-    const uncommittedOps = getUncommittedOps(project);
+    const project = await storageV2.readProject(workspaceFolder.uri);
+    const uncommittedOpsCount = await storageV2.getUncommittedOpsCount(workspaceFolder.uri);
     
-    outputChannel.appendLine(`[SchemaX] Uncommitted operations: ${uncommittedOps.length}`);
-    outputChannel.appendLine(`[SchemaX] Existing snapshots: ${project.snapshots?.length || 0}`);
+    outputChannel.appendLine(`[SchemaX] Uncommitted operations: ${uncommittedOpsCount}`);
+    outputChannel.appendLine(`[SchemaX] Existing snapshots: ${project.snapshots.length}`);
 
-    if (uncommittedOps.length === 0) {
+    if (uncommittedOpsCount === 0) {
       outputChannel.appendLine('[SchemaX] No uncommitted operations, aborting snapshot creation');
       vscode.window.showInformationMessage('No changes to snapshot. All operations are already included in the last snapshot.');
       return;
@@ -273,36 +305,50 @@ async function createSnapshotCommand_impl() {
       title: 'Creating snapshot...',
       cancellable: false
     }, async (progress) => {
-      const updatedProject = await createSnapshot(workspaceFolder.uri, name, undefined, comment);
-      const latestSnapshot = updatedProject.snapshots[updatedProject.snapshots.length - 1];
+      const { project: updatedProject, snapshot } = await storageV2.createSnapshot(
+        workspaceFolder.uri, 
+        name, 
+        undefined, 
+        comment
+      );
       
       outputChannel.appendLine(`[SchemaX] Snapshot created successfully!`);
-      outputChannel.appendLine(`[SchemaX] - ID: ${latestSnapshot.id}`);
-      outputChannel.appendLine(`[SchemaX] - Version: ${latestSnapshot.version}`);
-      outputChannel.appendLine(`[SchemaX] - Name: ${latestSnapshot.name}`);
-      outputChannel.appendLine(`[SchemaX] - Operations included: ${latestSnapshot.opsIncluded.length}`);
+      outputChannel.appendLine(`[SchemaX] - ID: ${snapshot.id}`);
+      outputChannel.appendLine(`[SchemaX] - Version: ${snapshot.version}`);
+      outputChannel.appendLine(`[SchemaX] - Name: ${snapshot.name}`);
+      outputChannel.appendLine(`[SchemaX] - Operations included: ${snapshot.opsIncluded.length}`);
       outputChannel.appendLine(`[SchemaX] - Total snapshots: ${updatedProject.snapshots.length}`);
+      outputChannel.appendLine(`[SchemaX] - Snapshot file: ${updatedProject.snapshots[updatedProject.snapshots.length - 1].file}`);
       
       progress.report({ increment: 100 });
       
       // Notify webview if it's open
       if (currentPanel) {
         outputChannel.appendLine('[SchemaX] Notifying webview of snapshot creation');
+        
+        // Reload state for webview
+        const { state, changelog } = await storageV2.loadCurrentState(workspaceFolder.uri);
+        const payloadForWebview = {
+          ...updatedProject,
+          state,
+          ops: changelog.ops,
+        };
+        
         currentPanel.webview.postMessage({
           type: 'project-updated',
-          payload: updatedProject
+          payload: payloadForWebview
         });
       } else {
         outputChannel.appendLine('[SchemaX] No webview panel open, skipping notification');
       }
       
       vscode.window.showInformationMessage(
-        `Snapshot created: ${latestSnapshot.version} - ${latestSnapshot.name} (${uncommittedOps.length} operations)`
+        `Snapshot created: ${snapshot.version} - ${snapshot.name} (${uncommittedOpsCount} operations)`
       );
       
       trackEvent('snapshot_created', { 
-        version: latestSnapshot.version, 
-        opsCount: uncommittedOps.length 
+        version: snapshot.version, 
+        opsCount: uncommittedOpsCount 
       });
     });
 

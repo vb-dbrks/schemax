@@ -1,0 +1,335 @@
+# SchemaX VS Code Extension - Project Context
+
+## Overview
+SchemaX is a VS Code extension that provides a visual designer for Databricks Unity Catalog schema definitions. It uses an append-only operation log architecture with snapshots for version-controlled schema evolution.
+
+## Architecture (V2)
+
+### File Structure
+```
+project-root/
+└── .schemax/
+    ├── project.json           # Project metadata (version, snapshots list, settings)
+    ├── changelog.json         # Working changes (ops since last snapshot)
+    └── snapshots/
+        ├── v0.1.0.json       # Full state snapshots
+        ├── v0.2.0.json
+        └── v0.3.0.json
+```
+
+### Core Concepts
+
+1. **Operations (Ops)**: Append-only log of all user actions
+   - Each op has: `{id, ts, op, target, payload}`
+   - Ops are immutable and never edited
+   - Examples: `add_catalog`, `rename_column`, `reorder_columns`
+   - All ops have UUIDs for tracking
+
+2. **Changelog**: `changelog.json` contains ops since last snapshot
+   - Cleared when snapshot is created
+   - Tracks `sinceSnapshot` version
+   - This is the "working directory" of changes
+
+3. **Snapshots**: Point-in-time full state captures
+   - Stored as separate files: `.schemax/snapshots/vX.Y.Z.json`
+   - Contains complete state + list of ops included
+   - Metadata stored in `project.json`, full state in snapshot file
+   - Semantic versioning (v0.1.0, v0.2.0, etc.)
+
+4. **State Loading**: 
+   - Load latest snapshot (or start with empty state)
+   - Apply changelog ops to get current state
+   - This is what the UI displays
+
+### Data Models
+
+**Project File** (`project.json`):
+```typescript
+{
+  version: 2,
+  name: string,
+  environments: ["dev", "test", "prod"],
+  snapshots: SnapshotMetadata[], // Just metadata, references to files
+  deployments: Deployment[],
+  settings: ProjectSettings,
+  latestSnapshot: string | null  // version string
+}
+```
+
+**Changelog File** (`changelog.json`):
+```typescript
+{
+  version: 1,
+  sinceSnapshot: string | null,  // version
+  ops: Op[],
+  lastModified: string  // ISO timestamp
+}
+```
+
+**Snapshot File** (`.schemax/snapshots/vX.Y.Z.json`):
+```typescript
+{
+  id: string,
+  version: string,
+  name: string,
+  ts: string,
+  createdBy: string,
+  state: { catalogs: Catalog[] },  // Full state
+  opsIncluded: string[],  // Op IDs
+  previousSnapshot: string | null,
+  hash: string,  // SHA-256 for integrity
+  tags: string[],
+  comment?: string
+}
+```
+
+**Unity Catalog Model**:
+```
+Catalog
+├── Schema[]
+    └── Table[]
+        ├── columns: Column[]
+        ├── properties: Record<string, string>
+        ├── constraints: Constraint[]
+        └── grants: Grant[]
+```
+
+### Storage Layer (`src/storage-v2.ts`)
+
+**Key Functions**:
+- `ensureProjectFile()` - Initialize new project
+- `loadCurrentState()` - Load snapshot + apply changelog
+- `appendOps()` - Add ops to changelog
+- `createSnapshot()` - Create snapshot file, update metadata, clear changelog
+- `readProject()`, `readChangelog()`, `readSnapshot()`
+
+**Op Reducer**: `applyOpsToState()` applies ops to state immutably
+
+### Extension (`src/extension.ts`)
+
+**Commands**:
+1. `schemax.openDesigner` - Opens React webview
+2. `schemax.showLastOps` - Shows changelog ops
+3. `schemax.createSnapshot` - Creates new snapshot
+
+**Message Flow**:
+- Webview → Extension: `load-project`, `append-ops`
+- Extension → Webview: `project-loaded`, `project-updated`
+
+**Webview receives v1-compatible format**:
+```typescript
+{
+  ...project,        // v2 project metadata
+  state,             // Current state (snapshot + changelog applied)
+  ops: changelog.ops // Current changelog
+}
+```
+
+### Webview (`src/webview/`)
+
+**Architecture**: React + Vite + Zustand
+
+**Components**:
+- `App.tsx` - Main layout, message handling
+- `Toolbar.tsx` - Action buttons (Add Catalog/Schema/Table/Column)
+- `Sidebar.tsx` - Tree view with rename/drop
+- `TableDesigner.tsx` - Table properties editor
+- `ColumnGrid.tsx` - **Inline editing** for columns (Edit/Drop buttons)
+- `SnapshotPanel.tsx` - Timeline view of snapshots
+
+**State Management** (`useDesignerStore.ts`):
+- Zustand store holds current project state
+- All mutations generate ops via `emitOps()`
+- Ops sent to extension via `vscode.postMessage()`
+- Extension applies ops and sends back updated state
+
+**Column Editing** (Inline):
+- Click "Edit" → Row becomes editable (name, type, comment)
+- Save → Generates multiple ops if multiple fields changed
+- No popups/modals for column editing
+
+### UI/UX Features
+
+1. **Custom Modal Dialogs**: Used for Add/Rename/Drop actions
+   - Webview is sandboxed, can't use browser `prompt()`/`confirm()`
+   - Custom React modals styled with VS Code theme
+
+2. **Drag-and-Drop**: Reorder columns via drag handles
+
+3. **Snapshot Timeline**: Visual indicator with dots/lines
+   - Green dot = latest snapshot
+   - Yellow pulsing dot = uncommitted changes
+   - Shows version, name, timestamp, ops count
+
+4. **VS Code Output Channel**: All logs go to "SchemaX" output
+   - Not console.log (goes to Extension Host)
+   - Use `outputChannel.appendLine()`
+
+### Key Design Decisions
+
+1. **Why JSON?**: 
+   - Git-friendly, human-readable
+   - Simple, no database needed
+   - Works for typical UC schemas (<100 tables)
+   - Standard format with good tooling support
+
+2. **Why Separate Snapshot Files?**:
+   - Snapshots are immutable (rarely change)
+   - Changelog is active development (frequent changes)
+   - Git diffs are cleaner
+   - Better performance (only load latest snapshot)
+
+3. **Why V2 Over V1?**:
+   - V1: Single file with all ops forever (grows unbounded)
+   - V2: Snapshots + changelog (bounded growth)
+   - Easier to generate migrations (just read changelog)
+
+### Operation Types
+
+**Catalog**: `add_catalog`, `rename_catalog`, `drop_catalog`
+**Schema**: `add_schema`, `rename_schema`, `drop_schema`
+**Table**: `add_table`, `rename_table`, `drop_table`, `set_table_comment`
+**Column**: 
+- `add_column` - payload: `{tableId, colId, name, type, nullable, comment?}`
+- `rename_column` - payload: `{tableId, colId, newName}`
+- `drop_column` - payload: `{tableId, colId}`
+- `reorder_columns` - payload: `{tableId, order: string[]}`
+- `change_column_type` - payload: `{tableId, colId, newType}`
+- `set_nullable` - payload: `{tableId, colId, nullable}`
+- `set_column_comment` - payload: `{tableId, colId, comment}`
+
+### Build System
+
+**Extension**: esbuild (`esbuild.config.mjs`)
+- Bundles `src/extension.ts` → `dist/extension.js`
+- External: `vscode` module
+
+**Webview**: Vite (`vite.config.ts`)
+- Builds React app → `media/`
+- Entry: `src/webview/main.tsx`
+- Output: `media/index.html`, `media/assets/index.js`, `media/assets/index.css`
+
+**Scripts**:
+- `npm run build` - Build both
+- `npm run build:ext` - Extension only
+- `npm run build:webview` - Webview only
+- `npm run watch` - Watch mode (both)
+
+### Development Workflow
+
+1. **Make changes** → Ops append to `changelog.json`
+2. **Create snapshot** → 
+   - Write `.schemax/snapshots/vX.Y.Z.json`
+   - Update `project.json` with metadata
+   - Clear `changelog.json`
+3. **Repeat**
+
+### Future (Not Implemented Yet)
+
+- **Phase 2**: Migration script generation (ops → SQL)
+- **Phase 3**: Deployment to Databricks
+- **Phase 4**: Drift detection (compare UC properties)
+- **Phase 5**: Multi-environment promotion
+
+### Testing
+
+**To test locally**:
+1. Press F5 in VS Code (launches Extension Development Host)
+2. Open a workspace folder
+3. Cmd+Shift+P → "SchemaX: Open Designer"
+4. Check logs: View → Output → Select "SchemaX"
+
+**File locations**:
+- Extension: `/Users/varun.bhandary/Documents/side-projects/schemax-vscode`
+- Test workspace: `/Users/varun.bhandary/Documents/test-vscode-extension`
+
+### Important Files
+
+**Core**:
+- `src/storage-v2.ts` - **V2 storage layer** (use this, not storage.ts)
+- `src/extension.ts` - Extension host
+- `src/shared/model.ts` - Zod schemas
+- `src/shared/ops.ts` - Op definitions
+- `src/webview/state/useDesignerStore.ts` - Zustand store
+
+**UI**:
+- `src/webview/components/ColumnGrid.tsx` - Inline column editing
+- `src/webview/components/SnapshotPanel.tsx` - Timeline view
+
+### Known Issues / TODOs
+
+✅ **Resolved**:
+- Custom modals for sandboxed webview
+- Op IDs for tracking
+- Backwards compatibility (auto-generate IDs for old ops)
+- Inline column editing
+- V2 architecture with separate files
+
+⚠️ **Current Limitations**:
+- No SQL generation yet
+- No Databricks deployment
+- No drift detection
+- Single-user only (no concurrent editing)
+
+### Coding Guidelines
+
+1. **Logging**: Always use `outputChannel.appendLine()`, never `console.log()`
+2. **File Structure**: All SchemaX files in `.schemax/` folder
+3. **Immutability**: Never mutate state directly, always create new objects
+4. **Op IDs**: Always generate UUIDs for new ops: `id: \`op_${uuidv4()}\``
+5. **Zod Validation**: Always parse with Zod before using external data
+6. **Error Handling**: Catch errors, log to output channel, show user-friendly messages
+
+### Dependencies
+
+**Runtime**:
+- `uuid` - UUID generation
+- `zod` - Schema validation
+- `react`, `react-dom` - UI
+- `zustand` - State management
+
+**Dev**:
+- `typescript` - Language
+- `esbuild` - Extension bundler
+- `vite` - Webview bundler
+- `@vitejs/plugin-react` - React support
+- `@vscode/vsce` - Extension packaging
+
+### VS Code API Usage
+
+**Key APIs**:
+- `vscode.window.createWebviewPanel()` - Create webview
+- `vscode.window.createOutputChannel()` - Logging
+- `vscode.commands.registerCommand()` - Register commands
+- `webview.postMessage()` / `webview.onDidReceiveMessage()` - Communication
+- `vscode.workspace.workspaceFolders` - Get workspace path
+- `vscode.window.showInputBox()` - User input
+- `vscode.window.withProgress()` - Progress indicator
+
+### Git Strategy
+
+**Recommended**:
+- Commit `.schemax/` folder to git
+- Snapshots = tagged releases
+- Changelog = work in progress
+- Easy to see what changed between versions
+
+**Alternative** (if large):
+- Gitignore `.schemax/snapshots/`
+- Only commit `project.json` and `changelog.json`
+
+---
+
+## Quick Start for New Chat
+
+If starting a new conversation about this project:
+
+1. **Architecture**: V2 with separate snapshot files (`.schemax/` folder)
+2. **Storage**: Use `src/storage-v2.ts` functions
+3. **UI**: React webview with inline column editing
+4. **State**: Snapshot + changelog = current state
+5. **Logs**: Check "SchemaX" output channel
+6. **Build**: `npm run build` before testing
+
+This is a **working MVP** with snapshots fully functional. Next phase would be migration generation and deployment.
+

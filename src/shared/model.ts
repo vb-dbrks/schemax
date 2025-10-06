@@ -54,23 +54,48 @@ export const Catalog = z.object({
 });
 export type Catalog = z.infer<typeof Catalog>;
 
-// Snapshot definition
-export const Snapshot = z.object({
+// Snapshot metadata (stored in project.json)
+export const SnapshotMetadata = z.object({
   id: z.string(),
   version: z.string(), // semantic version
+  name: z.string(),
+  ts: z.string(),
+  createdBy: z.string().optional(),
+  file: z.string(), // relative path to snapshot file (e.g., ".schemax/snapshots/v0.1.0.json")
+  previousSnapshot: z.string().nullable(), // version of previous snapshot
+  opsCount: z.number(), // number of ops included in this snapshot
+  hash: z.string(),
+  tags: z.array(z.string()).default([]),
+  comment: z.string().optional(),
+});
+export type SnapshotMetadata = z.infer<typeof SnapshotMetadata>;
+
+// Snapshot file content (stored in .schemax/snapshots/vX.Y.Z.json)
+export const SnapshotFile = z.object({
+  id: z.string(),
+  version: z.string(),
   name: z.string(),
   ts: z.string(),
   createdBy: z.string().optional(),
   state: z.object({
     catalogs: z.array(Catalog),
   }),
-  opsIncluded: z.array(z.string()), // op IDs
-  previousSnapshot: z.string().nullable(),
+  opsIncluded: z.array(z.string()), // op IDs that led to this state
+  previousSnapshot: z.string().nullable(), // version
   hash: z.string(),
   tags: z.array(z.string()).default([]),
   comment: z.string().optional(),
 });
-export type Snapshot = z.infer<typeof Snapshot>;
+export type SnapshotFile = z.infer<typeof SnapshotFile>;
+
+// Changelog file (schemax.changelog.json)
+export const ChangelogFile = z.object({
+  version: z.literal(1),
+  sinceSnapshot: z.string().nullable(), // version of snapshot this changelog is based on
+  ops: z.array(z.any()), // Op[]
+  lastModified: z.string(), // ISO timestamp
+});
+export type ChangelogFile = z.infer<typeof ChangelogFile>;
 
 // Drift info
 export const DriftInfo = z.object({
@@ -110,19 +135,15 @@ export const ProjectSettings = z.object({
 });
 export type ProjectSettings = z.infer<typeof ProjectSettings>;
 
-// Project file definition
+// Project file definition (v2 - simplified, references external files)
 export const ProjectFile = z.object({
-  version: z.literal(1),
+  version: z.literal(2), // Bumped to v2
   name: z.string(),
   environments: z.array(z.enum(['dev', 'test', 'prod'])),
-  state: z.object({
-    catalogs: z.array(Catalog),
-  }),
-  ops: z.array(z.any()), // Will be Op[] from ops.ts
-  snapshots: z.array(Snapshot).default([]),
+  snapshots: z.array(SnapshotMetadata).default([]), // Metadata only, full snapshots in separate files
   deployments: z.array(Deployment).default([]),
   settings: ProjectSettings.default({}),
-  lastSnapshotHash: z.string().nullable(),
+  latestSnapshot: z.string().nullable(), // version string of latest snapshot
 });
 export type ProjectFile = z.infer<typeof ProjectFile>;
 

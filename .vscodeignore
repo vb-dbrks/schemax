@@ -4,7 +4,10 @@ tsconfig.webview.json
 esbuild.config.mjs
 vite.config.ts
 .gitignore
+.git/**
 node_modules/**
 .vscode/**
 *.vsix
-
+.cursorrules
+docs/**
+CONTRIBUTING.md

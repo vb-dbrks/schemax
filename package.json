@@ -1,14 +1,42 @@
 {
   "name": "schemax-vscode",
   "displayName": "SchemaX",
-  "description": "Visual SchemaX Designer for Databricks Unity Catalog",
-  "publisher": "yourname",
-  "version": "0.0.1",
+  "description": "Visual designer for Databricks Unity Catalog schemas with version control",
+  "publisher": "varunbhandary",
+  "version": "0.1.0",
+  "author": {
+    "name": "Field Engineering"
+  },
+  "contributors": [
+    {
+      "name": "Varun Bhandary",
+      "url": "https://github.com/vb-dbrks"
+    }
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vb-dbrks/schemax-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vb-dbrks/schemax-vscode/issues"
+  },
+  "homepage": "https://github.com/vb-dbrks/schemax-vscode#readme",
+  "keywords": [
+    "databricks",
+    "unity catalog",
+    "schema",
+    "database",
+    "migration",
+    "version control",
+    "visual designer"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "activationEvents": [
     "*"

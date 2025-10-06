@@ -639,3 +639,186 @@ body {
   font-style: italic;
 }
 
+/* Table Properties Section */
+.table-properties-section {
+  margin-top: 24px;
+  padding: 16px;
+  background-color: var(--vscode-editor-inactiveSelectionBackground);
+  border-radius: 4px;
+}
+
+.table-properties-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--vscode-foreground);
+}
+
+.empty-properties {
+  padding: 16px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-properties p {
+  margin: 4px 0;
+}
+
+.empty-properties .hint {
+  font-size: 11px;
+  font-style: italic;
+}
+
+.properties-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--vscode-editor-background);
+  margin-bottom: 12px;
+}
+
+.properties-table thead {
+  background-color: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+.properties-table th,
+.properties-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.properties-table th {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.properties-table tbody tr:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.properties-table tr.editing {
+  background-color: var(--vscode-list-activeSelectionBackground);
+}
+
+.properties-table tr.adding-row {
+  background-color: var(--vscode-inputValidation-infoBackground);
+}
+
+.properties-table code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  background-color: var(--vscode-textCodeBlock-background);
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+.properties-table input {
+  width: 100%;
+  padding: 4px 8px;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 2px;
+  font-size: 12px;
+}
+
+.properties-table input:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.properties-table .actions-cell {
+  white-space: nowrap;
+}
+
+.properties-table .actions-cell button {
+  padding: 4px 8px;
+  margin-right: 4px;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.properties-table .actions-cell button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.add-property-btn {
+  padding: 6px 12px;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.add-property-btn:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.error-message {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background-color: var(--vscode-inputValidation-errorBackground);
+  color: var(--vscode-inputValidation-errorForeground);
+  border: 1px solid var(--vscode-inputValidation-errorBorder);
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.properties-help {
+  margin-top: 16px;
+  padding: 12px;
+  background-color: var(--vscode-textBlockQuote-background);
+  border-left: 3px solid var(--vscode-textLink-foreground);
+  border-radius: 3px;
+}
+
+.properties-help details {
+  cursor: pointer;
+}
+
+.properties-help summary {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 8px;
+  color: var(--vscode-textLink-foreground);
+}
+
+.properties-help ul {
+  margin: 8px 0;
+  padding-left: 20px;
+  font-size: 11px;
+}
+
+.properties-help li {
+  margin: 4px 0;
+}
+
+.properties-help code {
+  font-family: var(--vscode-editor-font-family);
+  background-color: var(--vscode-textCodeBlock-background);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.properties-help a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+}
+
+.properties-help a:hover {
+  text-decoration: underline;
+}
+
+.warning-text {
+  color: var(--vscode-editorWarning-foreground);
+  font-size: 12px;
+  font-style: italic;
+  margin-top: 8px;
+}
+

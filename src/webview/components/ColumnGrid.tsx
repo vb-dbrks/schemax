@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useDesignerStore } from '../state/useDesignerStore';
 import { Column } from '../../shared/model';
+import { useDesignerStore } from '../state/useDesignerStore';
 
 interface ColumnGridProps {
   tableId: string;
@@ -15,35 +15,12 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     setColumnNullable,
     setColumnComment,
     reorderColumns,
-    project,
   } = useDesignerStore();
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-
-  const [renameDialog, setRenameDialog] = useState<{colId: string, name: string} | null>(null);
+  const [editingColId, setEditingColId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<{name: string, type: string, comment: string}>({name: '', type: '', comment: ''});
   const [dropDialog, setDropDialog] = useState<{colId: string, name: string} | null>(null);
-  const [typeDialog, setTypeDialog] = useState<{colId: string, type: string} | null>(null);
-  const [commentDialog, setCommentDialog] = useState<{colId: string, comment: string} | null>(null);
-
-  const handleRenameColumn = (colId: string, currentName: string) => {
-    setRenameDialog({colId, name: currentName});
-  };
-
-  const handleDropColumn = (colId: string, name: string) => {
-    setDropDialog({colId, name});
-  };
-
-  const handleChangeType = (colId: string, currentType: string) => {
-    setTypeDialog({colId, type: currentType});
-  };
-
-  const handleToggleNullable = (colId: string, currentNullable: boolean) => {
-    setColumnNullable(tableId, colId, !currentNullable);
-  };
-
-  const handleSetComment = (colId: string, currentComment?: string) => {
-    setCommentDialog({colId, comment: currentComment || ''});
-  };
 
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
@@ -51,180 +28,188 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === index) return;
-
-    const newColumns = [...columns];
-    const draggedItem = newColumns[draggedIndex];
-    newColumns.splice(draggedIndex, 1);
-    newColumns.splice(index, 0, draggedItem);
-
-    const newOrder = newColumns.map((col) => col.id);
-    reorderColumns(tableId, newOrder);
-    setDraggedIndex(index);
   };
 
   const handleDragEnd = () => {
+    if (draggedIndex === null) return;
     setDraggedIndex(null);
   };
 
-  // Check if table needs column mapping
-  const needsColumnMapping = project?.ops.some(
-    (op) => 
-      (op.op === 'rename_column' || op.op === 'drop_column') &&
-      op.payload.tableId === tableId
-  );
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex) return;
+
+    const newOrder = [...columns];
+    const [draggedCol] = newOrder.splice(draggedIndex, 1);
+    newOrder.splice(dropIndex, 0, draggedCol);
+
+    reorderColumns(tableId, newOrder.map(c => c.id));
+    setDraggedIndex(null);
+  };
+
+  const handleEditColumn = (col: Column) => {
+    setEditingColId(col.id);
+    setEditValues({
+      name: col.name,
+      type: col.type,
+      comment: col.comment || ''
+    });
+  };
+
+  const handleSaveColumn = (colId: string) => {
+    const col = columns.find(c => c.id === colId);
+    if (!col) return;
+
+    // Save changes
+    if (editValues.name !== col.name) {
+      renameColumn(tableId, colId, editValues.name);
+    }
+    if (editValues.type !== col.type) {
+      changeColumnType(tableId, colId, editValues.type);
+    }
+    if (editValues.comment !== (col.comment || '')) {
+      setColumnComment(tableId, colId, editValues.comment);
+    }
+
+    setEditingColId(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingColId(null);
+  };
+
+  const handleDropColumn = (colId: string, name: string) => {
+    setDropDialog({colId, name});
+  };
 
   return (
     <div className="column-grid">
-      {needsColumnMapping && (
-        <div className="warning-badge">
-          ⚠️ Requires delta.columnMapping.mode=name
-        </div>
-      )}
       <table>
         <thead>
           <tr>
-            <th></th>
+            <th style={{width: '30px'}}></th>
             <th>Name</th>
             <th>Type</th>
-            <th>Nullable</th>
+            <th style={{width: '80px'}}>Nullable</th>
             <th>Comment</th>
-            <th>Actions</th>
+            <th style={{width: '150px'}}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {columns.length === 0 ? (
             <tr>
-              <td colSpan={6} style={{ textAlign: 'center', color: '#888' }}>
-                No columns yet. Add a column to get started.
+              <td colSpan={6} className="empty-state">
+                No columns yet. Click "Add Column" to create one.
               </td>
             </tr>
           ) : (
-            columns.map((col, index) => (
-              <tr
-                key={col.id}
-                draggable
-                onDragStart={() => handleDragStart(index)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDragEnd={handleDragEnd}
-                className={draggedIndex === index ? 'dragging' : ''}
-              >
-                <td className="drag-handle">⋮⋮</td>
-                <td>{col.name}</td>
-                <td>{col.type}</td>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={col.nullable}
-                    onChange={() => handleToggleNullable(col.id, col.nullable)}
-                  />
-                </td>
-                <td className="comment-cell">{col.comment || <span className="empty">—</span>}</td>
-                <td className="actions-cell">
-                  <button onClick={() => handleRenameColumn(col.id, col.name)} title="Rename">
-                    ✏️
-                  </button>
-                  <button onClick={() => handleChangeType(col.id, col.type)} title="Change type">
-                    🔧
-                  </button>
-                  <button onClick={() => handleSetComment(col.id, col.comment)} title="Set comment">
-                    💬
-                  </button>
-                  <button onClick={() => handleDropColumn(col.id, col.name)} title="Drop column">
-                    🗑️
-                  </button>
-                </td>
-              </tr>
-            ))
+            columns.map((col, index) => {
+              const isEditing = editingColId === col.id;
+              
+              return (
+                <tr
+                  key={col.id}
+                  draggable={!isEditing}
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                  className={draggedIndex === index ? 'dragging' : ''}
+                >
+                  <td className="drag-handle">{!isEditing && '⋮⋮'}</td>
+                  
+                  <td>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editValues.name}
+                        onChange={(e) => setEditValues({...editValues, name: e.target.value})}
+                        autoFocus
+                        style={{width: '100%'}}
+                      />
+                    ) : (
+                      col.name
+                    )}
+                  </td>
+                  
+                  <td>
+                    {isEditing ? (
+                      <select
+                        value={editValues.type}
+                        onChange={(e) => setEditValues({...editValues, type: e.target.value})}
+                        style={{width: '100%'}}
+                      >
+                        <option value="STRING">STRING</option>
+                        <option value="INT">INT</option>
+                        <option value="BIGINT">BIGINT</option>
+                        <option value="DOUBLE">DOUBLE</option>
+                        <option value="BOOLEAN">BOOLEAN</option>
+                        <option value="DATE">DATE</option>
+                        <option value="TIMESTAMP">TIMESTAMP</option>
+                        <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
+                        <option value="ARRAY<STRING>">ARRAY&lt;STRING&gt;</option>
+                        <option value="MAP<STRING,STRING>">MAP&lt;STRING,STRING&gt;</option>
+                      </select>
+                    ) : (
+                      col.type
+                    )}
+                  </td>
+                  
+                  <td style={{textAlign: 'center'}}>
+                    <input
+                      type="checkbox"
+                      checked={col.nullable}
+                      onChange={() => setColumnNullable(tableId, col.id, !col.nullable)}
+                      disabled={isEditing}
+                      title="Toggle nullable"
+                    />
+                  </td>
+                  
+                  <td>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editValues.comment}
+                        onChange={(e) => setEditValues({...editValues, comment: e.target.value})}
+                        placeholder="Optional comment"
+                        style={{width: '100%'}}
+                      />
+                    ) : (
+                      col.comment || <span className="empty">—</span>
+                    )}
+                  </td>
+                  
+                  <td className="actions-cell">
+                    {isEditing ? (
+                      <>
+                        <button onClick={() => handleSaveColumn(col.id)} title="Save changes">
+                          ✓ Save
+                        </button>
+                        <button onClick={handleCancelEdit} title="Cancel">
+                          ✕ Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => handleEditColumn(col)} title="Edit column">
+                          ✏️ Edit
+                        </button>
+                        <button 
+                          onClick={() => handleDropColumn(col.id, col.name)} 
+                          title="Drop column"
+                          style={{color: 'var(--vscode-errorForeground)'}}
+                        >
+                          🗑️ Drop
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>
-
-      {renameDialog && (
-        <div className="modal" onClick={() => setRenameDialog(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Rename Column</h3>
-            <input
-              type="text"
-              defaultValue={renameDialog.name}
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  renameColumn(tableId, renameDialog.colId, (e.target as HTMLInputElement).value);
-                  setRenameDialog(null);
-                } else if (e.key === 'Escape') {
-                  setRenameDialog(null);
-                }
-              }}
-              id="rename-col-input"
-            />
-            <div className="modal-buttons">
-              <button onClick={() => {
-                const input = document.getElementById('rename-col-input') as HTMLInputElement;
-                renameColumn(tableId, renameDialog.colId, input.value);
-                setRenameDialog(null);
-              }}>Rename</button>
-              <button onClick={() => setRenameDialog(null)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {typeDialog && (
-        <div className="modal" onClick={() => setTypeDialog(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Change Column Type</h3>
-            <select defaultValue={typeDialog.type} autoFocus id="type-select">
-              <option value="STRING">STRING</option>
-              <option value="INT">INT</option>
-              <option value="BIGINT">BIGINT</option>
-              <option value="DOUBLE">DOUBLE</option>
-              <option value="BOOLEAN">BOOLEAN</option>
-              <option value="DATE">DATE</option>
-              <option value="TIMESTAMP">TIMESTAMP</option>
-              <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
-            </select>
-            <div className="modal-buttons">
-              <button onClick={() => {
-                const select = document.getElementById('type-select') as HTMLSelectElement;
-                changeColumnType(tableId, typeDialog.colId, select.value);
-                setTypeDialog(null);
-              }}>Change</button>
-              <button onClick={() => setTypeDialog(null)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {commentDialog && (
-        <div className="modal" onClick={() => setCommentDialog(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Set Column Comment</h3>
-            <input
-              type="text"
-              defaultValue={commentDialog.comment}
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  setColumnComment(tableId, commentDialog.colId, (e.target as HTMLInputElement).value);
-                  setCommentDialog(null);
-                } else if (e.key === 'Escape') {
-                  setCommentDialog(null);
-                }
-              }}
-              id="comment-input"
-            />
-            <div className="modal-buttons">
-              <button onClick={() => {
-                const input = document.getElementById('comment-input') as HTMLInputElement;
-                setColumnComment(tableId, commentDialog.colId, input.value);
-                setCommentDialog(null);
-              }}>Set</button>
-              <button onClick={() => setCommentDialog(null)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {dropDialog && (
         <div className="modal" onClick={() => setDropDialog(null)}>
@@ -244,4 +229,3 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     </div>
   );
 };
-

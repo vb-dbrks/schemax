@@ -10,10 +10,7 @@ export const SnapshotPanel: React.FC = () => {
   }
 
   const snapshots = project.snapshots || [];
-  const uncommittedOps = project.ops.filter(op => {
-    const lastSnapshot = snapshots[snapshots.length - 1];
-    return !lastSnapshot || !lastSnapshot.opsIncluded.includes(op.id);
-  });
+  const uncommittedOps = project.ops || [];  // In v2, ops array IS the uncommitted ops
 
   return (
     <div className="snapshot-panel">
@@ -64,7 +61,7 @@ export const SnapshotPanel: React.FC = () => {
                         {snapshot.createdBy && (
                           <span className="snapshot-author"> • {snapshot.createdBy}</span>
                         )}
-                        <span className="snapshot-ops"> • {snapshot.opsIncluded.length} ops</span>
+                        <span className="snapshot-ops"> • {snapshot.opsCount || 0} ops</span>
                       </div>
                       {snapshot.tags && snapshot.tags.length > 0 && (
                         <div className="snapshot-tags">
