@@ -1,0 +1,61 @@
+{
+  "name": "schemax-vscode",
+  "displayName": "SchemaX",
+  "description": "Visual SchemaX Designer for Databricks Unity Catalog",
+  "publisher": "yourname",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:schemax.openDesigner",
+    "onCommand:schemax.showLastOps"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "schemax.openDesigner",
+        "title": "SchemaX: Open Designer"
+      },
+      {
+        "command": "schemax.showLastOps",
+        "title": "SchemaX: Show Last Emitted Changes"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "npm run build:webview && npm run build:ext",
+    "build:webview": "vite build",
+    "build:ext": "node esbuild.config.mjs",
+    "watch": "concurrently \"npm:watch:webview\" \"npm:watch:ext\"",
+    "watch:webview": "vite build --watch",
+    "watch:ext": "node esbuild.config.mjs --watch",
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/uuid": "^9.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "concurrently": "^8.2.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.0.0",
+    "@vscode/vsce": "^2.22.0"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "uuid": "^9.0.1",
+    "zod": "^3.23.0",
+    "zustand": "^4.5.0"
+  }
+}
+
