@@ -6,6 +6,7 @@ import { Op } from './shared/ops';
 import { trackEvent } from './telemetry';
 
 let outputChannel: vscode.OutputChannel;
+let currentPanel: vscode.WebviewPanel | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('[SchemaX] Extension activating...');
@@ -54,8 +55,14 @@ async function openDesigner(context: vscode.ExtensionContext) {
   // Ensure project file exists
   await ensureProjectFile(workspaceFolder.uri);
 
+  // If panel already exists, just reveal it
+  if (currentPanel) {
+    currentPanel.reveal(vscode.ViewColumn.One);
+    return;
+  }
+
   // Create webview panel
-  const panel = vscode.window.createWebviewPanel(
+  currentPanel = vscode.window.createWebviewPanel(
     'schemaxDesigner',
     'SchemaX Designer',
     vscode.ViewColumn.One,
@@ -69,11 +76,16 @@ async function openDesigner(context: vscode.ExtensionContext) {
 
   // Set webview content
   console.log('[SchemaX] Setting webview HTML');
-  panel.webview.html = getWebviewContent(context, panel.webview);
+  currentPanel.webview.html = getWebviewContent(context, currentPanel.webview);
   console.log('[SchemaX] Webview HTML set');
 
+  // Reset when panel is closed
+  currentPanel.onDidDispose(() => {
+    currentPanel = undefined;
+  });
+
   // Handle messages from webview
-  panel.webview.onDidReceiveMessage(
+  currentPanel.webview.onDidReceiveMessage(
     async (message) => {
       console.log('[SchemaX] Received message from webview:', message.type);
       switch (message.type) {
@@ -82,7 +94,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             console.log('[SchemaX] Loading project from:', workspaceFolder.uri.fsPath);
             const project = await readProject(workspaceFolder.uri);
             console.log('[SchemaX] Project loaded, sending to webview');
-            panel.webview.postMessage({
+            currentPanel?.webview.postMessage({
               type: 'project-loaded',
               payload: project,
             });
@@ -98,7 +110,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             const ops: Op[] = message.payload;
             console.log('[SchemaX] Appending ops:', ops.length);
             const updatedProject = await appendOps(workspaceFolder.uri, ops);
-            panel.webview.postMessage({
+            currentPanel?.webview.postMessage({
               type: 'project-updated',
               payload: updatedProject,
             });
@@ -242,6 +254,15 @@ async function createSnapshotCommand_impl() {
       const latestSnapshot = updatedProject.snapshots[updatedProject.snapshots.length - 1];
       
       progress.report({ increment: 100 });
+      
+      // Notify webview if it's open
+      if (currentPanel) {
+        console.log('[SchemaX] Notifying webview of snapshot creation');
+        currentPanel.webview.postMessage({
+          type: 'project-updated',
+          payload: updatedProject
+        });
+      }
       
       vscode.window.showInformationMessage(
         `Snapshot created: ${latestSnapshot.version} - ${latestSnapshot.name} (${uncommittedOps.length} operations)`
