@@ -58,6 +58,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
       enableScripts: true,
       retainContextWhenHidden: true,
       localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')],
+      enableForms: true,
     }
   );
 

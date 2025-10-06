@@ -41,43 +41,60 @@ export const Sidebar: React.FC = () => {
     setExpandedSchemas(newExpanded);
   };
 
+  const [renameDialog, setRenameDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
+  const [dropDialog, setDropDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
+
   const handleRenameCatalog = (catalogId: string, currentName: string) => {
-    const newName = prompt('Rename catalog:', currentName);
-    if (newName && newName !== currentName) {
-      renameCatalog(catalogId, newName);
-    }
+    setRenameDialog({type: 'catalog', id: catalogId, name: currentName});
   };
 
   const handleRenameSchema = (schemaId: string, currentName: string) => {
-    const newName = prompt('Rename schema:', currentName);
-    if (newName && newName !== currentName) {
-      renameSchema(schemaId, newName);
-    }
+    setRenameDialog({type: 'schema', id: schemaId, name: currentName});
   };
 
   const handleRenameTable = (tableId: string, currentName: string) => {
-    const newName = prompt('Rename table:', currentName);
-    if (newName && newName !== currentName) {
-      renameTable(tableId, newName);
-    }
+    setRenameDialog({type: 'table', id: tableId, name: currentName});
   };
 
   const handleDropCatalog = (catalogId: string, name: string) => {
-    if (confirm(`Drop catalog "${name}"? This will also drop all schemas and tables.`)) {
-      dropCatalog(catalogId);
-    }
+    setDropDialog({type: 'catalog', id: catalogId, name});
   };
 
   const handleDropSchema = (schemaId: string, name: string) => {
-    if (confirm(`Drop schema "${name}"? This will also drop all tables.`)) {
-      dropSchema(schemaId);
-    }
+    setDropDialog({type: 'schema', id: schemaId, name});
   };
 
   const handleDropTable = (tableId: string, name: string) => {
-    if (confirm(`Drop table "${name}"?`)) {
-      dropTable(tableId);
+    setDropDialog({type: 'table', id: tableId, name});
+  };
+
+  const handleRenameConfirm = (newName: string) => {
+    if (!renameDialog || !newName || newName === renameDialog.name) {
+      setRenameDialog(null);
+      return;
     }
+    
+    if (renameDialog.type === 'catalog') {
+      renameCatalog(renameDialog.id, newName);
+    } else if (renameDialog.type === 'schema') {
+      renameSchema(renameDialog.id, newName);
+    } else if (renameDialog.type === 'table') {
+      renameTable(renameDialog.id, newName);
+    }
+    setRenameDialog(null);
+  };
+
+  const handleDropConfirm = () => {
+    if (!dropDialog) return;
+    
+    if (dropDialog.type === 'catalog') {
+      dropCatalog(dropDialog.id);
+    } else if (dropDialog.type === 'schema') {
+      dropSchema(dropDialog.id);
+    } else if (dropDialog.type === 'table') {
+      dropTable(dropDialog.id);
+    }
+    setDropDialog(null);
   };
 
   if (!project) {
@@ -160,6 +177,49 @@ export const Sidebar: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {renameDialog && (
+        <div className="modal" onClick={() => setRenameDialog(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Rename {renameDialog.type}</h3>
+            <input
+              type="text"
+              defaultValue={renameDialog.name}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleRenameConfirm((e.target as HTMLInputElement).value);
+                } else if (e.key === 'Escape') {
+                  setRenameDialog(null);
+                }
+              }}
+              id="rename-input"
+            />
+            <div className="modal-buttons">
+              <button onClick={() => {
+                const input = document.getElementById('rename-input') as HTMLInputElement;
+                handleRenameConfirm(input.value);
+              }}>Rename</button>
+              <button onClick={() => setRenameDialog(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dropDialog && (
+        <div className="modal" onClick={() => setDropDialog(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Confirm Drop</h3>
+            <p>Are you sure you want to drop {dropDialog.type} "{dropDialog.name}"?</p>
+            {dropDialog.type === 'catalog' && <p className="warning">⚠️ This will also drop all schemas and tables.</p>}
+            {dropDialog.type === 'schema' && <p className="warning">⚠️ This will also drop all tables.</p>}
+            <div className="modal-buttons">
+              <button onClick={handleDropConfirm} style={{backgroundColor: 'var(--vscode-errorForeground)'}}>Drop</button>
+              <button onClick={() => setDropDialog(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

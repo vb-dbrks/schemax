@@ -4,6 +4,7 @@ import { ColumnGrid } from './ColumnGrid';
 
 export const TableDesigner: React.FC = () => {
   const { selectedTableId, findTable, setTableComment } = useDesignerStore();
+  const [commentDialog, setCommentDialog] = React.useState<{tableId: string, comment: string} | null>(null);
 
   if (!selectedTableId) {
     return (
@@ -30,10 +31,7 @@ export const TableDesigner: React.FC = () => {
   const { catalog, schema, table } = result;
 
   const handleSetComment = () => {
-    const newComment = prompt('Set table comment:', table.comment || '');
-    if (newComment !== null) {
-      setTableComment(table.id, newComment);
-    }
+    setCommentDialog({tableId: table.id, comment: table.comment || ''});
   };
 
   return (
@@ -66,6 +64,36 @@ export const TableDesigner: React.FC = () => {
         <h3>Columns ({table.columns.length})</h3>
         <ColumnGrid tableId={table.id} columns={table.columns} />
       </div>
+
+      {commentDialog && (
+        <div className="modal" onClick={() => setCommentDialog(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Set Table Comment</h3>
+            <input
+              type="text"
+              defaultValue={commentDialog.comment}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setTableComment(commentDialog.tableId, (e.target as HTMLInputElement).value);
+                  setCommentDialog(null);
+                } else if (e.key === 'Escape') {
+                  setCommentDialog(null);
+                }
+              }}
+              id="table-comment-input"
+            />
+            <div className="modal-buttons">
+              <button onClick={() => {
+                const input = document.getElementById('table-comment-input') as HTMLInputElement;
+                setTableComment(commentDialog.tableId, input.value);
+                setCommentDialog(null);
+              }}>Set</button>
+              <button onClick={() => setCommentDialog(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

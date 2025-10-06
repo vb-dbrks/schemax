@@ -28,7 +28,9 @@ export const Toolbar: React.FC = () => {
   const [columnNullable, setColumnNullable] = useState(true);
 
   const handleAddCatalog = () => {
+    console.log('[Toolbar] handleAddCatalog called, name:', catalogName);
     if (catalogName.trim()) {
+      console.log('[Toolbar] Adding catalog:', catalogName.trim());
       addCatalog(catalogName.trim());
       setCatalogName('');
       setShowAddCatalog(false);
@@ -63,7 +65,7 @@ export const Toolbar: React.FC = () => {
 
   return (
     <div className="toolbar">
-      <button onClick={() => setShowAddCatalog(true)}>Add Catalog</button>
+      <button onClick={() => { console.log('[Toolbar] Add Catalog button clicked'); setShowAddCatalog(true); }}>Add Catalog</button>
       <button onClick={() => setShowAddSchema(true)} disabled={!selectedCatalogId}>
         Add Schema
       </button>
