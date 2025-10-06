@@ -7,13 +7,57 @@ export const Column = z.object({
   type: z.string(),
   nullable: z.boolean(),
   comment: z.string().optional(),
+  tags: z.record(z.string()).optional(), // NEW: { tag_name: tag_value }
+  maskId: z.string().optional(), // NEW: Reference to active column mask
 });
 export type Column = z.infer<typeof Column>;
 
-// Constraint definition (MVP: check constraints)
+// Row Filter definition (row-level security)
+export const RowFilter = z.object({
+  id: z.string(),
+  name: z.string(),
+  enabled: z.boolean(),
+  udfExpression: z.string(), // SQL UDF expression (e.g., "region = current_user()")
+  description: z.string().optional(),
+});
+export type RowFilter = z.infer<typeof RowFilter>;
+
+// Column Mask definition (column-level data masking)
+export const ColumnMask = z.object({
+  id: z.string(),
+  columnId: z.string(), // Reference to column
+  name: z.string(),
+  enabled: z.boolean(),
+  maskFunction: z.string(), // SQL UDF that returns same type (e.g., "REDACT_EMAIL(email)")
+  description: z.string().optional(),
+});
+export type ColumnMask = z.infer<typeof ColumnMask>;
+
+// Constraint definition (expanded to support PK, FK, CHECK)
 export const Constraint = z.object({
-  type: z.literal('check'),
-  expr: z.string(),
+  id: z.string(),
+  type: z.enum(['primary_key', 'foreign_key', 'check']),
+  name: z.string().optional(), // CONSTRAINT name
+  columns: z.array(z.string()), // column IDs
+  
+  // For PRIMARY KEY
+  timeseries: z.boolean().optional(),
+  
+  // For FOREIGN KEY
+  parentTable: z.string().optional(), // Reference to parent table ID
+  parentColumns: z.array(z.string()).optional(), // Parent column IDs
+  matchFull: z.boolean().optional(),
+  onUpdate: z.literal('NO_ACTION').optional(),
+  onDelete: z.literal('NO_ACTION').optional(),
+  
+  // For CHECK
+  expression: z.string().optional(), // CHECK expression
+  
+  // Constraint options (all types)
+  notEnforced: z.boolean().optional(),
+  deferrable: z.boolean().optional(),
+  initiallyDeferred: z.boolean().optional(),
+  rely: z.boolean().optional(), // For query optimization (Photon)
 });
 export type Constraint = z.infer<typeof Constraint>;
 
@@ -35,6 +79,8 @@ export const Table = z.object({
   constraints: z.array(Constraint),
   grants: z.array(Grant),
   comment: z.string().optional(),
+  rowFilters: z.array(RowFilter).optional(), // NEW: Row-level security
+  columnMasks: z.array(ColumnMask).optional(), // NEW: Column-level masking
 });
 export type Table = z.infer<typeof Table>;
 

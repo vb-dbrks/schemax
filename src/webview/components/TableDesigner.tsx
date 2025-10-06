@@ -2,6 +2,8 @@ import React from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { ColumnGrid } from './ColumnGrid';
 import { TableProperties } from './TableProperties';
+import { TableConstraints } from './TableConstraints';
+import { SecurityGovernance } from './SecurityGovernance';
 
 export const TableDesigner: React.FC = () => {
   const { selectedTableId, findTable, setTableComment } = useDesignerStore();
@@ -68,6 +70,14 @@ export const TableDesigner: React.FC = () => {
 
       <div className="properties-section">
         <TableProperties tableId={table.id} />
+      </div>
+
+      <div className="constraints-section">
+        <TableConstraints tableId={table.id} />
+      </div>
+
+      <div className="security-section">
+        <SecurityGovernance tableId={table.id} />
       </div>
 
       {commentDialog && (

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { ProjectFile, Catalog, Schema, Table, Column } from '../../shared/model';
+import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, ColumnMask } from '../../shared/model';
 import { Op } from '../../shared/ops';
 import { getVsCodeApi } from '../vscode-api';
 
@@ -42,6 +42,24 @@ interface DesignerState {
   
   setTableProperty: (tableId: string, key: string, value: string) => void;
   unsetTableProperty: (tableId: string, key: string) => void;
+  
+  // Column tag operations (NEW)
+  setColumnTag: (tableId: string, colId: string, tagName: string, tagValue: string) => void;
+  unsetColumnTag: (tableId: string, colId: string, tagName: string) => void;
+  
+  // Constraint operations (NEW)
+  addConstraint: (tableId: string, constraint: Omit<Constraint, 'id'>) => void;
+  dropConstraint: (tableId: string, constraintId: string) => void;
+  
+  // Row filter operations (NEW)
+  addRowFilter: (tableId: string, name: string, udfExpression: string, enabled?: boolean, description?: string) => void;
+  updateRowFilter: (tableId: string, filterId: string, updates: Partial<Omit<RowFilter, 'id'>>) => void;
+  removeRowFilter: (tableId: string, filterId: string) => void;
+  
+  // Column mask operations (NEW)
+  addColumnMask: (tableId: string, columnId: string, name: string, maskFunction: string, enabled?: boolean, description?: string) => void;
+  updateColumnMask: (tableId: string, maskId: string, updates: Partial<Omit<ColumnMask, 'id' | 'columnId'>>) => void;
+  removeColumnMask: (tableId: string, maskId: string) => void;
   
   // Helper to find objects
   findCatalog: (catalogId: string) => Catalog | undefined;
@@ -277,16 +295,137 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     emitOps([op]);
   },
 
+  // Column tag operations
+  setColumnTag: (tableId, colId, tagName, tagValue) => {
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'set_column_tag',
+      target: colId,
+      payload: { tableId, colId, tagName, tagValue },
+    };
+    emitOps([op]);
+  },
+
+  unsetColumnTag: (tableId, colId, tagName) => {
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'unset_column_tag',
+      target: colId,
+      payload: { tableId, colId, tagName },
+    };
+    emitOps([op]);
+  },
+
+  // Constraint operations
+  addConstraint: (tableId, constraint) => {
+    const constraintId = `const_${uuidv4()}`;
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'add_constraint',
+      target: tableId,
+      payload: { 
+        tableId, 
+        constraintId,
+        ...constraint 
+      },
+    };
+    emitOps([op]);
+  },
+
+  dropConstraint: (tableId, constraintId) => {
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'drop_constraint',
+      target: constraintId,
+      payload: { tableId, constraintId },
+    };
+    emitOps([op]);
+  },
+
+  // Row filter operations
+  addRowFilter: (tableId, name, udfExpression, enabled = true, description) => {
+    const filterId = `filter_${uuidv4()}`;
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'add_row_filter',
+      target: tableId,
+      payload: { tableId, filterId, name, udfExpression, enabled, description },
+    };
+    emitOps([op]);
+  },
+
+  updateRowFilter: (tableId, filterId, updates) => {
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'update_row_filter',
+      target: filterId,
+      payload: { tableId, filterId, ...updates },
+    };
+    emitOps([op]);
+  },
+
+  removeRowFilter: (tableId, filterId) => {
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'remove_row_filter',
+      target: filterId,
+      payload: { tableId, filterId },
+    };
+    emitOps([op]);
+  },
+
+  // Column mask operations
+  addColumnMask: (tableId, columnId, name, maskFunction, enabled = true, description) => {
+    const maskId = `mask_${uuidv4()}`;
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'add_column_mask',
+      target: tableId,
+      payload: { tableId, maskId, columnId, name, maskFunction, enabled, description },
+    };
+    emitOps([op]);
+  },
+
+  updateColumnMask: (tableId, maskId, updates) => {
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'update_column_mask',
+      target: maskId,
+      payload: { tableId, maskId, ...updates },
+    };
+    emitOps([op]);
+  },
+
+  removeColumnMask: (tableId, maskId) => {
+    const op: Op = {
+      id: `op_${uuidv4()}`,
+      ts: new Date().toISOString(),
+      op: 'remove_column_mask',
+      target: maskId,
+      payload: { tableId, maskId },
+    };
+    emitOps([op]);
+  },
+
   findCatalog: (catalogId) => {
     const { project } = get();
-    return project?.state.catalogs.find((c) => c.id === catalogId);
+    return (project as any)?.state.catalogs.find((c: Catalog) => c.id === catalogId);
   },
 
   findSchema: (schemaId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of project.state.catalogs) {
-      const schema = catalog.schemas.find((s) => s.id === schemaId);
+    for (const catalog of (project as any).state.catalogs) {
+      const schema = catalog.schemas.find((s: Schema) => s.id === schemaId);
       if (schema) return { catalog, schema };
     }
     return undefined;
@@ -295,9 +434,9 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findTable: (tableId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of project.state.catalogs) {
+    for (const catalog of (project as any).state.catalogs) {
       for (const schema of catalog.schemas) {
-        const table = schema.tables.find((t) => t.id === tableId);
+        const table = schema.tables.find((t: Table) => t.id === tableId);
         if (table) return { catalog, schema, table };
       }
     }

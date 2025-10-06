@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { ProjectFile, SnapshotMetadata, SnapshotFile, ChangelogFile, Catalog, Schema, Table, Column } from './shared/model';
+import { ProjectFile, SnapshotMetadata, SnapshotFile, ChangelogFile, Catalog, Schema, Table, Column, Constraint, RowFilter, ColumnMask } from './shared/model';
 import { Op } from './shared/ops';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -505,6 +505,150 @@ function applyOpsToState(state: { catalogs: Catalog[] }, ops: Op[]): { catalogs:
         const table = findTable(newState, op.payload.tableId);
         if (table) {
           delete table.properties[op.payload.key];
+        }
+        break;
+      }
+      
+      // Column tag operations
+      case 'set_column_tag': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table) {
+          const column = table.columns.find((c: Column) => c.id === op.target);
+          if (column) {
+            if (!column.tags) column.tags = {};
+            column.tags[op.payload.tagName] = op.payload.tagValue;
+          }
+        }
+        break;
+      }
+      case 'unset_column_tag': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table) {
+          const column = table.columns.find((c: Column) => c.id === op.target);
+          if (column && column.tags) {
+            delete column.tags[op.payload.tagName];
+          }
+        }
+        break;
+      }
+      
+      // Constraint operations
+      case 'add_constraint': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table) {
+          const constraint: Constraint = {
+            id: op.payload.constraintId,
+            type: op.payload.type,
+            name: op.payload.name,
+            columns: op.payload.columns,
+          };
+          
+          // Add type-specific fields
+          if (op.payload.timeseries !== undefined) constraint.timeseries = op.payload.timeseries;
+          if (op.payload.parentTable) constraint.parentTable = op.payload.parentTable;
+          if (op.payload.parentColumns) constraint.parentColumns = op.payload.parentColumns;
+          if (op.payload.matchFull !== undefined) constraint.matchFull = op.payload.matchFull;
+          if (op.payload.onUpdate) constraint.onUpdate = op.payload.onUpdate;
+          if (op.payload.onDelete) constraint.onDelete = op.payload.onDelete;
+          if (op.payload.expression) constraint.expression = op.payload.expression;
+          if (op.payload.notEnforced !== undefined) constraint.notEnforced = op.payload.notEnforced;
+          if (op.payload.deferrable !== undefined) constraint.deferrable = op.payload.deferrable;
+          if (op.payload.initiallyDeferred !== undefined) constraint.initiallyDeferred = op.payload.initiallyDeferred;
+          if (op.payload.rely !== undefined) constraint.rely = op.payload.rely;
+          
+          table.constraints.push(constraint);
+        }
+        break;
+      }
+      case 'drop_constraint': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table) {
+          table.constraints = table.constraints.filter((c: Constraint) => c.id !== op.target);
+        }
+        break;
+      }
+      
+      // Row filter operations
+      case 'add_row_filter': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table) {
+          if (!table.rowFilters) table.rowFilters = [];
+          const filter: RowFilter = {
+            id: op.payload.filterId,
+            name: op.payload.name,
+            enabled: op.payload.enabled ?? true,
+            udfExpression: op.payload.udfExpression,
+            description: op.payload.description,
+          };
+          table.rowFilters.push(filter);
+        }
+        break;
+      }
+      case 'update_row_filter': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table && table.rowFilters) {
+          const filter = table.rowFilters.find((f: RowFilter) => f.id === op.target);
+          if (filter) {
+            if (op.payload.name !== undefined) filter.name = op.payload.name;
+            if (op.payload.enabled !== undefined) filter.enabled = op.payload.enabled;
+            if (op.payload.udfExpression !== undefined) filter.udfExpression = op.payload.udfExpression;
+            if (op.payload.description !== undefined) filter.description = op.payload.description;
+          }
+        }
+        break;
+      }
+      case 'remove_row_filter': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table && table.rowFilters) {
+          table.rowFilters = table.rowFilters.filter((f: RowFilter) => f.id !== op.target);
+        }
+        break;
+      }
+      
+      // Column mask operations
+      case 'add_column_mask': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table) {
+          if (!table.columnMasks) table.columnMasks = [];
+          const mask: ColumnMask = {
+            id: op.payload.maskId,
+            columnId: op.payload.columnId,
+            name: op.payload.name,
+            enabled: op.payload.enabled ?? true,
+            maskFunction: op.payload.maskFunction,
+            description: op.payload.description,
+          };
+          table.columnMasks.push(mask);
+          
+          // Link mask to column
+          const column = table.columns.find((c: Column) => c.id === op.payload.columnId);
+          if (column) column.maskId = op.payload.maskId;
+        }
+        break;
+      }
+      case 'update_column_mask': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table && table.columnMasks) {
+          const mask = table.columnMasks.find((m: ColumnMask) => m.id === op.target);
+          if (mask) {
+            if (op.payload.name !== undefined) mask.name = op.payload.name;
+            if (op.payload.enabled !== undefined) mask.enabled = op.payload.enabled;
+            if (op.payload.maskFunction !== undefined) mask.maskFunction = op.payload.maskFunction;
+            if (op.payload.description !== undefined) mask.description = op.payload.description;
+          }
+        }
+        break;
+      }
+      case 'remove_column_mask': {
+        const table = findTable(newState, op.payload.tableId);
+        if (table && table.columnMasks) {
+          const mask = table.columnMasks.find((m: ColumnMask) => m.id === op.target);
+          if (mask) {
+            // Unlink mask from column
+            const column = table.columns.find((c: Column) => c.id === mask.columnId);
+            if (column) column.maskId = undefined;
+          }
+          table.columnMasks = table.columnMasks.filter((m: ColumnMask) => m.id !== op.target);
         }
         break;
       }

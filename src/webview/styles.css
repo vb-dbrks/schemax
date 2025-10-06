@@ -854,3 +854,385 @@ body {
   margin-top: 8px;
 }
 
+/* === Column Tags === */
+.column-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tag-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  background-color: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.tag-more {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+.no-tags {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+.tags-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+
+.tags-table th,
+.tags-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.tags-table th {
+  background-color: var(--vscode-editor-background);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.add-tag-form {
+  margin-top: 16px;
+  padding: 12px;
+  background-color: var(--vscode-editor-background);
+  border-radius: 4px;
+}
+
+.add-tag-form h4 {
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--vscode-textLink-foreground);
+}
+
+.add-tag-btn {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.add-tag-btn:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.add-tag-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* === Table Constraints === */
+.table-constraints-section {
+  margin-top: 24px;
+  padding: 16px;
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+}
+
+.constraints-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+
+.constraints-table th,
+.constraints-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.constraints-table th {
+  background-color: var(--vscode-editor-background);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.constraint-type-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.constraint-type-badge.primary_key {
+  background-color: #3794ff33;
+  color: #3794ff;
+}
+
+.constraint-type-badge.foreign_key {
+  background-color: #ffab0033;
+  color: #ffab00;
+}
+
+.constraint-type-badge.check {
+  background-color: #4caf5033;
+  color: #4caf50;
+}
+
+.constraint-def {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  color: var(--vscode-textPreformat-foreground);
+}
+
+.option-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  margin-right: 4px;
+  background-color: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.empty-constraints {
+  padding: 24px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-constraints p {
+  margin: 8px 0;
+}
+
+.constraint-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.add-constraint-btn {
+  padding: 6px 12px;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.add-constraint-btn:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.constraint-options {
+  margin-top: 16px;
+  padding: 12px;
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+}
+
+.constraint-options h4 {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--vscode-textLink-foreground);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.checkbox-label span {
+  user-select: none;
+}
+
+/* === Security & Governance === */
+.security-governance-section {
+  margin-top: 24px;
+  padding: 16px;
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+}
+
+.row-filters-subsection,
+.column-masks-subsection {
+  margin-bottom: 24px;
+}
+
+.row-filters-subsection:last-child,
+.column-masks-subsection:last-child {
+  margin-bottom: 0;
+}
+
+.row-filters-subsection h4,
+.column-masks-subsection h4 {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: var(--vscode-textLink-foreground);
+}
+
+.filters-table,
+.masks-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+
+.filters-table th,
+.filters-table td,
+.masks-table th,
+.masks-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.filters-table th,
+.masks-table th {
+  background-color: var(--vscode-editor-background);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-badge.enabled {
+  background-color: #4caf5033;
+  color: #4caf50;
+}
+
+.status-badge.disabled {
+  background-color: #f4433633;
+  color: #f44336;
+}
+
+.code-cell {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  color: var(--vscode-textPreformat-foreground);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-filters,
+.empty-masks {
+  padding: 24px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-filters p,
+.empty-masks p {
+  margin: 8px 0;
+}
+
+.add-filter-btn,
+.add-mask-btn {
+  padding: 6px 12px;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.add-filter-btn:hover,
+.add-mask-btn:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.edit-btn-small,
+.delete-btn-small {
+  padding: 4px 8px;
+  margin-right: 4px;
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.edit-btn-small:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.delete-btn-small {
+  background-color: transparent;
+  color: var(--vscode-errorForeground);
+}
+
+.delete-btn-small:hover {
+  background-color: var(--vscode-inputValidation-errorBackground);
+}
+
+.unnamed {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  font-size: 11px;
+}
+
+/* Modal textarea */
+.modal-body textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--vscode-input-border);
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+  resize: vertical;
+}
+
+/* Modal select multiple */
+.modal-body select[multiple] {
+  padding: 8px;
+  border: 1px solid var(--vscode-input-border);
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.modal-body .hint {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 4px;
+  font-style: italic;
+}
+

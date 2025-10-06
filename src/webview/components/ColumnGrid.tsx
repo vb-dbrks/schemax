@@ -16,6 +16,8 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     setColumnNullable,
     setColumnComment,
     reorderColumns,
+    setColumnTag,
+    unsetColumnTag,
   } = useDesignerStore();
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -23,6 +25,8 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
   const [editValues, setEditValues] = useState<{name: string, type: string, comment: string}>({name: '', type: '', comment: ''});
   const [dropDialog, setDropDialog] = useState<{colId: string, name: string} | null>(null);
   const [addDialog, setAddDialog] = useState(false);
+  const [tagsDialog, setTagsDialog] = useState<{colId: string, name: string} | null>(null);
+  const [tagForm, setTagForm] = useState({tagName: '', tagValue: ''});
 
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
@@ -101,15 +105,16 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
             <th>Name</th>
             <th>Type</th>
             <th style={{width: '80px'}}>Nullable</th>
+            <th style={{width: '100px'}}>Tags</th>
             <th>Comment</th>
-            <th style={{width: '150px'}}>Actions</th>
+            <th style={{width: '180px'}}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {columns.length === 0 ? (
             <tr>
-              <td colSpan={6} className="empty-state">
-                No columns yet. Click "Add Column" to create one.
+              <td colSpan={7} className="empty-state">
+                No columns yet. Click "+ Add Column" to create one.
               </td>
             </tr>
           ) : (
@@ -176,6 +181,21 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                   </td>
                   
                   <td>
+                    {col.tags && Object.keys(col.tags).length > 0 ? (
+                      <div className="column-tags">
+                        {Object.keys(col.tags).slice(0, 2).map(tagName => (
+                          <span key={tagName} className="tag-badge" title={`${tagName}: ${col.tags![tagName]}`}>
+                            {tagName}
+                          </span>
+                        ))}
+                        {Object.keys(col.tags).length > 2 && <span className="tag-more">+{Object.keys(col.tags).length - 2}</span>}
+                      </div>
+                    ) : (
+                      <span className="no-tags">—</span>
+                    )}
+                  </td>
+                  
+                  <td>
                     {isEditing ? (
                       <input
                         type="text"
@@ -203,6 +223,9 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                       <>
                         <button onClick={() => handleEditColumn(col)} title="Edit column">
                           ✏️ Edit
+                        </button>
+                        <button onClick={() => setTagsDialog({colId: col.id, name: col.name})} title="Manage tags">
+                          🏷️ Tags
                         </button>
                         <button 
                           onClick={() => handleDropColumn(col.id, col.name)} 
@@ -293,6 +316,97 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
           </div>
         </div>
       )}
+
+      {/* Tags Dialog */}
+      {tagsDialog && (() => {
+        const col = columns.find(c => c.id === tagsDialog.colId);
+        const tags = col?.tags || {};
+        return (
+          <div className="modal-overlay" onClick={() => setTagsDialog(null)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h2>Manage Tags: {tagsDialog.name}</h2>
+              <div className="modal-body">
+                <div className="tags-list">
+                  {Object.entries(tags).length === 0 ? (
+                    <p className="no-tags-msg">No tags defined.</p>
+                  ) : (
+                    <table className="tags-table">
+                      <thead>
+                        <tr>
+                          <th>Tag Name</th>
+                          <th>Tag Value</th>
+                          <th style={{width: '80px'}}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(tags).map(([tagName, tagValue]) => (
+                          <tr key={tagName}>
+                            <td>{tagName}</td>
+                            <td>{String(tagValue)}</td>
+                            <td>
+                              <button
+                                className="delete-btn-small"
+                                onClick={() => {
+                                  unsetColumnTag(tableId, tagsDialog.colId, tagName);
+                                }}
+                                title="Remove tag"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                
+                <div className="add-tag-form">
+                  <h4>Add New Tag</h4>
+                  <label>
+                    Tag Name:
+                    <input
+                      type="text"
+                      value={tagForm.tagName}
+                      onChange={(e) => setTagForm({...tagForm, tagName: e.target.value})}
+                      placeholder="e.g., PII"
+                    />
+                  </label>
+                  <label>
+                    Tag Value:
+                    <input
+                      type="text"
+                      value={tagForm.tagValue}
+                      onChange={(e) => setTagForm({...tagForm, tagValue: e.target.value})}
+                      placeholder="e.g., sensitive"
+                    />
+                  </label>
+                  <button
+                    className="add-tag-btn"
+                    onClick={() => {
+                      if (tagForm.tagName && tagForm.tagValue) {
+                        setColumnTag(tableId, tagsDialog.colId, tagForm.tagName, tagForm.tagValue);
+                        setTagForm({tagName: '', tagValue: ''});
+                      }
+                    }}
+                    disabled={!tagForm.tagName || !tagForm.tagValue}
+                  >
+                    Add Tag
+                  </button>
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="confirm-btn" onClick={() => {
+                  setTagsDialog(null);
+                  setTagForm({tagName: '', tagValue: ''});
+                }}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
