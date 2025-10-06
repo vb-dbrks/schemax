@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Webview</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      padding: 20px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+    }
+    .test { padding: 10px; margin: 10px 0; background: #2d2d30; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>SchemaX Webview Test</h1>
+  <div class="test">
+    <h3>Step 1: Basic HTML ✅</h3>
+    <p>If you see this, basic HTML is working.</p>
+  </div>
+  <div class="test">
+    <h3>Step 2: Check Console</h3>
+    <p>Open Developer Tools (Help → Toggle Developer Tools) and check the Console tab.</p>
+  </div>
+  <div class="test">
+    <h3>Step 3: JavaScript Test</h3>
+    <p id="js-test">JavaScript not loaded...</p>
+  </div>
+  <div class="test">
+    <h3>Step 4: Expected Console Output</h3>
+    <p>You should see:</p>
+    <ul>
+      <li>[SchemaX Webview] App mounted</li>
+      <li>[SchemaX Webview] Requesting project load</li>
+      <li>[SchemaX Webview] Received message: project-loaded</li>
+    </ul>
+  </div>
+  
+  <script>
+    document.getElementById('js-test').textContent = 'JavaScript is working! ✅';
+    console.log('[Test] Basic script executed');
+  </script>
+</body>
+</html>
+

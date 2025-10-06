@@ -56,21 +56,27 @@ async function openDesigner(context: vscode.ExtensionContext) {
   );
 
   // Set webview content
+  console.log('[SchemaX] Setting webview HTML');
   panel.webview.html = getWebviewContent(context, panel.webview);
+  console.log('[SchemaX] Webview HTML set');
 
   // Handle messages from webview
   panel.webview.onDidReceiveMessage(
     async (message) => {
+      console.log('[SchemaX] Received message from webview:', message.type);
       switch (message.type) {
         case 'load-project': {
           try {
+            console.log('[SchemaX] Loading project from:', workspaceFolder.uri.fsPath);
             const project = await readProject(workspaceFolder.uri);
+            console.log('[SchemaX] Project loaded, sending to webview');
             panel.webview.postMessage({
               type: 'project-loaded',
               payload: project,
             });
             trackEvent('project_loaded');
           } catch (error) {
+            console.error('[SchemaX] Failed to load project:', error);
             vscode.window.showErrorMessage(`Failed to load project: ${error}`);
           }
           break;
@@ -78,6 +84,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         case 'append-ops': {
           try {
             const ops: Op[] = message.payload;
+            console.log('[SchemaX] Appending ops:', ops.length);
             const updatedProject = await appendOps(workspaceFolder.uri, ops);
             panel.webview.postMessage({
               type: 'project-updated',
@@ -85,6 +92,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             });
             trackEvent('ops_appended', { count: ops.length });
           } catch (error) {
+            console.error('[SchemaX] Failed to append operations:', error);
             vscode.window.showErrorMessage(`Failed to append operations: ${error}`);
           }
           break;
@@ -139,14 +147,38 @@ async function showLastOps() {
  * Get webview HTML content
  */
 function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Webview): string {
-  const htmlPath = path.join(context.extensionPath, 'media', 'index.html');
-  let html = fs.readFileSync(htmlPath, 'utf8');
+  const scriptUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(context.extensionUri, 'media', 'assets', 'index.js')
+  );
+  const styleUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(context.extensionUri, 'media', 'assets', 'index.css')
+  );
 
-  // Replace script/style sources with webview URIs
-  const mediaUri = webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media'));
-  html = html.replace(/src="\/assets\//g, `src="${mediaUri}/assets/`);
-  html = html.replace(/href="\/assets\//g, `href="${mediaUri}/assets/`);
+  // Use a nonce to only allow specific scripts to be run
+  const nonce = getNonce();
 
-  return html;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <link href="${styleUri}" rel="stylesheet">
+  <title>SchemaX Designer</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
+}
+
+function getNonce() {
+  let text = '';
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
 }
 
