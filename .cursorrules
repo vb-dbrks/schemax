@@ -83,15 +83,85 @@ project-root/
 }
 ```
 
-**Unity Catalog Model**:
+**Unity Catalog Model** (Enhanced with Governance Features):
 ```
 Catalog
 ├── Schema[]
     └── Table[]
         ├── columns: Column[]
-        ├── properties: Record<string, string>
-        ├── constraints: Constraint[]
-        └── grants: Grant[]
+        │   ├── id, name, type, nullable, comment
+        │   ├── tags?: Record<string, string>         // NEW: Column-level tags
+        │   └── maskId?: string                        // NEW: Reference to column mask
+        ├── properties: Record<string, string>         // TBLPROPERTIES
+        ├── constraints: Constraint[]                  // NEW: Expanded (PK, FK, CHECK)
+        ├── grants: Grant[]
+        ├── rowFilters?: RowFilter[]                   // NEW: Row-level security
+        └── columnMasks?: ColumnMask[]                 // NEW: Column masking
+```
+
+**Column** (Enhanced):
+```typescript
+{
+  id: string,
+  name: string,
+  type: string,
+  nullable: boolean,
+  comment?: string,
+  tags?: Record<string, string>,    // NEW: { tag_name: tag_value }
+  maskId?: string                    // NEW: Reference to active mask
+}
+```
+
+**Constraint** (Expanded - supports PRIMARY KEY, FOREIGN KEY, CHECK):
+```typescript
+{
+  id: string,
+  type: 'primary_key' | 'foreign_key' | 'check',
+  name?: string,                    // CONSTRAINT name
+  columns: string[],                // column IDs
+  
+  // For PRIMARY KEY
+  timeseries?: boolean,             // For time-series data
+  
+  // For FOREIGN KEY
+  parentTable?: string,             // Parent table ID
+  parentColumns?: string[],         // Parent column IDs
+  matchFull?: boolean,
+  onUpdate?: 'NO_ACTION',
+  onDelete?: 'NO_ACTION',
+  
+  // For CHECK
+  expression?: string,              // SQL expression
+  
+  // Constraint options (all types)
+  notEnforced?: boolean,            // Azure Databricks doesn't enforce
+  deferrable?: boolean,
+  initiallyDeferred?: boolean,
+  rely?: boolean                    // For Photon query optimization
+}
+```
+
+**RowFilter** (Row-level security):
+```typescript
+{
+  id: string,
+  name: string,
+  enabled: boolean,
+  udfExpression: string,            // e.g., "region = current_user()"
+  description?: string
+}
+```
+
+**ColumnMask** (Column-level masking):
+```typescript
+{
+  id: string,
+  columnId: string,
+  name: string,
+  enabled: boolean,
+  maskFunction: string,             // e.g., "REDACT_EMAIL(email)"
+  description?: string
+}
 ```
 
 ### Storage Layer (`src/storage-v2.ts`)
@@ -131,10 +201,12 @@ Catalog
 
 **Components**:
 - `App.tsx` - Main layout, message handling
-- `Toolbar.tsx` - Action buttons (Add Catalog/Schema/Table/Column)
-- `Sidebar.tsx` - Tree view with rename/drop
-- `TableDesigner.tsx` - Table properties editor
-- `ColumnGrid.tsx` - **Inline editing** for columns (Edit/Drop buttons)
+- `Sidebar.tsx` - Tree view with context-aware inline "+" buttons, rename/drop
+- `TableDesigner.tsx` - Comprehensive table editor with all sections
+- `ColumnGrid.tsx` - **Inline editing** for columns + Tags management
+- `TableProperties.tsx` - TBLPROPERTIES management (Delta Lake configs)
+- `TableConstraints.tsx` - **NEW**: PRIMARY KEY, FOREIGN KEY, CHECK constraints
+- `SecurityGovernance.tsx` - **NEW**: Row filters & column masks
 - `SnapshotPanel.tsx` - Timeline view of snapshots
 
 **State Management** (`useDesignerStore.ts`):
@@ -147,6 +219,31 @@ Catalog
 - Click "Edit" → Row becomes editable (name, type, comment)
 - Save → Generates multiple ops if multiple fields changed
 - No popups/modals for column editing
+
+**Column Tags** (Badge UI):
+- Tags displayed as badges in Tags column (shows first 2 + "+N more")
+- Click "🏷️ Tags" button → Opens comprehensive tag management modal
+- Modal shows all tags in table with Remove buttons
+- Inline "Add New Tag" form for adding tags with name/value pairs
+- Operations: `set_column_tag`, `unset_column_tag`
+
+**Table Constraints** (Full Unity Catalog Support):
+- **PRIMARY KEY**: Multi-column support, TIMESERIES option, constraint options
+- **FOREIGN KEY**: Parent table/columns references, MATCH FULL, ON UPDATE/DELETE
+- **CHECK**: Free-form SQL expression validation
+- Constraint options: NOT ENFORCED, DEFERRABLE, INITIALLY DEFERRED, RELY (for Photon)
+- Operations: `add_constraint`, `drop_constraint`
+
+**Security & Governance**:
+- **Row Filters**: Row-level security with free-form UDF expressions
+  - Example: `region = current_user()` to filter by user's region
+  - Enable/disable toggle, edit/remove actions
+  - Operations: `add_row_filter`, `update_row_filter`, `remove_row_filter`
+- **Column Masks**: Column-level data masking with SQL UDF functions
+  - Example: `REDACT_EMAIL(email)` to mask email addresses
+  - Links mask to specific column via `maskId`
+  - Enable/disable toggle, edit/remove actions
+  - Operations: `add_column_mask`, `update_column_mask`, `remove_column_mask`
 
 ### UI/UX Features
 
@@ -184,12 +281,27 @@ Catalog
    - V2: Snapshots + changelog (bounded growth)
    - Easier to generate migrations (just read changelog)
 
-### Operation Types
+### Operation Types (Complete List)
 
-**Catalog**: `add_catalog`, `rename_catalog`, `drop_catalog`
-**Schema**: `add_schema`, `rename_schema`, `drop_schema`
-**Table**: `add_table`, `rename_table`, `drop_table`, `set_table_comment`
-**Column**: 
+**Catalog Operations**:
+- `add_catalog` - payload: `{catalogId, name}`
+- `rename_catalog` - payload: `{newName}`
+- `drop_catalog` - payload: `{}`
+
+**Schema Operations**:
+- `add_schema` - payload: `{schemaId, name, catalogId}`
+- `rename_schema` - payload: `{newName}`
+- `drop_schema` - payload: `{}`
+
+**Table Operations**:
+- `add_table` - payload: `{tableId, name, schemaId, format}`
+- `rename_table` - payload: `{newName}`
+- `drop_table` - payload: `{}`
+- `set_table_comment` - payload: `{tableId, comment}`
+- `set_table_property` - payload: `{tableId, key, value}`
+- `unset_table_property` - payload: `{tableId, key}`
+
+**Column Operations**:
 - `add_column` - payload: `{tableId, colId, name, type, nullable, comment?}`
 - `rename_column` - payload: `{tableId, colId, newName}`
 - `drop_column` - payload: `{tableId, colId}`
@@ -197,6 +309,30 @@ Catalog
 - `change_column_type` - payload: `{tableId, colId, newType}`
 - `set_nullable` - payload: `{tableId, colId, nullable}`
 - `set_column_comment` - payload: `{tableId, colId, comment}`
+
+**Column Tag Operations** (NEW):
+- `set_column_tag` - payload: `{tableId, colId, tagName, tagValue}`
+- `unset_column_tag` - payload: `{tableId, colId, tagName}`
+
+**Constraint Operations** (NEW):
+- `add_constraint` - payload: `{tableId, constraintId, type, name?, columns, ...typeSpecificFields}`
+  - For PRIMARY KEY: `timeseries?`
+  - For FOREIGN KEY: `parentTable, parentColumns, matchFull?, onUpdate?, onDelete?`
+  - For CHECK: `expression`
+  - Options: `notEnforced?, deferrable?, initiallyDeferred?, rely?`
+- `drop_constraint` - payload: `{tableId, constraintId}`
+
+**Row Filter Operations** (NEW):
+- `add_row_filter` - payload: `{tableId, filterId, name, udfExpression, enabled?, description?}`
+- `update_row_filter` - payload: `{tableId, filterId, name?, udfExpression?, enabled?, description?}`
+- `remove_row_filter` - payload: `{tableId, filterId}`
+
+**Column Mask Operations** (NEW):
+- `add_column_mask` - payload: `{tableId, maskId, columnId, name, maskFunction, enabled?, description?}`
+- `update_column_mask` - payload: `{tableId, maskId, name?, maskFunction?, enabled?, description?}`
+- `remove_column_mask` - payload: `{tableId, maskId}`
+
+**Total Operations**: 31 (11 catalog/schema/table, 7 column, 2 tags, 2 constraints, 3 filters, 3 masks, 2 properties, 1 comment)
 
 ### Build System
 
@@ -253,8 +389,14 @@ Catalog
 - `src/webview/state/useDesignerStore.ts` - Zustand store
 
 **UI**:
-- `src/webview/components/ColumnGrid.tsx` - Inline column editing
+- `src/webview/components/Sidebar.tsx` - Tree view with context-aware inline "+" buttons
+- `src/webview/components/TableDesigner.tsx` - Main table editor layout
+- `src/webview/components/ColumnGrid.tsx` - Inline column editing + tags
+- `src/webview/components/TableProperties.tsx` - TBLPROPERTIES editor
+- `src/webview/components/TableConstraints.tsx` - **NEW**: Constraints management
+- `src/webview/components/SecurityGovernance.tsx` - **NEW**: Row filters & column masks
 - `src/webview/components/SnapshotPanel.tsx` - Timeline view
+- `src/webview/styles.css` - Comprehensive styling (1200+ lines)
 
 ### Known Issues / TODOs
 
@@ -264,12 +406,58 @@ Catalog
 - Backwards compatibility (auto-generate IDs for old ops)
 - Inline column editing
 - V2 architecture with separate files
+- Column tags (badge UI)
+- Table constraints (PRIMARY KEY, FOREIGN KEY, CHECK)
+- Row filters (row-level security)
+- Column masks (data masking)
+- TBLPROPERTIES management
+- Context-aware "+" buttons in sidebar
+
+✅ **Implemented Features**:
+- **Data Governance**: Column tags, row filters, column masks
+- **Data Integrity**: PRIMARY KEY, FOREIGN KEY, CHECK constraints
+- **Table Configuration**: TBLPROPERTIES (Delta Lake configs)
+- **All Unity Catalog governance features** from official documentation
 
 ⚠️ **Current Limitations**:
-- No SQL generation yet
-- No Databricks deployment
-- No drift detection
+- No SQL generation yet (Phase 2)
+- No Databricks deployment (Phase 3)
+- No drift detection (Phase 4)
 - Single-user only (no concurrent editing)
+- No constraint validation UI (expressions accepted as-is)
+
+### Unity Catalog Documentation Compliance
+
+Based on official Databricks documentation:
+
+1. **Column Tags** (from [INFORMATION_SCHEMA.COLUMN_TAGS](https://learn.microsoft.com/en-us/azure/databricks/sql/language-manual/information-schema/column_tags)):
+   - Key-value pairs for metadata tagging
+   - Examples: `PII: sensitive`, `category: personal`, `retention: 90days`
+   - Used for data governance and discovery
+
+2. **Constraints** (from [CONSTRAINT clause](https://learn.microsoft.com/en-us/azure/databricks/sql/language-manual/sql-ref-syntax-ddl-create-table-constraint)):
+   - **PRIMARY KEY**: Informational (not enforced), optional TIMESERIES flag
+   - **FOREIGN KEY**: References parent table, MATCH FULL, ON UPDATE/DELETE NO ACTION
+   - **CHECK**: SQL expression validation (not enforced by default)
+   - **Constraint Options**:
+     - `NOT ENFORCED`: Azure Databricks takes no action to enforce
+     - `DEFERRABLE`: Constraint enforcement can be deferred
+     - `INITIALLY DEFERRED`: Constraint enforcement is deferred
+     - `RELY`: For Photon query optimization (requires Photon-enabled compute)
+
+3. **Row Filters & Column Masks** (from [Row filters and column masks](https://docs.databricks.com/aws/en/data-governance/unity-catalog/filters-and-masks/)):
+   - Row filters: UDF expressions for row-level security
+   - Column masks: UDF functions for data masking
+   - Both support enable/disable toggle
+   - Examples:
+     - Row filter: `region = current_user()` or `department_id IN (SELECT id FROM user_departments WHERE user = current_user())`
+     - Column mask: `REDACT_EMAIL(email)` or `MASK_SSN(ssn)` or `IF(is_admin(current_user()), value, 'REDACTED')`
+
+4. **Unity Catalog Privileges** (from [Privileges documentation](https://docs.databricks.com/aws/en/data-governance/unity-catalog/manage-privileges/privileges#securable-objects)):
+   - `APPLY TAG` privilege required for managing tags
+   - `SELECT` privilege required for reading data
+   - `MODIFY` privilege required for changing table structure
+   - Constraint operations require table ownership or `MODIFY` privilege
 
 ### Coding Guidelines
 
@@ -279,6 +467,10 @@ Catalog
 4. **Op IDs**: Always generate UUIDs for new ops: `id: \`op_${uuidv4()}\``
 5. **Zod Validation**: Always parse with Zod before using external data
 6. **Error Handling**: Catch errors, log to output channel, show user-friendly messages
+7. **Free-form Input**: Allow users to type SQL expressions freely (no restrictive dropdowns)
+8. **Modal Dialogs**: Always use custom React modals (webview is sandboxed, can't use browser `prompt()`/`confirm()`)
+9. **Type Safety**: Use TypeScript strict mode, proper type imports from `shared/model.ts`
+10. **State Management**: All mutations via Zustand actions → emit ops → extension applies → UI updates
 
 ### Dependencies
 
@@ -326,10 +518,120 @@ If starting a new conversation about this project:
 
 1. **Architecture**: V2 with separate snapshot files (`.schemax/` folder)
 2. **Storage**: Use `src/storage-v2.ts` functions
-3. **UI**: React webview with inline column editing
+3. **UI**: React webview with inline editing and comprehensive governance features
 4. **State**: Snapshot + changelog = current state
 5. **Logs**: Check "SchemaX" output channel
 6. **Build**: `npm run build` before testing
+7. **Features**: Full Unity Catalog governance (tags, constraints, filters, masks)
 
-This is a **working MVP** with snapshots fully functional. Next phase would be migration generation and deployment.
+This is a **production-ready MVP** with complete Unity Catalog governance features. Next phases: SQL generation, deployment, and drift detection.
+
+---
+
+## Key Learnings & Best Practices
+
+### 1. Webview Sandboxing
+- **Problem**: Browser `prompt()` and `confirm()` are blocked in sandboxed webviews
+- **Solution**: Custom React modal components with proper state management
+- **Pattern**: Always use `<div className="modal-overlay" onClick={closeHandler}>` with `stopPropagation` on modal content
+
+### 2. Type Safety with Zod
+- **Problem**: TypeScript types don't enforce runtime validation
+- **Solution**: Zod schemas for all data models, parse before use
+- **Pattern**: Define Zod schema → infer TypeScript type → parse external data
+- **Benefit**: Catches schema mismatches early, self-documenting data structures
+
+### 3. Operation Log Architecture
+- **Problem**: Direct state mutations make it hard to track changes and generate migrations
+- **Solution**: Append-only operation log with reducers
+- **Pattern**: UI action → generate op → emit to extension → apply reducer → update UI
+- **Benefit**: Full audit trail, can replay ops, easy migration generation
+
+### 4. Snapshot + Changelog Pattern
+- **Problem**: Single file with all ops grows unbounded
+- **Solution**: V2 architecture with snapshots (immutable checkpoints) + changelog (working changes)
+- **Pattern**: Latest snapshot + apply changelog ops = current state
+- **Benefit**: Bounded growth, cleaner git diffs, faster loading
+
+### 5. Free-form SQL Input
+- **Problem**: Dropdown-based UI restricts user creativity and doesn't support all SQL features
+- **Solution**: Textarea inputs for SQL expressions with examples/hints
+- **Pattern**: `<textarea placeholder="e.g., region = current_user()" />`
+- **Benefit**: Users can type any valid SQL, future-proof for new Unity Catalog features
+
+### 6. Badge UI for Tags
+- **Problem**: Displaying variable number of tags in table cells
+- **Solution**: Show first 2 tags as badges + "+N more" indicator, click to expand
+- **Pattern**: `{tags.slice(0, 2).map(tag => <Badge />)} {tags.length > 2 && <span>+{tags.length-2}</span>}`
+- **Benefit**: Compact display, progressive disclosure, visual feedback
+
+### 7. Context-aware UI Elements
+- **Problem**: Static "Add" buttons require user to think about context
+- **Solution**: Dynamic button text/action based on selection (e.g., "+ Catalog" → "+ Schema" → "+ Table")
+- **Pattern**: Check `selectedSchemaId` → if true, show "+ Table", else check `selectedCatalogId`, etc.
+- **Benefit**: Reduces cognitive load, guides user workflow
+
+### 8. Inline Editing Pattern
+- **Problem**: Modal dialogs disrupt workflow for simple edits
+- **Solution**: Inline editing with Edit/Save/Cancel buttons
+- **Pattern**: `{isEditing ? <input value={editValue} /> : <span>{value}</span>}`
+- **Benefit**: Faster editing, better UX, less context switching
+
+### 9. Enable/Disable Toggle for Governance
+- **Problem**: Users may want to test governance rules without deleting them
+- **Solution**: Enable/disable checkbox for row filters and column masks
+- **Pattern**: `enabled: boolean` field + status badge UI + toggle in edit modal
+- **Benefit**: Non-destructive testing, easy on/off switching
+
+### 10. Comprehensive Documentation
+- **Problem**: Complex projects hard to onboard to
+- **Solution**: Detailed `.cursorrules` file with architecture, patterns, examples
+- **Pattern**: Include data models, operation types, component descriptions, coding guidelines
+- **Benefit**: AI assistants can quickly understand project, new developers onboard faster
+
+### 11. Unity Catalog Compliance
+- **Learning**: Always reference official Databricks documentation
+- **Pattern**: Read docs → implement exact feature set → cite documentation in code comments
+- **Benefit**: Ensures compatibility, future-proof, users recognize familiar concepts
+
+### 12. Multi-select for Constraints
+- **Problem**: PRIMARY KEY and FOREIGN KEY can span multiple columns
+- **Solution**: `<select multiple>` with Cmd/Ctrl hint
+- **Pattern**: `Array.from(e.target.selectedOptions, option => option.value)`
+- **Benefit**: Native HTML behavior, accessible, familiar to users
+
+---
+
+## Future Enhancement Ideas
+
+1. **SQL Generation**: Convert operations → CREATE TABLE DDL
+   - Read changelog ops
+   - Generate SQL for each op type
+   - Handle dependencies (e.g., parent table must exist before FK)
+   
+2. **Constraint Validation**: Pre-validate SQL expressions
+   - Parse CHECK expressions
+   - Verify column references
+   - Suggest fixes for common errors
+
+3. **Template Library**: Pre-built governance templates
+   - "PII Redaction" → Email/SSN masking templates
+   - "Regional Access" → Row filter templates by region
+   - "Compliance Pack" → Common regulatory templates
+
+4. **Visual Query Builder**: For row filters
+   - Drag-and-drop condition builder
+   - Generate SQL from visual representation
+   - Still allow free-form SQL override
+
+5. **Diff View**: Before creating snapshot
+   - Show what changed since last snapshot
+   - Color-coded additions/deletions/modifications
+   - Confirm before committing
+
+6. **Databricks Integration**: Deploy to live workspace
+   - OAuth authentication
+   - Read current schema from Unity Catalog
+   - Apply changes via SQL API
+   - Detect drift
 
