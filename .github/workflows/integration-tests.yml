@@ -27,12 +27,12 @@ jobs:
         with:
           python-version: '3.11'
       
+      - name: Install Node dependencies
+        run: npm ci --include=optional
+      
       - name: Build VS Code extension
         working-directory: packages/vscode-extension
-        run: |
-          rm -rf node_modules package-lock.json
-          npm install
-          npm run build
+        run: npm run build
       
       - name: Install Python SDK
         working-directory: packages/python-sdk

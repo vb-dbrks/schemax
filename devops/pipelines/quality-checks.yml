@@ -66,10 +66,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install dependencies
-        run: |
-          cd packages/vscode-extension
-          rm -rf node_modules package-lock.json
-          npm install
+        run: npm ci --include=optional
       
       - name: Run smoke tests
         run: |
