@@ -554,11 +554,14 @@ Before submitting a pull request, verify:
 ### Python SDK
 
 - [ ] All tests pass (`pytest`)
+- [ ] Test coverage maintained at 30%+ (`pytest --cov=schemax --cov-fail-under=30`)
 - [ ] No linting errors (`ruff check src/`)
 - [ ] Type checking passes (`mypy src/`)
 - [ ] Code is formatted (`ruff format src/`)
 - [ ] CLI commands work (`schemax validate`, `schemax sql`)
 - [ ] Documentation updated if API changed
+
+**Note:** Coverage threshold is currently set to 30% (baseline). As test coverage improves, this threshold should be gradually increased.
 
 ### Both (if applicable)
 
