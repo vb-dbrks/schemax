@@ -5,6 +5,7 @@ Migrated from TypeScript Unity provider with Unity-specific types
 """
 
 from typing import Dict, List, Literal, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -127,4 +128,3 @@ class UnityState(BaseModel):
     """Unity Catalog state"""
 
     catalogs: List[UnityCatalog] = []
-

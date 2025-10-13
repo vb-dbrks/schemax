@@ -9,17 +9,16 @@ from typing import Optional
 import click
 from rich.console import Console
 from rich.syntax import Syntax
-from rich.table import Table
 
 # Import providers to initialize them
 import schemax.providers  # noqa: F401
+
+from .providers import ProviderRegistry
 from .storage_v3 import (
+    ensure_project_file,
     load_current_state,
     read_project,
-    ensure_project_file,
-    get_uncommitted_ops_count,
 )
-from .providers import ProviderRegistry
 
 console = Console()
 
@@ -48,8 +47,7 @@ def init(provider: str, workspace: str) -> None:
         if not ProviderRegistry.has(provider):
             available = ", ".join(ProviderRegistry.get_all_ids())
             console.print(
-                f"[red]✗[/red] Provider '{provider}' not found. "
-                f"Available providers: {available}"
+                f"[red]✗[/red] Provider '{provider}' not found. Available providers: {available}"
             )
             sys.exit(1)
 
@@ -160,9 +158,7 @@ def validate(workspace: str) -> None:
         console.print(f"  [green]✓[/green] project.json (version {project['version']})")
 
         state, changelog, provider = load_current_state(workspace_path)
-        console.print(
-            f"  [green]✓[/green] changelog.json ({len(changelog['ops'])} operations)"
-        )
+        console.print(f"  [green]✓[/green] changelog.json ({len(changelog['ops'])} operations)")
 
         # Validate state using provider
         validation = provider.validate_state(state)
@@ -172,7 +168,7 @@ def validate(workspace: str) -> None:
                 console.print(f"  - {error.field}: {error.message}")
             sys.exit(1)
 
-        console.print(f"  [green]✓[/green] State structure valid")
+        console.print("  [green]✓[/green] State structure valid")
 
         # Display summary
         console.print(f"\n[bold]Project:[/bold] {project['name']}")
@@ -185,9 +181,7 @@ def validate(workspace: str) -> None:
             total_schemas = sum(len(c.get("schemas", [])) for c in state["catalogs"])
             console.print(f"[bold]Schemas:[/bold] {total_schemas}")
             total_tables = sum(
-                len(s.get("tables", []))
-                for c in state["catalogs"]
-                for s in c.get("schemas", [])
+                len(s.get("tables", [])) for c in state["catalogs"] for s in c.get("schemas", [])
             )
             console.print(f"[bold]Tables:[/bold] {total_tables}")
 

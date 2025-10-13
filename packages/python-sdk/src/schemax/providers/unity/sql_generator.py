@@ -5,7 +5,7 @@ Generates Databricks SQL DDL statements from operations.
 Migrated from TypeScript sql-generator.ts
 """
 
-from typing import Dict, List
+from typing import Dict
 
 from ..base.operations import Operation
 from ..base.sql_generator import BaseSQLGenerator, SQLGenerationResult
@@ -144,7 +144,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _rename_catalog(self, op: Operation) -> str:
         old_name = self.id_name_map.get(op.target, op.target)
         new_name = op.payload["newName"]
-        return f"ALTER CATALOG {self.escape_identifier(old_name)} RENAME TO {self.escape_identifier(new_name)}"
+        old_esc = self.escape_identifier(old_name)
+        new_esc = self.escape_identifier(new_name)
+        return f"ALTER CATALOG {old_esc} RENAME TO {new_esc}"
 
     def _drop_catalog(self, op: Operation) -> str:
         name = self.id_name_map.get(op.target, op.target)
@@ -154,14 +156,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _add_schema(self, op: Operation) -> str:
         catalog_name = self.id_name_map.get(op.payload["catalogId"], "unknown")
         schema_name = op.payload["name"]
-        return f"CREATE SCHEMA IF NOT EXISTS {self.escape_identifier(catalog_name)}.{self.escape_identifier(schema_name)}"
+        catalog_esc = self.escape_identifier(catalog_name)
+        schema_esc = self.escape_identifier(schema_name)
+        return f"CREATE SCHEMA IF NOT EXISTS {catalog_esc}.{schema_esc}"
 
     def _rename_schema(self, op: Operation) -> str:
         old_fqn = self.id_name_map.get(op.target, "unknown.unknown")
         parts = old_fqn.split(".")
         catalog_name = parts[0]
         new_name = op.payload["newName"]
-        return f"ALTER SCHEMA {self.escape_identifier(old_fqn)} RENAME TO {self.escape_identifier(catalog_name)}.{self.escape_identifier(new_name)}"
+        old_esc = self.escape_identifier(old_fqn)
+        cat_esc = self.escape_identifier(catalog_name)
+        new_esc = self.escape_identifier(new_name)
+        return f"ALTER SCHEMA {old_esc} RENAME TO {cat_esc}.{new_esc}"
 
     def _drop_schema(self, op: Operation) -> str:
         fqn = self.id_name_map.get(op.target, "unknown.unknown")
@@ -182,7 +189,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         parts = old_fqn.split(".")
         schema_fqn = ".".join(parts[:2])
         new_name = op.payload["newName"]
-        return f"ALTER TABLE {self.escape_identifier(old_fqn)} RENAME TO {self.escape_identifier(schema_fqn)}.{self.escape_identifier(new_name)}"
+        old_esc = self.escape_identifier(old_fqn)
+        schema_esc = self.escape_identifier(schema_fqn)
+        new_esc = self.escape_identifier(new_name)
+        return f"ALTER TABLE {old_esc} RENAME TO {schema_esc}.{new_esc}"
 
     def _drop_table(self, op: Operation) -> str:
         fqn = self.id_name_map.get(op.target, "unknown.unknown.unknown")
@@ -214,19 +224,27 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         null_clause = "" if nullable else " NOT NULL"
         comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
+        table_esc = self.escape_identifier(table_fqn)
+        col_esc = self.escape_identifier(col_name)
 
-        return f"ALTER TABLE {self.escape_identifier(table_fqn)} ADD COLUMN {self.escape_identifier(col_name)} {col_type}{null_clause}{comment_clause}"
+        sql = f"ALTER TABLE {table_esc} ADD COLUMN {col_esc} {col_type}"
+        return f"{sql}{null_clause}{comment_clause}"
 
     def _rename_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         old_name = self.id_name_map.get(op.target, "unknown")
         new_name = op.payload["newName"]
-        return f"ALTER TABLE {self.escape_identifier(table_fqn)} RENAME COLUMN {self.escape_identifier(old_name)} TO {self.escape_identifier(new_name)}"
+        table_esc = self.escape_identifier(table_fqn)
+        old_esc = self.escape_identifier(old_name)
+        new_esc = self.escape_identifier(new_name)
+        return f"ALTER TABLE {table_esc} RENAME COLUMN {old_esc} TO {new_esc}"
 
     def _drop_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         col_name = self.id_name_map.get(op.target, "unknown")
-        return f"ALTER TABLE {self.escape_identifier(table_fqn)} DROP COLUMN {self.escape_identifier(col_name)}"
+        table_esc = self.escape_identifier(table_fqn)
+        col_esc = self.escape_identifier(col_name)
+        return f"ALTER TABLE {table_esc} DROP COLUMN {col_esc}"
 
     def _reorder_columns(self, op: Operation) -> str:
         # Databricks doesn't support direct column reordering
@@ -236,23 +254,29 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         col_name = self.id_name_map.get(op.target, "unknown")
         new_type = op.payload["newType"]
-        return f"ALTER TABLE {self.escape_identifier(table_fqn)} ALTER COLUMN {self.escape_identifier(col_name)} TYPE {new_type}"
+        table_esc = self.escape_identifier(table_fqn)
+        col_esc = self.escape_identifier(col_name)
+        return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} TYPE {new_type}"
 
     def _set_nullable(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         col_name = self.id_name_map.get(op.target, "unknown")
         nullable = op.payload["nullable"]
+        table_esc = self.escape_identifier(table_fqn)
+        col_esc = self.escape_identifier(col_name)
 
         if nullable:
-            return f"ALTER TABLE {self.escape_identifier(table_fqn)} ALTER COLUMN {self.escape_identifier(col_name)} DROP NOT NULL"
+            return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} DROP NOT NULL"
         else:
-            return f"ALTER TABLE {self.escape_identifier(table_fqn)} ALTER COLUMN {self.escape_identifier(col_name)} SET NOT NULL"
+            return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} SET NOT NULL"
 
     def _set_column_comment(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         col_name = self.id_name_map.get(op.target, "unknown")
         comment = self.escape_string(op.payload["comment"])
-        return f"ALTER TABLE {self.escape_identifier(table_fqn)} ALTER COLUMN {self.escape_identifier(col_name)} COMMENT '{comment}'"
+        table_esc = self.escape_identifier(table_fqn)
+        col_esc = self.escape_identifier(col_name)
+        return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} COMMENT '{comment}'"
 
     # Column tag operations
     def _set_column_tag(self, op: Operation) -> str:
@@ -260,13 +284,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
         col_name = self.id_name_map.get(op.target, "unknown")
         tag_name = op.payload["tagName"]
         tag_value = self.escape_string(op.payload["tagValue"])
-        return f"ALTER TABLE {self.escape_identifier(table_fqn)} ALTER COLUMN {self.escape_identifier(col_name)} SET TAGS ('{tag_name}' = '{tag_value}')"
+        table_esc = self.escape_identifier(table_fqn)
+        col_esc = self.escape_identifier(col_name)
+        sql = f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc}"
+        return f"{sql} SET TAGS ('{tag_name}' = '{tag_value}')"
 
     def _unset_column_tag(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         col_name = self.id_name_map.get(op.target, "unknown")
         tag_name = op.payload["tagName"]
-        return f"ALTER TABLE {self.escape_identifier(table_fqn)} ALTER COLUMN {self.escape_identifier(col_name)} UNSET TAGS ('{tag_name}')"
+        table_esc = self.escape_identifier(table_fqn)
+        col_esc = self.escape_identifier(col_name)
+        return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} UNSET TAGS ('{tag_name}')"
 
     # Constraint operations
     def _add_constraint(self, op: Operation) -> str:
@@ -275,12 +304,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         constraint_name = op.payload.get("name", "")
         columns = [self.id_name_map.get(cid, cid) for cid in op.payload["columns"]]
 
-        name_clause = f"CONSTRAINT {self.escape_identifier(constraint_name)} " if constraint_name else ""
+        name_clause = (
+            f"CONSTRAINT {self.escape_identifier(constraint_name)} " if constraint_name else ""
+        )
+        table_esc = self.escape_identifier(table_fqn)
 
         if constraint_type == "primary_key":
             timeseries = " TIMESERIES" if op.payload.get("timeseries") else ""
             cols = ", ".join(self.escape_identifier(c) for c in columns)
-            return f"ALTER TABLE {self.escape_identifier(table_fqn)} ADD {name_clause}PRIMARY KEY({cols}){timeseries}"
+            return f"ALTER TABLE {table_esc} ADD {name_clause}PRIMARY KEY({cols}){timeseries}"
 
         elif constraint_type == "foreign_key":
             parent_table = self.id_name_map.get(op.payload.get("parentTable", ""), "unknown")
@@ -289,18 +321,23 @@ class UnitySQLGenerator(BaseSQLGenerator):
             ]
             cols = ", ".join(self.escape_identifier(c) for c in columns)
             parent_cols = ", ".join(self.escape_identifier(c) for c in parent_columns)
-            return f"ALTER TABLE {self.escape_identifier(table_fqn)} ADD {name_clause}FOREIGN KEY({cols}) REFERENCES {self.escape_identifier(parent_table)}({parent_cols})"
+            parent_esc = self.escape_identifier(parent_table)
+            return (
+                f"ALTER TABLE {table_esc} ADD {name_clause}"
+                f"FOREIGN KEY({cols}) REFERENCES {parent_esc}({parent_cols})"
+            )
 
         elif constraint_type == "check":
             expression = op.payload.get("expression", "TRUE")
-            return f"ALTER TABLE {self.escape_identifier(table_fqn)} ADD {name_clause}CHECK ({expression})"
+            return f"ALTER TABLE {table_esc} ADD {name_clause}CHECK ({expression})"
 
         return ""
 
     def _drop_constraint(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         # Would need constraint name from state
-        return f"-- ALTER TABLE {self.escape_identifier(table_fqn)} DROP CONSTRAINT (constraint name lookup needed)"
+        table_esc = self.escape_identifier(table_fqn)
+        return f"-- ALTER TABLE {table_esc} DROP CONSTRAINT (constraint name lookup needed)"
 
     # Row filter operations
     def _add_row_filter(self, op: Operation) -> str:
@@ -323,4 +360,3 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _remove_column_mask(self, op: Operation) -> str:
         return "-- Column mask removal"
-

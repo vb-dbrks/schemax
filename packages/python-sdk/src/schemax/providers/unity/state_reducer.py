@@ -10,14 +10,14 @@ from typing import List, Optional
 
 from ..base.operations import Operation
 from .models import (
-    UnityState,
     UnityCatalog,
-    UnitySchema,
-    UnityTable,
     UnityColumn,
+    UnityColumnMask,
     UnityConstraint,
     UnityRowFilter,
-    UnityColumnMask,
+    UnitySchema,
+    UnityState,
+    UnityTable,
 )
 
 
@@ -349,4 +349,3 @@ def _find_table(state: UnityState, table_id: str) -> Optional[UnityTable]:
                 if table.id == table_id:
                     return table
     return None
-

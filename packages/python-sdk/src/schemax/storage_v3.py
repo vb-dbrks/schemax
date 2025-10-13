@@ -5,14 +5,14 @@ New storage layer that supports multiple catalog providers through the provider 
 Migrates from v2 storage format to v3 format with provider metadata.
 """
 
-import json
 import hashlib
+import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from datetime import datetime
 from uuid import uuid4
 
-from .providers import ProviderRegistry, Provider, Operation, ProviderState
+from .providers import Operation, Provider, ProviderRegistry, ProviderState
 
 SCHEMAX_DIR = ".schemax"
 PROJECT_FILENAME = "project.json"
@@ -82,9 +82,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
     provider = ProviderRegistry.get(provider_id)
     if provider is None:
         available = ", ".join(ProviderRegistry.get_all_ids())
-        raise ValueError(
-            f"Provider '{provider_id}' not found. Available providers: {available}"
-        )
+        raise ValueError(f"Provider '{provider_id}' not found. Available providers: {available}")
 
     new_project = {
         "version": 3,
@@ -122,9 +120,8 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
     with open(changelog_path, "w") as f:
         json.dump(new_changelog, f, indent=2)
 
-    print(
-        f"[SchemaX] Initialized new v3 project: {workspace_name} with provider: {provider.info.name}"
-    )
+    provider_name = provider.info.name
+    print(f"[SchemaX] Initialized new v3 project: {workspace_name} with provider: {provider_name}")
 
 
 def migrate_v2_to_v3(
@@ -485,4 +482,3 @@ def _get_next_version(current_version: Optional[str], settings: Dict[str, Any]) 
     next_minor = int(minor) + 1
 
     return f"{settings['versionPrefix']}{major}.{next_minor}.0"
-

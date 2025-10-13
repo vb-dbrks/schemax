@@ -5,12 +5,13 @@ Defines the contract that all catalog providers must implement.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
+from typing import Dict, List, Optional
+
 from pydantic import BaseModel
 
 from .hierarchy import Hierarchy
+from .models import ProviderState, ValidationResult
 from .operations import Operation, OperationMetadata
-from .models import ValidationResult, ProviderState
 from .sql_generator import SQLGenerator
 
 
@@ -132,4 +133,3 @@ class BaseProvider(Provider):
     def is_operation_supported(self, operation_type: str) -> bool:
         """Helper to check if operation is supported"""
         return operation_type in self.capabilities.supported_operations
-

@@ -5,6 +5,7 @@ Defines the hierarchical structure of objects within a provider.
 """
 
 from typing import List, Optional
+
 from pydantic import BaseModel
 
 
@@ -49,4 +50,3 @@ class Hierarchy:
             if level.name == name:
                 return i
         return -1
-

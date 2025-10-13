@@ -30,4 +30,3 @@ unity_hierarchy_levels = [
 ]
 
 unity_hierarchy = Hierarchy(unity_hierarchy_levels)
-

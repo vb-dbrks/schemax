@@ -5,27 +5,27 @@ This module implements the provider architecture that enables support for
 multiple catalog types (Unity Catalog, Hive Metastore, PostgreSQL, etc.)
 """
 
-from .registry import ProviderRegistry
-from .base.provider import Provider, ProviderInfo, ProviderCapabilities
 from .base.hierarchy import Hierarchy, HierarchyLevel
 from .base.models import ProviderState, ValidationResult
-from .base.operations import Operation, OperationMetadata, OperationCategory
+from .base.operations import Operation, OperationCategory, OperationMetadata
+from .base.provider import Provider, ProviderCapabilities, ProviderInfo
+from .registry import ProviderRegistry
 
 # Import providers for auto-registration
 from .unity import unity_provider
 
 __all__ = [
-    'ProviderRegistry',
-    'Provider',
-    'ProviderInfo',
-    'ProviderCapabilities',
-    'Hierarchy',
-    'HierarchyLevel',
-    'ProviderState',
-    'ValidationResult',
-    'Operation',
-    'OperationMetadata',
-    'OperationCategory',
+    "ProviderRegistry",
+    "Provider",
+    "ProviderInfo",
+    "ProviderCapabilities",
+    "Hierarchy",
+    "HierarchyLevel",
+    "ProviderState",
+    "ValidationResult",
+    "Operation",
+    "OperationMetadata",
+    "OperationCategory",
 ]
 
 
@@ -41,4 +41,3 @@ def initialize_providers():
 
 # Auto-initialize on import
 initialize_providers()
-

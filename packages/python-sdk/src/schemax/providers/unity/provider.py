@@ -5,22 +5,21 @@ Main provider implementation for Databricks Unity Catalog.
 Implements the Provider interface to enable Unity Catalog support in SchemaX.
 """
 
-from typing import List, Optional
+from typing import List
 
+from ..base.models import ProviderState, ValidationError, ValidationResult
+from ..base.operations import Operation
 from ..base.provider import (
-    Provider,
     BaseProvider,
-    ProviderInfo,
     ProviderCapabilities,
+    ProviderInfo,
 )
-from ..base.operations import Operation, OperationMetadata
-from ..base.models import ValidationResult, ValidationError, ProviderState
 from ..base.sql_generator import SQLGenerator
 from .hierarchy import unity_hierarchy
 from .models import UnityState
 from .operations import UNITY_OPERATIONS, unity_operation_metadata
-from .state_reducer import apply_operation, apply_operations
 from .sql_generator import UnitySQLGenerator
+from .state_reducer import apply_operation, apply_operations
 
 
 class UnityProvider(BaseProvider):
@@ -93,11 +92,7 @@ class UnityProvider(BaseProvider):
 
         # Validate required fields
         for field in metadata.required_fields:
-            if (
-                field not in op.payload
-                or op.payload[field] is None
-                or op.payload[field] == ""
-            ):
+            if field not in op.payload or op.payload[field] is None or op.payload[field] == "":
                 errors.append(
                     ValidationError(
                         field=f"payload.{field}",
@@ -192,4 +187,3 @@ class UnityProvider(BaseProvider):
 
 # Export singleton instance
 unity_provider = UnityProvider()
-

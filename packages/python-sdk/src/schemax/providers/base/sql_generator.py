@@ -6,10 +6,11 @@ Defines the contract for generating SQL DDL statements from operations.
 
 from abc import ABC, abstractmethod
 from typing import List
+
 from pydantic import BaseModel
 
-from .operations import Operation
 from .models import ProviderState
+from .operations import Operation
 
 
 class SQLGenerationResult(BaseModel):
@@ -100,4 +101,3 @@ class BaseSQLGenerator(SQLGenerator):
     def escape_string(s: str) -> str:
         """Helper to escape SQL string literals"""
         return s.replace("'", "''")
-

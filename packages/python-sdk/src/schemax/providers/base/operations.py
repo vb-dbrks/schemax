@@ -4,11 +4,12 @@ Base Operation Types
 Operations represent user actions that modify the schema state.
 """
 
-import time
 import random
 import string
-from typing import Any, Dict, List, Optional
+import time
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel
 
 
@@ -81,4 +82,3 @@ def create_operation(
         target=target,
         payload=payload,
     )
-

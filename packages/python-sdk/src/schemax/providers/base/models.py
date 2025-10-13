@@ -3,6 +3,7 @@ Base Model Types for Provider System
 """
 
 from typing import Any, Dict, List
+
 from pydantic import BaseModel
 
 
@@ -23,4 +24,3 @@ class ValidationResult(BaseModel):
 
 # Provider state is just a dictionary - providers define their own structure
 ProviderState = Dict[str, Any]
-

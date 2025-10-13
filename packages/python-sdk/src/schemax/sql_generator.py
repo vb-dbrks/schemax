@@ -218,7 +218,7 @@ class SQLGenerator:
         comment = op.payload.get("comment", "")
 
         null_clause = "" if nullable else " NOT NULL"
-        comment_clause = f" COMMENT '{comment.replace(chr(39), chr(39)*2)}'" if comment else ""
+        comment_clause = f" COMMENT '{comment.replace(chr(39), chr(39) * 2)}'" if comment else ""
 
         return (
             f"ALTER TABLE `{table_fqn}` ADD COLUMN `{col_name}` "
@@ -292,7 +292,7 @@ class SQLGenerator:
         if constraint_type == "primary_key":
             timeseries = " TIMESERIES" if op.payload.get("timeseries") else ""
             cols = ", ".join(f"`{c}`" for c in columns)
-            return f"ALTER TABLE `{table_fqn}` ADD {name_clause}" f"PRIMARY KEY({cols}){timeseries}"
+            return f"ALTER TABLE `{table_fqn}` ADD {name_clause}PRIMARY KEY({cols}){timeseries}"
 
         elif constraint_type == "foreign_key":
             parent_table = self.id_to_name.get(op.payload.get("parentTable", ""), "unknown")
