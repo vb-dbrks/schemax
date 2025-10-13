@@ -2,24 +2,31 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Build Extension",
       "type": "npm",
       "script": "build",
+      "path": "packages/vscode-extension/",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
       "group": {
         "kind": "build",
         "isDefault": true
-      },
-      "problemMatcher": [],
-      "label": "npm: build",
-      "detail": "npm run build:webview && npm run build:ext"
+      }
     },
     {
+      "label": "Watch Extension",
       "type": "npm",
       "script": "watch",
-      "problemMatcher": [],
+      "path": "packages/vscode-extension/",
+      "problemMatcher": "$tsc-watch",
       "isBackground": true,
-      "label": "npm: watch",
-      "detail": "concurrently \"npm:watch:webview\" \"npm:watch:ext\""
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
     }
   ]
 }
-

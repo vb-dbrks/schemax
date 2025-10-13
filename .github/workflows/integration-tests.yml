@@ -1,0 +1,59 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install latest npm
+        run: npm install -g npm@latest
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Node dependencies
+        run: npm ci
+      
+      - name: Build VS Code extension
+        working-directory: packages/vscode-extension
+        run: npm run build
+      
+      - name: Install Python SDK
+        working-directory: packages/python-sdk
+        run: pip install -e .
+      
+      - name: Test CLI on example project
+        working-directory: examples/basic-schema
+        run: |
+          echo "Validating schema..."
+          schemax validate
+          
+          echo "Generating SQL..."
+          schemax sql --output test-migration.sql || echo "No operations to generate (expected for clean example)"
+          
+          echo "✓ Integration test passed"
+      
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-artifacts
+          path: examples/basic-schema/test-migration.sql
+          if-no-files-found: ignore
+

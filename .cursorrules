@@ -1,20 +1,73 @@
-# SchemaX VS Code Extension - Project Context
+# SchemaX - Project Context
 
 ## Overview
-SchemaX is a VS Code extension that provides a visual designer for Databricks Unity Catalog schema definitions. It uses an append-only operation log architecture with snapshots for version-controlled schema evolution.
+SchemaX is a comprehensive toolkit for managing Databricks Unity Catalog schemas using a declarative, version-controlled approach. It consists of a VS Code extension for visual schema design and a Python SDK/CLI for automation and CI/CD integration.
+
+## Repository Structure (Monorepo)
+
+```
+schemax/
+├── packages/
+│   ├── vscode-extension/       # VS Code Extension (TypeScript + React)
+│   │   ├── src/
+│   │   │   ├── extension.ts           # Extension commands
+│   │   │   ├── storage-v2.ts          # File storage layer
+│   │   │   ├── sql-generator.ts       # SQL DDL generation
+│   │   │   ├── shared/
+│   │   │   │   ├── model.ts           # Zod schemas
+│   │   │   │   └── ops.ts             # Operation definitions
+│   │   │   └── webview/               # React UI
+│   │   └── package.json
+│   │
+│   └── python-sdk/             # Python SDK & CLI
+│       ├── src/schemax/
+│       │   ├── models.py              # Pydantic models
+│       │   ├── storage.py             # File I/O operations
+│       │   ├── state.py               # State reducer
+│       │   ├── sql_generator.py       # SQL DDL generation
+│       │   ├── cli.py                 # CLI commands
+│       │   └── ops.py                 # Operation types
+│       └── pyproject.toml
+│
+├── examples/                   # Working examples
+│   ├── basic-schema/          # Sample project
+│   ├── github-actions/        # CI/CD templates
+│   └── python-scripts/        # SDK usage examples
+│
+├── docs/                       # Documentation
+│   ├── README.md              # Documentation index
+│   ├── QUICKSTART.md          # Getting started guide
+│   ├── ARCHITECTURE.md        # Technical design
+│   └── DEVELOPMENT.md         # Development guide
+│
+├── scripts/
+│   └── smoke-test.sh          # Quick validation
+│
+├── .github/workflows/          # CI/CD pipelines
+│   ├── extension-ci.yml
+│   ├── python-sdk-ci.yml
+│   └── integration-tests.yml
+│
+├── README.md                   # Project overview
+├── TESTING.md                  # Testing guide
+├── CONTRIBUTING.md             # Contributing guidelines
+└── .cursorrules               # This file
+```
 
 ## Architecture (V2)
 
-### File Structure
+### File Structure (.schemax/)
 ```
 project-root/
 └── .schemax/
     ├── project.json           # Project metadata (version, snapshots list, settings)
     ├── changelog.json         # Working changes (ops since last snapshot)
-    └── snapshots/
-        ├── v0.1.0.json       # Full state snapshots
-        ├── v0.2.0.json
-        └── v0.3.0.json
+    ├── snapshots/
+    │   ├── v0.1.0.json       # Full state snapshots
+    │   ├── v0.2.0.json
+    │   └── v0.3.0.json
+    └── migrations/            # Generated SQL files
+        └── migration_*.sql
 ```
 
 ### Core Concepts
@@ -40,6 +93,11 @@ project-root/
    - Load latest snapshot (or start with empty state)
    - Apply changelog ops to get current state
    - This is what the UI displays
+
+5. **SQL Generation**: 
+   - Convert changelog ops to SQL DDL
+   - Idempotent statements (safe to run multiple times)
+   - Saved to `.schemax/migrations/` directory
 
 ### Data Models
 
@@ -90,16 +148,16 @@ Catalog
     └── Table[]
         ├── columns: Column[]
         │   ├── id, name, type, nullable, comment
-        │   ├── tags?: Record<string, string>         // NEW: Column-level tags
-        │   └── maskId?: string                        // NEW: Reference to column mask
+        │   ├── tags?: Record<string, string>         // Column-level tags
+        │   └── maskId?: string                        // Reference to column mask
         ├── properties: Record<string, string>         // TBLPROPERTIES
-        ├── constraints: Constraint[]                  // NEW: Expanded (PK, FK, CHECK)
+        ├── constraints: Constraint[]                  // PK, FK, CHECK
         ├── grants: Grant[]
-        ├── rowFilters?: RowFilter[]                   // NEW: Row-level security
-        └── columnMasks?: ColumnMask[]                 // NEW: Column masking
+        ├── rowFilters?: RowFilter[]                   // Row-level security
+        └── columnMasks?: ColumnMask[]                 // Column masking
 ```
 
-**Column** (Enhanced):
+**Column**:
 ```typescript
 {
   id: string,
@@ -107,12 +165,12 @@ Catalog
   type: string,
   nullable: boolean,
   comment?: string,
-  tags?: Record<string, string>,    // NEW: { tag_name: tag_value }
-  maskId?: string                    // NEW: Reference to active mask
+  tags?: Record<string, string>,    // { tag_name: tag_value }
+  maskId?: string                    // Reference to active mask
 }
 ```
 
-**Constraint** (Expanded - supports PRIMARY KEY, FOREIGN KEY, CHECK):
+**Constraint** (Supports PRIMARY KEY, FOREIGN KEY, CHECK):
 ```typescript
 {
   id: string,
@@ -121,11 +179,11 @@ Catalog
   columns: string[],                // column IDs
   
   // For PRIMARY KEY
-  timeseries?: boolean,             // For time-series data
+  timeseries?: boolean,             
   
   // For FOREIGN KEY
-  parentTable?: string,             // Parent table ID
-  parentColumns?: string[],         // Parent column IDs
+  parentTable?: string,             
+  parentColumns?: string[],         
   matchFull?: boolean,
   onUpdate?: 'NO_ACTION',
   onDelete?: 'NO_ACTION',
@@ -134,7 +192,7 @@ Catalog
   expression?: string,              // SQL expression
   
   // Constraint options (all types)
-  notEnforced?: boolean,            // Azure Databricks doesn't enforce
+  notEnforced?: boolean,            
   deferrable?: boolean,
   initiallyDeferred?: boolean,
   rely?: boolean                    // For Photon query optimization
@@ -164,7 +222,9 @@ Catalog
 }
 ```
 
-### Storage Layer (`src/storage-v2.ts`)
+## VS Code Extension
+
+### Storage Layer (`packages/vscode-extension/src/storage-v2.ts`)
 
 **Key Functions**:
 - `ensureProjectFile()` - Initialize new project
@@ -175,164 +235,46 @@ Catalog
 
 **Op Reducer**: `applyOpsToState()` applies ops to state immutably
 
-### Extension (`src/extension.ts`)
+### SQL Generator (`packages/vscode-extension/src/sql-generator.ts`)
+
+**SQLGenerator class**:
+- `generateSQL(ops: Op[]): string` - Main entry point
+- Private methods for each operation type
+- Generates idempotent DDL (CREATE IF NOT EXISTS, etc.)
+- Handles all 31 operation types
+- Includes operation tracking in comments
+
+### Extension (`packages/vscode-extension/src/extension.ts`)
 
 **Commands**:
 1. `schemax.openDesigner` - Opens React webview
 2. `schemax.showLastOps` - Shows changelog ops
 3. `schemax.createSnapshot` - Creates new snapshot
+4. `schemax.generateSQL` - Generates SQL migration file
 
 **Message Flow**:
 - Webview → Extension: `load-project`, `append-ops`
 - Extension → Webview: `project-loaded`, `project-updated`
 
-**Webview receives v1-compatible format**:
-```typescript
-{
-  ...project,        // v2 project metadata
-  state,             // Current state (snapshot + changelog applied)
-  ops: changelog.ops // Current changelog
-}
-```
-
-### Webview (`src/webview/`)
+### Webview (`packages/vscode-extension/src/webview/`)
 
 **Architecture**: React + Vite + Zustand
 
 **Components**:
 - `App.tsx` - Main layout, message handling
-- `Sidebar.tsx` - Tree view with context-aware inline "+" buttons, rename/drop
-- `TableDesigner.tsx` - Comprehensive table editor with all sections
-- `ColumnGrid.tsx` - **Inline editing** for columns + Tags management
-- `TableProperties.tsx` - TBLPROPERTIES management (Delta Lake configs)
-- `TableConstraints.tsx` - **NEW**: PRIMARY KEY, FOREIGN KEY, CHECK constraints
-- `SecurityGovernance.tsx` - **NEW**: Row filters & column masks
-- `SnapshotPanel.tsx` - Timeline view of snapshots
+- `Sidebar.tsx` - Tree view with context-aware inline "+" buttons
+- `TableDesigner.tsx` - Comprehensive table editor
+- `ColumnGrid.tsx` - Inline column editing + tags
+- `TableProperties.tsx` - TBLPROPERTIES management
+- `TableConstraints.tsx` - PRIMARY KEY, FOREIGN KEY, CHECK
+- `SecurityGovernance.tsx` - Row filters & column masks
+- `SnapshotPanel.tsx` - Timeline view
 
 **State Management** (`useDesignerStore.ts`):
 - Zustand store holds current project state
 - All mutations generate ops via `emitOps()`
 - Ops sent to extension via `vscode.postMessage()`
 - Extension applies ops and sends back updated state
-
-**Column Editing** (Inline):
-- Click "Edit" → Row becomes editable (name, type, comment)
-- Save → Generates multiple ops if multiple fields changed
-- No popups/modals for column editing
-
-**Column Tags** (Badge UI):
-- Tags displayed as badges in Tags column (shows first 2 + "+N more")
-- Click "🏷️ Tags" button → Opens comprehensive tag management modal
-- Modal shows all tags in table with Remove buttons
-- Inline "Add New Tag" form for adding tags with name/value pairs
-- Operations: `set_column_tag`, `unset_column_tag`
-
-**Table Constraints** (Full Unity Catalog Support):
-- **PRIMARY KEY**: Multi-column support, TIMESERIES option, constraint options
-- **FOREIGN KEY**: Parent table/columns references, MATCH FULL, ON UPDATE/DELETE
-- **CHECK**: Free-form SQL expression validation
-- Constraint options: NOT ENFORCED, DEFERRABLE, INITIALLY DEFERRED, RELY (for Photon)
-- Operations: `add_constraint`, `drop_constraint`
-
-**Security & Governance**:
-- **Row Filters**: Row-level security with free-form UDF expressions
-  - Example: `region = current_user()` to filter by user's region
-  - Enable/disable toggle, edit/remove actions
-  - Operations: `add_row_filter`, `update_row_filter`, `remove_row_filter`
-- **Column Masks**: Column-level data masking with SQL UDF functions
-  - Example: `REDACT_EMAIL(email)` to mask email addresses
-  - Links mask to specific column via `maskId`
-  - Enable/disable toggle, edit/remove actions
-  - Operations: `add_column_mask`, `update_column_mask`, `remove_column_mask`
-
-### UI/UX Features
-
-1. **Custom Modal Dialogs**: Used for Add/Rename/Drop actions
-   - Webview is sandboxed, can't use browser `prompt()`/`confirm()`
-   - Custom React modals styled with VS Code theme
-
-2. **Drag-and-Drop**: Reorder columns via drag handles
-
-3. **Snapshot Timeline**: Visual indicator with dots/lines
-   - Green dot = latest snapshot
-   - Yellow pulsing dot = uncommitted changes
-   - Shows version, name, timestamp, ops count
-
-4. **VS Code Output Channel**: All logs go to "SchemaX" output
-   - Not console.log (goes to Extension Host)
-   - Use `outputChannel.appendLine()`
-
-### Key Design Decisions
-
-1. **Why JSON?**: 
-   - Git-friendly, human-readable
-   - Simple, no database needed
-   - Works for typical UC schemas (<100 tables)
-   - Standard format with good tooling support
-
-2. **Why Separate Snapshot Files?**:
-   - Snapshots are immutable (rarely change)
-   - Changelog is active development (frequent changes)
-   - Git diffs are cleaner
-   - Better performance (only load latest snapshot)
-
-3. **Why V2 Over V1?**:
-   - V1: Single file with all ops forever (grows unbounded)
-   - V2: Snapshots + changelog (bounded growth)
-   - Easier to generate migrations (just read changelog)
-
-### Operation Types (Complete List)
-
-**Catalog Operations**:
-- `add_catalog` - payload: `{catalogId, name}`
-- `rename_catalog` - payload: `{newName}`
-- `drop_catalog` - payload: `{}`
-
-**Schema Operations**:
-- `add_schema` - payload: `{schemaId, name, catalogId}`
-- `rename_schema` - payload: `{newName}`
-- `drop_schema` - payload: `{}`
-
-**Table Operations**:
-- `add_table` - payload: `{tableId, name, schemaId, format}`
-- `rename_table` - payload: `{newName}`
-- `drop_table` - payload: `{}`
-- `set_table_comment` - payload: `{tableId, comment}`
-- `set_table_property` - payload: `{tableId, key, value}`
-- `unset_table_property` - payload: `{tableId, key}`
-
-**Column Operations**:
-- `add_column` - payload: `{tableId, colId, name, type, nullable, comment?}`
-- `rename_column` - payload: `{tableId, colId, newName}`
-- `drop_column` - payload: `{tableId, colId}`
-- `reorder_columns` - payload: `{tableId, order: string[]}`
-- `change_column_type` - payload: `{tableId, colId, newType}`
-- `set_nullable` - payload: `{tableId, colId, nullable}`
-- `set_column_comment` - payload: `{tableId, colId, comment}`
-
-**Column Tag Operations** (NEW):
-- `set_column_tag` - payload: `{tableId, colId, tagName, tagValue}`
-- `unset_column_tag` - payload: `{tableId, colId, tagName}`
-
-**Constraint Operations** (NEW):
-- `add_constraint` - payload: `{tableId, constraintId, type, name?, columns, ...typeSpecificFields}`
-  - For PRIMARY KEY: `timeseries?`
-  - For FOREIGN KEY: `parentTable, parentColumns, matchFull?, onUpdate?, onDelete?`
-  - For CHECK: `expression`
-  - Options: `notEnforced?, deferrable?, initiallyDeferred?, rely?`
-- `drop_constraint` - payload: `{tableId, constraintId}`
-
-**Row Filter Operations** (NEW):
-- `add_row_filter` - payload: `{tableId, filterId, name, udfExpression, enabled?, description?}`
-- `update_row_filter` - payload: `{tableId, filterId, name?, udfExpression?, enabled?, description?}`
-- `remove_row_filter` - payload: `{tableId, filterId}`
-
-**Column Mask Operations** (NEW):
-- `add_column_mask` - payload: `{tableId, maskId, columnId, name, maskFunction, enabled?, description?}`
-- `update_column_mask` - payload: `{tableId, maskId, name?, maskFunction?, enabled?, description?}`
-- `remove_column_mask` - payload: `{tableId, maskId}`
-
-**Total Operations**: 31 (11 catalog/schema/table, 7 column, 2 tags, 2 constraints, 3 filters, 3 masks, 2 properties, 1 comment)
 
 ### Build System
 
@@ -351,143 +293,386 @@ Catalog
 - `npm run build:webview` - Webview only
 - `npm run watch` - Watch mode (both)
 
-### Development Workflow
+## Python SDK & CLI
 
-1. **Make changes** → Ops append to `changelog.json`
-2. **Create snapshot** → 
-   - Write `.schemax/snapshots/vX.Y.Z.json`
-   - Update `project.json` with metadata
-   - Clear `changelog.json`
-3. **Repeat**
+### Package Structure
 
-### Future (Not Implemented Yet)
+**Location**: `packages/python-sdk/`
 
-- **Phase 2**: Migration script generation (ops → SQL)
-- **Phase 3**: Deployment to Databricks
-- **Phase 4**: Drift detection (compare UC properties)
-- **Phase 5**: Multi-environment promotion
+**Modules**:
+- `models.py` - Pydantic models (port of TypeScript Zod schemas)
+- `storage.py` - File I/O operations
+- `state.py` - State reducer (applies all 31 operations)
+- `sql_generator.py` - SQL DDL generation
+- `cli.py` - Click-based CLI
+- `ops.py` - Operation type enum
 
-### Testing
+### CLI Commands
 
-**To test locally**:
-1. Press F5 in VS Code (launches Extension Development Host)
-2. Open a workspace folder
-3. Cmd+Shift+P → "SchemaX: Open Designer"
-4. Check logs: View → Output → Select "SchemaX"
+```bash
+# Validate schema files
+schemax validate [workspace_path]
 
-**File locations**:
-- Extension: `/Users/varun.bhandary/Documents/side-projects/schemax-vscode`
-- Test workspace: `/Users/varun.bhandary/Documents/test-vscode-extension`
+# Generate SQL migration
+schemax sql [workspace_path] [--output FILE]
 
-### Important Files
+# Track deployment
+schemax deploy --environment ENV [--version VERSION] [--mark-deployed]
 
-**Core**:
-- `src/storage-v2.ts` - **V2 storage layer** (use this, not storage.ts)
-- `src/extension.ts` - Extension host
-- `src/shared/model.ts` - Zod schemas
-- `src/shared/ops.ts` - Op definitions
-- `src/webview/state/useDesignerStore.ts` - Zustand store
+# Compare versions (stub)
+schemax diff VERSION1 VERSION2
+```
 
-**UI**:
-- `src/webview/components/Sidebar.tsx` - Tree view with context-aware inline "+" buttons
-- `src/webview/components/TableDesigner.tsx` - Main table editor layout
-- `src/webview/components/ColumnGrid.tsx` - Inline column editing + tags
-- `src/webview/components/TableProperties.tsx` - TBLPROPERTIES editor
-- `src/webview/components/TableConstraints.tsx` - **NEW**: Constraints management
-- `src/webview/components/SecurityGovernance.tsx` - **NEW**: Row filters & column masks
-- `src/webview/components/SnapshotPanel.tsx` - Timeline view
-- `src/webview/styles.css` - Comprehensive styling (1200+ lines)
+### Python API
 
-### Known Issues / TODOs
+```python
+from pathlib import Path
+from schemax.storage import load_current_state, read_project
+from schemax.sql_generator import SQLGenerator
 
-✅ **Resolved**:
-- Custom modals for sandboxed webview
-- Op IDs for tracking
-- Backwards compatibility (auto-generate IDs for old ops)
-- Inline column editing
-- V2 architecture with separate files
-- Column tags (badge UI)
-- Table constraints (PRIMARY KEY, FOREIGN KEY, CHECK)
-- Row filters (row-level security)
-- Column masks (data masking)
-- TBLPROPERTIES management
-- Context-aware "+" buttons in sidebar
+# Load schema
+state, changelog = load_current_state(Path.cwd())
 
-✅ **Implemented Features**:
-- **Data Governance**: Column tags, row filters, column masks
-- **Data Integrity**: PRIMARY KEY, FOREIGN KEY, CHECK constraints
-- **Table Configuration**: TBLPROPERTIES (Delta Lake configs)
-- **All Unity Catalog governance features** from official documentation
+# Generate SQL
+generator = SQLGenerator(state)
+sql = generator.generate_sql(changelog.ops)
+```
 
-⚠️ **Current Limitations**:
-- No SQL generation yet (Phase 2)
-- No Databricks deployment (Phase 3)
-- No drift detection (Phase 4)
-- Single-user only (no concurrent editing)
-- No constraint validation UI (expressions accepted as-is)
+### Code Formatting
 
-### Unity Catalog Documentation Compliance
+**Python**: Uses Black with 100 character line length
 
-Based on official Databricks documentation:
+```bash
+cd packages/python-sdk
+black src/ --line-length 100
+```
 
-1. **Column Tags** (from [INFORMATION_SCHEMA.COLUMN_TAGS](https://learn.microsoft.com/en-us/azure/databricks/sql/language-manual/information-schema/column_tags)):
-   - Key-value pairs for metadata tagging
-   - Examples: `PII: sensitive`, `category: personal`, `retention: 90days`
-   - Used for data governance and discovery
+**Configuration** (`pyproject.toml`):
+```toml
+[tool.black]
+line-length = 100
+target-version = ['py39', 'py310', 'py311', 'py312']
+```
 
-2. **Constraints** (from [CONSTRAINT clause](https://learn.microsoft.com/en-us/azure/databricks/sql/language-manual/sql-ref-syntax-ddl-create-table-constraint)):
-   - **PRIMARY KEY**: Informational (not enforced), optional TIMESERIES flag
-   - **FOREIGN KEY**: References parent table, MATCH FULL, ON UPDATE/DELETE NO ACTION
-   - **CHECK**: SQL expression validation (not enforced by default)
-   - **Constraint Options**:
-     - `NOT ENFORCED`: Azure Databricks takes no action to enforce
-     - `DEFERRABLE`: Constraint enforcement can be deferred
-     - `INITIALLY DEFERRED`: Constraint enforcement is deferred
-     - `RELY`: For Photon query optimization (requires Photon-enabled compute)
+## Operation Types (Complete List - 31 Total)
 
-3. **Row Filters & Column Masks** (from [Row filters and column masks](https://docs.databricks.com/aws/en/data-governance/unity-catalog/filters-and-masks/)):
-   - Row filters: UDF expressions for row-level security
-   - Column masks: UDF functions for data masking
-   - Both support enable/disable toggle
-   - Examples:
-     - Row filter: `region = current_user()` or `department_id IN (SELECT id FROM user_departments WHERE user = current_user())`
-     - Column mask: `REDACT_EMAIL(email)` or `MASK_SSN(ssn)` or `IF(is_admin(current_user()), value, 'REDACTED')`
+**Catalog Operations** (3):
+- `add_catalog` - payload: `{catalogId, name}`
+- `rename_catalog` - payload: `{newName}`
+- `drop_catalog` - payload: `{}`
 
-4. **Unity Catalog Privileges** (from [Privileges documentation](https://docs.databricks.com/aws/en/data-governance/unity-catalog/manage-privileges/privileges#securable-objects)):
-   - `APPLY TAG` privilege required for managing tags
-   - `SELECT` privilege required for reading data
-   - `MODIFY` privilege required for changing table structure
-   - Constraint operations require table ownership or `MODIFY` privilege
+**Schema Operations** (3):
+- `add_schema` - payload: `{schemaId, name, catalogId}`
+- `rename_schema` - payload: `{newName}`
+- `drop_schema` - payload: `{}`
 
-### Coding Guidelines
+**Table Operations** (6):
+- `add_table` - payload: `{tableId, name, schemaId, format}`
+- `rename_table` - payload: `{newName}`
+- `drop_table` - payload: `{}`
+- `set_table_comment` - payload: `{tableId, comment}`
+- `set_table_property` - payload: `{tableId, key, value}`
+- `unset_table_property` - payload: `{tableId, key}`
 
-1. **Logging**: Always use `outputChannel.appendLine()`, never `console.log()`
+**Column Operations** (7):
+- `add_column` - payload: `{tableId, colId, name, type, nullable, comment?}`
+- `rename_column` - payload: `{tableId, colId, newName}`
+- `drop_column` - payload: `{tableId, colId}`
+- `reorder_columns` - payload: `{tableId, order: string[]}`
+- `change_column_type` - payload: `{tableId, colId, newType}`
+- `set_nullable` - payload: `{tableId, colId, nullable}`
+- `set_column_comment` - payload: `{tableId, colId, comment}`
+
+**Column Tag Operations** (2):
+- `set_column_tag` - payload: `{tableId, colId, tagName, tagValue}`
+- `unset_column_tag` - payload: `{tableId, colId, tagName}`
+
+**Constraint Operations** (2):
+- `add_constraint` - payload: `{tableId, constraintId, type, name?, columns, ...typeSpecificFields}`
+- `drop_constraint` - payload: `{tableId, constraintId}`
+
+**Row Filter Operations** (3):
+- `add_row_filter` - payload: `{tableId, filterId, name, udfExpression, enabled?, description?}`
+- `update_row_filter` - payload: `{tableId, filterId, name?, udfExpression?, enabled?, description?}`
+- `remove_row_filter` - payload: `{tableId, filterId}`
+
+**Column Mask Operations** (3):
+- `add_column_mask` - payload: `{tableId, maskId, columnId, name, maskFunction, enabled?, description?}`
+- `update_column_mask` - payload: `{tableId, maskId, name?, maskFunction?, enabled?, description?}`
+- `remove_column_mask` - payload: `{tableId, maskId}`
+
+## Implementation Status
+
+### ✅ Completed Features (v0.1.0)
+
+**Core Functionality**:
+- ✅ Visual schema designer (VS Code extension)
+- ✅ Snapshot-based versioning
+- ✅ Operation log architecture
+- ✅ All 31 operation types
+- ✅ Inline column editing
+- ✅ Context-aware UI elements
+
+**Data Governance**:
+- ✅ Column tags (key-value metadata)
+- ✅ Table constraints (PRIMARY KEY, FOREIGN KEY, CHECK)
+- ✅ Row filters (row-level security)
+- ✅ Column masks (data masking)
+- ✅ Table properties (TBLPROPERTIES)
+
+**SQL Generation**:
+- ✅ TypeScript implementation (VS Code)
+- ✅ Python implementation (SDK/CLI)
+- ✅ Idempotent DDL statements
+- ✅ All 31 operation types supported
+- ✅ SQL file export
+
+**Python SDK & CLI**:
+- ✅ Complete SDK with all models
+- ✅ CLI with validate, sql, deploy commands
+- ✅ Python API for custom scripts
+- ✅ Black code formatting (100 char line length)
+
+**Deployment**:
+- ✅ Deployment tracking
+- ✅ Environment management
+- ✅ Version tracking
+
+**Infrastructure**:
+- ✅ Monorepo structure
+- ✅ CI/CD workflows (GitHub Actions)
+- ✅ Comprehensive documentation
+- ✅ Testing infrastructure (smoke tests)
+- ✅ Examples and templates
+
+### ⏭️ Future Enhancements (Not Yet Implemented)
+
+**Databricks Integration**:
+- Schema import from Databricks
+- Live deployment execution
+- Drift detection
+- Databricks Asset Bundle (DAB) generation
+
+**Testing**:
+- Unit test suites (pytest, jest)
+- Automated test coverage
+- Integration test suites
+
+**Advanced Features**:
+- Visual diff viewer
+- Template library
+- Constraint validation UI
+- Multi-user collaboration
+
+**Tooling**:
+- VS Code Marketplace publication
+- PyPI package publication
+
+## Documentation Structure
+
+**Clean, focused documentation** - no redundant files!
+
+**Root Level**:
+- `README.md` - Project overview & quick start
+- `TESTING.md` - Testing guide
+- `CONTRIBUTING.md` - Contributing guidelines (with code formatting standards)
+
+**docs/ Directory**:
+- `README.md` - Documentation index & navigation
+- `QUICKSTART.md` - Complete getting started guide
+- `ARCHITECTURE.md` - Technical design & concepts
+- `DEVELOPMENT.md` - Development guide
+
+**Package Documentation**:
+- `packages/vscode-extension/README.md` - Extension-specific
+- `packages/vscode-extension/CHANGELOG.md` - Version history
+- `packages/python-sdk/README.md` - SDK & CLI reference
+
+**Examples**:
+- `examples/basic-schema/` - Sample project
+- `examples/github-actions/` - CI/CD templates
+- `examples/python-scripts/` - SDK usage examples
+
+## Coding Guidelines
+
+### General Principles
+
+1. **Logging**: Always use `outputChannel.appendLine()` in extension, never `console.log()`
 2. **File Structure**: All SchemaX files in `.schemax/` folder
 3. **Immutability**: Never mutate state directly, always create new objects
 4. **Op IDs**: Always generate UUIDs for new ops: `id: \`op_${uuidv4()}\``
-5. **Zod Validation**: Always parse with Zod before using external data
-6. **Error Handling**: Catch errors, log to output channel, show user-friendly messages
-7. **Free-form Input**: Allow users to type SQL expressions freely (no restrictive dropdowns)
-8. **Modal Dialogs**: Always use custom React modals (webview is sandboxed, can't use browser `prompt()`/`confirm()`)
-9. **Type Safety**: Use TypeScript strict mode, proper type imports from `shared/model.ts`
-10. **State Management**: All mutations via Zustand actions → emit ops → extension applies → UI updates
+5. **Validation**: TypeScript (Zod) and Python (Pydantic) for all data models
+6. **Error Handling**: Catch errors, log details, show user-friendly messages
+7. **Free-form Input**: Allow SQL expressions freely (no restrictive dropdowns)
+8. **Modal Dialogs**: Use custom React modals (webview is sandboxed)
+9. **Type Safety**: TypeScript strict mode, Python type hints
+10. **State Management**: All mutations via Zustand → emit ops → apply → update UI
 
-### Dependencies
+### TypeScript
 
-**Runtime**:
-- `uuid` - UUID generation
-- `zod` - Schema validation
-- `react`, `react-dom` - UI
-- `zustand` - State management
+**Standards**:
+- Use TypeScript strict mode
+- Avoid `any` types
+- 2 spaces indentation
+- Single quotes for strings
+- Max line length: 100 characters
+- Semicolons required
 
-**Dev**:
-- `typescript` - Language
-- `esbuild` - Extension bundler
-- `vite` - Webview bundler
-- `@vitejs/plugin-react` - React support
-- `@vscode/vsce` - Extension packaging
+**Naming**:
+- `camelCase` for variables and functions
+- `PascalCase` for types, interfaces, and classes
+- `UPPER_CASE` for constants
 
-### VS Code API Usage
+**Example**:
+```typescript
+// ✅ Good
+interface TableOptions {
+  format: 'delta' | 'iceberg';
+  properties?: Record<string, string>;
+}
+
+export async function createTable(
+  name: string,
+  options: TableOptions
+): Promise<Table> {
+  try {
+    const table = await tableService.create(name, options);
+    outputChannel.appendLine(`[SchemaX] Created table: ${name}`);
+    return table;
+  } catch (error) {
+    outputChannel.appendLine(`[SchemaX] ERROR: ${error}`);
+    throw new Error(`Failed to create table: ${error}`);
+  }
+}
+```
+
+### Python
+
+**Standards**:
+- Use Black formatter (100 char line length)
+- Type hints for all function signatures
+- Use Pydantic models for data structures
+- Follow PEP 8
+- Docstrings for public APIs
+
+**Naming**:
+- `snake_case` for variables, functions, and methods
+- `PascalCase` for classes
+- `UPPER_CASE` for constants
+
+**Formatting**:
+```bash
+# Format code before committing
+cd packages/python-sdk
+black src/ --line-length 100
+```
+
+**Example**:
+```python
+# ✅ Good
+from typing import List
+from pydantic import BaseModel
+
+class Table(BaseModel):
+    id: str
+    name: str
+    columns: List[Column] = []
+
+def create_table(name: str, schema_id: str) -> Table:
+    """Create a new table in the specified schema.
+    
+    Args:
+        name: Table name
+        schema_id: Parent schema ID
+        
+    Returns:
+        Table: Created table object
+        
+    Raises:
+        ValueError: If name is invalid
+    """
+    if not name:
+        raise ValueError("Table name cannot be empty")
+    
+    return Table(id=f"table_{uuid4().hex[:8]}", name=name)
+```
+
+### Documentation
+
+**When to Update**:
+- Feature added → Update relevant docs + README
+- Architecture changed → Update `docs/ARCHITECTURE.md`
+- Build process changed → Update `docs/DEVELOPMENT.md`
+- New test → Update `TESTING.md`
+
+**Best Practices**:
+- ✅ Keep single source of truth per topic
+- ✅ Use clear, concise language
+- ✅ Include code examples
+- ✅ Add cross-references
+- ❌ Don't create duplicate documentation
+- ❌ Don't create redundant status/summary files
+
+## Testing
+
+**Quick Smoke Test**:
+```bash
+./scripts/smoke-test.sh
+```
+
+**VS Code Extension**:
+1. Press F5 in VS Code (launches Extension Development Host)
+2. Open a workspace folder
+3. Cmd+Shift+P → "SchemaX: Open Designer"
+4. Check logs: View → Output → "SchemaX"
+
+**Python CLI**:
+```bash
+cd packages/python-sdk
+pip install -e .
+schemax validate examples/basic-schema/
+schemax sql
+```
+
+**See**: `TESTING.md` for comprehensive testing guide
+
+## Important Files
+
+**VS Code Extension**:
+- `packages/vscode-extension/src/extension.ts` - Extension host
+- `packages/vscode-extension/src/storage-v2.ts` - V2 storage layer
+- `packages/vscode-extension/src/sql-generator.ts` - SQL generation
+- `packages/vscode-extension/src/shared/model.ts` - Zod schemas
+- `packages/vscode-extension/src/shared/ops.ts` - Op definitions
+- `packages/vscode-extension/src/webview/state/useDesignerStore.ts` - Zustand store
+
+**Python SDK**:
+- `packages/python-sdk/src/schemax/models.py` - Pydantic models
+- `packages/python-sdk/src/schemax/storage.py` - File I/O
+- `packages/python-sdk/src/schemax/state.py` - State reducer
+- `packages/python-sdk/src/schemax/sql_generator.py` - SQL generation
+- `packages/python-sdk/src/schemax/cli.py` - CLI implementation
+
+**Documentation**:
+- `README.md` - Project overview
+- `docs/QUICKSTART.md` - Getting started
+- `docs/ARCHITECTURE.md` - Technical design
+- `TESTING.md` - Testing guide
+- `CONTRIBUTING.md` - Contributing with code formatting
+
+## Unity Catalog Compliance
+
+Based on official Databricks documentation:
+
+1. **Column Tags**: Key-value pairs for metadata tagging and data governance
+2. **Constraints**: PRIMARY KEY, FOREIGN KEY, CHECK (informational, not enforced)
+3. **Row Filters**: UDF expressions for row-level security
+4. **Column Masks**: UDF functions for column-level data masking
+5. **Table Properties**: TBLPROPERTIES for Delta Lake configuration
+
+All features implemented according to official Databricks Unity Catalog specifications.
+
+## VS Code API Usage
 
 **Key APIs**:
 - `vscode.window.createWebviewPanel()` - Create webview
@@ -498,7 +683,17 @@ Based on official Databricks documentation:
 - `vscode.window.showInputBox()` - User input
 - `vscode.window.withProgress()` - Progress indicator
 
-### Git Strategy
+## Dependencies
+
+**VS Code Extension**:
+- Runtime: `uuid`, `zod`, `react`, `react-dom`, `zustand`
+- Dev: `typescript`, `esbuild`, `vite`, `@vitejs/plugin-react`, `@vscode/vsce`
+
+**Python SDK**:
+- Runtime: `pydantic`, `click`, `rich`
+- Dev: `black`, `pytest` (future)
+
+## Git Strategy
 
 **Recommended**:
 - Commit `.schemax/` folder to git
@@ -506,132 +701,37 @@ Based on official Databricks documentation:
 - Changelog = work in progress
 - Easy to see what changed between versions
 
-**Alternative** (if large):
-- Gitignore `.schemax/snapshots/`
-- Only commit `project.json` and `changelog.json`
+## Quick Reference for AI Assistants
 
----
+When starting a new conversation about this project:
 
-## Quick Start for New Chat
+1. **Project Type**: Monorepo with VS Code extension (TypeScript) + Python SDK/CLI
+2. **Architecture**: Event sourcing with snapshots + changelog
+3. **Storage**: V2 architecture (`packages/vscode-extension/src/storage-v2.ts`, `packages/python-sdk/src/schemax/storage.py`)
+4. **UI**: React webview with inline editing and comprehensive governance features
+5. **State**: Snapshot + changelog = current state
+6. **SQL Generation**: ✅ Implemented in both TypeScript and Python
+7. **Deployment Tracking**: ✅ Implemented
+8. **Operations**: All 31 types fully supported
+9. **Logs**: Check "SchemaX" output channel in VS Code
+10. **Build**: Extension (`npm run build`), SDK (`pip install -e .`)
+11. **Code Formatting**: Black for Python (100 char), manual for TypeScript
+12. **Documentation**: Clean structure, no redundant files
+13. **Testing**: Smoke test (`./scripts/smoke-test.sh`), manual testing checklist
 
-If starting a new conversation about this project:
+**Status**: Production-ready MVP (v0.1.0) with complete Unity Catalog governance features and SQL generation. Future: DAB generation, Databricks integration, drift detection.
 
-1. **Architecture**: V2 with separate snapshot files (`.schemax/` folder)
-2. **Storage**: Use `src/storage-v2.ts` functions
-3. **UI**: React webview with inline editing and comprehensive governance features
-4. **State**: Snapshot + changelog = current state
-5. **Logs**: Check "SchemaX" output channel
-6. **Build**: `npm run build` before testing
-7. **Features**: Full Unity Catalog governance (tags, constraints, filters, masks)
+## Key Design Patterns
 
-This is a **production-ready MVP** with complete Unity Catalog governance features. Next phases: SQL generation, deployment, and drift detection.
-
----
-
-## Key Learnings & Best Practices
-
-### 1. Webview Sandboxing
-- **Problem**: Browser `prompt()` and `confirm()` are blocked in sandboxed webviews
-- **Solution**: Custom React modal components with proper state management
-- **Pattern**: Always use `<div className="modal-overlay" onClick={closeHandler}>` with `stopPropagation` on modal content
-
-### 2. Type Safety with Zod
-- **Problem**: TypeScript types don't enforce runtime validation
-- **Solution**: Zod schemas for all data models, parse before use
-- **Pattern**: Define Zod schema → infer TypeScript type → parse external data
-- **Benefit**: Catches schema mismatches early, self-documenting data structures
-
-### 3. Operation Log Architecture
-- **Problem**: Direct state mutations make it hard to track changes and generate migrations
-- **Solution**: Append-only operation log with reducers
-- **Pattern**: UI action → generate op → emit to extension → apply reducer → update UI
-- **Benefit**: Full audit trail, can replay ops, easy migration generation
-
-### 4. Snapshot + Changelog Pattern
-- **Problem**: Single file with all ops grows unbounded
-- **Solution**: V2 architecture with snapshots (immutable checkpoints) + changelog (working changes)
-- **Pattern**: Latest snapshot + apply changelog ops = current state
-- **Benefit**: Bounded growth, cleaner git diffs, faster loading
-
-### 5. Free-form SQL Input
-- **Problem**: Dropdown-based UI restricts user creativity and doesn't support all SQL features
-- **Solution**: Textarea inputs for SQL expressions with examples/hints
-- **Pattern**: `<textarea placeholder="e.g., region = current_user()" />`
-- **Benefit**: Users can type any valid SQL, future-proof for new Unity Catalog features
-
-### 6. Badge UI for Tags
-- **Problem**: Displaying variable number of tags in table cells
-- **Solution**: Show first 2 tags as badges + "+N more" indicator, click to expand
-- **Pattern**: `{tags.slice(0, 2).map(tag => <Badge />)} {tags.length > 2 && <span>+{tags.length-2}</span>}`
-- **Benefit**: Compact display, progressive disclosure, visual feedback
-
-### 7. Context-aware UI Elements
-- **Problem**: Static "Add" buttons require user to think about context
-- **Solution**: Dynamic button text/action based on selection (e.g., "+ Catalog" → "+ Schema" → "+ Table")
-- **Pattern**: Check `selectedSchemaId` → if true, show "+ Table", else check `selectedCatalogId`, etc.
-- **Benefit**: Reduces cognitive load, guides user workflow
-
-### 8. Inline Editing Pattern
-- **Problem**: Modal dialogs disrupt workflow for simple edits
-- **Solution**: Inline editing with Edit/Save/Cancel buttons
-- **Pattern**: `{isEditing ? <input value={editValue} /> : <span>{value}</span>}`
-- **Benefit**: Faster editing, better UX, less context switching
-
-### 9. Enable/Disable Toggle for Governance
-- **Problem**: Users may want to test governance rules without deleting them
-- **Solution**: Enable/disable checkbox for row filters and column masks
-- **Pattern**: `enabled: boolean` field + status badge UI + toggle in edit modal
-- **Benefit**: Non-destructive testing, easy on/off switching
-
-### 10. Comprehensive Documentation
-- **Problem**: Complex projects hard to onboard to
-- **Solution**: Detailed `.cursorrules` file with architecture, patterns, examples
-- **Pattern**: Include data models, operation types, component descriptions, coding guidelines
-- **Benefit**: AI assistants can quickly understand project, new developers onboard faster
-
-### 11. Unity Catalog Compliance
-- **Learning**: Always reference official Databricks documentation
-- **Pattern**: Read docs → implement exact feature set → cite documentation in code comments
-- **Benefit**: Ensures compatibility, future-proof, users recognize familiar concepts
-
-### 12. Multi-select for Constraints
-- **Problem**: PRIMARY KEY and FOREIGN KEY can span multiple columns
-- **Solution**: `<select multiple>` with Cmd/Ctrl hint
-- **Pattern**: `Array.from(e.target.selectedOptions, option => option.value)`
-- **Benefit**: Native HTML behavior, accessible, familiar to users
-
----
-
-## Future Enhancement Ideas
-
-1. **SQL Generation**: Convert operations → CREATE TABLE DDL
-   - Read changelog ops
-   - Generate SQL for each op type
-   - Handle dependencies (e.g., parent table must exist before FK)
-   
-2. **Constraint Validation**: Pre-validate SQL expressions
-   - Parse CHECK expressions
-   - Verify column references
-   - Suggest fixes for common errors
-
-3. **Template Library**: Pre-built governance templates
-   - "PII Redaction" → Email/SSN masking templates
-   - "Regional Access" → Row filter templates by region
-   - "Compliance Pack" → Common regulatory templates
-
-4. **Visual Query Builder**: For row filters
-   - Drag-and-drop condition builder
-   - Generate SQL from visual representation
-   - Still allow free-form SQL override
-
-5. **Diff View**: Before creating snapshot
-   - Show what changed since last snapshot
-   - Color-coded additions/deletions/modifications
-   - Confirm before committing
-
-6. **Databricks Integration**: Deploy to live workspace
-   - OAuth authentication
-   - Read current schema from Unity Catalog
-   - Apply changes via SQL API
-   - Detect drift
-
+1. **Webview Sandboxing**: Custom React modals (browser APIs blocked)
+2. **Type Safety**: Zod (TS) and Pydantic (Python) for runtime validation
+3. **Operation Log**: Append-only, immutable, replayable
+4. **Snapshot + Changelog**: Bounded growth, clean diffs
+5. **Free-form SQL**: Textarea inputs for flexibility
+6. **Badge UI**: Compact display for variable-length lists
+7. **Context-aware UI**: Dynamic buttons based on selection
+8. **Inline Editing**: Faster UX, less context switching
+9. **Enable/Disable Toggle**: Non-destructive testing of governance rules
+10. **Dual Implementation**: Same logic in TypeScript and Python for consistency
+11. **Black Formatting**: Automated Python code formatting (100 char)
+12. **Documentation Standards**: Single source of truth, no duplication

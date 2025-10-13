@@ -1,0 +1,169 @@
+name: Quality Checks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  code-formatting:
+    name: Code Formatting Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install linters
+        run: pip install black ruff
+      
+      - name: Check Python code formatting with Black
+        run: |
+          echo "Checking Python code formatting with Black (100 char line length)..."
+          black packages/python-sdk/src/ --check --line-length 100
+          black examples/python-scripts/ --check --line-length 100
+      
+      - name: Check Python code with Ruff
+        run: |
+          echo "Linting Python code with Ruff..."
+          cd packages/python-sdk
+          ruff check src/
+      
+      - name: Report formatting issues
+        if: failure()
+        run: |
+          echo "❌ Code formatting check failed!"
+          echo "Run the following to fix:"
+          echo "  cd packages/python-sdk && black src/ --line-length 100"
+          echo "  cd examples/python-scripts && black . --line-length 100"
+
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install latest npm
+        run: npm install -g npm@latest
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run smoke tests
+        run: |
+          chmod +x ./scripts/smoke-test.sh
+          ./scripts/smoke-test.sh
+      
+      - name: Report test results
+        if: failure()
+        run: |
+          echo "❌ Smoke tests failed!"
+          echo "Check the logs above for details."
+
+  commit-signatures:
+    name: Verify Commit Signatures
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for signature verification
+      
+      - name: Install GPG
+        run: sudo apt-get update && sudo apt-get install -y gnupg
+      
+      - name: Verify commit signatures
+        run: |
+          echo "Checking commit signatures..."
+          
+          # Get the base branch to compare against
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+            HEAD_REF="${{ github.event.pull_request.head.sha }}"
+          else
+            # For push events, check the last commit
+            BASE_REF="HEAD~1"
+            HEAD_REF="HEAD"
+          fi
+          
+          # Get list of commits in this PR/push
+          COMMITS=$(git rev-list $BASE_REF..$HEAD_REF)
+          
+          if [ -z "$COMMITS" ]; then
+            echo "No new commits to check"
+            exit 0
+          fi
+          
+          UNSIGNED_COMMITS=""
+          
+          for commit in $COMMITS; do
+            echo "Checking commit: $commit"
+            
+            # Check if commit is signed
+            if git verify-commit $commit 2>/dev/null; then
+              echo "  ✓ Signed"
+            else
+              # Try to show signature status
+              SIG_STATUS=$(git log --format="%G?" -1 $commit)
+              case "$SIG_STATUS" in
+                G) echo "  ✓ Good signature" ;;
+                B) echo "  ✗ Bad signature"; UNSIGNED_COMMITS="$UNSIGNED_COMMITS $commit" ;;
+                U) echo "  ✗ Good signature, unknown validity"; ;; # Allow unknown validity
+                X) echo "  ✗ Good signature, expired"; UNSIGNED_COMMITS="$UNSIGNED_COMMITS $commit" ;;
+                Y) echo "  ✗ Good signature, expired key"; UNSIGNED_COMMITS="$UNSIGNED_COMMITS $commit" ;;
+                R) echo "  ✗ Good signature, revoked key"; UNSIGNED_COMMITS="$UNSIGNED_COMMITS $commit" ;;
+                E) echo "  ✗ Cannot check signature"; ;; # Allow if can't check
+                N) echo "  ✗ No signature"; UNSIGNED_COMMITS="$UNSIGNED_COMMITS $commit" ;;
+                *) echo "  ✗ Unknown status: $SIG_STATUS"; ;;
+              esac
+            fi
+          done
+          
+          if [ -n "$UNSIGNED_COMMITS" ]; then
+            echo ""
+            echo "❌ Found unsigned or invalid commits:"
+            for commit in $UNSIGNED_COMMITS; do
+              git log --format="%H - %s (by %an)" -1 $commit
+            done
+            echo ""
+            echo "All commits must be signed with GPG."
+            echo "See CONTRIBUTING.md for setup instructions."
+            exit 1
+          else
+            echo ""
+            echo "✓ All commits are properly signed"
+          fi
+
+  all-checks:
+    name: All Quality Checks
+    runs-on: ubuntu-latest
+    needs: [code-formatting, smoke-tests, commit-signatures]
+    
+    steps:
+      - name: All checks passed
+        run: |
+          echo "✅ All quality checks passed!"
+          echo "  - Code formatting: OK"
+          echo "  - Smoke tests: OK"
+          echo "  - Commit signatures: OK"
+

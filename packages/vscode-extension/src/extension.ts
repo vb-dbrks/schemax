@@ -5,6 +5,7 @@ import * as storageV2 from './storage-v2';
 import { Op } from './shared/ops';
 import { trackEvent } from './telemetry';
 import { ProjectFile } from './shared/model';
+import { SQLGenerator } from './sql-generator';
 
 let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
@@ -31,7 +32,12 @@ export function activate(context: vscode.ExtensionContext) {
     () => createSnapshotCommand_impl()
   );
 
-  context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, outputChannel);
+  const generateSQLCommand = vscode.commands.registerCommand(
+    'schemax.generateSQL',
+    () => generateSQLMigration()
+  );
+
+  context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, generateSQLCommand, outputChannel);
 
   outputChannel.appendLine('[SchemaX] Extension activated successfully!');
   outputChannel.appendLine('[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps, schemax.createSnapshot');
@@ -358,6 +364,78 @@ async function createSnapshotCommand_impl() {
       outputChannel.appendLine(`[SchemaX] Stack trace: ${error.stack}`);
     }
     vscode.window.showErrorMessage(`Failed to create snapshot: ${error}`);
+  }
+}
+
+/**
+ * Generate SQL migration command implementation
+ */
+async function generateSQLMigration() {
+  outputChannel.appendLine('[SchemaX] Generate SQL migration command invoked');
+  
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!workspaceFolder) {
+    outputChannel.appendLine('[SchemaX] ERROR: No workspace folder open');
+    vscode.window.showErrorMessage('SchemaX: Please open a workspace folder first.');
+    return;
+  }
+
+  try {
+    outputChannel.appendLine(`[SchemaX] Loading current state from: ${workspaceFolder.uri.fsPath}`);
+    
+    // Load current state and changelog
+    const { state, changelog } = await storageV2.loadCurrentState(workspaceFolder.uri);
+    
+    outputChannel.appendLine(`[SchemaX] Loaded state: ${state.catalogs.length} catalogs`);
+    outputChannel.appendLine(`[SchemaX] Changelog operations: ${changelog.ops.length}`);
+
+    if (changelog.ops.length === 0) {
+      outputChannel.appendLine('[SchemaX] No operations in changelog, nothing to generate');
+      vscode.window.showInformationMessage('No changes to generate SQL for. Changelog is empty.');
+      return;
+    }
+
+    // Generate SQL
+    const generator = new SQLGenerator(state);
+    const sql = generator.generateSQL(changelog.ops);
+    
+    outputChannel.appendLine(`[SchemaX] Generated SQL (${sql.length} characters)`);
+
+    // Create migrations directory
+    const migrationsDir = path.join(workspaceFolder.uri.fsPath, '.schemax', 'migrations');
+    if (!fs.existsSync(migrationsDir)) {
+      fs.mkdirSync(migrationsDir, { recursive: true });
+      outputChannel.appendLine(`[SchemaX] Created migrations directory: ${migrationsDir}`);
+    }
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').substring(0, 19);
+    const filename = `migration_${timestamp}.sql`;
+    const filepath = path.join(migrationsDir, filename);
+    
+    // Write SQL to file
+    fs.writeFileSync(filepath, sql, 'utf8');
+    outputChannel.appendLine(`[SchemaX] SQL written to: ${filepath}`);
+
+    // Open the file in editor
+    const doc = await vscode.workspace.openTextDocument(filepath);
+    await vscode.window.showTextDocument(doc);
+    
+    vscode.window.showInformationMessage(
+      `SQL migration generated: ${filename} (${changelog.ops.length} operations)`
+    );
+    
+    trackEvent('sql_generated', { 
+      opsCount: changelog.ops.length,
+      sqlLength: sql.length
+    });
+
+  } catch (error) {
+    outputChannel.appendLine(`[SchemaX] ERROR: SQL generation failed: ${error}`);
+    if (error instanceof Error) {
+      outputChannel.appendLine(`[SchemaX] Stack trace: ${error.stack}`);
+    }
+    vscode.window.showErrorMessage(`Failed to generate SQL: ${error}`);
   }
 }
 

@@ -1,0 +1,63 @@
+name: Deploy Schema to Prod
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: true
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install SchemaX CLI
+        run: pip install schemax-py
+      
+      - name: Validate schema
+        run: schemax validate
+      
+      - name: Generate Databricks Asset Bundle
+        run: |
+          VERSION=${{ github.event.release.tag_name || github.event.inputs.version }}
+          schemax bundle \
+            --environment prod \
+            --version $VERSION \
+            --output .schemax/dab
+      
+      - name: Deploy DAB to Databricks
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
+        run: |
+          cd .schemax/dab/prod
+          databricks bundle deploy --target prod
+          databricks bundle run schemax_migration --target prod
+      
+      - name: Record deployment
+        run: |
+          VERSION=${{ github.event.release.tag_name || github.event.inputs.version }}
+          schemax deploy \
+            --environment prod \
+            --version $VERSION
+      
+      - name: Create deployment summary
+        run: |
+          echo "### Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ github.event.release.tag_name || github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ✅ Success" >> $GITHUB_STEP_SUMMARY
+
