@@ -5,8 +5,9 @@ This module generates SQL DDL statements for all 31 operation types,
 creating idempotent migrations for Unity Catalog.
 """
 
-from typing import Dict, Optional, List
-from .models import State, Op, Catalog, Schema, Table, Column
+from typing import Dict, List, Optional
+
+from .models import Op, State
 
 
 class SQLGenerator:
@@ -219,7 +220,10 @@ class SQLGenerator:
         null_clause = "" if nullable else " NOT NULL"
         comment_clause = f" COMMENT '{comment.replace(chr(39), chr(39)*2)}'" if comment else ""
 
-        return f"ALTER TABLE `{table_fqn}` ADD COLUMN `{col_name}` {col_type}{null_clause}{comment_clause}"
+        return (
+            f"ALTER TABLE `{table_fqn}` ADD COLUMN `{col_name}` "
+            f"{col_type}{null_clause}{comment_clause}"
+        )
 
     def _rename_column(self, op: Op) -> str:
         table_fqn = self.id_to_name.get(op.payload["tableId"], "unknown")
@@ -265,7 +269,10 @@ class SQLGenerator:
         col_name = self.id_to_name.get(op.target, "unknown")
         tag_name = op.payload["tagName"]
         tag_value = op.payload["tagValue"].replace("'", "''")
-        return f"ALTER TABLE `{table_fqn}` ALTER COLUMN `{col_name}` SET TAGS ('{tag_name}' = '{tag_value}')"
+        return (
+            f"ALTER TABLE `{table_fqn}` ALTER COLUMN `{col_name}` "
+            f"SET TAGS ('{tag_name}' = '{tag_value}')"
+        )
 
     def _unset_column_tag(self, op: Op) -> str:
         table_fqn = self.id_to_name.get(op.payload["tableId"], "unknown")
@@ -284,14 +291,20 @@ class SQLGenerator:
 
         if constraint_type == "primary_key":
             timeseries = " TIMESERIES" if op.payload.get("timeseries") else ""
-            return f"ALTER TABLE `{table_fqn}` ADD {name_clause}PRIMARY KEY({', '.join(f'`{c}`' for c in columns)}){timeseries}"
+            cols = ", ".join(f"`{c}`" for c in columns)
+            return f"ALTER TABLE `{table_fqn}` ADD {name_clause}" f"PRIMARY KEY({cols}){timeseries}"
 
         elif constraint_type == "foreign_key":
             parent_table = self.id_to_name.get(op.payload.get("parentTable", ""), "unknown")
             parent_columns = [
                 self.id_to_name.get(cid, cid) for cid in op.payload.get("parentColumns", [])
             ]
-            return f"ALTER TABLE `{table_fqn}` ADD {name_clause}FOREIGN KEY({', '.join(f'`{c}`' for c in columns)}) REFERENCES `{parent_table}`({', '.join(f'`{c}`' for c in parent_columns)})"
+            cols = ", ".join(f"`{c}`" for c in columns)
+            parent_cols = ", ".join(f"`{c}`" for c in parent_columns)
+            return (
+                f"ALTER TABLE `{table_fqn}` ADD {name_clause}"
+                f"FOREIGN KEY({cols}) REFERENCES `{parent_table}`({parent_cols})"
+            )
 
         elif constraint_type == "check":
             expression = op.payload.get("expression", "TRUE")

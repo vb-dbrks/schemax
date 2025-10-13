@@ -5,12 +5,13 @@ Click-based CLI for SchemaX.
 import sys
 from pathlib import Path
 from typing import Optional
+
 import click
 from rich.console import Console
 from rich.syntax import Syntax
 
-from .storage import load_current_state, read_project
 from .sql_generator import SQLGenerator
+from .storage import load_current_state, read_project
 
 console = Console()
 
@@ -154,10 +155,11 @@ def deploy(environment: str, version: Optional[str], mark_deployed: bool) -> Non
     try:
         workspace = Path.cwd()
 
-        from .storage import read_project, read_changelog, write_deployment, get_last_deployment
-        from .models import Deployment
         from datetime import datetime
         from uuid import uuid4
+
+        from .models import Deployment
+        from .storage import read_changelog, read_project, write_deployment
 
         console.print(f"Recording deployment to [cyan]{environment}[/cyan]...")
 
@@ -199,7 +201,7 @@ def deploy(environment: str, version: Optional[str], mark_deployed: bool) -> Non
         # Write deployment
         write_deployment(workspace, deployment)
 
-        console.print(f"[green]✓[/green] Deployment recorded")
+        console.print("[green]✓[/green] Deployment recorded")
         console.print(f"  Deployment ID: {deployment.id}")
         console.print(f"  Environment: {deployment.environment}")
         console.print(f"  Version: {deployment.schema_version}")
@@ -238,8 +240,8 @@ def bundle(environment: str, version: str, output: str) -> None:
     """Generate Databricks Asset Bundle for deployment"""
 
     try:
-        workspace = Path.cwd()
-        output_dir = Path(output)
+        _workspace = Path.cwd()  # noqa: F841 - Reserved for future DAB implementation
+        _output_dir = Path(output)  # noqa: F841 - Reserved for future DAB implementation
 
         console.print(f"Generating DAB for [cyan]{environment}[/cyan] v{version}...")
 

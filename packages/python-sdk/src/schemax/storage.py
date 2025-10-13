@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Tuple
 
 from .models import (
-    ProjectFile,
     ChangelogFile,
+    Deployment,
+    ProjectFile,
     SnapshotFile,
     State,
-    Deployment,
 )
 
 

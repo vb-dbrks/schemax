@@ -8,24 +8,24 @@ __version__ = "0.1.0"
 
 from .models import (
     Catalog,
-    Schema,
-    Table,
+    ChangelogFile,
     Column,
-    Constraint,
-    RowFilter,
     ColumnMask,
+    Constraint,
     Op,
     ProjectFile,
+    RowFilter,
+    Schema,
     SnapshotFile,
-    ChangelogFile,
-)
-from .storage import (
-    read_project,
-    read_changelog,
-    read_snapshot,
-    load_current_state,
+    Table,
 )
 from .sql_generator import SQLGenerator
+from .storage import (
+    load_current_state,
+    read_changelog,
+    read_project,
+    read_snapshot,
+)
 
 __all__ = [
     "__version__",

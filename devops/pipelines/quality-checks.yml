@@ -21,14 +21,20 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install Black
-        run: pip install black
+      - name: Install linters
+        run: pip install black ruff
       
-      - name: Check Python code formatting
+      - name: Check Python code formatting with Black
         run: |
           echo "Checking Python code formatting with Black (100 char line length)..."
           black packages/python-sdk/src/ --check --line-length 100
           black examples/python-scripts/ --check --line-length 100
+      
+      - name: Check Python code with Ruff
+        run: |
+          echo "Linting Python code with Ruff..."
+          cd packages/python-sdk
+          ruff check src/
       
       - name: Report formatting issues
         if: failure()

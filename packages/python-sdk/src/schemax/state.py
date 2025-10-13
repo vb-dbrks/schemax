@@ -9,15 +9,15 @@ from copy import deepcopy
 from typing import List, Optional
 
 from .models import (
-    State,
     Catalog,
-    Schema,
-    Table,
     Column,
-    Constraint,
-    RowFilter,
     ColumnMask,
+    Constraint,
     Op,
+    RowFilter,
+    Schema,
+    State,
+    Table,
 )
 
 

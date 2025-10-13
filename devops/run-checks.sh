@@ -25,9 +25,9 @@ NC='\033[0m' # No Color
 FAILURES=0
 
 # ==========================================
-# 1. Code Formatting Check
+# 1. Code Formatting Check (Black)
 # ==========================================
-echo "1️⃣  Checking Python code formatting..."
+echo "1️⃣  Checking Python code formatting (Black)..."
 echo "--------------------------------------"
 
 if command -v black &> /dev/null; then
@@ -50,9 +50,32 @@ fi
 echo ""
 
 # ==========================================
-# 2. Smoke Tests
+# 2. Python Linting Check (Ruff)
 # ==========================================
-echo "2️⃣  Running smoke tests..."
+echo "2️⃣  Linting Python code (Ruff)..."
+echo "--------------------------------------"
+
+if command -v ruff &> /dev/null; then
+    if (cd packages/python-sdk && ruff check src/); then
+        echo -e "${GREEN}✓${NC} Python linting passed"
+    else
+        echo -e "${RED}✗${NC} Python linting failed"
+        echo ""
+        echo "To fix, run:"
+        echo "  cd packages/python-sdk && ruff check src/ --fix"
+        FAILURES=$((FAILURES + 1))
+    fi
+else
+    echo -e "${YELLOW}⚠${NC}  Ruff not installed, skipping linting check"
+    echo "Install with: pip install ruff"
+fi
+
+echo ""
+
+# ==========================================
+# 3. Smoke Tests
+# ==========================================
+echo "3️⃣  Running smoke tests..."
 echo "--------------------------------------"
 
 if [ -f "./scripts/smoke-test.sh" ]; then

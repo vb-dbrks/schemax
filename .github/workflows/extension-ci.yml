@@ -39,7 +39,7 @@ jobs:
         run: npm run package
       
       - name: Upload VSIX
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: schemax-vscode-extension
           path: packages/vscode-extension/*.vsix
