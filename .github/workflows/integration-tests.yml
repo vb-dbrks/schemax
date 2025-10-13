@@ -28,7 +28,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install Node dependencies
-        run: npm ci --include=optional
+        run: npm ci
       
       - name: Build VS Code extension
         working-directory: packages/vscode-extension
