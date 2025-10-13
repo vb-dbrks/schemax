@@ -47,16 +47,19 @@ We welcome feature suggestions! Please open an issue with:
 1. **Fork the repository** and create a branch from `main`
 2. **Make your changes** following the coding guidelines
 3. **Format your code** (see [Code Formatting](#code-formatting))
-4. **Test thoroughly** using the testing checklist
-5. **Update documentation** (see [Documentation Standards](#documentation-standards))
-6. **Commit with clear messages** (see [Commit Messages](#commit-messages))
-7. **Submit a pull request** with a detailed description
+4. **Run quality checks** (see [Quality Checks](#quality-checks))
+5. **Test thoroughly** using the testing checklist
+6. **Update documentation** (see [Documentation Standards](#documentation-standards))
+7. **Sign your commits** with GPG (see [Commit Signing](#commit-signing))
+8. **Commit with clear messages** (see [Commit Messages](#commit-messages))
+9. **Submit a pull request** with a detailed description
 
 **Pull Request Guidelines:**
 - Keep changes focused (one feature/fix per PR)
 - Include tests if adding new functionality
 - Update CHANGELOG.md (extension only)
-- Ensure all checks pass
+- Ensure all checks pass (CI will verify)
+- Sign all commits with GPG
 - Respond to review feedback promptly
 
 ## Development Setup
@@ -144,29 +147,48 @@ While we don't enforce Prettier, we recommend these settings:
 
 ### Pre-commit Hook (Recommended)
 
+Use the DevOps quality checks in your pre-commit hook:
+
 Create `.git/hooks/pre-commit`:
 
 ```bash
 #!/bin/bash
-set -e
 
-echo "Formatting Python code with Black..."
-black packages/python-sdk/src/ --check --line-length 100 || {
-  echo "Python code needs formatting. Run: black packages/python-sdk/src/ --line-length 100"
-  exit 1
-}
+echo "Running quality checks..."
+./devops/run-checks.sh
 
-echo "Building TypeScript..."
-cd packages/vscode-extension
-npm run build
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "Quality checks failed. Commit aborted."
+    echo "Fix the issues or use --no-verify to skip checks."
+    exit 1
+fi
 
-echo "All checks passed! ✅"
+echo "Quality checks passed. Proceeding with commit."
 ```
 
 Make executable:
 ```bash
 chmod +x .git/hooks/pre-commit
 ```
+
+## Quality Checks
+
+Before submitting a PR, run all quality checks:
+
+```bash
+./devops/run-checks.sh
+```
+
+This script runs:
+1. **Code Formatting Check** - Validates Python code with Black
+2. **Smoke Tests** - Verifies extension builds and SDK installs
+
+**CI Pipeline** will automatically run these checks plus:
+- GPG commit signature verification
+- All checks must pass before merge
+
+See [devops/README.md](devops/README.md) for details.
 
 ## Coding Standards
 
@@ -581,6 +603,122 @@ style(sdk): format Python code with Black
 
 Ran Black formatter on all Python source files with
 100 character line length.
+```
+
+## Commit Signing
+
+**All commits must be signed with GPG.**
+
+### Why Commit Signing?
+
+- Verifies commit authenticity
+- Ensures code integrity
+- Required by CI pipeline
+- Best practice for security
+
+### Setup GPG Signing
+
+**1. Generate GPG key (if you don't have one):**
+
+```bash
+gpg --full-generate-key
+# Choose RSA and RSA
+# Key size: 4096 bits
+# Expiration: Your preference
+# Enter your name and email
+```
+
+**2. List your GPG keys:**
+
+```bash
+gpg --list-secret-keys --keyid-format=long
+```
+
+Output:
+```
+sec   rsa4096/ABC123DEF456 2025-01-01 [SC]
+uid                 [ultimate] Your Name <your.email@example.com>
+```
+
+**3. Configure Git to use GPG:**
+
+```bash
+# Set your GPG key (use the ID from above, e.g., ABC123DEF456)
+git config --global user.signingkey ABC123DEF456
+
+# Enable automatic signing
+git config --global commit.gpgsign true
+git config --global tag.gpgsign true
+```
+
+**4. Add GPG key to GitHub:**
+
+```bash
+# Export your public key
+gpg --armor --export ABC123DEF456
+
+# Copy the output (starts with -----BEGIN PGP PUBLIC KEY BLOCK-----)
+```
+
+Go to GitHub → Settings → SSH and GPG keys → New GPG key → Paste
+
+**5. Verify signing works:**
+
+```bash
+git commit -m "test: verify gpg signing" --allow-empty
+git log --show-signature -1
+```
+
+You should see "Good signature from..." in the output.
+
+### Troubleshooting GPG
+
+**Error: "gpg failed to sign the data"**
+
+```bash
+# Test GPG
+echo "test" | gpg --clearsign
+
+# If it asks for passphrase in terminal, configure GPG agent
+export GPG_TTY=$(tty)
+echo 'export GPG_TTY=$(tty)' >> ~/.bashrc  # or ~/.zshrc
+```
+
+**Error: "No secret key"**
+
+```bash
+# Verify key exists
+gpg --list-secret-keys
+
+# Reconfigure Git with correct key ID
+git config --global user.signingkey YOUR_KEY_ID
+```
+
+**macOS: "Inappropriate ioctl for device"**
+
+```bash
+# Add to ~/.zshrc or ~/.bashrc
+export GPG_TTY=$(tty)
+
+# Use pinentry-mac
+brew install pinentry-mac
+echo "pinentry-program /opt/homebrew/bin/pinentry-mac" >> ~/.gnupg/gpg-agent.conf
+gpgconf --kill gpg-agent
+```
+
+### Signing Existing Commits
+
+If you forgot to sign commits:
+
+```bash
+# Amend last commit with signature
+git commit --amend --no-edit -S
+
+# Rebase and sign multiple commits
+git rebase --exec 'git commit --amend --no-edit -n -S' -i HEAD~5
+
+# Force push (if already pushed)
+git push --force-with-lease
 ```
 
 ## Branching Strategy

@@ -294,6 +294,30 @@ jobs:
 
 See [examples/github-actions/](examples/github-actions/) for more templates.
 
+## Quality Checks & CI/CD
+
+### Quick Quality Checks
+
+Run all quality checks locally (formatting + smoke tests):
+
+```bash
+./devops/run-checks.sh
+```
+
+This will:
+- ✅ Check Python code formatting (Black)
+- ✅ Run smoke tests (build, install, validate)
+- ✅ Report any issues
+
+### CI/CD Pipeline
+
+The project includes automated quality checks via GitHub Actions:
+- Code formatting validation
+- Smoke tests
+- GPG commit signature verification
+
+See [devops/README.md](devops/README.md) for pipeline details.
+
 ## Testing
 
 ### Quick Smoke Test
@@ -340,7 +364,10 @@ pip install -e ".[dev]"
 ### Run Tests
 
 ```bash
-# Smoke test (quick validation)
+# Quality checks (formatting + smoke tests)
+./devops/run-checks.sh
+
+# Smoke test only
 ./scripts/smoke-test.sh
 
 # Extension build
