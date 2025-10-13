@@ -1,0 +1,55 @@
+name: Deploy Schema to Dev
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install SchemaX CLI
+        run: pip install schemax-py
+      
+      - name: Validate schema
+        run: schemax validate
+      
+      - name: Generate SQL migration
+        run: |
+          schemax sql \
+            --environment dev \
+            --output migration-dev.sql
+      
+      - name: Upload migration SQL
+        uses: actions/upload-artifact@v3
+        with:
+          name: migration-dev
+          path: migration-dev.sql
+      
+      - name: Record deployment
+        run: |
+          schemax deploy \
+            --environment dev \
+            --version ${{ github.sha }}
+        
+      # Optional: Execute SQL on Databricks
+      # - name: Deploy to Databricks
+      #   env:
+      #     DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      #     DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      #   run: |
+      #     databricks sql execute \
+      #       --file migration-dev.sql \
+      #       --warehouse-id ${{ secrets.WAREHOUSE_ID }}
+

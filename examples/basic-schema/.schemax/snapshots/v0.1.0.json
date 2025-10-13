@@ -1,0 +1,74 @@
+{
+  "id": "snap_001",
+  "version": "v0.1.0",
+  "name": "Initial schema",
+  "ts": "2025-01-01T00:00:00.000Z",
+  "createdBy": "example",
+  "state": {
+    "catalogs": [
+      {
+        "id": "cat_001",
+        "name": "main",
+        "schemas": [
+          {
+            "id": "schema_001",
+            "name": "sales",
+            "tables": [
+              {
+                "id": "table_001",
+                "name": "customers",
+                "format": "delta",
+                "columns": [
+                  {
+                    "id": "col_001",
+                    "name": "customer_id",
+                    "type": "BIGINT",
+                    "nullable": false,
+                    "comment": "Unique customer identifier"
+                  },
+                  {
+                    "id": "col_002",
+                    "name": "email",
+                    "type": "STRING",
+                    "nullable": false,
+                    "comment": "Customer email address",
+                    "tags": {
+                      "PII": "sensitive",
+                      "category": "contact"
+                    }
+                  },
+                  {
+                    "id": "col_003",
+                    "name": "created_at",
+                    "type": "TIMESTAMP",
+                    "nullable": false
+                  }
+                ],
+                "properties": {
+                  "delta.enableChangeDataFeed": "true",
+                  "delta.logRetentionDuration": "interval 30 days"
+                },
+                "constraints": [
+                  {
+                    "id": "pk_001",
+                    "type": "primary_key",
+                    "name": "pk_customers",
+                    "columns": ["col_001"],
+                    "notEnforced": true
+                  }
+                ],
+                "grants": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "opsIncluded": ["op_001", "op_002", "op_003", "op_004", "op_005"],
+  "previousSnapshot": null,
+  "hash": "abc123",
+  "tags": ["initial"],
+  "comment": "First version of the schema with basic catalog and tables"
+}
+

@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "name": "basic_schema_example",
+  "environments": ["dev", "test", "prod"],
+  "snapshots": [
+    {
+      "id": "snap_001",
+      "version": "v0.1.0",
+      "name": "Initial schema",
+      "ts": "2025-01-01T00:00:00.000Z",
+      "createdBy": "example",
+      "file": ".schemax/snapshots/v0.1.0.json",
+      "previousSnapshot": null,
+      "opsCount": 5,
+      "hash": "abc123",
+      "tags": ["initial"],
+      "comment": "First version of the schema with basic catalog and tables"
+    }
+  ],
+  "deployments": [],
+  "settings": {
+    "autoIncrementVersion": true,
+    "versionPrefix": "v",
+    "requireSnapshotForProd": true,
+    "allowDrift": false,
+    "requireComments": false,
+    "warnOnBreakingChanges": true
+  },
+  "latestSnapshot": "v0.1.0"
+}
+

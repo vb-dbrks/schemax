@@ -1,169 +1,378 @@
 # SchemaX
 
-A Visual Studio Code extension for managing Databricks Unity Catalog schema definitions with version control.
+**Databricks Unity Catalog schema management with version control**
 
-## Overview
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-SchemaX provides a visual designer for defining and managing Unity Catalog schemas. It uses an append-only operation log architecture with snapshots, enabling version-controlled schema evolution.
+SchemaX is a comprehensive toolkit for managing Databricks Unity Catalog schemas using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
 
 ## Features
 
-- **Visual Schema Designer**: Intuitive UI for creating and managing catalogs, schemas, tables, and columns
-- **Table Properties**: Full support for Unity Catalog TBLPROPERTIES including Delta Lake configuration
-- **Version Control**: Snapshot-based versioning with semantic versioning (v0.1.0, v0.2.0, etc.)
-- **Change Tracking**: Append-only operation log tracks every schema modification
-- **Inline Editing**: Edit table and column properties directly in the grid
-- **Git-Friendly**: JSON-based storage optimized for version control systems
+### 🎨 Visual Schema Designer (VS Code Extension)
+- Intuitive drag-and-drop interface for schema modeling
+- Full Unity Catalog support (catalogs, schemas, tables, columns)
+- Data governance features (constraints, tags, row filters, column masks)
+- Snapshot-based versioning with semantic versions
+- Real-time SQL generation from changes
 
-## Installation
+### 🐍 Python SDK & CLI
+- Command-line tools for automation and CI/CD
+- Python API for custom workflows
+- SQL migration generation
+- Deployment tracking across environments
+- Schema validation and comparison
 
-### From VSIX (Development)
-
-1. Download the latest `.vsix` file from releases
-2. Open VS Code
-3. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
-4. Type "Install from VSIX" and select the downloaded file
-
-### From Marketplace (Coming Soon)
-
-Search for "SchemaX" in the VS Code Extensions marketplace.
+### 🚀 Key Capabilities
+- **31 Operation Types**: Complete coverage of Unity Catalog DDL
+- **Dual Implementation**: TypeScript (VS Code) + Python (CLI/SDK)
+- **SQL Generation**: Idempotent DDL statements ready for deployment
+- **Version Control**: Git-friendly JSON format with snapshots
+- **CI/CD Ready**: Integrate with GitHub Actions, GitLab CI, etc.
 
 ## Quick Start
 
-1. Open a workspace folder in VS Code
-2. Press `Cmd+Shift+P` and run **SchemaX: Open Designer**
-3. Use the toolbar to add catalogs, schemas, and tables
-4. Make changes to your schema
-5. Create a snapshot: `Cmd+Shift+P` → **SchemaX: Create Snapshot**
+### VS Code Extension
 
-## Usage
+1. **Launch Extension Development Host**:
+   ```bash
+   cd schemax
+   code .
+   # Press F5 (or Fn+F5)
+   ```
 
-### Creating Schema Objects
+2. **In the new window**:
+   - Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
+   - Type: **SchemaX: Open Designer**
+   - Start designing your schema!
 
-- **Add Catalog**: Click "Add Catalog" in the toolbar
-- **Add Schema**: Select a catalog, then click "Add Schema"
-- **Add Table**: Select a schema, then click "Add Table"
-- **Add Column**: Select a table, then click "Add Column"
+3. **Generate SQL**:
+   - After making changes
+   - Press `Cmd+Shift+P`
+   - Type: **SchemaX: Generate SQL Migration**
 
-### Editing Columns
+### Python CLI
 
-Click the "Edit" button on any column to modify:
-- Column name
-- Data type (STRING, INT, BIGINT, DOUBLE, etc.)
-- Nullable flag
-- Comment
+1. **Install**:
+   ```bash
+   cd packages/python-sdk
+   pip install -e .
+   ```
 
-Click "Save" to apply changes.
+2. **Use CLI**:
+   ```bash
+   # Validate schema files
+   schemax validate
+   
+   # Generate SQL migration
+   schemax sql --output migration.sql
+   
+   # Track deployment
+   schemax deploy --environment prod --version v1.0.0 --mark-deployed
+   ```
 
-### Managing Table Properties
+3. **Python API**:
+   ```python
+   from pathlib import Path
+   from schemax.storage import load_current_state
+   from schemax.sql_generator import SQLGenerator
+   
+   state, changelog = load_current_state(Path.cwd())
+   generator = SQLGenerator(state)
+   sql = generator.generate_sql(changelog.ops)
+   print(sql)
+   ```
 
-Table properties (TBLPROPERTIES) allow you to configure Delta Lake settings and add custom metadata:
+## Documentation
 
-1. Select a table to view its properties
-2. Scroll to the **Table Properties** section
-3. Click **+ Add Property** to add a new property
-4. Enter the property key and value
-5. Click **Add** to save
+| Document | Description |
+|----------|-------------|
+| **[Quickstart Guide](docs/QUICKSTART.md)** | Complete getting started guide |
+| **[Testing Guide](TESTING.md)** | How to test all components |
+| **[Architecture](docs/ARCHITECTURE.md)** | Technical design and concepts |
+| **[Development](docs/DEVELOPMENT.md)** | Contributing and building from source |
+| **[VS Code Extension](packages/vscode-extension/README.md)** | Extension-specific documentation |
+| **[Python SDK](packages/python-sdk/README.md)** | SDK and CLI reference |
 
-**Common Delta Lake properties:**
-- `delta.appendOnly` - Disable UPDATE/DELETE operations
-- `delta.logRetentionDuration` - History retention (e.g., `interval 30 days`)
-- `delta.deletedFileRetentionDuration` - VACUUM retention (e.g., `interval 7 days`)
-- `delta.enableChangeDataFeed` - Enable change data capture
+## Repository Structure
 
-For a complete list, see the [Unity Catalog TBLPROPERTIES documentation](https://learn.microsoft.com/en-us/azure/databricks/sql/language-manual/sql-ref-syntax-ddl-tblproperties).
+```
+schemax/
+├── packages/
+│   ├── vscode-extension/       # VS Code Extension (TypeScript + React)
+│   │   ├── src/
+│   │   │   ├── sql-generator.ts      # SQL generation
+│   │   │   ├── extension.ts          # Extension commands
+│   │   │   ├── storage-v2.ts         # File storage
+│   │   │   └── webview/              # React UI
+│   │   └── package.json
+│   │
+│   └── python-sdk/             # Python SDK & CLI
+│       ├── src/schemax/
+│       │   ├── models.py             # Data models
+│       │   ├── storage.py            # File I/O
+│       │   ├── state.py              # State reducer
+│       │   ├── sql_generator.py      # SQL generation
+│       │   ├── cli.py                # CLI commands
+│       │   └── ops.py                # Operation types
+│       └── pyproject.toml
+│
+├── examples/                   # Working examples
+│   ├── basic-schema/          # Sample project
+│   ├── github-actions/        # CI/CD templates
+│   └── python-scripts/        # SDK usage examples
+│
+├── docs/                       # Documentation
+│   ├── QUICKSTART.md          # Getting started
+│   ├── ARCHITECTURE.md        # Technical design
+│   └── DEVELOPMENT.md         # Contributing guide
+│
+├── scripts/                    # Development scripts
+│   └── smoke-test.sh          # Quick validation
+│
+└── .github/workflows/          # CI/CD
+    ├── extension-ci.yml
+    ├── python-sdk-ci.yml
+    └── integration-tests.yml
+```
 
-### Creating Snapshots
+## How It Works
 
-Snapshots capture the complete state of your schema at a point in time:
+### 1. Design Schema
 
-1. Make changes to your schema
-2. Run `Cmd+Shift+P` → **SchemaX: Create Snapshot**
-3. Enter a name (e.g., "Initial schema")
-4. Optionally add a description
-
-Snapshots are stored in `.schemax/snapshots/` and can be used to:
-- Track schema evolution over time
-- Generate migration scripts (coming soon)
-- Deploy to different environments (coming soon)
-
-### Viewing Changes
-
-- **Snapshot Panel**: Shows version history and uncommitted changes
-- **Last Operations**: Run **SchemaX: Show Last Emitted Changes** to view recent operations
-
-## File Structure
-
-SchemaX creates a `.schemax` directory in your workspace:
+Use the VS Code visual designer or directly edit `.schemax/` files:
 
 ```
 .schemax/
-├── project.json           # Project metadata
-├── changelog.json         # Uncommitted changes
+├── project.json          # Project metadata
+├── changelog.json        # Uncommitted operations
 └── snapshots/
-    ├── v0.1.0.json       # Snapshot files
-    ├── v0.2.0.json
-    └── v0.3.0.json
+    └── v*.json          # Version snapshots
 ```
 
-### Version Control
+### 2. Track Changes
 
-We recommend committing the entire `.schemax` directory to version control:
-- Snapshots represent stable releases
-- Changelog shows work in progress
-- Easy to review changes in pull requests
+Every modification generates an operation:
+```json
+{
+  "id": "op_abc123",
+  "ts": "2025-10-13T12:00:00Z",
+  "op": "add_column",
+  "target": "table_001",
+  "payload": {
+    "tableId": "table_001",
+    "colId": "col_001",
+    "name": "customer_id",
+    "type": "BIGINT",
+    "nullable": false
+  }
+}
+```
 
-## Architecture
+### 3. Generate SQL
 
-SchemaX uses a two-tier architecture:
+Convert operations to SQL DDL:
+```sql
+-- Op: op_abc123 (2025-10-13T12:00:00Z)
+-- Type: add_column
+ALTER TABLE `main`.`sales`.`customers` 
+ADD COLUMN `customer_id` BIGINT NOT NULL;
+```
 
-1. **Snapshots**: Point-in-time captures of complete schema state
-   - Stored as separate files for each version
-   - Immutable once created
-   - Lightweight metadata in `project.json`
+### 4. Deploy
 
-2. **Changelog**: Tracks operations since the last snapshot
-   - Append-only operation log
-   - Cleared when a snapshot is created
-   - Represents uncommitted work
+Execute SQL on Databricks and track deployment:
+```bash
+# Generate SQL
+schemax sql --environment prod --output deploy.sql
 
-This design provides:
-- Fast loading (only latest snapshot + changelog)
-- Clean git diffs (snapshots rarely change)
-- Efficient storage (bounded growth)
+# Execute on Databricks
+databricks sql execute --file deploy.sql --warehouse-id <id>
 
-## Development
+# Track deployment
+schemax deploy --environment prod --version v1.0.0 --mark-deployed
+```
 
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for information on:
-- Building from source
-- Extension architecture
-- Contributing guidelines
-- Testing procedures
+## Unity Catalog Support
 
-## Roadmap
+SchemaX supports all major Unity Catalog features:
 
-- [ ] SQL migration script generation
-- [ ] Databricks workspace deployment
-- [ ] Drift detection
-- [ ] Multi-environment support
-- [ ] Rollback capabilities
+### Core Objects
+- ✅ Catalogs (CREATE, ALTER, DROP)
+- ✅ Schemas (CREATE, ALTER, DROP)
+- ✅ Tables (CREATE, ALTER, DROP)
+  - Delta and Iceberg formats
+  - Column mapping modes
+- ✅ Columns (ADD, RENAME, ALTER TYPE, DROP)
+
+### Data Governance
+- ✅ **Constraints**: PRIMARY KEY, FOREIGN KEY, CHECK
+- ✅ **Column Tags**: Key-value metadata for classification
+- ✅ **Row Filters**: Row-level security with UDF expressions
+- ✅ **Column Masks**: Data masking functions
+- ✅ **Table Properties**: TBLPROPERTIES for Delta Lake configuration
+
+### Example Schema
+
+```typescript
+{
+  "catalogs": [{
+    "name": "main",
+    "schemas": [{
+      "name": "sales",
+      "tables": [{
+        "name": "customers",
+        "format": "delta",
+        "columns": [
+          {
+            "name": "customer_id",
+            "type": "BIGINT",
+            "nullable": false,
+            "comment": "Primary key"
+          },
+          {
+            "name": "email",
+            "type": "STRING",
+            "nullable": false,
+            "tags": {
+              "PII": "sensitive",
+              "category": "contact"
+            }
+          }
+        ],
+        "constraints": [{
+          "type": "primary_key",
+          "name": "pk_customers",
+          "columns": ["col_001"]
+        }],
+        "properties": {
+          "delta.enableChangeDataFeed": "true"
+        }
+      }]
+    }]
+  }]
+}
+```
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+name: Deploy Schema
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install SchemaX
+        run: pip install schemax-py
+      
+      - name: Validate Schema
+        run: schemax validate
+      
+      - name: Generate SQL
+        run: schemax sql --environment prod --output migration.sql
+      
+      - name: Deploy to Databricks
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          databricks sql execute \
+            --file migration.sql \
+            --warehouse-id ${{ secrets.WAREHOUSE_ID }}
+```
+
+See [examples/github-actions/](examples/github-actions/) for more templates.
+
+## Testing
+
+### Quick Smoke Test
+
+```bash
+./scripts/smoke-test.sh
+```
+
+### Manual Testing
+
+See [TESTING.md](TESTING.md) for comprehensive testing guide.
+
+### Example Project
+
+```bash
+cd examples/basic-schema
+schemax validate
+schemax sql
+```
 
 ## Requirements
 
-- Visual Studio Code 1.90.0 or higher
-- A workspace folder (schemas are workspace-specific)
+- **VS Code Extension**: VS Code 1.90.0+
+- **Python SDK**: Python 3.9+
+- **Databricks**: Unity Catalog-enabled workspace
 
-## Known Limitations
+## Development
 
-- Currently supports schema definition only (no deployment)
-- Single-user workflow (no concurrent editing)
-- Limited to Unity Catalog object types (catalogs, schemas, tables, columns)
+### Build VS Code Extension
 
-## Support
+```bash
+cd packages/vscode-extension
+npm install
+npm run build
+```
 
-For issues, feature requests, or questions:
-- GitHub Issues: [Create an issue](https://github.com/vb-dbrks/schemax-vscode/issues)
-- Documentation: [docs/](docs/)
+### Install Python SDK
+
+```bash
+cd packages/python-sdk
+pip install -e ".[dev]"
+```
+
+### Run Tests
+
+```bash
+# Smoke test (quick validation)
+./scripts/smoke-test.sh
+
+# Extension build
+cd packages/vscode-extension && npm run build
+
+# Python tests (when added)
+cd packages/python-sdk && pytest
+```
+
+## Roadmap
+
+### ✅ Completed (v0.1.0)
+- Visual schema designer
+- Python SDK & CLI
+- SQL generation (TypeScript + Python)
+- Deployment tracking
+- All 31 operation types
+- Examples and documentation
+
+### 🔄 Future
+- [ ] Databricks Asset Bundle (DAB) generation
+- [ ] Schema import from Databricks
+- [ ] Drift detection
+- [ ] Visual diff viewer
+- [ ] Template library
+- [ ] Unit test suites
+- [ ] VS Code Marketplace publication
+- [ ] PyPI publication
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
@@ -171,10 +380,15 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Team
 
-### Development Team
-Developed by **Field Engineering**
+**Development Team**: Professional Services 
+**Developer**: [Varun Bhandary](https://github.com/vb-dbrks)
 
-### Contributors
-- [Varun Bhandary](https://github.com/vb-dbrks) - Creator & Lead Developer
+## Support
 
-We welcome contributions from the community! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+- **Issues**: [GitHub Issues](https://github.com/vb-dbrks/schemax/issues)
+- **Documentation**: [docs/](docs/)
+- **Examples**: [examples/](examples/)
+
+---
+
+**SchemaX** - Making Unity Catalog schema management declarative and version-controlled. 🚀

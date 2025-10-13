@@ -1,298 +1,639 @@
-# Quick Start Guide
+# SchemaX Quickstart Guide
 
-Get started with SchemaX in 5 minutes.
+Complete guide to get started with SchemaX - both the VS Code extension and Python SDK/CLI.
 
-## Installation
+## Table of Contents
 
-1. Install the extension from the VS Code Marketplace (search for "SchemaX")
-2. Open a workspace folder in VS Code
-3. You're ready to go!
-
-## Create Your First Schema
-
-### Step 1: Open the Designer
-
-1. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
-2. Type "SchemaX: Open Designer"
-3. Press Enter
-
-The designer window will open with an empty canvas.
-
-### Step 2: Create a Catalog
-
-1. Click **Add Catalog** in the toolbar
-2. Enter a name (e.g., "my_catalog")
-3. Press Enter
-
-You'll see your catalog appear in the sidebar tree.
-
-### Step 3: Create a Schema
-
-1. Click on the catalog in the sidebar to select it
-2. Click **Add Schema** in the toolbar
-3. Enter a name (e.g., "sales")
-4. Press Enter
-
-The schema appears under the catalog.
-
-### Step 4: Create a Table
-
-1. Click on the schema in the sidebar
-2. Click **Add Table** in the toolbar
-3. Enter a name (e.g., "orders")
-4. Select table format: **Delta** or **Iceberg**
-5. Choose column mapping mode (optional)
-6. Click **Create**
-
-The table appears under the schema.
-
-### Step 5: Add Columns
-
-1. Click on the table in the sidebar
-2. The table designer appears in the main panel
-3. Click **Add Column**
-4. Enter column details:
-   - Name: `order_id`
-   - Type: `BIGINT`
-   - Nullable: unchecked
-   - Comment: "Unique order identifier"
-5. Click **Create**
-
-The column appears in the column grid.
-
-### Step 6: Edit Columns
-
-To edit an existing column:
-
-1. Find the column in the grid
-2. Click the **Edit** button
-3. Modify the name, type, nullable flag, or comment
-4. Click **Save** (or **Cancel** to discard changes)
-
-### Step 7: Reorder Columns
-
-To change column order:
-
-1. Hover over the handle icon (⋮⋮) on the left of a column row
-2. Click and drag to a new position
-3. Release to drop
-
-### Step 8: Create a Snapshot
-
-Once you're happy with your schema:
-
-1. Press `Cmd+Shift+P` / `Ctrl+Shift+P`
-2. Run **SchemaX: Create Snapshot**
-3. Enter a name (e.g., "Initial schema")
-4. Add an optional comment
-5. Press Enter
-
-Your snapshot is created! Check the **Snapshots** panel on the right to see it.
-
-## Understanding the UI
-
-### Toolbar
-
-- **Add Catalog** - Create a new catalog
-- **Add Schema** - Create a schema in the selected catalog
-- **Add Table** - Create a table in the selected schema
-- **Add Column** - Add a column to the selected table
-
-### Sidebar
-
-The tree view shows your schema hierarchy:
-
-```
-📁 Catalog
-  └── 📂 Schema
-      └── 📋 Table
-```
-
-**Actions:**
-- Click to select
-- Right-click for rename/delete options
-
-### Table Designer
-
-The main panel shows:
-- Table properties (name, format, column mapping)
-- Column grid with inline editing
-- Add/edit/delete column actions
-
-### Snapshot Panel
-
-Shows:
-- Version history
-- Uncommitted changes badge
-- Snapshot metadata (name, date, operations count)
-
-## Working with Changes
-
-### View Recent Changes
-
-To see what operations you've performed:
-
-1. Press `Cmd+Shift+P` / `Ctrl+Shift+P`
-2. Run **SchemaX: Show Last Emitted Changes**
-3. View the operations in the output panel
-
-### Uncommitted Changes
-
-After creating a snapshot, any new changes are "uncommitted":
-- They appear in the changelog
-- They're shown with a badge in the Snapshot panel
-- Create another snapshot to commit them
-
-### File Structure
-
-SchemaX creates a `.schemax` directory in your workspace:
-
-```
-.schemax/
-├── project.json           # Project metadata
-├── changelog.json         # Uncommitted changes
-└── snapshots/
-    └── v0.1.0.json       # Your first snapshot
-```
-
-**Pro tip:** Commit this directory to git for version control!
-
-## Common Tasks
-
-### Rename an Object
-
-1. Right-click the object in the sidebar
-2. Select "Rename"
-3. Enter new name
-4. Press Enter
-
-### Delete an Object
-
-1. Right-click the object in the sidebar
-2. Select "Drop" (or "Delete")
-3. Confirm the action
-
-**Warning:** Deleting a catalog/schema also deletes all child objects!
-
-### Change Column Type
-
-1. Select the table
-2. Find the column in the grid
-3. Click **Edit**
-4. Change the type from the dropdown
-5. Click **Save**
-
-### Add Table Comment
-
-1. Select the table
-2. Click **Set Comment** in the table properties section
-3. Enter the comment
-4. Click **Save**
-
-### Add Column Comment
-
-1. Select the table
-2. Find the column in the grid
-3. Click **Edit**
-4. Enter the comment in the Comment field
-5. Click **Save**
-
-### Add Table Properties
-
-Table properties configure Delta Lake behavior and store custom metadata:
-
-1. Select a table
-2. Scroll to **Table Properties (TBLPROPERTIES)** section
-3. Click **+ Add Property**
-4. Enter property key (e.g., `delta.appendOnly`)
-5. Enter value (e.g., `true`)
-6. Click **Add**
-
-**Example Properties:**
-- `delta.appendOnly = true` - Make table append-only
-- `delta.logRetentionDuration = interval 30 days` - Keep 30 days of history
-- `custom.owner = data-engineering` - Custom metadata
-
-### Edit or Delete Properties
-
-- **Edit**: Click the **Edit** button, modify key/value, click **Save**
-- **Delete**: Click the **Delete** button, confirm deletion
-
-## Tips and Tricks
-
-### Keyboard Shortcuts
-
-- `Cmd+Shift+P` / `Ctrl+Shift+P` - Command palette (access all SchemaX commands)
-
-### Best Practices
-
-1. **Create snapshots regularly** - They represent stable states
-2. **Use descriptive names** - Both for objects and snapshots
-3. **Add comments** - Document your schema inline
-4. **Commit to git** - Version control your schema definitions
-5. **Review changes** - Use "Show Last Changes" before creating snapshots
-
-### Organizing Schemas
-
-**By domain:**
-```
-my_catalog
-  ├── sales_schema
-  ├── marketing_schema
-  └── finance_schema
-```
-
-**By environment:**
-```
-dev_catalog
-test_catalog
-prod_catalog
-```
-
-**By team:**
-```
-shared_catalog
-  ├── team_a_schema
-  ├── team_b_schema
-  └── common_schema
-```
-
-## Next Steps
-
-- Read the [README](../README.md) for feature overview
-- Check [ARCHITECTURE.md](ARCHITECTURE.md) to understand the design
-- See [DEVELOPMENT.md](DEVELOPMENT.md) if you want to contribute
-
-## Getting Help
-
-- **Issues or bugs:** [GitHub Issues](https://github.com/vb-dbrks/schemax-vscode/issues)
-- **Questions:** Check the docs or open a discussion
-- **Output logs:** View → Output → SchemaX
-
-## Troubleshooting
-
-### Designer is blank
-
-1. Check VS Code Output panel (View → Output)
-2. Select "SchemaX" from dropdown
-3. Look for errors
-4. Try reloading: `Cmd+R` / `Ctrl+R`
-
-### Changes not saving
-
-1. Check SchemaX output logs
-2. Verify `.schemax/` directory exists
-3. Check file permissions
-4. Ensure workspace folder is open (not just files)
-
-### Snapshots not appearing
-
-1. Check `project.json` exists in `.schemax/`
-2. Verify snapshots are listed in metadata
-3. Reload the designer
-4. Check for errors in output logs
+- [VS Code Extension](#vs-code-extension)
+- [Python SDK & CLI](#python-sdk--cli)
+- [Your First Schema](#your-first-schema)
+- [Generating SQL](#generating-sql)
+- [CI/CD Integration](#cicd-integration)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-**Happy schema designing!**
+## VS Code Extension
 
+### Installation & Launch
+
+**Step 1**: Open the Project
+
+```bash
+cd /path/to/schemax
+code .
+```
+
+**Step 2**: Launch Extension Development Host
+
+Press **F5** (or **Fn+F5** on Mac)
+
+This will:
+- Build the extension automatically
+- Open a new VS Code window called "Extension Development Host"
+- Load SchemaX in that window
+
+**Step 3**: Open a Workspace
+
+In the Extension Development Host window:
+1. **File → Open Folder**
+2. Create or select a project folder (e.g., `~/my-schema-project`)
+
+### Using the Designer
+
+**Step 4**: Launch SchemaX Designer
+
+1. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
+2. Type: **SchemaX: Open Designer**
+3. Press Enter
+
+The visual designer opens!
+
+**Step 5**: Create Your First Catalog
+
+1. Click **"Add Catalog"** button
+2. Enter name: `main`
+3. Click OK
+
+**Step 6**: Add a Schema
+
+1. Select the `main` catalog in the tree
+2. Click **"Add Schema"** button
+3. Enter name: `sales`
+4. Click OK
+
+**Step 7**: Add a Table
+
+1. Select the `sales` schema
+2. Click **"Add Table"** button
+3. Enter name: `customers`
+4. Select format: `delta`
+5. Click OK
+
+**Step 8**: Add Columns
+
+1. Select the `customers` table
+2. Click **"Add Column"** button
+3. Fill in details:
+   - **Name**: `customer_id`
+   - **Type**: `BIGINT`
+   - **Nullable**: No
+   - **Comment**: `Primary key`
+4. Add more columns as needed
+
+**Step 9**: Create a Snapshot
+
+1. Press `Cmd+Shift+P`
+2. Type: **SchemaX: Create Snapshot**
+3. Enter name: `v0.1.0`
+4. Enter comment: `Initial schema`
+
+Your schema is now versioned!
+
+### Checking the Files
+
+```bash
+ls -la .schemax/
+cat .schemax/project.json
+cat .schemax/changelog.json
+ls -la .schemax/snapshots/
+```
+
+### Available Commands
+
+- `SchemaX: Open Designer` - Launch visual designer
+- `SchemaX: Create Snapshot` - Version your schema
+- `SchemaX: Generate SQL Migration` - Export to SQL
+- `SchemaX: Show Last Emitted Changes` - View operations
+
+---
+
+## Python SDK & CLI
+
+### Installation
+
+**Option 1**: Install from Source (Development)
+
+```bash
+cd schemax/packages/python-sdk
+pip install -e .
+```
+
+**Option 2**: Install from PyPI (When Published)
+
+```bash
+pip install schemax-py
+```
+
+### Verify Installation
+
+```bash
+schemax --version
+# Output: schemax, version 0.1.0
+```
+
+### CLI Commands
+
+#### Validate Schema
+
+```bash
+cd your-project
+schemax validate
+```
+
+Output:
+```
+Validating project files...
+  ✓ project.json (version 2)
+  ✓ changelog.json (5 operations)
+
+Project: my_project
+  Catalogs: 1
+  Schemas: 1
+  Tables: 2
+
+✓ Schema files are valid
+```
+
+#### Generate SQL
+
+```bash
+# Output to stdout
+schemax sql
+
+# Save to file
+schemax sql --output migration.sql
+
+# View the file
+cat migration.sql
+```
+
+#### Track Deployment
+
+```bash
+# Record deployment
+schemax deploy \
+  --environment prod \
+  --version v1.0.0 \
+  --mark-deployed
+```
+
+Output:
+```
+✓ Deployment recorded
+  Deployment ID: deploy_abc123
+  Environment: prod
+  Version: v1.0.0
+  Operations: 5
+  Status: success
+```
+
+### Python API
+
+Create a script to use SchemaX programmatically:
+
+```python
+#!/usr/bin/env python3
+from pathlib import Path
+from schemax.storage import load_current_state, read_project
+from schemax.sql_generator import SQLGenerator
+
+# Load schema
+workspace = Path.cwd()
+state, changelog = load_current_state(workspace)
+
+# Show summary
+project = read_project(workspace)
+print(f"Project: {project.name}")
+print(f"Catalogs: {len(state.catalogs)}")
+print(f"Pending operations: {len(changelog.ops)}")
+
+# Generate SQL
+if changelog.ops:
+    generator = SQLGenerator(state)
+    sql = generator.generate_sql(changelog.ops)
+    
+    # Write to file
+    Path("migration.sql").write_text(sql)
+    print("✓ SQL generated: migration.sql")
+```
+
+---
+
+## Your First Schema
+
+Let's create a complete example from scratch.
+
+### Step 1: Create Project Directory
+
+```bash
+mkdir ~/my-first-schema
+cd ~/my-first-schema
+```
+
+### Step 2: Open in VS Code
+
+```bash
+code .
+```
+
+### Step 3: Launch SchemaX (in Extension Development Host)
+
+1. Press F5 in the main VS Code window
+2. In the new window, open the `~/my-first-schema` folder
+3. Press `Cmd+Shift+P` → **SchemaX: Open Designer**
+
+### Step 4: Build Schema
+
+**Create Catalog**: `ecommerce`
+
+**Create Schema**: `production`
+
+**Create Tables**:
+
+**Table 1: customers**
+- Columns:
+  - `id` (BIGINT, NOT NULL, Primary Key)
+  - `email` (STRING, NOT NULL, Unique)
+  - `name` (STRING, NOT NULL)
+  - `created_at` (TIMESTAMP, NOT NULL)
+- Properties:
+  - `delta.enableChangeDataFeed` = `true`
+- Constraints:
+  - PRIMARY KEY (`id`)
+
+**Table 2: orders**
+- Columns:
+  - `id` (BIGINT, NOT NULL, Primary Key)
+  - `customer_id` (BIGINT, NOT NULL, Foreign Key)
+  - `amount` (DECIMAL(10,2), NOT NULL)
+  - `status` (STRING, NOT NULL)
+  - `created_at` (TIMESTAMP, NOT NULL)
+- Constraints:
+  - PRIMARY KEY (`id`)
+  - FOREIGN KEY (`customer_id`) REFERENCES `customers`(`id`)
+
+### Step 5: Create Snapshot
+
+Press `Cmd+Shift+P` → **SchemaX: Create Snapshot**
+- Name: `v1.0.0`
+- Comment: `Initial e-commerce schema`
+
+### Step 6: Verify Files
+
+```bash
+tree .schemax/
+```
+
+Output:
+```
+.schemax/
+├── changelog.json
+├── project.json
+└── snapshots/
+    └── v1.0.0.json
+```
+
+---
+
+## Generating SQL
+
+### From VS Code
+
+1. Make some changes (add columns, tables, etc.)
+2. Press `Cmd+Shift+P`
+3. Type: **SchemaX: Generate SQL Migration**
+4. Review the SQL file that opens
+
+The SQL is saved to:
+```
+.schemax/migrations/migration_YYYY-MM-DD_HH-MM-SS.sql
+```
+
+### From CLI
+
+```bash
+# Generate SQL from changelog
+schemax sql --output deploy.sql
+
+# Review
+cat deploy.sql
+```
+
+### Example Generated SQL
+
+```sql
+-- Op: op_abc123 (2025-10-13T12:00:00Z)
+-- Type: add_catalog
+CREATE CATALOG IF NOT EXISTS `ecommerce`;
+
+-- Op: op_def456 (2025-10-13T12:01:00Z)
+-- Type: add_schema
+CREATE SCHEMA IF NOT EXISTS `ecommerce`.`production`;
+
+-- Op: op_ghi789 (2025-10-13T12:02:00Z)
+-- Type: add_table
+CREATE TABLE IF NOT EXISTS `ecommerce`.`production`.`customers` () USING DELTA;
+
+-- Op: op_jkl012 (2025-10-13T12:03:00Z)
+-- Type: add_column
+ALTER TABLE `ecommerce`.`production`.`customers` 
+ADD COLUMN `id` BIGINT NOT NULL COMMENT 'Primary key';
+```
+
+### Deploy to Databricks
+
+```bash
+# Option 1: Using Databricks SQL CLI
+databricks sql execute \
+  --file deploy.sql \
+  --warehouse-id <your-warehouse-id>
+
+# Option 2: Using Python
+databricks-sql-cli \
+  --hostname <workspace>.databricks.com \
+  --http-path <http-path> \
+  --file deploy.sql
+```
+
+---
+
+## CI/CD Integration
+
+### GitHub Actions
+
+Create `.github/workflows/deploy-schema.yml`:
+
+```yaml
+name: Deploy Schema to Databricks
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install SchemaX
+        run: pip install schemax-py
+      
+      - name: Validate Schema
+        run: schemax validate
+      
+      - name: Generate SQL
+        run: schemax sql --output migration.sql
+      
+      - name: Upload SQL
+        uses: actions/upload-artifact@v3
+        with:
+          name: migration-sql
+          path: migration.sql
+
+  deploy-dev:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download SQL
+        uses: actions/download-artifact@v3
+        with:
+          name: migration-sql
+      
+      - name: Deploy to Databricks
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_DEV }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_DEV }}
+        run: |
+          databricks sql execute \
+            --file migration.sql \
+            --warehouse-id ${{ secrets.WAREHOUSE_ID_DEV }}
+      
+      - name: Track Deployment
+        run: |
+          pip install schemax-py
+          schemax deploy \
+            --environment dev \
+            --version ${{ github.sha }} \
+            --mark-deployed
+
+  deploy-prod:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download SQL
+        uses: actions/download-artifact@v3
+        with:
+          name: migration-sql
+      
+      - name: Deploy to Databricks
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
+        run: |
+          databricks sql execute \
+            --file migration.sql \
+            --warehouse-id ${{ secrets.WAREHOUSE_ID_PROD }}
+      
+      - name: Track Deployment
+        run: |
+          pip install schemax-py
+          schemax deploy \
+            --environment prod \
+            --version ${{ github.sha }} \
+            --mark-deployed
+```
+
+### GitLab CI
+
+Create `.gitlab-ci.yml`:
+
+```yaml
+stages:
+  - validate
+  - deploy-dev
+  - deploy-prod
+
+validate-schema:
+  stage: validate
+  image: python:3.11
+  script:
+    - pip install schemax-py
+    - schemax validate
+    - schemax sql --output migration.sql
+  artifacts:
+    paths:
+      - migration.sql
+    expire_in: 1 day
+
+deploy-dev:
+  stage: deploy-dev
+  image: python:3.11
+  script:
+    - pip install schemax-py databricks-cli
+    - databricks sql execute --file migration.sql
+    - schemax deploy --environment dev --mark-deployed
+  only:
+    - develop
+
+deploy-prod:
+  stage: deploy-prod
+  image: python:3.11
+  script:
+    - pip install schemax-py databricks-cli
+    - databricks sql execute --file migration.sql
+    - schemax deploy --environment prod --mark-deployed
+  only:
+    - main
+  when: manual
+```
+
+---
+
+## Troubleshooting
+
+### VS Code Extension
+
+**Problem**: Extension commands not appearing
+
+**Solution**:
+1. Make sure you pressed F5 (not just opened VS Code)
+2. Look for "Extension Development Host" window title
+3. Open a folder in the Extension Development Host window
+4. Check "Extension Host" output channel for errors
+
+**Problem**: F5 doesn't work
+
+**Solution**:
+```bash
+# Make sure you're in the right directory
+cd /path/to/schemax
+code .
+
+# Wait for VS Code to fully load, then press F5
+
+# Or use Run menu → Start Debugging
+```
+
+**Problem**: Webview doesn't open
+
+**Solution**:
+1. Check "SchemaX" output channel (View → Output → SchemaX)
+2. Look for build errors
+3. Rebuild: `cd packages/vscode-extension && npm run build`
+
+### Python CLI
+
+**Problem**: `schemax` command not found
+
+**Solution**:
+```bash
+# Check if installed
+pip list | grep schemax
+
+# Reinstall
+cd packages/python-sdk
+pip install -e .
+
+# Verify
+which schemax
+schemax --version
+```
+
+**Problem**: Import errors
+
+**Solution**:
+```bash
+# Install with dependencies
+cd packages/python-sdk
+pip install -e ".[dev]"
+```
+
+**Problem**: Validation fails
+
+**Solution**:
+```bash
+# Check file structure
+ls .schemax/
+
+# Validate JSON
+python -m json.tool .schemax/project.json
+python -m json.tool .schemax/changelog.json
+
+# Check permissions
+ls -la .schemax/
+```
+
+### SQL Generation
+
+**Problem**: No SQL generated
+
+**Solution**:
+- Make sure there are operations in the changelog
+- Check: `cat .schemax/changelog.json`
+- Create some changes in the designer first
+
+**Problem**: SQL has errors
+
+**Solution**:
+- Review the generated SQL
+- Check operation IDs in comments to trace back
+- Verify table/column names in the visual designer
+
+---
+
+## Next Steps
+
+1. **Explore Examples**: Check `examples/basic-schema/`
+2. **Read Architecture**: See `docs/ARCHITECTURE.md`
+3. **Set Up CI/CD**: Use templates in `examples/github-actions/`
+4. **Join Community**: GitHub Discussions
+
+## Quick Reference
+
+### VS Code Commands
+
+| Command | What It Does |
+|---------|-------------|
+| F5 | Launch Extension Development Host |
+| `SchemaX: Open Designer` | Open visual designer |
+| `SchemaX: Create Snapshot` | Version your schema |
+| `SchemaX: Generate SQL Migration` | Export to SQL |
+
+### CLI Commands
+
+| Command | What It Does |
+|---------|-------------|
+| `schemax validate` | Check schema files |
+| `schemax sql` | Generate SQL |
+| `schemax deploy` | Track deployment |
+| `schemax diff` | Compare versions |
+
+### File Structure
+
+```
+.schemax/
+├── project.json          # Metadata & configuration
+├── changelog.json        # Pending operations
+├── snapshots/           # Version snapshots
+│   └── v*.json
+└── migrations/          # Generated SQL
+    └── migration_*.sql
+```
+
+---
+
+**You're all set! Start building your schemas! 🚀**
