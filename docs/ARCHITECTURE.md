@@ -4,7 +4,7 @@ This document describes the technical architecture and design decisions behind S
 
 ## Overview
 
-SchemaX implements a snapshot-based schema versioning system. The core principle is to maintain an append-only operation log with periodic snapshots, enabling both state-based and change-based workflows.
+SchemaX implements a **provider-based**, snapshot-driven schema versioning system. The core principle is to maintain an append-only operation log with periodic snapshots, enabling both state-based and change-based workflows across multiple catalog types (Unity Catalog, Hive Metastore, PostgreSQL, etc.).
 
 ## Design Goals
 
@@ -13,36 +13,595 @@ SchemaX implements a snapshot-based schema versioning system. The core principle
 3. **Performant**: Fast loading even with hundreds of operations
 4. **Auditable**: Complete history of who changed what and when
 5. **Migration-Ready**: Operations can be converted to SQL migration scripts
+6. **Extensible**: Easy to add support for new catalog types via providers
+7. **Multi-Provider**: Support multiple catalog systems with unified interface
+
+---
+
+## Architectural Patterns
+
+SchemaX follows several well-established architectural patterns that work together to provide a robust, maintainable, and extensible system.
+
+### Primary Pattern: Event Sourcing
+
+The foundation of SchemaX is **Event Sourcing** - all changes are stored as immutable events (operations) in an append-only log.
+
+**Implementation:**
+
+```typescript
+// Operations are immutable events
+interface Operation {
+  id: string;
+  ts: string;
+  provider: string;
+  op: string;
+  target: string;
+  payload: Record<string, any>;
+}
+
+// Current state = replay all operations from a snapshot
+state = loadSnapshot(latestSnapshot);
+for (const operation of changelog.ops) {
+  state = provider.applyOperation(state, operation);
+}
+```
+
+**Key Characteristics:**
+
+- ✅ Append-only log (`changelog.json`)
+- ✅ Operations never modified or deleted
+- ✅ Complete audit trail
+- ✅ Time-travel capability via snapshots
+- ✅ State is derived, not stored directly
+
+**Benefits:**
+
+- Full history of all changes
+- Can reconstruct state at any point
+- Easy debugging ("what happened?")
+- Enables undo/redo capabilities
+
+### Snapshot + Delta Pattern
+
+Optimization of Event Sourcing to prevent unbounded operation log growth.
+
+**Implementation:**
+
+```text
+State at v0.3.0 = 
+  load_snapshot("v0.2.0") + 
+  apply_operations(changelog.ops)
+
+.schemax/
+├── snapshots/v0.2.0.json    ← Full state checkpoint
+└── changelog.json            ← Only ops since v0.2.0
+```
+
+**Benefits:**
+
+- Fast state loading (no need to replay 1000s of operations)
+- Bounded memory usage
+- Clean separation of committed vs uncommitted changes
+
+### Plugin Architecture (Provider System)
+
+Extensibility through providers - catalog-specific implementations plugged into a common interface.
+
+**Implementation:**
+
+```typescript
+// Base contract
+interface Provider {
+  info: ProviderInfo;
+  capabilities: ProviderCapabilities;
+  applyOperation(state: ProviderState, op: Operation): ProviderState;
+  getSQLGenerator(state: ProviderState): SQLGenerator;
+  validateOperation(op: Operation): ValidationResult;
+}
+
+// Implementations
+class UnityProvider implements Provider { ... }
+class HiveProvider implements Provider { ... }
+class PostgresProvider implements Provider { ... }
+
+// Registry
+ProviderRegistry.register(unityProvider);
+```
+
+**Key Characteristics:**
+
+- ✅ Open/Closed Principle (open for extension, closed for modification)
+- ✅ Each provider is isolated and independent
+- ✅ Core system doesn't know provider details
+- ✅ New providers added without changing core
+
+### Strategy Pattern (Provider Operations)
+
+Different algorithms (SQL generation, state reduction) selected based on provider.
+
+**Implementation:**
+
+```typescript
+// Context uses provider to select strategy
+function generateSQL(ops: Operation[], project: Project) {
+  const provider = ProviderRegistry.get(project.provider.type);
+  const generator = provider.getSQLGenerator(state);
+  return generator.generateSQL(ops);
+}
+
+// Concrete strategies
+class UnitySQLGenerator extends SQLGenerator {
+  generateSQL(ops: Operation[]): string {
+    // Unity Catalog-specific SQL
+  }
+}
+
+class HiveSQLGenerator extends SQLGenerator {
+  generateSQL(ops: Operation[]): string {
+    // Hive Metastore-specific SQL
+  }
+}
+```
+
+**Benefits:**
+
+- Swappable implementations
+- Each strategy optimized for its system
+- Clean separation of concerns
+
+### State Reducer Pattern (Redux-inspired)
+
+Immutable state transformations through pure functions.
+
+**Implementation:**
+
+```typescript
+function applyOperation(state: ProviderState, operation: Operation): ProviderState {
+  // Pure function: state + operation → new_state
+  const newState = deepClone(state);
+  
+  switch (operation.op) {
+    case 'unity.add_catalog':
+      newState.catalogs.push(createCatalog(operation.payload));
+      break;
+    case 'unity.add_table':
+      const schema = findSchema(newState, operation.payload.schemaId);
+      schema.tables.push(createTable(operation.payload));
+      break;
+  }
+  
+  return newState; // Never mutate input
+}
+```
+
+**Key Principles:**
+
+- ✅ Pure functions (no side effects)
+- ✅ Immutable state
+- ✅ Predictable transformations
+- ✅ Easy to test
+- ✅ Time-travel debugging
+
+**Redux Comparison:**
+
+```javascript
+// Redux
+newState = reducer(state, action)
+
+// SchemaX
+newState = provider.applyOperation(state, operation)
+```
+
+### Registry Pattern (Provider Lookup)
+
+Central registry for service discovery and dependency injection.
+
+**Implementation:**
+
+```typescript
+class ProviderRegistryClass {
+  private providers = new Map<string, Provider>();
+  
+  register(provider: Provider): void {
+    this.providers.set(provider.info.id, provider);
+  }
+  
+  get(providerId: string): Provider | undefined {
+    return this.providers.get(providerId);
+  }
+}
+
+// Singleton
+export const ProviderRegistry = new ProviderRegistryClass();
+
+// Auto-registration on import
+ProviderRegistry.register(unityProvider);
+```
+
+**Benefits:**
+
+- Service discovery
+- Loose coupling
+- Easy testing (swap implementations)
+
+### Repository Pattern (Storage Layer)
+
+Abstraction over file system operations.
+
+**Implementation:**
+
+```typescript
+// storage_v3.ts/py acts as repository
+class StorageRepository {
+  readProject(workspacePath: Path): ProjectFile;
+  writeProject(workspacePath: Path, project: ProjectFile): void;
+  readChangelog(workspacePath: Path): ChangelogFile;
+  writeChangelog(workspacePath: Path, changelog: ChangelogFile): void;
+  readSnapshot(workspacePath: Path, version: string): SnapshotFile;
+  writeSnapshot(workspacePath: Path, snapshot: SnapshotFile): void;
+}
+
+// Usage
+const project = storage.readProject(workspace);
+// Don't care if it's JSON, SQLite, or remote API
+```
+
+**Benefits:**
+
+- Data access abstraction
+- Easy to swap storage backend
+- Testability (mock the repository)
+
+### Command Pattern (Operations)
+
+Operations as command objects that encapsulate requests.
+
+**Implementation:**
+
+```typescript
+// Command = Operation
+interface Operation {
+  id: string;        // Command ID
+  op: string;        // Command name
+  target: string;    // Receiver
+  payload: object;   // Parameters
+  ts: string;        // Timestamp
+}
+
+// Command execution
+function execute(state: State, command: Operation): State {
+  return applyOperation(state, command);
+}
+```
+
+**Characteristics:**
+
+- ✅ Encapsulates request as object
+- ✅ Supports queuing and logging
+- ✅ Can be serialized
+- ✅ Enables undo (store reverse operations)
+
+### Adapter Pattern (Python ↔ TypeScript)
+
+Translating between language ecosystems while maintaining compatibility.
+
+**Implementation:**
+
+```python
+# Python (Pydantic) - accepts both camelCase and snake_case
+class Column(BaseModel):
+    id: str
+    name: str
+    mask_id: Optional[str] = Field(None, alias="maskId")
+    
+    class Config:
+        populate_by_name = True  # Accept both maskId and mask_id
+```
+
+```typescript
+// TypeScript (Zod) - uses camelCase
+const Column = z.object({
+  id: z.string(),
+  name: z.string(),
+  maskId: z.string().optional(),
+});
+```
+
+**Same JSON works in both:**
+
+```json
+{"id": "col_1", "name": "email", "maskId": "mask_1"}
+```
+
+**Benefits:**
+
+- Seamless interoperability
+- Single source of truth (JSON files)
+- No code sharing required
+
+### Façade Pattern (CLI)
+
+Simplified interface to complex subsystems.
+
+**Implementation:**
+
+```python
+# cli.py provides simple interface hiding complexity
+@cli.command()
+def sql(workspace: str):
+    # Hides complexity of:
+    # - File system operations
+    # - Provider lookup
+    # - State reconstruction
+    # - SQL generation
+    state, changelog, provider = load_current_state(Path(workspace))
+    generator = provider.get_sql_generator(state)
+    sql = generator.generate_sql(changelog.ops)
+    console.print(sql)
+```
+
+**Benefits:**
+
+- Simple API for complex operations
+- Easy to use
+- Decouples CLI from internal complexity
+
+---
+
+## Pattern Interaction Diagram
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                    CLI / Extension (Façade)                     │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│               Storage Repository (Repository Pattern)           │
+│                 Reads/writes .schemax/ files                    │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│            Provider Registry (Registry + Strategy)              │
+│             ProviderRegistry.get(provider_id)                   │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              Provider Instance (Plugin Architecture)            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
+│  │   Unity      │  │    Hive      │  │  PostgreSQL  │         │
+│  │   Provider   │  │   Provider   │  │   Provider   │         │
+│  └──────────────┘  └──────────────┘  └──────────────┘         │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              State Reducer (State Reducer Pattern)              │
+│         state' = applyOperation(state, operation)               │
+│              (Immutable transformations)                        │
+│         Based on Event Sourcing + Command Pattern               │
+└─────────────────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│               SQL Generator (Strategy Pattern)                  │
+│           sql = generator.generateSQL(operations)               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Architectural Style: Functional Core, Imperative Shell
+
+SchemaX follows the **Functional Core, Imperative Shell** pattern:
+
+**Functional Core (Pure Logic):**
+
+- State reducers (pure functions)
+- Operation validation
+- SQL generation algorithms
+- State transformations
+
+**Imperative Shell (Side Effects):**
+
+- File I/O (storage layer)
+- CLI output
+- VS Code webview communication
+- Extension activation
+
+**Benefits:**
+
+- Easy to test (core is pure functions)
+- Easy to reason about (no hidden state)
+- Side effects isolated at boundaries
+
+---
+
+## Design Patterns Summary
+
+| Pattern | Where Used | Purpose |
+|---------|------------|---------|
+| **Event Sourcing** | `changelog.json`, operations | Core architectural foundation |
+| **Snapshot + Delta** | `snapshots/`, `changelog.json` | Performance optimization |
+| **Plugin Architecture** | `providers/` system | Extensibility for new catalog types |
+| **Strategy** | Provider implementations | Swappable algorithms |
+| **State Reducer** | `state_reducer.ts/py` | Immutable state updates |
+| **Registry** | `ProviderRegistry` | Service discovery |
+| **Repository** | `storage_v3.ts/py` | Data access abstraction |
+| **Command** | `Operation` objects | Operation encapsulation |
+| **Adapter** | Pydantic/Zod models | Cross-language compatibility |
+| **Façade** | `cli.py`, `extension.ts` | Simple interface to complexity |
+
+---
+
+## Architectural Principles
+
+### 1. Separation of Concerns
+
+- Storage ≠ Provider ≠ CLI
+- Each layer has single responsibility
+
+### 2. Immutability
+
+- Operations never change
+- State transformations create new objects
+- Snapshots are read-only
+
+### 3. Idempotency
+
+- SQL can be run multiple times safely
+- Operations produce same result when replayed
+
+### 4. Extensibility
+
+- Add providers without changing core
+- Plugin-based architecture
+
+### 5. Type Safety
+
+- Zod (TypeScript) and Pydantic (Python)
+- Runtime validation
+- IDE autocomplete
+
+### 6. Testability
+
+- Pure functions (state reducers)
+- Mockable repositories
+- Isolated providers
+
+---
+
+## Anti-Patterns Avoided
+
+✅ **No Mutable Global State** - All state is passed explicitly
+
+✅ **No Tight Coupling** - Providers are independent plugins
+
+✅ **No Direct File System Access** - Goes through repository layer
+
+✅ **No Hardcoded Provider Logic** - Uses registry + strategy
+
+✅ **No Side Effects in Reducers** - Pure functions only
+
+---
+
+## Architecture Inspirations
+
+SchemaX's architecture draws inspiration from:
+
+1. **Redux** (State Management)
+    - Immutable state
+    - Pure reducers
+    - Action dispatching → Operations
+
+2. **Git** (Version Control)
+    - Commit log → Operations log
+    - Branches → Environments
+    - Tags → Snapshots
+
+3. **Terraform** (Infrastructure as Code)
+    - Desired state → Schema definition
+    - Plan → SQL preview
+    - Apply → SQL execution
+
+4. **Liquibase/Flyway** (Database Migrations)
+    - Version-controlled schema changes
+    - Idempotent migrations
+    - Rollback support
+
+5. **Event-Driven Architecture**
+    - Events → Operations
+    - Event store → Changelog
+    - Projections → Current state
+
+---
+
+## Provider-Based Architecture
+
+### What is a Provider?
+
+A **Provider** is a plugin that adds support for a specific catalog system. Each provider implements a standard interface that SchemaX uses for:
+
+- **State Management** - How objects are stored and modified
+- **Operations** - What actions users can perform
+- **SQL Generation** - How to convert operations to DDL statements
+- **Validation** - What constraints and rules to enforce
+- **UI Metadata** - How to display objects in the interface
+
+### Provider Registry
+
+```typescript
+class ProviderRegistry {
+  private static providers = new Map<string, Provider>();
+  
+  static register(provider: Provider): void;
+  static get(providerId: string): Provider | undefined;
+  static getAll(): Provider[];
+}
+```
+
+Providers are registered at startup:
+
+```typescript
+// TypeScript
+import './providers'; // Auto-registers Unity provider
+
+// Python
+from schemax.providers import unity_provider
+# Unity provider auto-registered on import
+```
+
+### Current Providers
+
+**Available:**
+
+- ✅ **Unity Catalog** (`unity`) - Databricks Unity Catalog with full governance features
+
+**Planned (Stage 2):**
+
+- 🔜 **Hive Metastore** (`hive`) - Apache Hive Metastore
+- 🔜 **PostgreSQL/Lakebase** (`postgres`) - PostgreSQL with Lakebase extensions
+
+---
 
 ## File Structure
 
-### Version 2 Architecture
+### Version 3 Architecture (Current)
 
-```
+```text
 workspace-root/
 └── .schemax/
-    ├── project.json           # Project metadata (lightweight)
+    ├── project.json           # Project metadata with provider info
     ├── changelog.json         # Uncommitted operations
-    └── snapshots/
-        ├── v0.1.0.json       # Full state snapshot
-        ├── v0.2.0.json
-        └── v0.3.0.json
+    ├── snapshots/
+    │   ├── v0.1.0.json       # Full state snapshot
+    │   ├── v0.2.0.json
+    │   └── v0.3.0.json
+    └── migrations/            # Generated SQL files
+        └── migration_*.sql
 ```
 
-**Why separate files?**
-- Snapshots are immutable and rarely change → better for git
-- Changelog is active development → frequent updates
-- Only need to load latest snapshot, not all historical state
-- Clear separation between stable releases (snapshots) and work-in-progress (changelog)
+**Key Changes from V2:**
 
-### Project File Schema
+- `project.json` now includes provider metadata
+- Operations are prefixed with provider ID (e.g., `unity.add_catalog`)
+- Snapshots include provider context
+- Automatic V2 to V3 migration on first load
 
-`project.json` contains only metadata:
+### Project File Schema (V3)
+
+`project.json` contains metadata and provider selection:
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "name": "my-databricks-schemas",
+  "provider": {
+    "type": "unity",
+    "version": "1.0.0"
+  },
   "environments": ["dev", "test", "prod"],
   "latestSnapshot": "v0.2.0",
   "snapshots": [
@@ -58,9 +617,19 @@ workspace-root/
     }
   ],
   "deployments": [],
-  "settings": {}
+  "settings": {
+    "autoIncrementVersion": true,
+    "versionPrefix": "v",
+    "requireSnapshotForProd": true,
+    "allowDrift": false
+  }
 }
 ```
+
+**New in V3:**
+
+- `provider` field specifies catalog type and version
+- Provider info used to load correct reducer and SQL generator
 
 ### Snapshot File Schema
 
@@ -96,552 +665,627 @@ workspace-root/
 }
 ```
 
+**Note:** The structure of `state` varies by provider. Unity Catalog uses `catalogs`, Hive uses `databases`, etc.
+
 ### Changelog File Schema
 
-`changelog.json` tracks operations since the last snapshot:
+`changelog.json` contains uncommitted operations:
 
 ```json
 {
   "version": 1,
-  "sinceSnapshot": "v0.1.0",
+  "sinceSnapshot": "v0.2.0",
   "ops": [
     {
-      "id": "op_uuid",
-      "ts": "2025-10-06T11:00:00Z",
-      "op": "add_column",
-      "target": "col_uuid",
+      "id": "op_abc123",
+      "ts": "2025-10-07T14:30:00Z",
+      "provider": "unity",
+      "op": "unity.add_catalog",
+      "target": "cat_new",
       "payload": {
-        "tableId": "tbl_uuid",
-        "colId": "col_uuid",
-        "name": "customer_id",
-        "type": "BIGINT",
-        "nullable": false
+        "catalogId": "cat_new",
+        "name": "analytics"
       }
     }
   ],
-  "lastModified": "2025-10-06T11:00:00Z"
+  "lastModified": "2025-10-07T14:30:00Z"
 }
 ```
 
-## Data Model
+**New in V3:**
 
-### Unity Catalog Hierarchy
+- `provider` field on each operation
+- `op` field prefixed with provider ID (e.g., `unity.add_catalog`)
+- Operations validated by provider before being saved
 
-```
-Catalog
-├── id: string (UUID)
-├── name: string
-└── schemas: Schema[]
+---
 
-Schema
-├── id: string (UUID)
-├── name: string
-└── tables: Table[]
+## Core Concepts
 
-Table
-├── id: string (UUID)
-├── name: string
-├── format: "delta" | "iceberg"
-├── columnMapping?: "name" | "id"
-├── columns: Column[]
-├── properties: Record<string, string>
-├── constraints: Constraint[]
-├── grants: Grant[]
-└── comment?: string
+### 1. Operations
 
-Column
-├── id: string (UUID)
-├── name: string
-├── type: ColumnType
-├── nullable: boolean
-└── comment?: string
-```
+Operations are the fundamental unit of change in SchemaX. Every user action generates one or more operations.
 
-**Why UUIDs?**
-- Stable identifiers that don't change when objects are renamed
-- Enable unambiguous tracking across operations
-- Generated client-side, no coordination needed
-- Users never see them (internal only)
-
-### Operations
-
-Every user action generates one or more operations:
+**Operation Structure:**
 
 ```typescript
-type Op = {
+interface Operation {
   id: string;           // Unique operation ID
   ts: string;           // ISO 8601 timestamp
-  op: OpType;           // Operation type
-  target: string;       // ID of affected object
-  payload: Record<string, any>;  // Operation-specific data
+  provider: string;     // Provider ID (e.g., 'unity')
+  op: string;           // Operation type with provider prefix
+  target: string;       // ID of object being modified
+  payload: Record<string, any>; // Operation-specific data
 }
 ```
 
-**Operation Types:**
-
-- **Catalog**: `add_catalog`, `rename_catalog`, `drop_catalog`
-- **Schema**: `add_schema`, `rename_schema`, `drop_schema`
-- **Table**: `add_table`, `rename_table`, `drop_table`, `set_table_comment`
-- **Column**: `add_column`, `rename_column`, `drop_column`, `reorder_columns`, `change_column_type`, `set_nullable`, `set_column_comment`
-- **Property**: `set_table_property`, `unset_table_property` - Manage Unity Catalog TBLPROPERTIES
-
-**Example - Adding a Column:**
+**Example - Unity Catalog:**
 
 ```json
 {
   "id": "op_abc123",
-  "ts": "2025-10-06T10:30:00Z",
-  "op": "add_column",
-  "target": "col_xyz789",
+  "ts": "2025-10-07T14:30:00Z",
+  "provider": "unity",
+  "op": "unity.add_catalog",
+  "target": "cat_xyz",
   "payload": {
-    "tableId": "tbl_def456",
-    "colId": "col_xyz789",
-    "name": "customer_id",
-    "type": "BIGINT",
-    "nullable": false,
-    "comment": "Unique customer identifier"
+    "catalogId": "cat_xyz",
+    "name": "analytics"
   }
 }
 ```
 
-**Example - Setting a Table Property:**
+**Example - Hive Metastore (Future):**
 
 ```json
 {
   "id": "op_def456",
-  "ts": "2025-10-06T10:35:00Z",
-  "op": "set_table_property",
-  "target": "tbl_def456",
+  "ts": "2025-10-07T14:35:00Z",
+  "provider": "hive",
+  "op": "hive.add_database",
+  "target": "db_xyz",
   "payload": {
-    "tableId": "tbl_def456",
-    "key": "delta.appendOnly",
-    "value": "true"
+    "databaseId": "db_xyz",
+    "name": "analytics"
   }
 }
 ```
 
-This operation sets the `delta.appendOnly` property to `true`, making the table append-only (disabling UPDATE and DELETE operations). See the [Unity Catalog TBLPROPERTIES documentation](https://learn.microsoft.com/en-us/azure/databricks/sql/language-manual/sql-ref-syntax-ddl-tblproperties) for all available properties.
+### 2. Snapshots
 
-## State Management
+Snapshots are point-in-time captures of the complete state. They serve as:
 
-### Loading Current State
+- **Performance optimization** - No need to replay all operations
+- **Release markers** - Tagged versions for deployment
+- **Rollback points** - Revert to known good state
+- **Audit checkpoints** - Verify system integrity
 
-```
-1. Read project.json → Get latestSnapshot version
-2. Read snapshots/v{version}.json → Load full state
-3. Read changelog.json → Get operations since snapshot
-4. Apply changelog operations to snapshot state → Current state
-```
+**When to Create Snapshots:**
 
-This approach provides:
-- Fast loading (single snapshot + changelog)
-- Complete history (snapshot files are preserved)
-- Bounded memory usage (don't load all ops ever)
+- Before deploying to production
+- After completing a major feature
+- Before risky operations
+- On a regular schedule (e.g., weekly)
 
-### Saving Operations
+### 3. State Loading (Provider-Aware)
 
-```
-1. User makes change in UI
-2. Webview generates operation(s)
-3. Webview sends operations to extension
-4. Extension appends to changelog.json
-5. Extension applies operations to current state
-6. Extension sends updated state back to webview
-```
-
-### Creating Snapshots
-
-```
-1. User runs "Create Snapshot" command
-2. Extension reads current state (snapshot + changelog)
-3. Extension writes new snapshot file:
-   - Full state
-   - List of included operation IDs
-   - Metadata (version, name, timestamp, hash)
-4. Extension updates project.json:
-   - Add snapshot metadata
-   - Update latestSnapshot
-5. Extension clears changelog.json
-6. Extension notifies webview
-```
-
-## Operation Reducer
-
-The core logic for applying operations to state:
+Current state is computed as: **Latest Snapshot + Changelog Operations**
 
 ```typescript
-function applyOpsToState(state: State, ops: Op[]): State {
-  let current = state;
-  for (const op of ops) {
-    current = applyOp(current, op);
-  }
-  return current;
-}
-
-function applyOp(state: State, op: Op): State {
-  switch (op.op) {
-    case 'add_catalog':
-      return {
-        ...state,
-        catalogs: [...state.catalogs, createCatalog(op.payload)]
-      };
-    case 'add_column':
-      return updateTable(state, op.payload.tableId, table => ({
-        ...table,
-        columns: [...table.columns, createColumn(op.payload)]
-      }));
-    // ... other operations
-  }
-}
-```
-
-**Key Properties:**
-- Pure functions (no side effects)
-- Immutable updates (always create new objects)
-- Deterministic (same ops + state = same result)
-- Composable (ops can be replayed in any order)
-
-## Extension Architecture
-
-### Components
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ VS Code                                                   │
-│                                                           │
-│  ┌─────────────────┐         ┌──────────────────────┐   │
-│  │  Extension Host │◄───────►│  Webview (React)     │   │
-│  │  (Node.js)      │         │  (Browser Context)   │   │
-│  │                 │  Message│                      │   │
-│  │  • Commands     │  Passing│  • Visual Designer   │   │
-│  │  • File I/O     │         │  • State Management  │   │
-│  │  • Storage      │         │  • User Actions      │   │
-│  └────────┬────────┘         └──────────────────────┘   │
-│           │                                              │
-│           │                                              │
-│  ┌────────▼──────────────────────┐                      │
-│  │  Workspace Filesystem         │                      │
-│  │  .schemax/                    │                      │
-│  │  ├── project.json             │                      │
-│  │  ├── changelog.json           │                      │
-│  │  └── snapshots/               │                      │
-│  └───────────────────────────────┘                      │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Message Protocol
-
-**Webview → Extension:**
-
-```typescript
-// Load project data
-{ type: 'load-project' }
-
-// Save operations
-{
-  type: 'append-ops',
-  payload: [
-    { id, ts, op, target, payload }
-  ]
-}
-```
-
-**Extension → Webview:**
-
-```typescript
-// Initial load complete
-{
-  type: 'project-loaded',
-  payload: {
-    ...projectMetadata,
-    state: { catalogs: [...] },
-    ops: [...]  // Current changelog
-  }
-}
-
-// Update after operations saved
-{
-  type: 'project-updated',
-  payload: {
-    ...projectMetadata,
-    state: { catalogs: [...] },
-    ops: [...]
-  }
-}
-```
-
-### VS Code API Usage
-
-**Commands:**
-- `vscode.commands.registerCommand()` - Register custom commands
-- `vscode.window.showInputBox()` - Get user input
-- `vscode.window.withProgress()` - Show progress indicators
-
-**Webview:**
-- `vscode.window.createWebviewPanel()` - Create webview
-- `webview.postMessage()` - Send messages to webview
-- `webview.onDidReceiveMessage()` - Receive messages from webview
-
-**Logging:**
-- `vscode.window.createOutputChannel()` - Create output channel
-- `outputChannel.appendLine()` - Log messages
-
-## Webview Architecture
-
-### React Component Tree
-
-```
-App
-├── Toolbar (Add/Delete actions)
-├── Layout
-│   ├── Sidebar (Tree view)
-│   │   ├── Catalog items
-│   │   ├── Schema items
-│   │   └── Table items
-│   ├── TableDesigner (Main content)
-│   │   ├── Table properties
-│   │   └── ColumnGrid (Inline editing)
-│   └── SnapshotPanel (Version timeline)
-```
-
-### State Management (Zustand)
-
-```typescript
-type DesignerStore = {
-  // State
-  project: ProjectFile | null;
-  selectedTable: string | null;
-
-  // Actions
-  setProject: (project: ProjectFile) => void;
-  selectTable: (tableId: string | null) => void;
+async function loadCurrentState(workspaceUri: Uri): Promise<{
+  state: ProviderState;
+  changelog: ChangelogFile;
+  provider: Provider;
+}> {
+  // 1. Read project file
+  const project = await readProject(workspaceUri);
   
-  // Mutations (generate ops)
-  addCatalog: (name: string) => void;
-  addColumn: (tableId, name, type, nullable) => void;
-  // ... etc
-};
+  // 2. Get provider from registry
+  const provider = ProviderRegistry.get(project.provider.type);
+  
+  // 3. Load latest snapshot (or start with empty state)
+  let state = project.latestSnapshot
+    ? await readSnapshot(workspaceUri, project.latestSnapshot)
+    : provider.createInitialState();
+  
+  // 4. Load changelog
+  const changelog = await readChangelog(workspaceUri);
+  
+  // 5. Apply changelog operations using provider's reducer
+  state = provider.applyOperations(state, changelog.ops);
+  
+  return { state, changelog, provider };
+}
 ```
 
-**All mutations:**
-1. Generate operation with UUID
-2. Call `emitOps([op])` to send to extension
-3. Extension saves and returns updated state
-4. Store updates with new state
+**Key Points:**
 
-### VS Code API Bridge
+- Provider selected based on `project.provider.type`
+- Provider's state reducer applies operations
+- Operations validated by provider before applying
+- State structure defined by provider
 
-The webview runs in a sandboxed browser context and needs special handling:
+### 4. SQL Generation (Provider-Specific)
+
+Each provider implements its own SQL generator that converts operations to DDL:
 
 ```typescript
-// src/webview/vscode-api.ts
-let vscodeApi: any;
+interface Provider {
+  getSQLGenerator(state: ProviderState): SQLGenerator;
+}
 
-export function getVsCodeApi() {
-  if (!vscodeApi) {
-    vscodeApi = acquireVsCodeApi();
+interface SQLGenerator {
+  generateSQL(ops: Operation[]): string;
+}
+```
+
+**Example - Unity Catalog:**
+
+```typescript
+const generator = unityProvider.getSQLGenerator(state);
+const sql = generator.generateSQL(changelog.ops);
+```
+
+Output:
+
+```sql
+-- Operation: unity.add_catalog (op_abc123)
+CREATE CATALOG IF NOT EXISTS `analytics`;
+
+-- Operation: unity.add_schema (op_def456)
+CREATE SCHEMA IF NOT EXISTS `analytics`.`bronze`;
+```
+
+**Example - Hive Metastore (Future):**
+
+```sql
+-- Operation: hive.add_database (op_abc123)
+CREATE DATABASE IF NOT EXISTS analytics;
+
+-- Operation: hive.add_table (op_def456)
+CREATE TABLE IF NOT EXISTS analytics.bronze_users (...);
+```
+
+---
+
+## Provider Hierarchy
+
+Different providers have different object hierarchies:
+
+### Unity Catalog (3 levels)
+
+```text
+Catalog
+  └─ Schema
+      └─ Table
+```
+
+### Hive Metastore (2 levels)
+
+```text
+Database
+  └─ Table
+```
+
+### PostgreSQL (3 levels)
+
+```text
+Database
+  └─ Schema
+      └─ Table
+```
+
+**UI Adaptation:**
+
+The UI dynamically adapts to the provider's hierarchy:
+
+```typescript
+const hierarchy = provider.capabilities.hierarchy;
+const levels = hierarchy.levels; // Array of HierarchyLevel
+
+// Render tree based on hierarchy depth
+levels.forEach(level => {
+  renderLevel(level.name, level.displayName, level.icon);
+});
+```
+
+---
+
+## Operation Flow
+
+### 1. User Action in UI
+
+```typescript
+// User clicks "Add Catalog"
+useDesignerStore().addCatalog('analytics');
+```
+
+### 2. Store Creates Operation
+
+```typescript
+addCatalog: (name) => {
+  const catalogId = `cat_${uuidv4()}`;
+  const provider = get().provider; // Get current provider
+  
+  const op: Operation = {
+    id: `op_${uuidv4()}`,
+    ts: new Date().toISOString(),
+    provider: provider.id,
+    op: `${provider.id}.add_catalog`, // Provider prefix!
+    target: catalogId,
+    payload: { catalogId, name },
+  };
+  
+  emitOps([op]); // Send to extension
+},
+```
+
+### 3. Extension Validates and Saves
+
+```typescript
+// Extension receives operation
+const ops: Operation[] = message.payload;
+
+// Validate using provider
+const provider = ProviderRegistry.get(project.provider.type);
+for (const op of ops) {
+  const validation = provider.validateOperation(op);
+  if (!validation.valid) {
+    throw new Error(`Invalid operation: ${validation.errors}`);
   }
-  return vscodeApi;
+}
+
+// Append to changelog
+await appendOps(workspaceUri, ops);
+```
+
+### 4. State Updated
+
+```typescript
+// Reload state
+const { state, changelog, provider } = await loadCurrentState(workspaceUri);
+
+// Apply operations using provider
+const newState = provider.applyOperations(state, changelog.ops);
+
+// Send back to UI
+webview.postMessage({
+  type: 'project-updated',
+  payload: { project, state: newState, ops: changelog.ops, provider }
+});
+```
+
+---
+
+## Code Organization
+
+### TypeScript (VSCode Extension)
+
+```text
+src/
+├── providers/
+│   ├── base/
+│   │   ├── provider.ts        # Provider interface
+│   │   ├── models.ts          # Base types
+│   │   ├── operations.ts      # Operation types
+│   │   ├── sql-generator.ts   # SQL generator base
+│   │   └── hierarchy.ts       # Hierarchy types
+│   ├── registry.ts            # Provider registry
+│   └── unity/
+│       ├── index.ts           # Unity provider exports
+│       ├── models.ts          # Unity-specific models
+│       ├── operations.ts      # Unity operations
+│       ├── sql-generator.ts   # Unity SQL generator
+│       ├── state-reducer.ts   # Unity state reducer
+│       └── hierarchy.ts       # Unity hierarchy config
+├── storage-v3.ts              # Provider-aware storage
+├── extension.ts               # Extension entry point
+└── webview/
+    ├── state/
+    │   └── useDesignerStore.ts  # Provider-aware store
+    └── components/
+        └── ... UI components
+```
+
+### Python (SDK/CLI)
+
+```text
+src/schemax/
+├── providers/
+│   ├── base/
+│   │   ├── provider.py
+│   │   ├── models.py
+│   │   ├── operations.py
+│   │   ├── sql_generator.py
+│   │   └── hierarchy.py
+│   ├── registry.py
+│   └── unity/
+│       ├── __init__.py
+│       ├── models.py
+│       ├── operations.py
+│       ├── sql_generator.py
+│       ├── state_reducer.py
+│       └── hierarchy.py
+├── storage_v3.py
+└── cli.py
+```
+
+---
+
+## Data Models
+
+### Unity Catalog Models
+
+```typescript
+interface UnityCatalog {
+  id: string;
+  name: string;
+  schemas: UnitySchema[];
+}
+
+interface UnitySchema {
+  id: string;
+  name: string;
+  tables: UnityTable[];
+}
+
+interface UnityTable {
+  id: string;
+  name: string;
+  format: 'delta' | 'iceberg';
+  columns: UnityColumn[];
+  properties: Record<string, string>;
+  constraints: UnityConstraint[];
+  rowFilters?: UnityRowFilter[];
+  columnMasks?: UnityColumnMask[];
+  grants: UnityGrant[];
+  comment?: string;
+}
+
+interface UnityColumn {
+  id: string;
+  name: string;
+  type: string;
+  nullable: boolean;
+  comment?: string;
+  tags?: Record<string, string>;
+  maskId?: string;
 }
 ```
 
-**Why?** `acquireVsCodeApi()` can only be called once per webview session. The singleton pattern ensures it's called exactly once.
+### Governance Features (Unity Catalog)
 
-## Design Decisions
+```typescript
+interface UnityConstraint {
+  id: string;
+  type: 'primary_key' | 'foreign_key' | 'check';
+  name?: string;
+  columns: string[];
+  // ... type-specific fields
+}
 
-### Why JSON Instead of SQLite?
+interface UnityRowFilter {
+  id: string;
+  name: string;
+  enabled: boolean;
+  udfExpression: string;
+  description?: string;
+}
 
-**Advantages:**
-- Human-readable and git-friendly
-- No binary dependencies
-- Easy to inspect and debug
-- Works on all platforms
-- Standard tools (jq, diff, merge)
-
-**Trade-offs:**
-- Not suitable for thousands of tables
-- No built-in indexing or querying
-- Requires parsing entire file
-
-**Verdict:** JSON is appropriate for typical Unity Catalog schemas (10-100 tables). For larger schemas, we could add SQLite in a future version.
-
-### Why Append-Only Operations?
-
-**Benefits:**
-- Complete audit trail
-- Can replay history
-- Generate migration scripts
-- Support rollback/undo
-- Enable drift detection
-
-**Challenges:**
-- Unbounded growth (mitigated by snapshots)
-- Need to track operation IDs
-- More complex than simple save/load
-
-### Why Snapshots?
-
-Without snapshots, the changelog would grow forever. Snapshots provide:
-- **Bounded growth**: Changelog only since last snapshot
-- **Fast loading**: Don't replay 1000s of operations
-- **Clean releases**: Tag snapshots for deployments
-- **Git efficiency**: Snapshots rarely change after creation
-
-### Why Separate Snapshot Files?
-
-**V1 (Single File):**
-```json
-{
-  "version": 1,
-  "state": {...},
-  "ops": [1000s of operations],
-  "snapshots": [metadata]
+interface UnityColumnMask {
+  id: string;
+  columnId: string;
+  name: string;
+  enabled: boolean;
+  maskFunction: string;
+  description?: string;
 }
 ```
 
-**Problems:**
-- Large file (100s of KB)
-- Every operation changes the file
-- Git diffs are huge
-- Slow to parse
+---
 
-**V2 (Separate Files):**
-```
-project.json       # 2 KB, rarely changes
-changelog.json     # 5 KB, changes frequently
-snapshots/*.json   # 20 KB each, never change
-```
+## Migration from V2 to V3
 
-**Benefits:**
-- Clean git diffs (only changelog changes)
-- Fast parsing (only load what's needed)
-- Immutable snapshots (git-friendly)
-- Better organization
+### Automatic Migration
 
-## Security Considerations
+When a V2 project is opened, it's automatically migrated to V3:
 
-### Webview Sandboxing
-
-The webview runs in a sandboxed context with:
-- Limited API access
-- No direct file system access
-- Content Security Policy (CSP)
-- No eval() or inline scripts
-
-**Implications:**
-- Must use `postMessage` for all extension communication
-- Cannot use browser APIs like `prompt()`, `confirm()`, `alert()`
-- Custom modal dialogs required
-
-### Content Security Policy
-
-```html
-<meta http-equiv="Content-Security-Policy" 
-      content="default-src 'none'; 
-               script-src ${cspSource}; 
-               style-src ${cspSource} 'unsafe-inline';">
+```typescript
+async function migrateV2ToV3(
+  workspaceUri: Uri,
+  v2Project: any,
+  providerId: string = 'unity'
+): Promise<void> {
+  // 1. Add provider field
+  const v3Project = {
+    ...v2Project,
+    version: 3,
+    provider: {
+      type: providerId,
+      version: '1.0.0',
+    },
+  };
+  
+  // 2. Prefix operations with provider
+  const changelog = await readChangelog(workspaceUri);
+  const migratedOps = changelog.ops.map(op => ({
+    ...op,
+    provider: providerId,
+    op: `${providerId}.${op.op}`, // Add provider prefix
+  }));
+  
+  // 3. Save migrated files
+  await writeProject(workspaceUri, v3Project);
+  await writeChangelog(workspaceUri, { ...changelog, ops: migratedOps });
+}
 ```
 
-This restricts:
-- External network requests (none allowed)
-- Script sources (only bundled code)
-- Inline event handlers (none allowed)
+**Migration is:**
+
+- ✅ Automatic (no user action required)
+- ✅ Non-destructive (preserves all data)
+- ✅ One-way (V3 projects don't downgrade to V2)
+- ✅ Logged (migration events logged to output)
+
+---
+
+## Benefits of Provider Architecture
+
+### For Users
+
+1. **Unified Experience** - Same tool for Unity Catalog, Hive, PostgreSQL
+2. **Provider-Specific Features** - Full support for each catalog's unique features
+3. **Easy Migration** - Switch providers if needed (future)
+4. **Single Learning Curve** - Learn once, use everywhere
+
+### For Developers
+
+1. **Clear Boundaries** - Providers are isolated modules
+2. **No Merge Conflicts** - Teams work in separate provider directories
+3. **Independent Testing** - Each provider has its own test suite
+4. **Easy to Add** - Well-documented provider contract
+5. **Type Safety** - TypeScript and Pydantic enforce contracts
+
+### For the Project
+
+1. **Maintainable** - Clear separation of concerns
+2. **Scalable** - Easy to add new providers
+3. **Testable** - Provider compliance tests ensure quality
+4. **Future-Proof** - Architecture supports any catalog type
+
+---
 
 ## Performance Considerations
 
-### Loading
+### State Loading
 
-- **Fast Path**: Load latest snapshot + changelog (~25 KB)
-- **Full History**: Only load on demand (snapshot files)
-- **Memory**: Keep only current state in memory
+- **Bounded Growth**: Snapshots prevent unlimited operation replay
+- **Lazy Loading**: Only load latest snapshot, not entire history
+- **Incremental Updates**: Apply only new operations since last load
 
-### Saving
+**Example Timings (100 tables):**
 
-- **Incremental**: Append operations to changelog
-- **Batch**: Group related operations when possible
-- **Debounce**: UI updates debounced to avoid thrashing
+- Load snapshot: <10ms
+- Apply 50 operations: <5ms
+- **Total: <15ms** ⚡
 
-### UI Rendering
+### SQL Generation
 
-- **Lazy**: Tree nodes expanded on demand
-- **Virtual**: Large column lists (100+) use virtualization
-- **Memoized**: React components memoized to avoid re-renders
+- **Streaming**: Generate SQL as operations are processed
+- **No State Needed**: Operations contain all required information
+- **Provider-Optimized**: Each provider generates optimal SQL for its system
 
-## Future Enhancements
+### Memory Usage
 
-### Phase 2: Migration Generation
+- **Single State**: Only one state object in memory
+- **Immutable Operations**: Operations are small and append-only
+- **Efficient Snapshots**: Snapshots compressed when written
 
-Convert operations to SQL:
+---
+
+## Security & Validation
+
+### Operation Validation
+
+Every operation is validated before being saved:
 
 ```typescript
-function generateMigration(ops: Op[]): string {
-  return ops.map(op => {
-    switch (op.op) {
-      case 'add_column':
-        return `ALTER TABLE ${tableName} ADD COLUMN ${colName} ${type};`;
-      // ... etc
-    }
-  }).join('\n');
+const validation = provider.validateOperation(op);
+if (!validation.valid) {
+  throw new Error(`Invalid operation: ${validation.errors}`);
 }
 ```
 
-### Phase 3: Deployment
+**Validation Checks:**
 
-Apply migrations to Databricks:
+- Required fields present
+- Field types correct
+- Provider supports operation
+- References valid (IDs exist)
+- Constraints satisfied
+
+### State Validation
+
+State can be validated at any time:
 
 ```typescript
-async function deploy(env: Environment, snapshot: Snapshot) {
-  const client = new DatabricksClient(env);
-  const migration = generateMigration(changelog.ops);
-  await client.executeSql(migration);
+const validation = provider.validateState(state);
+if (!validation.valid) {
+  console.error('State validation errors:', validation.errors);
 }
 ```
 
-### Phase 4: Drift Detection
+### Snapshot Integrity
 
-Compare local schema to Unity Catalog:
+Snapshots include SHA-256 hash for integrity verification:
 
 ```typescript
-async function detectDrift(catalog: string): Promise<Drift[]> {
-  const local = loadCurrentState();
-  const remote = await databricks.getCatalog(catalog);
-  return compare(local, remote);
+const expectedHash = snapshot.hash;
+const actualHash = calculateHash(snapshot.state, snapshot.opsIncluded);
+if (expectedHash !== actualHash) {
+  throw new Error('Snapshot integrity check failed');
 }
 ```
 
-### Phase 5: Multi-User Workflows
+---
 
-- Merge conflict resolution
-- Operation ordering and dependencies
-- Concurrent editing detection
-- Team collaboration features
+## Extension Points
 
-## Testing Strategy
+### Adding a New Provider
 
-### Unit Tests (Future)
+1. **Implement Provider Interface** - See [PROVIDER_CONTRACT.md](PROVIDER_CONTRACT.md)
+2. **Register Provider** - Add to registry
+3. **Test Compliance** - Run provider compliance tests
+4. **Document** - Add provider-specific docs
 
-- Operation reducer logic
-- State transformations
-- Validation logic
-- File I/O mocking
+### Adding New Operations
 
-### Integration Tests
+1. **Define Operation** - Add to provider's `operations.ts`
+2. **Update State Reducer** - Handle in `state-reducer.ts`
+3. **Update SQL Generator** - Generate DDL in `sql-generator.ts`
+4. **Add UI** - Create UI for operation
+5. **Test** - Add operation tests
 
-- Extension activation
-- Command execution
-- File creation and reading
-- Webview communication
+### Extending UI
 
-### Manual Testing
+1. **Use Provider Capabilities** - Check what provider supports
+2. **Adapt to Hierarchy** - Use provider's hierarchy definition
+3. **Dynamic Forms** - Generate forms based on operation metadata
+4. **Provider-Specific Components** - Add provider-specific features
 
-- Designer opens successfully
-- All CRUD operations work
-- Snapshots persist correctly
-- Changelog clears after snapshot
-- UI reflects state accurately
+---
 
-## References
+## Future Architecture Plans
 
-- [Event Sourcing Pattern](https://martinfowler.com/eaaDev/EventSourcing.html)
-- [VS Code Extension Guidelines](https://code.visualstudio.com/api/extension-guides/overview)
+### Stage 2 Enhancements
 
+1. **Multi-Provider Projects** - Support multiple providers in one project
+2. **Provider Plugins** - Load providers from external packages
+3. **Cross-Provider References** - Reference objects across providers
+4. **Provider Marketplace** - Community-contributed providers
+
+### Advanced Features
+
+1. **Drift Detection** - Compare deployed state vs SchemaX state
+2. **Impact Analysis** - Show what a change will affect
+3. **Rollback Support** - Revert to previous snapshots
+4. **State Diffs** - Visual comparison between versions
+
+---
+
+## Conclusion
+
+SchemaX's provider-based architecture provides:
+
+✅ **Extensibility** - Easy to add new catalog types  
+✅ **Flexibility** - Each provider can have unique features  
+✅ **Type Safety** - Strong typing throughout  
+✅ **Performance** - Fast state loading and SQL generation  
+✅ **Maintainability** - Clear module boundaries  
+✅ **Future-Proof** - Ready for new catalog systems
+
+For more details:
+
+- **Provider Development**: [PROVIDER_CONTRACT.md](PROVIDER_CONTRACT.md)
+- **Development Guide**: [DEVELOPMENT.md](DEVELOPMENT.md)
+- **Getting Started**: [QUICKSTART.md](QUICKSTART.md)

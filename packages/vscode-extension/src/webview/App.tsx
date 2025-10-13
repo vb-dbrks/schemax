@@ -8,7 +8,7 @@ import { getVsCodeApi } from './vscode-api';
 const vscode = getVsCodeApi();
 
 export const App: React.FC = () => {
-  const { project, setProject } = useDesignerStore();
+  const { project, setProject, setProvider } = useDesignerStore();
   const [loading, setLoading] = React.useState(true);
 
   useEffect(() => {
@@ -24,7 +24,15 @@ export const App: React.FC = () => {
           console.log('[SchemaX Webview] Received project update');
           console.log('[SchemaX Webview] Snapshots count:', message.payload.snapshots?.length || 0);
           console.log('[SchemaX Webview] Ops count:', message.payload.ops?.length || 0);
+          console.log('[SchemaX Webview] Provider:', message.payload.provider);
           console.log('[SchemaX Webview] Full project:', message.payload);
+          
+          // Set provider from payload
+          if (message.payload.provider) {
+            setProvider(message.payload.provider);
+            console.log('[SchemaX Webview] Provider set:', message.payload.provider.name);
+          }
+          
           setProject(message.payload);
           setLoading(false);
           break;
@@ -40,7 +48,7 @@ export const App: React.FC = () => {
     return () => {
       window.removeEventListener('message', messageHandler);
     };
-  }, [setProject]);
+  }, [setProject, setProvider]);
 
   if (loading) {
     return (

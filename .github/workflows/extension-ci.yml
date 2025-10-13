@@ -30,6 +30,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Run tests
+        working-directory: packages/vscode-extension
+        run: npm test
+      
       - name: Build extension
         working-directory: packages/vscode-extension
         run: npm run build

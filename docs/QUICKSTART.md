@@ -4,12 +4,47 @@ Complete guide to get started with SchemaX - both the VS Code extension and Pyth
 
 ## Table of Contents
 
+- [Providers](#providers)
 - [VS Code Extension](#vs-code-extension)
 - [Python SDK & CLI](#python-sdk--cli)
 - [Your First Schema](#your-first-schema)
 - [Generating SQL](#generating-sql)
 - [CI/CD Integration](#cicd-integration)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## Providers
+
+SchemaX uses a **provider-based architecture** to support different data catalog systems.
+
+### Supported Providers
+
+| Provider | Status | When to Use |
+|----------|--------|-------------|
+| **Unity Catalog** | ✅ Available (v1.0) | Databricks Unity Catalog projects |
+| **Hive Metastore** | 🔜 Coming Q1 2026 | Apache Hive / legacy Databricks |
+| **PostgreSQL** | 🔜 Coming Q1 2026 | PostgreSQL with Lakebase extensions |
+
+### Default Provider
+
+**Unity Catalog is the default provider** for all new projects. When you create a new SchemaX project (by opening the designer for the first time), it automatically initializes with Unity Catalog.
+
+### Provider Selection (Future)
+
+In v0.3.0+, you'll be able to select a provider when creating a new project:
+
+```bash
+# CLI (future)
+schemax init --provider unity      # Unity Catalog (default)
+schemax init --provider hive       # Hive Metastore
+schemax init --provider postgres   # PostgreSQL
+
+# For now, all projects use Unity Catalog
+schemax init
+```
+
+**For this quickstart, we'll use Unity Catalog (the current provider).**
 
 ---
 

@@ -1,19 +1,30 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, ColumnMask } from '../../shared/model';
-import { Op } from '../../shared/ops';
+import { Operation } from '../../providers/base/operations';
+import { ProviderInfo, ProviderCapabilities } from '../../providers/base/provider';
 import { getVsCodeApi } from '../vscode-api';
 
 const vscode = getVsCodeApi();
 
+// Provider info sent from extension
+interface ProviderMetadata {
+  id: string;
+  name: string;
+  version: string;
+  capabilities: ProviderCapabilities;
+}
+
 interface DesignerState {
   project: ProjectFile | null;
+  provider: ProviderMetadata | null; // NEW: Provider information
   selectedCatalogId: string | null;
   selectedSchemaId: string | null;
   selectedTableId: string | null;
   
   // Actions
   setProject: (project: ProjectFile) => void;
+  setProvider: (provider: ProviderMetadata) => void;
   selectCatalog: (catalogId: string | null) => void;
   selectSchema: (schemaId: string | null) => void;
   selectTable: (tableId: string | null) => void;
@@ -67,352 +78,206 @@ interface DesignerState {
   findTable: (tableId: string) => { catalog: Catalog; schema: Schema; table: Table } | undefined;
 }
 
-function emitOps(ops: Op[]) {
+function emitOps(ops: Operation[]) {
   vscode.postMessage({ type: 'append-ops', payload: ops });
+}
+
+// Helper to create an operation with provider context
+function createOperation(
+  store: DesignerState,
+  opType: string,
+  target: string,
+  payload: Record<string, any>
+): Operation {
+  const provider = store.provider;
+  if (!provider) {
+    throw new Error('Provider not initialized. Cannot create operations.');
+  }
+
+  return {
+    id: `op_${uuidv4()}`,
+    ts: new Date().toISOString(),
+    provider: provider.id,
+    op: `${provider.id}.${opType}`, // Prefix with provider ID
+    target,
+    payload,
+  };
 }
 
 export const useDesignerStore = create<DesignerState>((set, get) => ({
   project: null,
+  provider: null, // Initialize as null
   selectedCatalogId: null,
   selectedSchemaId: null,
   selectedTableId: null,
 
   setProject: (project) => set({ project }),
+  setProvider: (provider) => set({ provider }),
   selectCatalog: (catalogId) => set({ selectedCatalogId: catalogId }),
   selectSchema: (schemaId) => set({ selectedSchemaId: schemaId }),
   selectTable: (tableId) => set({ selectedTableId: tableId }),
 
   addCatalog: (name) => {
     const catalogId = `cat_${uuidv4()}`;
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'add_catalog',
-      target: catalogId,
-      payload: { catalogId, name },
-    };
+    const op = createOperation(get(), 'add_catalog', catalogId, { catalogId, name });
     emitOps([op]);
   },
 
   renameCatalog: (catalogId, newName) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'rename_catalog',
-      target: catalogId,
-      payload: { newName },
-    };
+    const op = createOperation(get(), 'rename_catalog', catalogId, { newName });
     emitOps([op]);
   },
 
   dropCatalog: (catalogId) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'drop_catalog',
-      target: catalogId,
-      payload: {},
-    };
+    const op = createOperation(get(), 'drop_catalog', catalogId, {});
     emitOps([op]);
   },
 
   addSchema: (catalogId, name) => {
     const schemaId = `sch_${uuidv4()}`;
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'add_schema',
-      target: schemaId,
-      payload: { schemaId, name, catalogId },
-    };
+    const op = createOperation(get(), 'add_schema', schemaId, { schemaId, name, catalogId });
     emitOps([op]);
   },
 
   renameSchema: (schemaId, newName) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'rename_schema',
-      target: schemaId,
-      payload: { newName },
-    };
+    const op = createOperation(get(), 'rename_schema', schemaId, { newName });
     emitOps([op]);
   },
 
   dropSchema: (schemaId) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'drop_schema',
-      target: schemaId,
-      payload: {},
-    };
+    const op = createOperation(get(), 'drop_schema', schemaId, {});
     emitOps([op]);
   },
 
   addTable: (schemaId, name, format) => {
     const tableId = `tbl_${uuidv4()}`;
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'add_table',
-      target: tableId,
-      payload: { tableId, name, schemaId, format },
-    };
+    const op = createOperation(get(), 'add_table', tableId, { tableId, name, schemaId, format });
     emitOps([op]);
   },
 
   renameTable: (tableId, newName) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'rename_table',
-      target: tableId,
-      payload: { newName },
-    };
+    const op = createOperation(get(), 'rename_table', tableId, { newName });
     emitOps([op]);
   },
 
   dropTable: (tableId) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'drop_table',
-      target: tableId,
-      payload: {},
-    };
+    const op = createOperation(get(), 'drop_table', tableId, {});
     emitOps([op]);
   },
 
   setTableComment: (tableId, comment) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'set_table_comment',
-      target: tableId,
-      payload: { comment },
-    };
+    const op = createOperation(get(), 'set_table_comment', tableId, { tableId, comment });
     emitOps([op]);
   },
 
   addColumn: (tableId, name, type, nullable, after) => {
     const colId = `col_${uuidv4()}`;
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'add_column',
-      target: colId,
-      payload: { tableId, colId, name, type, nullable, after },
-    };
+    const op = createOperation(get(), 'add_column', colId, { tableId, colId, name, type, nullable, after });
     emitOps([op]);
   },
 
   renameColumn: (tableId, colId, newName) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'rename_column',
-      target: colId,
-      payload: { tableId, colId, newName },
-    };
+    const op = createOperation(get(), 'rename_column', colId, { tableId, newName });
     emitOps([op]);
   },
 
   dropColumn: (tableId, colId) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'drop_column',
-      target: colId,
-      payload: { tableId, colId },
-    };
+    const op = createOperation(get(), 'drop_column', colId, { tableId });
     emitOps([op]);
   },
 
   reorderColumns: (tableId, order) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'reorder_columns',
-      target: tableId,
-      payload: { tableId, order },
-    };
+    const op = createOperation(get(), 'reorder_columns', tableId, { tableId, order });
     emitOps([op]);
   },
 
   changeColumnType: (tableId, colId, newType) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'change_column_type',
-      target: colId,
-      payload: { tableId, colId, newType },
-    };
+    const op = createOperation(get(), 'change_column_type', colId, { tableId, newType });
     emitOps([op]);
   },
 
   setColumnNullable: (tableId, colId, nullable) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'set_nullable',
-      target: colId,
-      payload: { tableId, colId, nullable },
-    };
+    const op = createOperation(get(), 'set_nullable', colId, { tableId, nullable });
     emitOps([op]);
   },
 
   setColumnComment: (tableId, colId, comment) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'set_column_comment',
-      target: colId,
-      payload: { tableId, colId, comment },
-    };
+    const op = createOperation(get(), 'set_column_comment', colId, { tableId, comment });
     emitOps([op]);
   },
 
   setTableProperty: (tableId, key, value) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'set_table_property',
-      target: tableId,
-      payload: { tableId, key, value },
-    };
+    const op = createOperation(get(), 'set_table_property', tableId, { tableId, key, value });
     emitOps([op]);
   },
 
   unsetTableProperty: (tableId, key) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'unset_table_property',
-      target: tableId,
-      payload: { tableId, key },
-    };
+    const op = createOperation(get(), 'unset_table_property', tableId, { tableId, key });
     emitOps([op]);
   },
 
   // Column tag operations
   setColumnTag: (tableId, colId, tagName, tagValue) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'set_column_tag',
-      target: colId,
-      payload: { tableId, colId, tagName, tagValue },
-    };
+    const op = createOperation(get(), 'set_column_tag', colId, { tableId, tagName, tagValue });
     emitOps([op]);
   },
 
   unsetColumnTag: (tableId, colId, tagName) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'unset_column_tag',
-      target: colId,
-      payload: { tableId, colId, tagName },
-    };
+    const op = createOperation(get(), 'unset_column_tag', colId, { tableId, tagName });
     emitOps([op]);
   },
 
   // Constraint operations
   addConstraint: (tableId, constraint) => {
     const constraintId = `const_${uuidv4()}`;
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'add_constraint',
-      target: tableId,
-      payload: { 
-        tableId, 
-        constraintId,
-        ...constraint 
-      },
-    };
+    const op = createOperation(get(), 'add_constraint', tableId, { 
+      tableId, 
+      constraintId,
+      ...constraint 
+    });
     emitOps([op]);
   },
 
   dropConstraint: (tableId, constraintId) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'drop_constraint',
-      target: constraintId,
-      payload: { tableId, constraintId },
-    };
+    const op = createOperation(get(), 'drop_constraint', constraintId, { tableId });
     emitOps([op]);
   },
 
   // Row filter operations
   addRowFilter: (tableId, name, udfExpression, enabled = true, description) => {
     const filterId = `filter_${uuidv4()}`;
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'add_row_filter',
-      target: tableId,
-      payload: { tableId, filterId, name, udfExpression, enabled, description },
-    };
+    const op = createOperation(get(), 'add_row_filter', filterId, { 
+      tableId, filterId, name, udfExpression, enabled, description 
+    });
     emitOps([op]);
   },
 
   updateRowFilter: (tableId, filterId, updates) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'update_row_filter',
-      target: filterId,
-      payload: { tableId, filterId, ...updates },
-    };
+    const op = createOperation(get(), 'update_row_filter', filterId, { tableId, ...updates });
     emitOps([op]);
   },
 
   removeRowFilter: (tableId, filterId) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'remove_row_filter',
-      target: filterId,
-      payload: { tableId, filterId },
-    };
+    const op = createOperation(get(), 'remove_row_filter', filterId, { tableId });
     emitOps([op]);
   },
 
   // Column mask operations
   addColumnMask: (tableId, columnId, name, maskFunction, enabled = true, description) => {
     const maskId = `mask_${uuidv4()}`;
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'add_column_mask',
-      target: tableId,
-      payload: { tableId, maskId, columnId, name, maskFunction, enabled, description },
-    };
+    const op = createOperation(get(), 'add_column_mask', maskId, { 
+      tableId, maskId, columnId, name, maskFunction, enabled, description 
+    });
     emitOps([op]);
   },
 
   updateColumnMask: (tableId, maskId, updates) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'update_column_mask',
-      target: maskId,
-      payload: { tableId, maskId, ...updates },
-    };
+    const op = createOperation(get(), 'update_column_mask', maskId, { tableId, ...updates });
     emitOps([op]);
   },
 
   removeColumnMask: (tableId, maskId) => {
-    const op: Op = {
-      id: `op_${uuidv4()}`,
-      ts: new Date().toISOString(),
-      op: 'remove_column_mask',
-      target: maskId,
-      payload: { tableId, maskId },
-    };
+    const op = createOperation(get(), 'remove_column_mask', maskId, { tableId });
     emitOps([op]);
   },
 

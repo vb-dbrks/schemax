@@ -42,6 +42,40 @@ We welcome feature suggestions! Please open an issue with:
 - Expected behavior
 - Examples of similar features in other tools (if applicable)
 
+### Contributing a Provider
+
+SchemaX uses a provider-based architecture to support multiple data catalogs. Contributing a provider is a significant contribution!
+
+**Before Starting:**
+1. Read [docs/PROVIDER_CONTRACT.md](docs/PROVIDER_CONTRACT.md) - Provider interface specification
+2. Read [docs/DEVELOPMENT.md Provider Development](docs/DEVELOPMENT.md#provider-development) - Step-by-step guide
+3. Review Unity provider as reference implementation
+
+**Provider Workflow:**
+1. Open issue using "New Provider Proposal" template (if available)
+2. Fork repository and create branch: `feature/provider-{name}`
+3. Implement provider in TypeScript and Python:
+   - Define models and hierarchy
+   - Implement operations
+   - Create state reducer
+   - Build SQL generator
+   - Register provider
+4. Write tests (minimum 80% coverage required)
+5. Update documentation
+6. Submit PR with provider checklist complete
+
+**Required for Provider PRs:**
+- All provider interface methods implemented
+- Provider registered in registry
+- Compliance tests pass
+- 80% code coverage minimum
+- All operations tested
+- SQL generator tested
+- Documentation complete
+- Examples provided
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#provider-development) for complete guide.
+
 ### Pull Requests
 
 1. **Fork the repository** and create a branch from `main`

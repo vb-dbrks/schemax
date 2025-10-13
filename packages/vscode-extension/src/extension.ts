@@ -1,11 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as storageV2 from './storage-v2';
-import { Op } from './shared/ops';
+import * as storageV3 from './storage-v3';
+import { Operation } from './providers/base/operations';
 import { trackEvent } from './telemetry';
-import { ProjectFile } from './shared/model';
-import { SQLGenerator } from './sql-generator';
+import './providers'; // Initialize providers
 
 let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
@@ -59,8 +58,8 @@ async function openDesigner(context: vscode.ExtensionContext) {
     return;
   }
 
-  // Ensure project file exists (v2)
-  await storageV2.ensureProjectFile(workspaceFolder.uri);
+  // Ensure project file exists (v3) - defaults to Unity provider
+  await storageV3.ensureProjectFile(workspaceFolder.uri, 'unity');
 
   // If panel already exists, just reveal it
   if (currentPanel) {
@@ -101,32 +100,43 @@ async function openDesigner(context: vscode.ExtensionContext) {
           try {
             outputChannel.appendLine(`[SchemaX] Loading project from: ${workspaceFolder.uri.fsPath}`);
             
-            // Load v2: project metadata + current state (snapshot + changelog)
-            const project = await storageV2.readProject(workspaceFolder.uri);
-            const { state, changelog } = await storageV2.loadCurrentState(workspaceFolder.uri);
+            // Load v3: project metadata + current state (snapshot + changelog) + provider
+            const project = await storageV3.readProject(workspaceFolder.uri);
+            const { state, changelog, provider } = await storageV3.loadCurrentState(workspaceFolder.uri);
             
             outputChannel.appendLine(`[SchemaX] Project loaded successfully (v${project.version})`);
-            outputChannel.appendLine(`[SchemaX] - Catalogs: ${state.catalogs.length}`);
+            outputChannel.appendLine(`[SchemaX] - Provider: ${provider.info.name} v${provider.info.version}`);
             outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots.length}`);
             outputChannel.appendLine(`[SchemaX] - Latest snapshot: ${project.latestSnapshot || 'none'}`);
             outputChannel.appendLine(`[SchemaX] - Changelog ops: ${changelog.ops.length}`);
             
-            // Send combined data to webview (in v1 format for compatibility)
+            // For Unity provider, log catalog count (provider-specific)
+            if (state && 'catalogs' in state) {
+              outputChannel.appendLine(`[SchemaX] - Catalogs: ${(state as any).catalogs.length}`);
+            }
+            
+            // Send combined data to webview including provider info
             const payloadForWebview = {
               ...project,
               state,
               ops: changelog.ops,
+              provider: {
+                id: provider.info.id,
+                name: provider.info.name,
+                version: provider.info.version,
+                capabilities: provider.capabilities,
+              },
             };
             
             outputChannel.appendLine(`[SchemaX] Sending to webview:`);
-            outputChannel.appendLine(`[SchemaX] - state.catalogs: ${JSON.stringify(state.catalogs.map(c => c.name))}`);
-            outputChannel.appendLine(`[SchemaX] - project.version: ${project.version}`);
+            outputChannel.appendLine(`[SchemaX] - Provider: ${provider.info.name}`);
+            outputChannel.appendLine(`[SchemaX] - Project version: ${project.version}`);
             
             currentPanel?.webview.postMessage({
               type: 'project-loaded',
               payload: payloadForWebview,
             });
-            trackEvent('project_loaded');
+            trackEvent('project_loaded', { provider: provider.info.id });
           } catch (error) {
             outputChannel.appendLine(`[SchemaX] ERROR: Failed to load project: ${error}`);
             vscode.window.showErrorMessage(`Failed to load project: ${error}`);
@@ -135,32 +145,38 @@ async function openDesigner(context: vscode.ExtensionContext) {
         }
         case 'append-ops': {
           try {
-            const ops: Op[] = message.payload;
+            const ops: Operation[] = message.payload;
             outputChannel.appendLine(`[SchemaX] Appending ${ops.length} operation(s) to changelog`);
             
-            // Append to changelog
-            await storageV2.appendOps(workspaceFolder.uri, ops);
+            // Append to changelog (v3 validates operations via provider)
+            await storageV3.appendOps(workspaceFolder.uri, ops);
             
-            // Reload state
-            const project = await storageV2.readProject(workspaceFolder.uri);
-            const { state, changelog } = await storageV2.loadCurrentState(workspaceFolder.uri);
+            // Reload state and provider
+            const project = await storageV3.readProject(workspaceFolder.uri);
+            const { state, changelog, provider } = await storageV3.loadCurrentState(workspaceFolder.uri);
             
             outputChannel.appendLine(`[SchemaX] Operations appended successfully`);
             outputChannel.appendLine(`[SchemaX] - Changelog ops: ${changelog.ops.length}`);
             outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots.length}`);
             
-            // Send updated data to webview (in v1 format)
+            // Send updated data to webview including provider info
             const payloadForWebview = {
               ...project,
               state,
               ops: changelog.ops,
+              provider: {
+                id: provider.info.id,
+                name: provider.info.name,
+                version: provider.info.version,
+                capabilities: provider.capabilities,
+              },
             };
             
             currentPanel?.webview.postMessage({
               type: 'project-updated',
               payload: payloadForWebview,
             });
-            trackEvent('ops_appended', { count: ops.length });
+            trackEvent('ops_appended', { count: ops.length, provider: provider.info.id });
           } catch (error) {
             outputChannel.appendLine(`[SchemaX] ERROR: Failed to append operations: ${error}`);
             vscode.window.showErrorMessage(`Failed to append operations: ${error}`);
@@ -188,12 +204,14 @@ async function showLastOps() {
   }
 
   try {
-    const changelog = await storageV2.readChangelog(workspaceFolder.uri);
+    const project = await storageV3.readProject(workspaceFolder.uri);
+    const changelog = await storageV3.readChangelog(workspaceFolder.uri);
     const lastOps = changelog.ops.slice(-20);
 
     outputChannel.clear();
     outputChannel.appendLine('SchemaX: Last 20 Emitted Changes');
     outputChannel.appendLine('='.repeat(80));
+    outputChannel.appendLine(`Provider: ${project.provider.type}`);
     outputChannel.appendLine('');
 
     if (lastOps.length === 0) {
@@ -208,7 +226,7 @@ async function showLastOps() {
     }
 
     outputChannel.show();
-    trackEvent('last_ops_shown', { count: lastOps.length });
+    trackEvent('last_ops_shown', { count: lastOps.length, provider: project.provider.type });
   } catch (error) {
     vscode.window.showErrorMessage(`Failed to read operations: ${error}`);
   }
@@ -268,9 +286,11 @@ async function createSnapshotCommand_impl() {
 
   try {
     outputChannel.appendLine(`[SchemaX] Reading project from: ${workspaceFolder.uri.fsPath}`);
-    const project = await storageV2.readProject(workspaceFolder.uri);
-    const uncommittedOpsCount = await storageV2.getUncommittedOpsCount(workspaceFolder.uri);
+    const project = await storageV3.readProject(workspaceFolder.uri);
+    const changelog = await storageV3.readChangelog(workspaceFolder.uri);
+    const uncommittedOpsCount = changelog.ops.length;
     
+    outputChannel.appendLine(`[SchemaX] Provider: ${project.provider.type}`);
     outputChannel.appendLine(`[SchemaX] Uncommitted operations: ${uncommittedOpsCount}`);
     outputChannel.appendLine(`[SchemaX] Existing snapshots: ${project.snapshots.length}`);
 
@@ -311,7 +331,7 @@ async function createSnapshotCommand_impl() {
       title: 'Creating snapshot...',
       cancellable: false
     }, async (progress) => {
-      const { project: updatedProject, snapshot } = await storageV2.createSnapshot(
+      const { project: updatedProject, snapshot } = await storageV3.createSnapshot(
         workspaceFolder.uri, 
         name, 
         undefined, 
@@ -332,12 +352,18 @@ async function createSnapshotCommand_impl() {
       if (currentPanel) {
         outputChannel.appendLine('[SchemaX] Notifying webview of snapshot creation');
         
-        // Reload state for webview
-        const { state, changelog } = await storageV2.loadCurrentState(workspaceFolder.uri);
+        // Reload state and provider for webview
+        const { state, changelog, provider } = await storageV3.loadCurrentState(workspaceFolder.uri);
         const payloadForWebview = {
           ...updatedProject,
           state,
           ops: changelog.ops,
+          provider: {
+            id: provider.info.id,
+            name: provider.info.name,
+            version: provider.info.version,
+            capabilities: provider.capabilities,
+          },
         };
         
         currentPanel.webview.postMessage({
@@ -354,7 +380,8 @@ async function createSnapshotCommand_impl() {
       
       trackEvent('snapshot_created', { 
         version: snapshot.version, 
-        opsCount: uncommittedOpsCount 
+        opsCount: uncommittedOpsCount,
+        provider: updatedProject.provider.type
       });
     });
 
@@ -383,11 +410,16 @@ async function generateSQLMigration() {
   try {
     outputChannel.appendLine(`[SchemaX] Loading current state from: ${workspaceFolder.uri.fsPath}`);
     
-    // Load current state and changelog
-    const { state, changelog } = await storageV2.loadCurrentState(workspaceFolder.uri);
+    // Load current state, changelog, and provider
+    const { state, changelog, provider } = await storageV3.loadCurrentState(workspaceFolder.uri);
     
-    outputChannel.appendLine(`[SchemaX] Loaded state: ${state.catalogs.length} catalogs`);
+    outputChannel.appendLine(`[SchemaX] Provider: ${provider.info.name} v${provider.info.version}`);
     outputChannel.appendLine(`[SchemaX] Changelog operations: ${changelog.ops.length}`);
+    
+    // For Unity provider, log catalog count (provider-specific)
+    if (state && 'catalogs' in state) {
+      outputChannel.appendLine(`[SchemaX] Loaded state: ${(state as any).catalogs.length} catalogs`);
+    }
 
     if (changelog.ops.length === 0) {
       outputChannel.appendLine('[SchemaX] No operations in changelog, nothing to generate');
@@ -395,8 +427,8 @@ async function generateSQLMigration() {
       return;
     }
 
-    // Generate SQL
-    const generator = new SQLGenerator(state);
+    // Generate SQL using provider's SQL generator
+    const generator = provider.getSQLGenerator(state);
     const sql = generator.generateSQL(changelog.ops);
     
     outputChannel.appendLine(`[SchemaX] Generated SQL (${sql.length} characters)`);
@@ -427,7 +459,8 @@ async function generateSQLMigration() {
     
     trackEvent('sql_generated', { 
       opsCount: changelog.ops.length,
-      sqlLength: sql.length
+      sqlLength: sql.length,
+      provider: provider.info.id
     });
 
   } catch (error) {

@@ -1,16 +1,19 @@
 # SchemaX
 
-**Databricks Unity Catalog schema management with version control**
+**Multi-provider data catalog schema management with version control**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-SchemaX is a comprehensive toolkit for managing Databricks Unity Catalog schemas using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
+SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalog, Hive Metastore, PostgreSQL) using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
+
+**Current Support:** Databricks Unity Catalog (v1.0) | **Coming Soon:** Hive Metastore, PostgreSQL/Lakebase
 
 ## Features
 
 ### 🎨 Visual Schema Designer (VS Code Extension)
 - Intuitive drag-and-drop interface for schema modeling
-- Full Unity Catalog support (catalogs, schemas, tables, columns)
+- **Provider-based**: Unity Catalog (now), Hive/PostgreSQL (coming soon)
+- Adapts to provider-specific hierarchy and features
 - Data governance features (constraints, tags, row filters, column masks)
 - Snapshot-based versioning with semantic versions
 - Real-time SQL generation from changes
@@ -18,16 +21,27 @@ SchemaX is a comprehensive toolkit for managing Databricks Unity Catalog schemas
 ### 🐍 Python SDK & CLI
 - Command-line tools for automation and CI/CD
 - Python API for custom workflows
-- SQL migration generation
+- Provider-aware SQL migration generation
 - Deployment tracking across environments
 - Schema validation and comparison
 
 ### 🚀 Key Capabilities
-- **31 Operation Types**: Complete coverage of Unity Catalog DDL
+- **Extensible Provider System**: Easy to add new catalog types
+- **31+ Operation Types**: Complete coverage of Unity Catalog DDL
 - **Dual Implementation**: TypeScript (VS Code) + Python (CLI/SDK)
-- **SQL Generation**: Idempotent DDL statements ready for deployment
+- **SQL Generation**: Provider-specific, idempotent DDL statements
 - **Version Control**: Git-friendly JSON format with snapshots
 - **CI/CD Ready**: Integrate with GitHub Actions, GitLab CI, etc.
+
+### 🔌 Supported Providers
+
+| Provider | Status | Hierarchy | Features |
+|----------|--------|-----------|----------|
+| **Unity Catalog** | ✅ Available (v1.0) | Catalog → Schema → Table | Full governance (constraints, tags, filters, masks) |
+| **Hive Metastore** | 🔜 Coming Soon | Database → Table | Tables, partitions, views |
+| **PostgreSQL** | 🔜 Coming Soon | Database → Schema → Table | Tables, indexes, constraints |
+
+**For Provider Developers:** See [PROVIDER_CONTRACT.md](docs/PROVIDER_CONTRACT.md) for implementing custom providers.
 
 ## Quick Start
 
@@ -87,9 +101,10 @@ SchemaX is a comprehensive toolkit for managing Databricks Unity Catalog schemas
 | Document | Description |
 |----------|-------------|
 | **[Quickstart Guide](docs/QUICKSTART.md)** | Complete getting started guide |
+| **[Architecture](docs/ARCHITECTURE.md)** | **V3** provider-based technical design |
+| **[Development](docs/DEVELOPMENT.md)** | Contributing, building, **provider development** |
+| **[Provider Contract](docs/PROVIDER_CONTRACT.md)** | **NEW** - Guide for implementing providers |
 | **[Testing Guide](TESTING.md)** | How to test all components |
-| **[Architecture](docs/ARCHITECTURE.md)** | Technical design and concepts |
-| **[Development](docs/DEVELOPMENT.md)** | Contributing and building from source |
 | **[VS Code Extension](packages/vscode-extension/README.md)** | Extension-specific documentation |
 | **[Python SDK](packages/python-sdk/README.md)** | SDK and CLI reference |
 
@@ -100,20 +115,23 @@ schemax/
 ├── packages/
 │   ├── vscode-extension/       # VS Code Extension (TypeScript + React)
 │   │   ├── src/
-│   │   │   ├── sql-generator.ts      # SQL generation
+│   │   │   ├── providers/            # Provider system (V3)
+│   │   │   │   ├── base/             # Base interfaces
+│   │   │   │   ├── unity/            # Unity Catalog provider
+│   │   │   │   └── registry.ts       # Provider registry
+│   │   │   ├── storage-v3.ts         # Provider-aware storage
 │   │   │   ├── extension.ts          # Extension commands
-│   │   │   ├── storage-v2.ts         # File storage
 │   │   │   └── webview/              # React UI
 │   │   └── package.json
 │   │
 │   └── python-sdk/             # Python SDK & CLI
 │       ├── src/schemax/
-│       │   ├── models.py             # Data models
-│       │   ├── storage.py            # File I/O
-│       │   ├── state.py              # State reducer
-│       │   ├── sql_generator.py      # SQL generation
-│       │   ├── cli.py                # CLI commands
-│       │   └── ops.py                # Operation types
+│       │   ├── providers/            # Provider system (V3)
+│       │   │   ├── base/             # Base interfaces
+│       │   │   ├── unity/            # Unity Catalog provider
+│       │   │   └── registry.py       # Provider registry
+│       │   ├── storage_v3.py         # Provider-aware storage
+│       │   └── cli.py                # CLI commands
 │       └── pyproject.toml
 │
 ├── examples/                   # Working examples
@@ -123,8 +141,9 @@ schemax/
 │
 ├── docs/                       # Documentation
 │   ├── QUICKSTART.md          # Getting started
-│   ├── ARCHITECTURE.md        # Technical design
-│   └── DEVELOPMENT.md         # Contributing guide
+│   ├── ARCHITECTURE.md        # V3 provider architecture
+│   ├── DEVELOPMENT.md         # Contributing + provider dev
+│   └── PROVIDER_CONTRACT.md   # Provider implementation guide
 │
 ├── scripts/                    # Development scripts
 │   └── smoke-test.sh          # Quick validation
@@ -151,13 +170,14 @@ Use the VS Code visual designer or directly edit `.schemax/` files:
 
 ### 2. Track Changes
 
-Every modification generates an operation:
+Every modification generates a provider-prefixed operation:
 ```json
 {
   "id": "op_abc123",
   "ts": "2025-10-13T12:00:00Z",
-  "op": "add_column",
-  "target": "table_001",
+  "provider": "unity",
+  "op": "unity.add_column",
+  "target": "col_001",
   "payload": {
     "tableId": "table_001",
     "colId": "col_001",
@@ -170,10 +190,10 @@ Every modification generates an operation:
 
 ### 3. Generate SQL
 
-Convert operations to SQL DDL:
+Convert operations to provider-specific SQL DDL:
 ```sql
--- Op: op_abc123 (2025-10-13T12:00:00Z)
--- Type: add_column
+-- Operation: unity.add_column (op_abc123)
+-- Timestamp: 2025-10-13T12:00:00Z
 ALTER TABLE `main`.`sales`.`customers` 
 ADD COLUMN `customer_id` BIGINT NOT NULL;
 ```
@@ -379,21 +399,39 @@ cd packages/python-sdk && pytest
 
 ## Roadmap
 
-### ✅ Completed (v0.1.0)
+### ✅ Completed
+
+**v0.1.0 - Unity Catalog MVP**
 - Visual schema designer
 - Python SDK & CLI
 - SQL generation (TypeScript + Python)
 - Deployment tracking
-- All 31 operation types
+- All 31 Unity Catalog operation types
 - Examples and documentation
 
+**v0.2.0 - Provider Architecture (Current)**
+- ✅ Extensible provider system
+- ✅ Provider registry
+- ✅ Unity Catalog provider (v1.0)
+- ✅ Provider-aware storage (V3)
+- ✅ Comprehensive provider documentation
+- ✅ Provider development guide
+
+### 🔜 Next (v0.3.0 - Q1 2026)
+- [ ] **Hive Metastore provider**
+- [ ] **PostgreSQL/Lakebase provider**
+- [ ] Provider compliance test suite
+- [ ] Dynamic UI components
+- [ ] Extended Unity Catalog (volumes, functions)
+
 ### 🔄 Future
+- [ ] Multi-provider projects
 - [ ] Databricks Asset Bundle (DAB) generation
 - [ ] Schema import from Databricks
 - [ ] Drift detection
 - [ ] Visual diff viewer
 - [ ] Template library
-- [ ] Unit test suites
+- [ ] Provider marketplace
 - [ ] VS Code Marketplace publication
 - [ ] PyPI publication
 
@@ -418,4 +456,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**SchemaX** - Making Unity Catalog schema management declarative and version-controlled. 🚀
+**SchemaX** - Making data catalog schema management declarative, extensible, and version-controlled. 🚀
+
+**Current**: Unity Catalog | **Coming Soon**: Hive Metastore, PostgreSQL | **Extensible**: Add your own provider!
