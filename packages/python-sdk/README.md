@@ -226,7 +226,7 @@ deploy-prod:
 
 ## Requirements
 
-- Python 3.9 or higher
+- Python 3.11 or higher
 - A SchemaX project (`.schemax/` directory)
 
 ## Documentation

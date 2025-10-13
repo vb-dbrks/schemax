@@ -56,8 +56,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: packages/vscode-extension/package-lock.json
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -67,7 +65,9 @@ jobs:
       - name: Install dependencies
         run: |
           cd packages/vscode-extension
-          npm ci
+          npm cache clean --force
+          rm -rf node_modules
+          npm install --legacy-peer-deps
       
       - name: Run smoke tests
         run: |

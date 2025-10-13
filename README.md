@@ -341,7 +341,7 @@ schemax sql
 ## Requirements
 
 - **VS Code Extension**: VS Code 1.90.0+
-- **Python SDK**: Python 3.9+
+- **Python SDK**: Python 3.11+
 - **Databricks**: Unity Catalog-enabled workspace
 
 ## Development

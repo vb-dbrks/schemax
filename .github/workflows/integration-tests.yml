@@ -27,7 +27,9 @@ jobs:
       - name: Build VS Code extension
         working-directory: packages/vscode-extension
         run: |
-          npm ci
+          npm cache clean --force
+          rm -rf node_modules
+          npm install --legacy-peer-deps
           npm run build
       
       - name: Install Python SDK
