@@ -4,38 +4,140 @@ This guide covers building, testing, and contributing to SchemaX.
 
 ## Prerequisites
 
-- Node.js 18 or higher
-- npm 9 or higher
-- Visual Studio Code 1.90.0 or higher
+### Required
+
+- **Python 3.11 or higher** - For Python SDK and CLI development
+- **Node.js 18 or higher** - For VS Code extension development
+- **npm 9 or higher** - For JavaScript dependencies
+- **Visual Studio Code 1.90.0 or higher** - For extension development and testing
+
+### Recommended (Optional)
+
+- **uv** - Fast Python package installer and virtual environment manager (10-100x faster than pip)
+  
+  Install uv:
+  
+  ```bash
+  # macOS/Linux
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  
+  # Windows
+  powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+  
+  # Or via pip
+  pip install uv
+  ```
 
 ## Getting Started
 
-### Clone and Install
+### 1. Clone Repository
 
 ```bash
 git clone https://github.com/vb-dbrks/schemax-vscode.git
 cd schemax-vscode
-npm install
 ```
 
-### Build
+### 2. Choose Your Setup Path
 
-Build both the extension and webview:
+Depending on what you're working on, follow one of these paths:
+
+#### Option A: Full Setup (Extension + Python SDK)
+
+**Install VS Code Extension Dependencies:**
 
 ```bash
+npm install
 npm run build
 ```
 
-Or build individually:
+**Install Python SDK:**
+
+Using **uv** (recommended - much faster):
 
 ```bash
+cd packages/python-sdk
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -e ".[dev]"
+cd ../..
+```
+
+Using **traditional pip/venv**:
+
+```bash
+cd packages/python-sdk
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+cd ../..
+```
+
+#### Option B: Extension Only
+
+If you're only working on the VS Code extension:
+
+```bash
+npm install
+npm run build
+```
+
+#### Option C: Python SDK Only
+
+If you're only working on the Python SDK/CLI:
+
+```bash
+cd packages/python-sdk
+
+# With uv (recommended)
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -e ".[dev]"
+
+# Or with traditional tools
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+```
+
+### 3. Verify Installation
+
+**VS Code Extension:**
+
+```bash
+npm run build  # Should complete without errors
+# Then press F5 in VS Code to launch Extension Development Host
+```
+
+**Python SDK:**
+
+```bash
+# Check CLI is installed
+schemax --version
+
+# Run tests
+cd packages/python-sdk
+pytest
+
+# Run linter
+ruff check src/
+```
+
+### Development Workflows
+
+#### VS Code Extension Development
+
+**Build:**
+
+```bash
+# Build everything (extension + webview)
+npm run build
+
+# Build individually
 npm run build:ext      # Extension only
 npm run build:webview  # Webview only
 ```
 
-### Development Mode
-
-Start watch mode for automatic rebuilds:
+**Watch Mode** (automatic rebuilds):
 
 ```bash
 npm run watch
@@ -43,13 +145,60 @@ npm run watch
 
 This runs both extension and webview watchers concurrently.
 
-### Testing
+**Testing:**
 
 1. Open the project in VS Code
 2. Press `F5` to launch the Extension Development Host
 3. In the new window, open a test workspace
 4. Press `Cmd+Shift+P` and run **SchemaX: Open Designer**
 5. Check logs: View → Output → Select "SchemaX"
+
+#### Python SDK Development
+
+**Activate Virtual Environment:**
+
+```bash
+cd packages/python-sdk
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
+
+**Run Tests:**
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=schemax
+
+# Run specific test file
+pytest tests/providers/unity/test_provider.py
+```
+
+**Linting and Type Checking:**
+
+```bash
+# Run linter
+ruff check src/
+
+# Auto-fix linting issues
+ruff check --fix src/
+
+# Type checking
+mypy src/
+```
+
+**Manual Testing:**
+
+```bash
+# Navigate to test project
+cd ../../examples/basic-schema
+
+# Test CLI commands
+schemax validate
+schemax sql
+schemax sql --output test-migration.sql
+```
 
 ## Project Structure
 
@@ -281,17 +430,37 @@ Never use `console.log()` in extension code (it goes to Extension Host console, 
 
 ### File I/O
 
-All file operations should go through `storage-v2.ts`:
+**TypeScript (Extension):**
+
+All file operations should go through `storage-v3.ts`:
 
 ```typescript
-import * as storageV2 from './storage-v2';
+import * as storageV3 from './storage-v3';
 
 // Good
-const project = await storageV2.readProject(workspaceUri);
-await storageV2.appendOps(workspaceUri, ops);
+const project = await storageV3.readProject(workspaceUri);
+const { state, changelog, provider } = await storageV3.loadCurrentState(workspaceUri);
+await storageV3.appendOps(workspaceUri, ops);
 
 // Bad - don't access files directly
-const content = await fs.readFile('schemax.project.json');
+const content = await fs.readFile('.schemax/project.json');
+```
+
+**Python (SDK):**
+
+All file operations should go through `storage_v3.py`:
+
+```python
+from schemax.storage_v3 import read_project, load_current_state, append_ops
+
+# Good
+project = read_project(workspace_path)
+state, changelog, provider = load_current_state(workspace_path)
+append_ops(workspace_path, operations)
+
+# Bad - don't access files directly
+with open('.schemax/project.json') as f:
+    project = json.load(f)
 ```
 
 ### State Management
@@ -314,6 +483,8 @@ addColumn: (tableId, name, type, nullable) => {
 
 ### Data Validation
 
+**TypeScript:**
+
 All external data must be validated with Zod:
 
 ```typescript
@@ -323,9 +494,52 @@ const parsed = JSON.parse(content);
 const project = ProjectFile.parse(parsed);  // Throws if invalid
 ```
 
+**Python:**
+
+All external data must be validated with Pydantic:
+
+```python
+from schemax.models import ProjectFile
+
+parsed = json.loads(content)
+project = ProjectFile(**parsed)  # Validates and raises if invalid
+```
+
+### Code Formatting
+
+**TypeScript:**
+
+- Use TypeScript strict mode
+- 2 spaces indentation
+- Single quotes for strings
+- Semicolons required
+- Max line length: 100 characters
+
+**Python:**
+
+- Use **Ruff** for linting and formatting (configured in `pyproject.toml`)
+- Line length: 100 characters
+- Type hints required for all function signatures
+- Follow PEP 8 naming conventions
+- Docstrings for public APIs
+
+Format code before committing:
+
+```bash
+# Python
+cd packages/python-sdk
+ruff check --fix src/
+ruff format src/
+
+# TypeScript (manual formatting for now)
+# Follow existing code style
+```
+
 ## Testing Checklist
 
 Before submitting a pull request, verify:
+
+### VS Code Extension
 
 - [ ] Extension builds without errors (`npm run build`)
 - [ ] No TypeScript errors
@@ -336,6 +550,22 @@ Before submitting a pull request, verify:
 - [ ] Snapshots persist after reloading
 - [ ] Changelog clears after snapshot
 - [ ] SchemaX output logs show no errors
+
+### Python SDK
+
+- [ ] All tests pass (`pytest`)
+- [ ] No linting errors (`ruff check src/`)
+- [ ] Type checking passes (`mypy src/`)
+- [ ] Code is formatted (`ruff format src/`)
+- [ ] CLI commands work (`schemax validate`, `schemax sql`)
+- [ ] Documentation updated if API changed
+
+### Both (if applicable)
+
+- [ ] Provider changes implemented in both TypeScript and Python
+- [ ] State reducer logic matches between implementations
+- [ ] SQL generator produces identical output
+- [ ] Operation definitions synchronized
 
 ## Debugging
 

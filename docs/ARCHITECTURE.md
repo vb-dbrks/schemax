@@ -18,6 +18,506 @@ SchemaX implements a **provider-based**, snapshot-driven schema versioning syste
 
 ---
 
+## Architectural Patterns
+
+SchemaX follows several well-established architectural patterns that work together to provide a robust, maintainable, and extensible system.
+
+### Primary Pattern: Event Sourcing
+
+The foundation of SchemaX is **Event Sourcing** - all changes are stored as immutable events (operations) in an append-only log.
+
+**Implementation:**
+
+```typescript
+// Operations are immutable events
+interface Operation {
+  id: string;
+  ts: string;
+  provider: string;
+  op: string;
+  target: string;
+  payload: Record<string, any>;
+}
+
+// Current state = replay all operations from a snapshot
+state = loadSnapshot(latestSnapshot);
+for (const operation of changelog.ops) {
+  state = provider.applyOperation(state, operation);
+}
+```
+
+**Key Characteristics:**
+
+- ✅ Append-only log (`changelog.json`)
+- ✅ Operations never modified or deleted
+- ✅ Complete audit trail
+- ✅ Time-travel capability via snapshots
+- ✅ State is derived, not stored directly
+
+**Benefits:**
+
+- Full history of all changes
+- Can reconstruct state at any point
+- Easy debugging ("what happened?")
+- Enables undo/redo capabilities
+
+### Snapshot + Delta Pattern
+
+Optimization of Event Sourcing to prevent unbounded operation log growth.
+
+**Implementation:**
+
+```text
+State at v0.3.0 = 
+  load_snapshot("v0.2.0") + 
+  apply_operations(changelog.ops)
+
+.schemax/
+├── snapshots/v0.2.0.json    ← Full state checkpoint
+└── changelog.json            ← Only ops since v0.2.0
+```
+
+**Benefits:**
+
+- Fast state loading (no need to replay 1000s of operations)
+- Bounded memory usage
+- Clean separation of committed vs uncommitted changes
+
+### Plugin Architecture (Provider System)
+
+Extensibility through providers - catalog-specific implementations plugged into a common interface.
+
+**Implementation:**
+
+```typescript
+// Base contract
+interface Provider {
+  info: ProviderInfo;
+  capabilities: ProviderCapabilities;
+  applyOperation(state: ProviderState, op: Operation): ProviderState;
+  getSQLGenerator(state: ProviderState): SQLGenerator;
+  validateOperation(op: Operation): ValidationResult;
+}
+
+// Implementations
+class UnityProvider implements Provider { ... }
+class HiveProvider implements Provider { ... }
+class PostgresProvider implements Provider { ... }
+
+// Registry
+ProviderRegistry.register(unityProvider);
+```
+
+**Key Characteristics:**
+
+- ✅ Open/Closed Principle (open for extension, closed for modification)
+- ✅ Each provider is isolated and independent
+- ✅ Core system doesn't know provider details
+- ✅ New providers added without changing core
+
+### Strategy Pattern (Provider Operations)
+
+Different algorithms (SQL generation, state reduction) selected based on provider.
+
+**Implementation:**
+
+```typescript
+// Context uses provider to select strategy
+function generateSQL(ops: Operation[], project: Project) {
+  const provider = ProviderRegistry.get(project.provider.type);
+  const generator = provider.getSQLGenerator(state);
+  return generator.generateSQL(ops);
+}
+
+// Concrete strategies
+class UnitySQLGenerator extends SQLGenerator {
+  generateSQL(ops: Operation[]): string {
+    // Unity Catalog-specific SQL
+  }
+}
+
+class HiveSQLGenerator extends SQLGenerator {
+  generateSQL(ops: Operation[]): string {
+    // Hive Metastore-specific SQL
+  }
+}
+```
+
+**Benefits:**
+
+- Swappable implementations
+- Each strategy optimized for its system
+- Clean separation of concerns
+
+### State Reducer Pattern (Redux-inspired)
+
+Immutable state transformations through pure functions.
+
+**Implementation:**
+
+```typescript
+function applyOperation(state: ProviderState, operation: Operation): ProviderState {
+  // Pure function: state + operation → new_state
+  const newState = deepClone(state);
+  
+  switch (operation.op) {
+    case 'unity.add_catalog':
+      newState.catalogs.push(createCatalog(operation.payload));
+      break;
+    case 'unity.add_table':
+      const schema = findSchema(newState, operation.payload.schemaId);
+      schema.tables.push(createTable(operation.payload));
+      break;
+  }
+  
+  return newState; // Never mutate input
+}
+```
+
+**Key Principles:**
+
+- ✅ Pure functions (no side effects)
+- ✅ Immutable state
+- ✅ Predictable transformations
+- ✅ Easy to test
+- ✅ Time-travel debugging
+
+**Redux Comparison:**
+
+```javascript
+// Redux
+newState = reducer(state, action)
+
+// SchemaX
+newState = provider.applyOperation(state, operation)
+```
+
+### Registry Pattern (Provider Lookup)
+
+Central registry for service discovery and dependency injection.
+
+**Implementation:**
+
+```typescript
+class ProviderRegistryClass {
+  private providers = new Map<string, Provider>();
+  
+  register(provider: Provider): void {
+    this.providers.set(provider.info.id, provider);
+  }
+  
+  get(providerId: string): Provider | undefined {
+    return this.providers.get(providerId);
+  }
+}
+
+// Singleton
+export const ProviderRegistry = new ProviderRegistryClass();
+
+// Auto-registration on import
+ProviderRegistry.register(unityProvider);
+```
+
+**Benefits:**
+
+- Service discovery
+- Loose coupling
+- Easy testing (swap implementations)
+
+### Repository Pattern (Storage Layer)
+
+Abstraction over file system operations.
+
+**Implementation:**
+
+```typescript
+// storage_v3.ts/py acts as repository
+class StorageRepository {
+  readProject(workspacePath: Path): ProjectFile;
+  writeProject(workspacePath: Path, project: ProjectFile): void;
+  readChangelog(workspacePath: Path): ChangelogFile;
+  writeChangelog(workspacePath: Path, changelog: ChangelogFile): void;
+  readSnapshot(workspacePath: Path, version: string): SnapshotFile;
+  writeSnapshot(workspacePath: Path, snapshot: SnapshotFile): void;
+}
+
+// Usage
+const project = storage.readProject(workspace);
+// Don't care if it's JSON, SQLite, or remote API
+```
+
+**Benefits:**
+
+- Data access abstraction
+- Easy to swap storage backend
+- Testability (mock the repository)
+
+### Command Pattern (Operations)
+
+Operations as command objects that encapsulate requests.
+
+**Implementation:**
+
+```typescript
+// Command = Operation
+interface Operation {
+  id: string;        // Command ID
+  op: string;        // Command name
+  target: string;    // Receiver
+  payload: object;   // Parameters
+  ts: string;        // Timestamp
+}
+
+// Command execution
+function execute(state: State, command: Operation): State {
+  return applyOperation(state, command);
+}
+```
+
+**Characteristics:**
+
+- ✅ Encapsulates request as object
+- ✅ Supports queuing and logging
+- ✅ Can be serialized
+- ✅ Enables undo (store reverse operations)
+
+### Adapter Pattern (Python ↔ TypeScript)
+
+Translating between language ecosystems while maintaining compatibility.
+
+**Implementation:**
+
+```python
+# Python (Pydantic) - accepts both camelCase and snake_case
+class Column(BaseModel):
+    id: str
+    name: str
+    mask_id: Optional[str] = Field(None, alias="maskId")
+    
+    class Config:
+        populate_by_name = True  # Accept both maskId and mask_id
+```
+
+```typescript
+// TypeScript (Zod) - uses camelCase
+const Column = z.object({
+  id: z.string(),
+  name: z.string(),
+  maskId: z.string().optional(),
+});
+```
+
+**Same JSON works in both:**
+
+```json
+{"id": "col_1", "name": "email", "maskId": "mask_1"}
+```
+
+**Benefits:**
+
+- Seamless interoperability
+- Single source of truth (JSON files)
+- No code sharing required
+
+### Façade Pattern (CLI)
+
+Simplified interface to complex subsystems.
+
+**Implementation:**
+
+```python
+# cli.py provides simple interface hiding complexity
+@cli.command()
+def sql(workspace: str):
+    # Hides complexity of:
+    # - File system operations
+    # - Provider lookup
+    # - State reconstruction
+    # - SQL generation
+    state, changelog, provider = load_current_state(Path(workspace))
+    generator = provider.get_sql_generator(state)
+    sql = generator.generate_sql(changelog.ops)
+    console.print(sql)
+```
+
+**Benefits:**
+
+- Simple API for complex operations
+- Easy to use
+- Decouples CLI from internal complexity
+
+---
+
+## Pattern Interaction Diagram
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                    CLI / Extension (Façade)                     │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│               Storage Repository (Repository Pattern)           │
+│                 Reads/writes .schemax/ files                    │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│            Provider Registry (Registry + Strategy)              │
+│             ProviderRegistry.get(provider_id)                   │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              Provider Instance (Plugin Architecture)            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
+│  │   Unity      │  │    Hive      │  │  PostgreSQL  │         │
+│  │   Provider   │  │   Provider   │  │   Provider   │         │
+│  └──────────────┘  └──────────────┘  └──────────────┘         │
+└────────────┬────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              State Reducer (State Reducer Pattern)              │
+│         state' = applyOperation(state, operation)               │
+│              (Immutable transformations)                        │
+│         Based on Event Sourcing + Command Pattern               │
+└─────────────────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│               SQL Generator (Strategy Pattern)                  │
+│           sql = generator.generateSQL(operations)               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Architectural Style: Functional Core, Imperative Shell
+
+SchemaX follows the **Functional Core, Imperative Shell** pattern:
+
+**Functional Core (Pure Logic):**
+
+- State reducers (pure functions)
+- Operation validation
+- SQL generation algorithms
+- State transformations
+
+**Imperative Shell (Side Effects):**
+
+- File I/O (storage layer)
+- CLI output
+- VS Code webview communication
+- Extension activation
+
+**Benefits:**
+
+- Easy to test (core is pure functions)
+- Easy to reason about (no hidden state)
+- Side effects isolated at boundaries
+
+---
+
+## Design Patterns Summary
+
+| Pattern | Where Used | Purpose |
+|---------|------------|---------|
+| **Event Sourcing** | `changelog.json`, operations | Core architectural foundation |
+| **Snapshot + Delta** | `snapshots/`, `changelog.json` | Performance optimization |
+| **Plugin Architecture** | `providers/` system | Extensibility for new catalog types |
+| **Strategy** | Provider implementations | Swappable algorithms |
+| **State Reducer** | `state_reducer.ts/py` | Immutable state updates |
+| **Registry** | `ProviderRegistry` | Service discovery |
+| **Repository** | `storage_v3.ts/py` | Data access abstraction |
+| **Command** | `Operation` objects | Operation encapsulation |
+| **Adapter** | Pydantic/Zod models | Cross-language compatibility |
+| **Façade** | `cli.py`, `extension.ts` | Simple interface to complexity |
+
+---
+
+## Architectural Principles
+
+### 1. Separation of Concerns
+
+- Storage ≠ Provider ≠ CLI
+- Each layer has single responsibility
+
+### 2. Immutability
+
+- Operations never change
+- State transformations create new objects
+- Snapshots are read-only
+
+### 3. Idempotency
+
+- SQL can be run multiple times safely
+- Operations produce same result when replayed
+
+### 4. Extensibility
+
+- Add providers without changing core
+- Plugin-based architecture
+
+### 5. Type Safety
+
+- Zod (TypeScript) and Pydantic (Python)
+- Runtime validation
+- IDE autocomplete
+
+### 6. Testability
+
+- Pure functions (state reducers)
+- Mockable repositories
+- Isolated providers
+
+---
+
+## Anti-Patterns Avoided
+
+✅ **No Mutable Global State** - All state is passed explicitly
+
+✅ **No Tight Coupling** - Providers are independent plugins
+
+✅ **No Direct File System Access** - Goes through repository layer
+
+✅ **No Hardcoded Provider Logic** - Uses registry + strategy
+
+✅ **No Side Effects in Reducers** - Pure functions only
+
+---
+
+## Architecture Inspirations
+
+SchemaX's architecture draws inspiration from:
+
+1. **Redux** (State Management)
+    - Immutable state
+    - Pure reducers
+    - Action dispatching → Operations
+
+2. **Git** (Version Control)
+    - Commit log → Operations log
+    - Branches → Environments
+    - Tags → Snapshots
+
+3. **Terraform** (Infrastructure as Code)
+    - Desired state → Schema definition
+    - Plan → SQL preview
+    - Apply → SQL execution
+
+4. **Liquibase/Flyway** (Database Migrations)
+    - Version-controlled schema changes
+    - Idempotent migrations
+    - Rollback support
+
+5. **Event-Driven Architecture**
+    - Events → Operations
+    - Event store → Changelog
+    - Projections → Current state
+
+---
+
 ## Provider-Based Architecture
 
 ### What is a Provider?
@@ -56,9 +556,11 @@ from schemax.providers import unity_provider
 ### Current Providers
 
 **Available:**
+
 - ✅ **Unity Catalog** (`unity`) - Databricks Unity Catalog with full governance features
 
 **Planned (Stage 2):**
+
 - 🔜 **Hive Metastore** (`hive`) - Apache Hive Metastore
 - 🔜 **PostgreSQL/Lakebase** (`postgres`) - PostgreSQL with Lakebase extensions
 
@@ -68,7 +570,7 @@ from schemax.providers import unity_provider
 
 ### Version 3 Architecture (Current)
 
-```
+```text
 workspace-root/
 └── .schemax/
     ├── project.json           # Project metadata with provider info
@@ -82,6 +584,7 @@ workspace-root/
 ```
 
 **Key Changes from V2:**
+
 - `project.json` now includes provider metadata
 - Operations are prefixed with provider ID (e.g., `unity.add_catalog`)
 - Snapshots include provider context
@@ -124,6 +627,7 @@ workspace-root/
 ```
 
 **New in V3:**
+
 - `provider` field specifies catalog type and version
 - Provider info used to load correct reducer and SQL generator
 
@@ -189,6 +693,7 @@ workspace-root/
 ```
 
 **New in V3:**
+
 - `provider` field on each operation
 - `op` field prefixed with provider ID (e.g., `unity.add_catalog`)
 - Operations validated by provider before being saved
@@ -294,6 +799,7 @@ async function loadCurrentState(workspaceUri: Uri): Promise<{
 ```
 
 **Key Points:**
+
 - Provider selected based on `project.provider.type`
 - Provider's state reducer applies operations
 - Operations validated by provider before applying
@@ -321,6 +827,7 @@ const sql = generator.generateSQL(changelog.ops);
 ```
 
 Output:
+
 ```sql
 -- Operation: unity.add_catalog (op_abc123)
 CREATE CATALOG IF NOT EXISTS `analytics`;
@@ -346,20 +853,23 @@ CREATE TABLE IF NOT EXISTS analytics.bronze_users (...);
 Different providers have different object hierarchies:
 
 ### Unity Catalog (3 levels)
-```
+
+```text
 Catalog
   └─ Schema
       └─ Table
 ```
 
 ### Hive Metastore (2 levels)
-```
+
+```text
 Database
   └─ Table
 ```
 
 ### PostgreSQL (3 levels)
-```
+
+```text
 Database
   └─ Schema
       └─ Table
@@ -451,7 +961,7 @@ webview.postMessage({
 
 ### TypeScript (VSCode Extension)
 
-```
+```text
 src/
 ├── providers/
 │   ├── base/
@@ -479,7 +989,7 @@ src/
 
 ### Python (SDK/CLI)
 
-```
+```text
 src/schemax/
 ├── providers/
 │   ├── base/
@@ -611,6 +1121,7 @@ async function migrateV2ToV3(
 ```
 
 **Migration is:**
+
 - ✅ Automatic (no user action required)
 - ✅ Non-destructive (preserves all data)
 - ✅ One-way (V3 projects don't downgrade to V2)
@@ -653,6 +1164,7 @@ async function migrateV2ToV3(
 - **Incremental Updates**: Apply only new operations since last load
 
 **Example Timings (100 tables):**
+
 - Load snapshot: <10ms
 - Apply 50 operations: <5ms
 - **Total: <15ms** ⚡
@@ -685,6 +1197,7 @@ if (!validation.valid) {
 ```
 
 **Validation Checks:**
+
 - Required fields present
 - Field types correct
 - Provider supports operation
@@ -772,6 +1285,7 @@ SchemaX's provider-based architecture provides:
 ✅ **Future-Proof** - Ready for new catalog systems
 
 For more details:
+
 - **Provider Development**: [PROVIDER_CONTRACT.md](PROVIDER_CONTRACT.md)
 - **Development Guide**: [DEVELOPMENT.md](DEVELOPMENT.md)
 - **Getting Started**: [QUICKSTART.md](QUICKSTART.md)
