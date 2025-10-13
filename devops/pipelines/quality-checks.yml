@@ -57,6 +57,9 @@ jobs:
         with:
           node-version: '20'
       
+      - name: Install latest npm
+        run: npm install -g npm@latest
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -65,9 +68,8 @@ jobs:
       - name: Install dependencies
         run: |
           cd packages/vscode-extension
-          npm cache clean --force
-          rm -rf node_modules
-          npm install --legacy-peer-deps
+          rm -rf node_modules package-lock.json
+          npm install
       
       - name: Run smoke tests
         run: |
