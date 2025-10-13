@@ -55,80 +55,144 @@ This runs both extension and webview watchers concurrently.
 
 ```
 schemax-vscode/
-├── src/
-│   ├── extension.ts              # Extension entry point
-│   ├── storage-v2.ts              # File I/O and state management
-│   ├── telemetry.ts               # Analytics stub
-│   ├── shared/
-│   │   ├── model.ts               # Data models (Zod schemas)
-│   │   └── ops.ts                 # Operation definitions
-│   └── webview/
-│       ├── main.tsx               # Webview entry point
-│       ├── App.tsx                # Main React component
-│       ├── state/
-│       │   └── useDesignerStore.ts # Zustand state management
-│       ├── components/
-│       │   ├── Toolbar.tsx        # Action buttons
-│       │   ├── Sidebar.tsx        # Tree view
-│       │   ├── TableDesigner.tsx  # Table editor
-│       │   ├── ColumnGrid.tsx     # Column grid with inline editing
-│       │   └── SnapshotPanel.tsx  # Version timeline
-│       ├── styles.css             # Global styles
-│       └── vscode-api.ts          # VS Code API bridge
-├── dist/                          # Compiled extension
-├── media/                         # Compiled webview assets
+├── packages/
+│   ├── vscode-extension/          # VS Code Extension
+│   │   ├── src/
+│   │   │   ├── extension.ts               # Extension entry point
+│   │   │   ├── storage-v3.ts              # Provider-aware storage
+│   │   │   ├── providers/                 # Provider system
+│   │   │   │   ├── base/                  # Base interfaces
+│   │   │   │   │   ├── provider.ts
+│   │   │   │   │   ├── models.ts
+│   │   │   │   │   ├── operations.ts
+│   │   │   │   │   ├── sql-generator.ts
+│   │   │   │   │   └── hierarchy.ts
+│   │   │   │   ├── registry.ts            # Provider registry
+│   │   │   │   ├── index.ts               # Auto-registration
+│   │   │   │   └── unity/                 # Unity Catalog provider
+│   │   │   │       ├── index.ts
+│   │   │   │       ├── models.ts
+│   │   │   │       ├── operations.ts
+│   │   │   │       ├── sql-generator.ts
+│   │   │   │       ├── state-reducer.ts
+│   │   │   │       ├── hierarchy.ts
+│   │   │   │       └── provider.ts
+│   │   │   ├── shared/                    # Legacy (V2 compat)
+│   │   │   │   ├── model.ts
+│   │   │   │   └── ops.ts
+│   │   │   └── webview/
+│   │   │       ├── main.tsx               # Webview entry
+│   │   │       ├── App.tsx                # Main component
+│   │   │       ├── state/
+│   │   │       │   └── useDesignerStore.ts # Provider-aware store
+│   │   │       └── components/
+│   │   │           ├── Sidebar.tsx
+│   │   │           ├── TableDesigner.tsx
+│   │   │           ├── ColumnGrid.tsx
+│   │   │           └── SnapshotPanel.tsx
+│   │   ├── dist/                          # Compiled extension
+│   │   ├── media/                         # Compiled webview
+│   │   └── package.json
+│   │
+│   └── python-sdk/                # Python SDK & CLI
+│       ├── src/schemax/
+│       │   ├── providers/                 # Provider system
+│       │   │   ├── base/
+│       │   │   │   ├── provider.py
+│       │   │   │   ├── models.py
+│       │   │   │   ├── operations.py
+│       │   │   │   ├── sql_generator.py
+│       │   │   │   └── hierarchy.py
+│       │   │   ├── registry.py
+│       │   │   └── unity/
+│       │   │       ├── __init__.py
+│       │   │       ├── models.py
+│       │   │       ├── operations.py
+│       │   │       ├── sql_generator.py
+│       │   │       ├── state_reducer.py
+│       │   │       ├── hierarchy.py
+│       │   │       └── provider.py
+│       │   ├── storage_v3.py              # Provider-aware storage
+│       │   ├── cli.py                     # CLI commands
+│       │   └── models.py                  # Legacy (V2 compat)
+│       └── pyproject.toml
+│
 ├── docs/                          # Documentation
-├── esbuild.config.mjs            # Extension build config
-├── vite.config.ts                # Webview build config
-├── tsconfig.json                 # TypeScript config (extension)
-└── tsconfig.webview.json         # TypeScript config (webview)
+├── examples/                      # Working examples
+└── scripts/                       # Utility scripts
 ```
 
 ## Architecture
+
+### Provider-Based System
+
+SchemaX uses a **provider-based architecture** to support multiple catalog types (Unity Catalog, Hive, PostgreSQL, etc.). Each provider implements a standard interface.
+
+**Key Components:**
+- **Provider Registry** - Manages available providers
+- **Provider Interface** - Standard contract all providers implement
+- **Storage V3** - Provider-aware file operations
+- **State Reducer** - Provider-specific state modifications
+- **SQL Generator** - Provider-specific DDL generation
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 ### Extension Host
 
 The extension host (`src/extension.ts`) runs in Node.js and:
 - Registers VS Code commands
-- Manages file I/O via `storage-v2.ts`
+- Manages file I/O via `storage-v3.ts`
+- Loads provider from project file
 - Creates and controls the webview
 - Handles message passing with the webview
+- Validates operations using provider
 
 ### Webview
 
 The webview (`src/webview/`) is a React application that:
 - Provides the visual designer UI
 - Uses Zustand for state management
-- Generates operations for every user action
+- Stores current provider information
+- Generates provider-prefixed operations
 - Sends operations to the extension via `postMessage`
 
-### Communication Flow
+### Communication Flow (V3)
 
 ```
 User Action → Webview (React)
-           → Generate Op
+           → Get provider from store
+           → Generate Op with provider prefix (e.g., unity.add_catalog)
            → postMessage('append-ops')
            → Extension
+           → Get provider from registry
+           → Validate operation
            → Append to changelog.json
-           → Apply op to state
-           → postMessage('project-updated')
+           → Apply op using provider's state reducer
+           → postMessage('project-updated' with provider info)
            → Webview updates UI
 ```
 
-### Storage Architecture (V2)
+### Storage Architecture (V3)
 
-SchemaX uses a snapshot-based architecture:
+SchemaX V3 adds provider awareness to the snapshot-based architecture:
 
 **Files:**
-- `.schemax/project.json` - Metadata (snapshots list, settings)
-- `.schemax/changelog.json` - Uncommitted operations
+- `.schemax/project.json` - Metadata + **provider selection**
+- `.schemax/changelog.json` - Uncommitted **provider-prefixed** operations
 - `.schemax/snapshots/vX.Y.Z.json` - Full state snapshots
 
 **Loading:**
-1. Read latest snapshot file (or start empty)
-2. Read changelog
-3. Apply changelog operations to snapshot state
-4. Result = current state
+1. Read project.json → get provider type
+2. Load provider from registry
+3. Read latest snapshot file (or use provider's initial state)
+4. Read changelog
+5. **Apply operations using provider's state reducer**
+6. Result = current state
+
+**Migration:**
+- V2 projects automatically migrate to V3 on first load
+- Operations get prefixed with provider ID (e.g., `unity.`)
+- Provider field added to project.json
 
 **Saving:**
 - Operations append to `changelog.json`
@@ -308,6 +372,417 @@ Shows:
 - Verify `project.json` has `snapshots` array
 - Check `changelog.json` exists
 - Look for errors in output logs
+
+---
+
+## Provider Development
+
+### Overview
+
+Adding a new provider to SchemaX involves implementing the provider interface in both TypeScript and Python. This section guides you through the process.
+
+**See also:** [PROVIDER_CONTRACT.md](PROVIDER_CONTRACT.md) for detailed API documentation.
+
+### Quick Start: Adding a New Provider
+
+**1. Create Provider Directories**
+
+```bash
+# TypeScript
+mkdir -p packages/vscode-extension/src/providers/myprovider
+touch packages/vscode-extension/src/providers/myprovider/{index,models,operations,sql-generator,state-reducer,hierarchy,provider}.ts
+
+# Python
+mkdir -p packages/python-sdk/src/schemax/providers/myprovider
+touch packages/python-sdk/src/schemax/providers/myprovider/{__init__,models,operations,sql_generator,state_reducer,hierarchy,provider}.py
+```
+
+**2. Define Provider Metadata**
+
+```typescript
+// providers/myprovider/provider.ts
+export const myProvider: Provider = {
+  info: {
+    id: 'myprovider',
+    name: 'My Provider',
+    version: '1.0.0',
+    description: 'Support for MyDB',
+    author: 'Your Name',
+    docsUrl: 'https://docs.mydb.com',
+  },
+  capabilities: {
+    supportedOperations: ['myprovider.add_database', 'myprovider.add_table'],
+    supportedObjectTypes: ['database', 'table'],
+    hierarchy: myProviderHierarchy,
+    features: {
+      constraints: true,
+      rowFilters: false,
+      columnMasks: false,
+      columnTags: false,
+    },
+  },
+  // ... implement interface methods
+};
+```
+
+**3. Define Hierarchy**
+
+```typescript
+// providers/myprovider/hierarchy.ts
+export const myProviderHierarchy = new Hierarchy([
+  {
+    name: 'database',
+    displayName: 'Database',
+    pluralName: 'databases',
+    icon: 'database',
+    isContainer: true,
+  },
+  {
+    name: 'table',
+    displayName: 'Table',
+    pluralName: 'tables',
+    icon: 'table',
+    isContainer: false,
+  },
+]);
+```
+
+**4. Define Models**
+
+```typescript
+// providers/myprovider/models.ts
+import { z } from 'zod';
+
+export const MyDatabase = z.object({
+  id: z.string(),
+  name: z.string(),
+  tables: z.array(MyTable),
+});
+
+export const MyTable = z.object({
+  id: z.string(),
+  name: z.string(),
+  columns: z.array(MyColumn),
+});
+
+export const MyProviderState = z.object({
+  databases: z.array(MyDatabase),
+});
+
+export type MyDatabase = z.infer<typeof MyDatabase>;
+export type MyTable = z.infer<typeof MyTable>;
+export type MyProviderState = z.infer<typeof MyProviderState>;
+```
+
+**5. Define Operations**
+
+```typescript
+// providers/myprovider/operations.ts
+export const MY_PROVIDER_OPERATIONS = {
+  ADD_DATABASE: 'myprovider.add_database',
+  RENAME_DATABASE: 'myprovider.rename_database',
+  DROP_DATABASE: 'myprovider.drop_database',
+  ADD_TABLE: 'myprovider.add_table',
+  // ... more operations
+};
+
+export const myProviderOperationMetadata: OperationMetadata[] = [
+  {
+    type: MY_PROVIDER_OPERATIONS.ADD_DATABASE,
+    displayName: 'Add Database',
+    description: 'Create a new database',
+    category: OperationCategory.DATABASE,
+    requiredFields: ['databaseId', 'name'],
+    optionalFields: [],
+    isDestructive: false,
+  },
+  // ... more metadata
+];
+```
+
+**6. Implement State Reducer**
+
+```typescript
+// providers/myprovider/state-reducer.ts
+export function applyOperation(
+  state: MyProviderState,
+  op: Operation
+): MyProviderState {
+  // Deep clone for immutability
+  const newState = JSON.parse(JSON.stringify(state));
+  
+  // Strip provider prefix
+  const opType = op.op.replace('myprovider.', '');
+  
+  switch (opType) {
+    case 'add_database': {
+      const database: MyDatabase = {
+        id: op.payload.databaseId,
+        name: op.payload.name,
+        tables: [],
+      };
+      newState.databases.push(database);
+      break;
+    }
+    
+    case 'add_table': {
+      const db = newState.databases.find(d => d.id === op.payload.databaseId);
+      if (db) {
+        const table: MyTable = {
+          id: op.payload.tableId,
+          name: op.payload.name,
+          columns: [],
+        };
+        db.tables.push(table);
+      }
+      break;
+    }
+    
+    // ... more cases
+  }
+  
+  return newState;
+}
+```
+
+**7. Implement SQL Generator**
+
+```typescript
+// providers/myprovider/sql-generator.ts
+export class MyProviderSQLGenerator extends BaseSQLGenerator {
+  generateSQLForOperation(op: Operation): SQLGenerationResult {
+    const opType = op.op.replace('myprovider.', '');
+    
+    switch (opType) {
+      case 'add_database':
+        return {
+          sql: `CREATE DATABASE IF NOT EXISTS ${this.escapeIdentifier(op.payload.name)}`,
+          warnings: [],
+          isIdempotent: true,
+        };
+      
+      case 'add_table':
+        const dbName = this.idNameMap[op.payload.databaseId];
+        const tableName = op.payload.name;
+        return {
+          sql: `CREATE TABLE IF NOT EXISTS ${dbName}.${this.escapeIdentifier(tableName)} ()`,
+          warnings: [],
+          isIdempotent: true,
+        };
+      
+      // ... more cases
+    }
+  }
+}
+```
+
+**8. Implement Provider Class**
+
+```typescript
+// providers/myprovider/provider.ts
+export class MyProvider extends BaseProvider {
+  get info(): ProviderInfo {
+    return {
+      id: 'myprovider',
+      name: 'My Provider',
+      version: '1.0.0',
+      description: 'Support for MyDB',
+      author: 'Your Name',
+      docsUrl: 'https://docs.mydb.com',
+    };
+  }
+  
+  get capabilities(): ProviderCapabilities {
+    return {
+      supportedOperations: Object.values(MY_PROVIDER_OPERATIONS),
+      supportedObjectTypes: ['database', 'table'],
+      hierarchy: myProviderHierarchy,
+      features: {
+        constraints: true,
+        rowFilters: false,
+        columnMasks: false,
+        columnTags: false,
+      },
+    };
+  }
+  
+  createInitialState(): ProviderState {
+    return { databases: [] };
+  }
+  
+  applyOperation(state: ProviderState, op: Operation): ProviderState {
+    return applyOperation(state as MyProviderState, op);
+  }
+  
+  getSQLGenerator(state: ProviderState): SQLGenerator {
+    return new MyProviderSQLGenerator(state);
+  }
+  
+  validateOperation(op: Operation): ValidationResult {
+    // Implementation
+  }
+  
+  validateState(state: ProviderState): ValidationResult {
+    // Implementation
+  }
+}
+```
+
+**9. Register Provider**
+
+```typescript
+// providers/myprovider/index.ts
+export * from './models';
+export * from './operations';
+export * from './provider';
+
+import { MyProvider } from './provider';
+export const myProvider = new MyProvider();
+
+// providers/index.ts - Add to auto-registration
+import { myProvider } from './myprovider';
+
+export function initializeProviders() {
+  ProviderRegistry.register(unityProvider);
+  ProviderRegistry.register(myProvider); // NEW!
+}
+
+initializeProviders();
+```
+
+**10. Python Implementation**
+
+Follow the same structure in Python:
+
+```python
+# packages/python-sdk/src/schemax/providers/myprovider/provider.py
+class MyProvider(BaseProvider):
+    @property
+    def info(self) -> ProviderInfo:
+        return ProviderInfo(
+            id="myprovider",
+            name="My Provider",
+            version="1.0.0",
+            description="Support for MyDB",
+            author="Your Name",
+            docs_url="https://docs.mydb.com",
+        )
+    
+    # ... implement all methods
+```
+
+### Testing Your Provider
+
+**1. Create Test File**
+
+```typescript
+// providers/myprovider/__tests__/myprovider.test.ts
+import { testProviderCompliance } from '../../base/__tests__/provider-compliance.test';
+import { myProvider } from '../provider';
+
+// Run compliance tests
+testProviderCompliance(myProvider);
+
+// Provider-specific tests
+describe('MyProvider', () => {
+  test('creates initial state', () => {
+    const state = myProvider.createInitialState();
+    expect(state.databases).toEqual([]);
+  });
+  
+  test('applies add_database operation', () => {
+    // ... test implementation
+  });
+});
+```
+
+**2. Run Tests**
+
+```bash
+# TypeScript
+cd packages/vscode-extension
+npm test
+
+# Python
+cd packages/python-sdk
+pytest tests/providers/myprovider/
+```
+
+### Common Patterns
+
+**Immutable State Updates:**
+
+```typescript
+// ❌ BAD - Mutates state
+state.databases.push(newDb);
+
+// ✅ GOOD - Creates new state
+const newState = {
+  ...state,
+  databases: [...state.databases, newDb],
+};
+```
+
+**Operation Validation:**
+
+```typescript
+validateOperation(op: Operation): ValidationResult {
+  const errors: ValidationError[] = [];
+  const metadata = this.getOperationMetadata(op.op);
+  
+  // Check required fields
+  for (const field of metadata.requiredFields) {
+    if (!op.payload[field]) {
+      errors.push({
+        field: `payload.${field}`,
+        message: `Required field missing: ${field}`,
+        code: 'MISSING_REQUIRED_FIELD',
+      });
+    }
+  }
+  
+  return { valid: errors.length === 0, errors };
+}
+```
+
+**SQL Escaping:**
+
+```typescript
+// Always escape identifiers
+this.escapeIdentifier(name); // `name`
+
+// Always escape strings
+this.escapeString(value); // 'value'
+```
+
+### Provider Development Checklist
+
+Before submitting a provider:
+
+- [ ] All required interface methods implemented
+- [ ] Provider registered in registry
+- [ ] Hierarchy defined
+- [ ] All operations have metadata
+- [ ] State reducer handles all operations
+- [ ] State reducer is pure (no side effects)
+- [ ] SQL generator handles all operations
+- [ ] SQL is idempotent (safe to run multiple times)
+- [ ] Operation validation implemented
+- [ ] State validation implemented
+- [ ] Provider compliance tests pass
+- [ ] Provider-specific tests written
+- [ ] Python implementation matches TypeScript
+- [ ] Documentation written
+- [ ] Examples provided
+
+### Resources
+
+- **Provider Contract**: [PROVIDER_CONTRACT.md](PROVIDER_CONTRACT.md)
+- **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Unity Provider**: Reference implementation in `providers/unity/`
+- **Base Provider**: Abstract base in `providers/base/`
+
+---
 
 ## Contributing
 

@@ -9,18 +9,66 @@ from typing import Optional
 import click
 from rich.console import Console
 from rich.syntax import Syntax
+from rich.table import Table
 
-from .sql_generator import SQLGenerator
-from .storage import load_current_state, read_project
+# Import providers to initialize them
+import schemax.providers  # noqa: F401
+from .storage_v3 import (
+    load_current_state,
+    read_project,
+    ensure_project_file,
+    get_uncommitted_ops_count,
+)
+from .providers import ProviderRegistry
 
 console = Console()
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="schemax")
+@click.version_option(version="0.2.0", prog_name="schemax")
 def cli() -> None:
-    """SchemaX CLI for Unity Catalog schema management"""
+    """SchemaX CLI for catalog schema management (Multi-Provider)"""
     pass
+
+
+@cli.command()
+@click.option(
+    "--provider",
+    "-p",
+    default="unity",
+    help="Catalog provider (unity, hive, postgres)",
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def init(provider: str, workspace: str) -> None:
+    """Initialize a new SchemaX project"""
+    try:
+        workspace_path = Path(workspace).resolve()
+
+        # Check if provider exists
+        if not ProviderRegistry.has(provider):
+            available = ", ".join(ProviderRegistry.get_all_ids())
+            console.print(
+                f"[red]✗[/red] Provider '{provider}' not found. "
+                f"Available providers: {available}"
+            )
+            sys.exit(1)
+
+        provider_obj = ProviderRegistry.get(provider)
+
+        # Initialize project
+        ensure_project_file(workspace_path, provider_id=provider)
+
+        console.print(f"[green]✓[/green] Initialized SchemaX project in {workspace_path}")
+        console.print(f"[blue]Provider:[/blue] {provider_obj.info.name}")
+        console.print(f"[blue]Version:[/blue] {provider_obj.info.version}")
+        console.print("\nNext steps:")
+        console.print("  1. Run 'schemax sql' to generate SQL")
+        console.print("  2. Use SchemaX VSCode extension to design schemas")
+        console.print("  3. Check provider docs: " + (provider_obj.info.docs_url or "N/A"))
+
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error initializing project: {e}")
+        sys.exit(1)
 
 
 @cli.command()
@@ -43,31 +91,41 @@ def cli() -> None:
     "-e",
     help="Target environment (generates incremental SQL based on last deployment)",
 )
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def sql(
     output: Optional[str],
     from_version: Optional[str],
     to_version: Optional[str],
     environment: Optional[str],
+    workspace: str,
 ) -> None:
     """Generate SQL migration script from schema changes"""
 
     try:
-        workspace = Path.cwd()
+        workspace_path = Path(workspace).resolve()
 
-        # Load current state and changelog
-        state, changelog = load_current_state(workspace)
+        # Load current state, changelog, and provider
+        state, changelog, provider = load_current_state(workspace_path)
+
+        console.print(f"[blue]Provider:[/blue] {provider.info.name}")
+        console.print(f"[blue]Operations:[/blue] {len(changelog['ops'])}")
 
         # TODO: Handle version ranges and environment-based incremental SQL
         # For now, generate SQL for all changelog ops
-        ops_to_process = changelog.ops
+        ops_to_process = changelog["ops"]
 
         if not ops_to_process:
             console.print("[yellow]No operations to generate SQL for[/yellow]")
             return
 
-        # Generate SQL
-        generator = SQLGenerator(state)
-        sql_output = generator.generate_sql(ops_to_process)
+        # Convert to Operation objects
+        from .providers.base.operations import Operation
+
+        operations = [Operation(**op) for op in ops_to_process]
+
+        # Generate SQL using provider's SQL generator
+        generator = provider.get_sql_generator(state)
+        sql_output = generator.generate_sql(operations)
 
         if output:
             # Write to file
@@ -89,27 +147,49 @@ def sql(
 
 
 @cli.command()
-def validate() -> None:
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def validate(workspace: str) -> None:
     """Validate .schemax/ project files"""
 
     try:
-        workspace = Path.cwd()
+        workspace_path = Path(workspace).resolve()
 
         # Try to load project and changelog
         console.print("Validating project files...")
-        project = read_project(workspace)
-        console.print(f"  [green]✓[/green] project.json (version {project.version})")
+        project = read_project(workspace_path)
+        console.print(f"  [green]✓[/green] project.json (version {project['version']})")
 
-        state, changelog = load_current_state(workspace)
-        console.print(f"  [green]✓[/green] changelog.json ({len(changelog.ops)} operations)")
+        state, changelog, provider = load_current_state(workspace_path)
+        console.print(
+            f"  [green]✓[/green] changelog.json ({len(changelog['ops'])} operations)"
+        )
 
-        # Validate structure
-        console.print(f"\nProject: {project.name}")
-        console.print(f"  Catalogs: {len(state.catalogs)}")
-        total_schemas = sum(len(c.schemas) for c in state.catalogs)
-        console.print(f"  Schemas: {total_schemas}")
-        total_tables = sum(len(s.tables) for c in state.catalogs for s in c.schemas)
-        console.print(f"  Tables: {total_tables}")
+        # Validate state using provider
+        validation = provider.validate_state(state)
+        if not validation.valid:
+            console.print("[red]✗ State validation failed:[/red]")
+            for error in validation.errors:
+                console.print(f"  - {error.field}: {error.message}")
+            sys.exit(1)
+
+        console.print(f"  [green]✓[/green] State structure valid")
+
+        # Display summary
+        console.print(f"\n[bold]Project:[/bold] {project['name']}")
+        console.print(f"[bold]Provider:[/bold] {provider.info.name} v{provider.info.version}")
+        console.print(f"[bold]Uncommitted Ops:[/bold] {len(changelog['ops'])}")
+
+        # Provider-specific stats (works for Unity Catalog)
+        if "catalogs" in state:
+            console.print(f"[bold]Catalogs:[/bold] {len(state['catalogs'])}")
+            total_schemas = sum(len(c.get("schemas", [])) for c in state["catalogs"])
+            console.print(f"[bold]Schemas:[/bold] {total_schemas}")
+            total_tables = sum(
+                len(s.get("tables", []))
+                for c in state["catalogs"]
+                for s in c.get("schemas", [])
+            )
+            console.print(f"[bold]Tables:[/bold] {total_tables}")
 
         console.print("\n[green]✓ Schema files are valid[/green]")
 

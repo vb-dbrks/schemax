@@ -1,0 +1,371 @@
+/**
+ * Unity Catalog State Reducer
+ * 
+ * Applies operations to Unity Catalog state immutably.
+ * Migrated from storage-v2.ts applyOpsToState function.
+ */
+
+import { Operation } from '../base/operations';
+import {
+  UnityState,
+  UnityCatalog,
+  UnitySchema,
+  UnityTable,
+  UnityColumn,
+  UnityConstraint,
+  UnityRowFilter,
+  UnityColumnMask,
+} from './models';
+import { UNITY_OPERATIONS } from './operations';
+
+/**
+ * Apply a single operation to Unity Catalog state
+ */
+export function applyOperation(state: UnityState, op: Operation): UnityState {
+  // Deep clone state for immutability
+  const newState: UnityState = JSON.parse(JSON.stringify(state));
+  
+  // Strip provider prefix from operation type for switch statement
+  const opType = op.op.replace('unity.', '');
+  
+  switch (opType) {
+    // Catalog operations
+    case 'add_catalog': {
+      const catalog: UnityCatalog = {
+        id: op.payload.catalogId,
+        name: op.payload.name,
+        schemas: [],
+      };
+      newState.catalogs.push(catalog);
+      break;
+    }
+    case 'rename_catalog': {
+      const catalog = newState.catalogs.find(c => c.id === op.target);
+      if (catalog) catalog.name = op.payload.newName;
+      break;
+    }
+    case 'drop_catalog': {
+      newState.catalogs = newState.catalogs.filter(c => c.id !== op.target);
+      break;
+    }
+    
+    // Schema operations
+    case 'add_schema': {
+      const catalog = newState.catalogs.find(c => c.id === op.payload.catalogId);
+      if (catalog) {
+        const schema: UnitySchema = {
+          id: op.payload.schemaId,
+          name: op.payload.name,
+          tables: [],
+        };
+        catalog.schemas.push(schema);
+      }
+      break;
+    }
+    case 'rename_schema': {
+      for (const catalog of newState.catalogs) {
+        const schema = catalog.schemas.find(s => s.id === op.target);
+        if (schema) {
+          schema.name = op.payload.newName;
+          break;
+        }
+      }
+      break;
+    }
+    case 'drop_schema': {
+      for (const catalog of newState.catalogs) {
+        catalog.schemas = catalog.schemas.filter(s => s.id !== op.target);
+      }
+      break;
+    }
+    
+    // Table operations
+    case 'add_table': {
+      for (const catalog of newState.catalogs) {
+        const schema = catalog.schemas.find(s => s.id === op.payload.schemaId);
+        if (schema) {
+          const table: UnityTable = {
+            id: op.payload.tableId,
+            name: op.payload.name,
+            format: op.payload.format,
+            columns: [],
+            properties: {},
+            constraints: [],
+            grants: [],
+          };
+          schema.tables.push(table);
+          break;
+        }
+      }
+      break;
+    }
+    case 'rename_table': {
+      const table = findTable(newState, op.target);
+      if (table) table.name = op.payload.newName;
+      break;
+    }
+    case 'drop_table': {
+      for (const catalog of newState.catalogs) {
+        for (const schema of catalog.schemas) {
+          schema.tables = schema.tables.filter(t => t.id !== op.target);
+        }
+      }
+      break;
+    }
+    case 'set_table_comment': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) table.comment = op.payload.comment;
+      break;
+    }
+    case 'set_table_property': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        table.properties[op.payload.key] = op.payload.value;
+      }
+      break;
+    }
+    case 'unset_table_property': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        delete table.properties[op.payload.key];
+      }
+      break;
+    }
+    
+    // Column operations
+    case 'add_column': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        const column: UnityColumn = {
+          id: op.payload.colId,
+          name: op.payload.name,
+          type: op.payload.type,
+          nullable: op.payload.nullable,
+        };
+        if (op.payload.comment) column.comment = op.payload.comment;
+        table.columns.push(column);
+      }
+      break;
+    }
+    case 'rename_column': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        const column = table.columns.find(c => c.id === op.target);
+        if (column) column.name = op.payload.newName;
+      }
+      break;
+    }
+    case 'drop_column': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        table.columns = table.columns.filter(c => c.id !== op.target);
+      }
+      break;
+    }
+    case 'reorder_columns': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        const order = op.payload.order;
+        table.columns.sort((a, b) => {
+          return order.indexOf(a.id) - order.indexOf(b.id);
+        });
+      }
+      break;
+    }
+    case 'change_column_type': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        const column = table.columns.find(c => c.id === op.target);
+        if (column) column.type = op.payload.newType;
+      }
+      break;
+    }
+    case 'set_nullable': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        const column = table.columns.find(c => c.id === op.target);
+        if (column) column.nullable = op.payload.nullable;
+      }
+      break;
+    }
+    case 'set_column_comment': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        const column = table.columns.find(c => c.id === op.target);
+        if (column) column.comment = op.payload.comment;
+      }
+      break;
+    }
+    
+    // Column tag operations
+    case 'set_column_tag': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        const column = table.columns.find(c => c.id === op.target);
+        if (column) {
+          if (!column.tags) column.tags = {};
+          column.tags[op.payload.tagName] = op.payload.tagValue;
+        }
+      }
+      break;
+    }
+    case 'unset_column_tag': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        const column = table.columns.find(c => c.id === op.target);
+        if (column && column.tags) {
+          delete column.tags[op.payload.tagName];
+        }
+      }
+      break;
+    }
+    
+    // Constraint operations
+    case 'add_constraint': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        const constraint: UnityConstraint = {
+          id: op.payload.constraintId,
+          type: op.payload.type,
+          name: op.payload.name,
+          columns: op.payload.columns,
+        };
+        
+        // Add type-specific fields
+        if (op.payload.timeseries !== undefined) constraint.timeseries = op.payload.timeseries;
+        if (op.payload.parentTable) constraint.parentTable = op.payload.parentTable;
+        if (op.payload.parentColumns) constraint.parentColumns = op.payload.parentColumns;
+        if (op.payload.matchFull !== undefined) constraint.matchFull = op.payload.matchFull;
+        if (op.payload.onUpdate) constraint.onUpdate = op.payload.onUpdate;
+        if (op.payload.onDelete) constraint.onDelete = op.payload.onDelete;
+        if (op.payload.expression) constraint.expression = op.payload.expression;
+        if (op.payload.notEnforced !== undefined) constraint.notEnforced = op.payload.notEnforced;
+        if (op.payload.deferrable !== undefined) constraint.deferrable = op.payload.deferrable;
+        if (op.payload.initiallyDeferred !== undefined) constraint.initiallyDeferred = op.payload.initiallyDeferred;
+        if (op.payload.rely !== undefined) constraint.rely = op.payload.rely;
+        
+        table.constraints.push(constraint);
+      }
+      break;
+    }
+    case 'drop_constraint': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        table.constraints = table.constraints.filter(c => c.id !== op.target);
+      }
+      break;
+    }
+    
+    // Row filter operations
+    case 'add_row_filter': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        if (!table.rowFilters) table.rowFilters = [];
+        const filter: UnityRowFilter = {
+          id: op.payload.filterId,
+          name: op.payload.name,
+          enabled: op.payload.enabled ?? true,
+          udfExpression: op.payload.udfExpression,
+          description: op.payload.description,
+        };
+        table.rowFilters.push(filter);
+      }
+      break;
+    }
+    case 'update_row_filter': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table && table.rowFilters) {
+        const filter = table.rowFilters.find(f => f.id === op.target);
+        if (filter) {
+          if (op.payload.name !== undefined) filter.name = op.payload.name;
+          if (op.payload.enabled !== undefined) filter.enabled = op.payload.enabled;
+          if (op.payload.udfExpression !== undefined) filter.udfExpression = op.payload.udfExpression;
+          if (op.payload.description !== undefined) filter.description = op.payload.description;
+        }
+      }
+      break;
+    }
+    case 'remove_row_filter': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table && table.rowFilters) {
+        table.rowFilters = table.rowFilters.filter(f => f.id !== op.target);
+      }
+      break;
+    }
+    
+    // Column mask operations
+    case 'add_column_mask': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        if (!table.columnMasks) table.columnMasks = [];
+        const mask: UnityColumnMask = {
+          id: op.payload.maskId,
+          columnId: op.payload.columnId,
+          name: op.payload.name,
+          enabled: op.payload.enabled ?? true,
+          maskFunction: op.payload.maskFunction,
+          description: op.payload.description,
+        };
+        table.columnMasks.push(mask);
+        
+        // Link mask to column
+        const column = table.columns.find(c => c.id === op.payload.columnId);
+        if (column) column.maskId = op.payload.maskId;
+      }
+      break;
+    }
+    case 'update_column_mask': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table && table.columnMasks) {
+        const mask = table.columnMasks.find(m => m.id === op.target);
+        if (mask) {
+          if (op.payload.name !== undefined) mask.name = op.payload.name;
+          if (op.payload.enabled !== undefined) mask.enabled = op.payload.enabled;
+          if (op.payload.maskFunction !== undefined) mask.maskFunction = op.payload.maskFunction;
+          if (op.payload.description !== undefined) mask.description = op.payload.description;
+        }
+      }
+      break;
+    }
+    case 'remove_column_mask': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table && table.columnMasks) {
+        const mask = table.columnMasks.find(m => m.id === op.target);
+        if (mask) {
+          // Unlink mask from column
+          const column = table.columns.find(c => c.id === mask.columnId);
+          if (column) column.maskId = undefined;
+        }
+        table.columnMasks = table.columnMasks.filter(m => m.id !== op.target);
+      }
+      break;
+    }
+  }
+  
+  return newState;
+}
+
+/**
+ * Apply multiple operations to state
+ */
+export function applyOperations(state: UnityState, ops: Operation[]): UnityState {
+  let currentState = state;
+  for (const op of ops) {
+    currentState = applyOperation(currentState, op);
+  }
+  return currentState;
+}
+
+/**
+ * Find a table by ID across all catalogs and schemas
+ */
+function findTable(state: UnityState, tableId: string): UnityTable | undefined {
+  for (const catalog of state.catalogs) {
+    for (const schema of catalog.schemas) {
+      const table = schema.tables.find(t => t.id === tableId);
+      if (table) return table;
+    }
+  }
+  return undefined;
+}
+
