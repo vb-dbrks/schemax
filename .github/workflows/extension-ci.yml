@@ -28,7 +28,7 @@ jobs:
       
       - name: Install dependencies
         working-directory: packages/vscode-extension
-        run: npm install
+        run: npm ci
       
       - name: Build extension
         working-directory: packages/vscode-extension

@@ -27,7 +27,7 @@ jobs:
       - name: Build VS Code extension
         working-directory: packages/vscode-extension
         run: |
-          npm install
+          npm ci
           npm run build
       
       - name: Install Python SDK
