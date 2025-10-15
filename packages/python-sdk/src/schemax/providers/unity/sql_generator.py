@@ -46,7 +46,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def generate_sql(self, ops: List[Operation]) -> str:
         """
         Generate SQL statements with comprehensive batch optimizations.
-        
+
         Optimizations include:
         - Complete CREATE TABLE statements (no empty tables + ALTERs)
         - Batched column reordering (minimal ALTER statements)
@@ -60,13 +60,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Generate SQL for batched table operations
         for table_id, batch_info in table_batches.items():
             op_ids = batch_info["op_ids"]
-            
+
             # Mark these operations as processed
             processed_op_ids.update(op_ids)
-            
+
             # Generate optimized SQL for this table
             table_sql = self._generate_optimized_table_sql(table_id, batch_info)
-            
+
             if table_sql and not table_sql.startswith("--"):
                 # Add batch header comment
                 operation_types = set(op.replace("unity.", "") for op in batch_info["operation_types"])
@@ -558,11 +558,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
                   batch_info["other_ops"]):
 
             op_type = op.op.replace("unity.", "")
-            
+
             # Skip reorder operations (already handled)
             if op_type == "reorder_columns":
                 continue
-            
+
             # Generate SQL for individual operation
             try:
                 sql = self._generate_sql_for_op_type(op_type, op)
@@ -570,7 +570,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     statements.append(sql)
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {op.id}: {e}")
-        
+
         return ";\n".join(statements) if statements else "-- No ALTER statements needed"
 
     def _change_column_type(self, op: Operation) -> str:
