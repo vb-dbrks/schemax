@@ -553,10 +553,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 statements.append(reorder_sql)
         
         # Handle other operations normally
-        for op in (batch_info["column_ops"] + batch_info["property_ops"] + 
-                  batch_info["constraint_ops"] + batch_info["governance_ops"] + 
+        for op in (batch_info["column_ops"] + batch_info["property_ops"] +
+                  batch_info["constraint_ops"] + batch_info["governance_ops"] +
                   batch_info["other_ops"]):
-            
+
             op_type = op.op.replace("unity.", "")
             
             # Skip reorder operations (already handled)
