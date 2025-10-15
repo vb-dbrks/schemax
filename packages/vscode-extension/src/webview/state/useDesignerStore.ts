@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, ColumnMask } from '../../shared/model';
+import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, ColumnMask } from '../../providers/unity/models';
 import { Operation } from '../../providers/base/operations';
 import { ProviderInfo, ProviderCapabilities } from '../../providers/base/provider';
 import { getVsCodeApi } from '../vscode-api';

@@ -6,7 +6,7 @@ multiple catalog types (Unity Catalog, Hive Metastore, PostgreSQL, etc.)
 """
 
 from .base.hierarchy import Hierarchy, HierarchyLevel
-from .base.models import ProviderState, ValidationResult
+from .base.models import ProviderState, ValidationError, ValidationResult
 from .base.operations import Operation, OperationCategory, OperationMetadata
 from .base.provider import Provider, ProviderCapabilities, ProviderInfo
 from .registry import ProviderRegistry
@@ -22,6 +22,7 @@ __all__ = [
     "Hierarchy",
     "HierarchyLevel",
     "ProviderState",
+    "ValidationError",
     "ValidationResult",
     "Operation",
     "OperationMetadata",

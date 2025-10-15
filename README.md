@@ -74,6 +74,9 @@ SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalo
 
 2. **Use CLI**:
    ```bash
+   # Initialize new project with provider
+   schemax init --provider unity
+   
    # Validate schema files
    schemax validate
    
@@ -87,12 +90,16 @@ SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalo
 3. **Python API**:
    ```python
    from pathlib import Path
-   from schemax.storage import load_current_state
-   from schemax.sql_generator import SQLGenerator
+   from schemax.storage_v3 import load_current_state
+   from schemax.providers.base.operations import Operation
    
-   state, changelog = load_current_state(Path.cwd())
-   generator = SQLGenerator(state)
-   sql = generator.generate_sql(changelog.ops)
+   # Load with provider
+   state, changelog, provider = load_current_state(Path.cwd())
+   
+   # Generate SQL using provider
+   operations = [Operation(**op) for op in changelog["ops"]]
+   generator = provider.get_sql_generator(state)
+   sql = generator.generate_sql(operations)
    print(sql)
    ```
 

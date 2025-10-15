@@ -18,6 +18,7 @@ from .storage_v3 import (
     ensure_project_file,
     load_current_state,
     read_project,
+    write_deployment,
 )
 
 console = Console()
@@ -232,19 +233,16 @@ def deploy(environment: str, version: Optional[str], mark_deployed: bool) -> Non
         from datetime import datetime
         from uuid import uuid4
 
-        from .models import Deployment
-        from .storage import read_changelog, read_project, write_deployment
-
         console.print(f"Recording deployment to [cyan]{environment}[/cyan]...")
 
-        # Load project
+        # Load project and changelog
+        state, changelog_data, provider = load_current_state(workspace)
         project = read_project(workspace)
-        changelog = read_changelog(workspace)
 
         # Determine version to deploy
         if not version:
-            if project.latest_snapshot:
-                version = project.latest_snapshot
+            if project.get("latestSnapshot"):
+                version = project["latestSnapshot"]
                 console.print(f"Using latest snapshot: [cyan]{version}[/cyan]")
             else:
                 version = "changelog"
@@ -252,7 +250,9 @@ def deploy(environment: str, version: Optional[str], mark_deployed: bool) -> Non
 
         # Get operations that were applied
         if version == "changelog":
-            ops_applied = [op.id or f"op_{i}" for i, op in enumerate(changelog.ops)]
+            ops_applied = [
+                op.get("id", f"op_{i}") for i, op in enumerate(changelog_data.get("ops", []))
+            ]
             snapshot_id = None
         else:
             # For snapshot deployments, we'd need to track ops since last deployment
@@ -261,26 +261,26 @@ def deploy(environment: str, version: Optional[str], mark_deployed: bool) -> Non
             snapshot_id = version
 
         # Create deployment record
-        deployment = Deployment(
-            id=f"deploy_{uuid4().hex[:8]}",
-            environment=environment,
-            ts=datetime.utcnow().isoformat() + "Z",
-            deployed_by="cli",
-            snapshot_id=snapshot_id,
-            ops_applied=ops_applied,
-            schema_version=version,
-            status="success" if mark_deployed else "pending",
-        )
+        deployment = {
+            "id": f"deploy_{uuid4().hex[:8]}",
+            "environment": environment,
+            "ts": datetime.utcnow().isoformat() + "Z",
+            "deployedBy": "cli",
+            "snapshotId": snapshot_id,
+            "opsApplied": ops_applied,
+            "schemaVersion": version,
+            "status": "success" if mark_deployed else "pending",
+        }
 
         # Write deployment
         write_deployment(workspace, deployment)
 
         console.print("[green]✓[/green] Deployment recorded")
-        console.print(f"  Deployment ID: {deployment.id}")
-        console.print(f"  Environment: {deployment.environment}")
-        console.print(f"  Version: {deployment.schema_version}")
-        console.print(f"  Operations: {len(deployment.ops_applied)}")
-        console.print(f"  Status: {deployment.status}")
+        console.print(f"  Deployment ID: {deployment['id']}")
+        console.print(f"  Environment: {deployment['environment']}")
+        console.print(f"  Version: {deployment['schemaVersion']}")
+        console.print(f"  Operations: {len(deployment['opsApplied'])}")
+        console.print(f"  Status: {deployment['status']}")
 
     except FileNotFoundError as e:
         console.print(f"[red]✗ Error:[/red] {e}", err=True)

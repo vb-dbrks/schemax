@@ -485,24 +485,24 @@ addColumn: (tableId, name, type, nullable) => {
 
 **TypeScript:**
 
-All external data must be validated with Zod:
+All external data must be validated. The storage layer handles validation internally:
 
 ```typescript
-import { ProjectFile } from './shared/model';
+import * as storageV3 from './storage-v3';
 
-const parsed = JSON.parse(content);
-const project = ProjectFile.parse(parsed);  // Throws if invalid
+// Validates and throws if invalid
+const project = await storageV3.readProject(workspacePath);
 ```
 
 **Python:**
 
-All external data must be validated with Pydantic:
+All external data must be validated. The storage layer handles validation internally:
 
 ```python
-from schemax.models import ProjectFile
+from schemax.storage_v3 import read_project
 
-parsed = json.loads(content)
-project = ProjectFile(**parsed)  # Validates and raises if invalid
+# Validates and raises if invalid
+project = read_project(workspace_path)
 ```
 
 ### Code Formatting

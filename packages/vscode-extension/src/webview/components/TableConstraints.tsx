@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Constraint, Table } from '../../shared/model';
+import { Constraint, Table } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
 
 interface TableConstraintsProps {
