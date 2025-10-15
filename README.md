@@ -453,7 +453,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Team
 
 **Development Team**: Professional Services 
-**Developer**: [Varun Bhandary](https://github.com/vb-dbrks)
+**Developers**: [Varun Bhandary](https://github.com/vb-dbrks) [Hari Gopinath](https://github.com/harig24) [Murtaza Kanchwala](https://github.com)
 
 ## Support
 
