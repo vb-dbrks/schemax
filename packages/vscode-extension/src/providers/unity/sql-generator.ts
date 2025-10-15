@@ -513,18 +513,9 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       columns.push(`  ${colName} ${colType}${nullable}${comment}`);
     }
     
-    // Handle column reordering for new table
-    // TEMPORARILY DISABLED: Testing core table batching without reordering
-    // TODO: Fix column ID mapping issue in reordering logic
-    if (false && batchInfo.reorderOps.length > 0 && columns.length > 0) {
-      // Get final column order from last reorder operation
-      const finalOrder = batchInfo.reorderOps[batchInfo.reorderOps.length - 1].payload.order;
-      const columnMap = new Map<string, string>();
-      for (let i = 0; i < columnOps.length; i++) {
-        columnMap.set(columnOps[i].target, columns[i]);
-      }
-      columns = finalOrder.map((colId: string) => columnMap.get(colId)).filter((col: string | undefined) => col !== undefined) as string[];
-    }
+    // Note: reorder_columns operations are ignored for new table creation
+    // Column order for CREATE TABLE is determined by the order columns were added
+    // reorder_columns only applies to existing tables via ALTER statements
     
     // Build table format
     const tableFormat = (tableOp.payload.format || 'DELTA').toUpperCase();
@@ -570,9 +561,8 @@ ${columnsSql}
     const statements: string[] = [];
     
     // Handle column reordering first (using existing optimization)
-    // TEMPORARILY DISABLED: Testing core table batching without reordering
-    // TODO: Fix column ID mapping issue in reordering logic
-    if (false && batchInfo.reorderOps.length > 0) {
+    // For existing tables, reorder_columns generates ALTER statements
+    if (batchInfo.reorderOps.length > 0) {
       const originalOrder = this.getTableColumnOrder(tableId);
       const finalOrder = batchInfo.reorderOps[batchInfo.reorderOps.length - 1].payload.order;
       const reorderSql = this.generateOptimizedReorderSQL(
