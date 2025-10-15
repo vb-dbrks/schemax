@@ -69,8 +69,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
             if table_sql and not table_sql.startswith("--"):
                 # Add batch header comment
-                operation_types = set(op.replace("unity.", "") for op in batch_info["operation_types"])
-                header = f"-- Batch Table Operations: {len(op_ids)} operations\n-- Table: {table_id}\n-- Types: {', '.join(sorted(operation_types))}\n-- Operations: {', '.join(op_ids)}"
+                operation_types = set(
+                    op.replace("unity.", "") for op in batch_info["operation_types"]
+                )
+                header = (
+                    f"-- Batch Table Operations: {len(op_ids)} operations\n"
+                    f"-- Table: {table_id}\n"
+                    f"-- Types: {', '.join(sorted(operation_types))}\n"
+                    f"-- Operations: {', '.join(op_ids)}"
+                )
                 statements.append(f"{header}\n{table_sql};")
 
         # Process remaining operations normally (catalogs, schemas, etc.)
@@ -388,7 +395,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 prev_col_id = final_order[i - 1]
                 prev_col_name = self.id_name_map.get(prev_col_id, prev_col_id)
                 prev_col_esc = self.escape_identifier(prev_col_name)
-                statements.append(f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} AFTER {prev_col_esc}")
+                statements.append(
+                    f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} AFTER {prev_col_esc}"
+                )
             
             # Update current_order to reflect the change for next iteration
             current_order.pop(current_pos)
@@ -491,7 +500,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Get table name and schema info
         table_name = table_op.payload.get("name", "unknown")
         schema_id = table_op.payload.get("schemaId")
-        schema_fqn = self.id_name_map.get(schema_id, "unknown.unknown") if schema_id else "unknown.unknown"
+        schema_fqn = (
+            self.id_name_map.get(schema_id, "unknown.unknown") 
+            if schema_id else "unknown.unknown"
+        )
         table_fqn = f"{schema_fqn}.{table_name}"
         table_esc = self.escape_identifier(table_fqn)
         
@@ -501,7 +513,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
             col_name = self.escape_identifier(col_op.payload["name"])
             col_type = col_op.payload["type"]
             nullable = "" if col_op.payload.get("nullable", True) else " NOT NULL"
-            comment = f" COMMENT '{self.escape_string(col_op.payload['comment'])}'" if col_op.payload.get("comment") else ""
+            comment = (
+                f" COMMENT '{self.escape_string(col_op.payload['comment'])}'" 
+                if col_op.payload.get("comment") else ""
+            )
             columns.append(f"  {col_name} {col_type}{nullable}{comment}")
         
         # Note: reorder_columns operations are ignored for new table creation
@@ -534,7 +549,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
 ) USING {table_format}{table_comment}{properties_sql}"""
         else:
             # No columns yet - create empty table (fallback to original behavior)
-            return f"CREATE TABLE IF NOT EXISTS {table_esc} () USING {table_format}{table_comment}{properties_sql}"
+            return (
+                f"CREATE TABLE IF NOT EXISTS {table_esc} () "
+                f"USING {table_format}{table_comment}{properties_sql}"
+            )
 
     def _generate_alter_statements_for_table(self, table_id: str, batch_info: Dict) -> str:
         """Generate optimized ALTER statements for existing table modifications"""
