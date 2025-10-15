@@ -6,7 +6,7 @@ Migrated from TypeScript Unity provider with Unity-specific types
 
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UnityColumn(BaseModel):
@@ -20,8 +20,7 @@ class UnityColumn(BaseModel):
     tags: Optional[Dict[str, str]] = None  # tag_name: tag_value
     mask_id: Optional[str] = Field(None, alias="maskId")  # Reference to active column mask
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UnityRowFilter(BaseModel):
@@ -33,8 +32,7 @@ class UnityRowFilter(BaseModel):
     udf_expression: str = Field(..., alias="udfExpression")  # SQL UDF expression
     description: Optional[str] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UnityColumnMask(BaseModel):
@@ -47,8 +45,7 @@ class UnityColumnMask(BaseModel):
     mask_function: str = Field(..., alias="maskFunction")  # SQL UDF that returns same type
     description: Optional[str] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UnityConstraint(BaseModel):
@@ -78,8 +75,7 @@ class UnityConstraint(BaseModel):
     initially_deferred: Optional[bool] = Field(None, alias="initiallyDeferred")
     rely: Optional[bool] = None  # For query optimization (Photon)
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UnityGrant(BaseModel):
@@ -104,8 +100,7 @@ class UnityTable(BaseModel):
     row_filters: Optional[List[UnityRowFilter]] = Field(None, alias="rowFilters")
     column_masks: Optional[List[UnityColumnMask]] = Field(None, alias="columnMasks")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UnitySchema(BaseModel):

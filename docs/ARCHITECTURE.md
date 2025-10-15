@@ -1273,6 +1273,61 @@ if (expectedHash !== actualHash) {
 
 ---
 
+## Testing & Quality Assurance
+
+### Test Coverage
+
+SchemaX includes comprehensive test suites for both Python and TypeScript implementations:
+
+**Python SDK Test Status:**
+- ✅ 124 passing tests (91.2%)
+- ⏸️ 12 skipped tests (8.8%) - documented in GitHub issues [#19](https://github.com/vb-dbrks/schemax-vscode/issues/19), [#20](https://github.com/vb-dbrks/schemax-vscode/issues/20)
+- Test Categories:
+  - Storage operations (28 tests)
+  - State reducer (29 tests)
+  - Provider system (14 tests)
+  - SQL generator (39 passing, 9 skipped)
+  - Integration workflows (13 passing, 4 skipped)
+
+**Test Helpers:**
+
+Tests use `OperationBuilder` pattern for creating operations:
+
+```python
+from tests.utils import OperationBuilder
+
+builder = OperationBuilder()
+op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
+# Automatically includes: id, ts, provider, op, target, payload
+```
+
+### SQL Validation
+
+SchemaX includes optional **SQLGlot** integration for validating generated SQL:
+
+```python
+import sqlglot
+
+# Validate Databricks SQL
+sql = "ALTER TABLE `catalog`.`schema`.`table` ADD COLUMN `id` BIGINT"
+parsed = sqlglot.parse_one(sql, dialect="databricks")
+assert parsed is not None  # Valid SQL
+```
+
+**Benefits:**
+- Catches SQL syntax errors early
+- Supports multiple SQL dialects (Databricks, PostgreSQL, MySQL, etc.)
+- Can be integrated into CI/CD pipelines
+
+**Installation:**
+```bash
+pip install sqlglot>=20.0.0
+# or
+pip install "schemax[validation]"
+```
+
+---
+
 ## Conclusion
 
 SchemaX's provider-based architecture provides:
@@ -1282,7 +1337,9 @@ SchemaX's provider-based architecture provides:
 ✅ **Type Safety** - Strong typing throughout  
 ✅ **Performance** - Fast state loading and SQL generation  
 ✅ **Maintainability** - Clear module boundaries  
-✅ **Future-Proof** - Ready for new catalog systems
+✅ **Future-Proof** - Ready for new catalog systems  
+✅ **Well-Tested** - Comprehensive test coverage with 124+ passing tests  
+✅ **SQL Validation** - Optional SQLGlot integration for quality assurance
 
 For more details:
 

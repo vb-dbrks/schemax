@@ -613,6 +613,152 @@ def create_table(name: str, schema_id: str) -> Table:
 - ❌ Don't create duplicate documentation
 - ❌ Don't create redundant status/summary files
 
+## Local Development Workflow
+
+### Before Every Commit/PR
+
+**Always run the complete quality checks**:
+```bash
+# Run all checks (formatting, linting, tests, smoke tests)
+./devops/run-checks.sh
+```
+
+This script runs:
+1. ✅ Python code formatting check (Black, 100 char line length)
+2. ✅ Python linting (Ruff)
+3. ✅ Python SDK tests (pytest - 124 passing, 12 skipped)
+4. ✅ Smoke tests (extension build, SDK install, CLI validation)
+
+**Exit code 0** = All checks passed, ready to commit
+**Exit code 1** = One or more checks failed, fix before committing
+
+---
+
+### Quick Commands Reference
+
+**Python SDK Testing**:
+```bash
+cd packages/python-sdk
+
+# Run all tests (fast)
+pytest tests/ -q
+
+# Run with verbose output
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/unit/test_sql_generator.py -v
+
+# Run specific test
+pytest tests/unit/test_sql_generator.py::TestCatalogSQL::test_add_catalog -xvs
+
+# Run with coverage
+pytest tests/ --cov=src/schemax --cov-report=term-missing
+
+# Run with coverage HTML report
+pytest tests/ --cov=src/schemax --cov-report=html
+open htmlcov/index.html
+```
+
+**Python Formatting & Linting**:
+```bash
+cd packages/python-sdk
+
+# Check formatting (Black)
+black src/ tests/ --check --line-length 100
+
+# Fix formatting (Black)
+black src/ tests/ --line-length 100
+
+# Or use Ruff format (faster, recommended)
+ruff format src/ tests/
+
+# Check linting
+ruff check src/ tests/
+
+# Fix linting issues
+ruff check src/ tests/ --fix
+
+# Fix with unsafe fixes (removes unused variables, etc.)
+ruff check src/ tests/ --fix --unsafe-fixes
+```
+
+**VS Code Extension Testing**:
+```bash
+cd packages/vscode-extension
+
+# Build extension
+npm run build
+
+# Build in watch mode (for development)
+npm run watch
+
+# Build webview only
+npm run build:webview
+
+# Manual testing: Press F5 in VS Code
+```
+
+---
+
+### Installation for Local Development
+
+**One-time setup**:
+```bash
+# Install Python dev dependencies (pytest, ruff, SQLGlot, etc.)
+cd packages/python-sdk
+pip install -e ".[dev]"
+
+# Or use UV (faster)
+uv pip install -e ".[dev]"
+
+# Install VS Code extension dependencies
+cd packages/vscode-extension
+npm install
+
+# Install root dependencies
+cd ../..
+npm install
+```
+
+---
+
+### SQLGlot Validation
+
+SQLGlot is used in tests to validate generated SQL syntax for Databricks dialect:
+```python
+# In tests - SQLGlot validates all generated SQL
+def test_add_catalog(sample_unity_state, assert_sql):
+    result = generator.generate_sql_for_operation(op)
+    assert_sql(result.sql)  # ✅ Validates Databricks SQL syntax
+```
+
+**Install**:
+```bash
+cd packages/python-sdk
+pip install sqlglot>=20.0.0
+# Or included in dev dependencies: pip install -e ".[dev]"
+```
+
+---
+
+### CI/CD Pipeline
+
+The quality checks pipeline runs automatically on:
+- Push to `main` or `develop`
+- Pull requests to `main` or `develop`
+- Manual trigger
+
+**Pipeline jobs**:
+1. **code-formatting**: Black + Ruff checks
+2. **python-tests**: 136 pytest tests + coverage reporting
+3. **smoke-tests**: Extension build + SDK validation
+4. **commit-signatures**: GPG signature verification
+
+**Status**: ✅ All checks configured and passing locally
+
+---
+
 ## Testing
 
 **Quick Smoke Test**:
@@ -633,6 +779,13 @@ pip install -e .
 schemax validate examples/basic-schema/
 schemax sql
 ```
+
+**Current Test Status**:
+- ✅ 124 pytest tests passing
+- ⏭️ 12 tests skipped (features in development - see issues #19, #20)
+- ✅ SQLGlot validation integrated
+- ✅ Code coverage reporting enabled
+- ✅ OperationBuilder pattern for test utilities
 
 **See**: `TESTING.md` for comprehensive testing guide
 
@@ -690,8 +843,8 @@ All features implemented according to official Databricks Unity Catalog specific
 - Dev: `typescript`, `esbuild`, `vite`, `@vitejs/plugin-react`, `@vscode/vsce`
 
 **Python SDK**:
-- Runtime: `pydantic`, `click`, `rich`
-- Dev: `black`, `pytest` (future)
+- Runtime: `pydantic>=2.0.0`, `click>=8.0.0`, `rich>=13.0.0`, `pyyaml>=6.0.0`
+- Dev: `pytest>=7.0.0`, `pytest-cov>=4.0.0`, `ruff>=0.1.0`, `mypy>=1.0.0`, `sqlglot>=20.0.0`
 
 ## Git Strategy
 
@@ -707,17 +860,22 @@ When starting a new conversation about this project:
 
 1. **Project Type**: Monorepo with VS Code extension (TypeScript) + Python SDK/CLI
 2. **Architecture**: Event sourcing with snapshots + changelog
-3. **Storage**: V2 architecture (`packages/vscode-extension/src/storage-v2.ts`, `packages/python-sdk/src/schemax/storage.py`)
+3. **Storage**: V3 architecture (`packages/vscode-extension/src/storage-v3.ts`, `packages/python-sdk/src/schemax/storage_v3.py`)
 4. **UI**: React webview with inline editing and comprehensive governance features
 5. **State**: Snapshot + changelog = current state
 6. **SQL Generation**: ✅ Implemented in both TypeScript and Python
 7. **Deployment Tracking**: ✅ Implemented
-8. **Operations**: All 31 types fully supported
+8. **Operations**: Provider-based architecture (Unity Catalog = 29 operations)
 9. **Logs**: Check "SchemaX" output channel in VS Code
-10. **Build**: Extension (`npm run build`), SDK (`pip install -e .`)
-11. **Code Formatting**: Black for Python (100 char), manual for TypeScript
+10. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
+11. **Code Formatting**: Ruff/Black for Python (100 char), manual for TypeScript
 12. **Documentation**: Clean structure, no redundant files
-13. **Testing**: Smoke test (`./scripts/smoke-test.sh`), manual testing checklist
+13. **Testing**: 
+    - **Before committing**: Run `./devops/run-checks.sh` (includes all checks)
+    - **Python tests**: `pytest tests/ -v` (124 passing, 12 skipped)
+    - **Smoke test**: `./scripts/smoke-test.sh`
+    - **SQLGlot validation**: Integrated in pytest tests
+14. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
 
 **Status**: Production-ready MVP (v0.1.0) with complete Unity Catalog governance features and SQL generation. Future: DAB generation, Databricks integration, drift detection.
 

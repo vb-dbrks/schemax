@@ -1,7 +1,15 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "basic_schema_example",
-  "environments": ["dev", "test", "prod"],
+  "provider": {
+    "type": "unity",
+    "version": "1.0.0"
+  },
+  "environments": [
+    "dev",
+    "test",
+    "prod"
+  ],
   "snapshots": [
     {
       "id": "snap_001",
@@ -13,7 +21,9 @@
       "previousSnapshot": null,
       "opsCount": 5,
       "hash": "abc123",
-      "tags": ["initial"],
+      "tags": [
+        "initial"
+      ],
       "comment": "First version of the schema with basic catalog and tables"
     }
   ],
@@ -28,4 +38,3 @@
   },
   "latestSnapshot": "v0.1.0"
 }
-

@@ -37,7 +37,11 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
-    "mypy>=1.0.0"
+    "mypy>=1.0.0",
+    "sqlglot>=20.0.0",  # SQL validation in tests
+]
+validation = [
+    "sqlglot>=20.0.0",  # SQL validation for Databricks dialect
 ]
 
 [project.scripts]

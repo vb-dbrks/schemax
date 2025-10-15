@@ -208,6 +208,24 @@ export class MySQLGenerator extends BaseSQLGenerator {
 - ✅ Escape identifiers and strings properly
 - ✅ Add warnings for operations that can't be fully translated
 - ✅ Return empty string or comment for unsupported operations
+- ✅ Validate SQL with SQLGlot (optional but recommended)
+
+**SQL Validation with SQLGlot:**
+
+```python
+import sqlglot
+
+def validate_sql(sql: str, dialect: str = "databricks") -> bool:
+    """Validate SQL syntax using SQLGlot"""
+    try:
+        parsed = sqlglot.parse_one(sql, dialect=dialect)
+        return parsed is not None
+    except Exception:
+        return False
+
+# In tests
+assert validate_sql(generated_sql, "databricks")
+```
 
 ### 7. Implement Provider Class
 
@@ -343,6 +361,7 @@ Every provider must have tests for:
 3. **SQL Generation** - Each operation generates valid SQL
 4. **Validation** - Validates operations and state correctly
 5. **Idempotency** - Operations can be applied multiple times safely
+6. **SQL Syntax Validation** - Generated SQL is syntactically valid (use SQLGlot)
 
 ```typescript
 // TypeScript example
@@ -354,6 +373,25 @@ describe('MyProvider', () => {
   
   // ... provider-specific tests
 });
+```
+
+```python
+# Python example with SQLGlot validation
+import sqlglot
+from schemax.providers.myprovider import my_provider
+
+def test_add_database_sql():
+    """Test SQL generation with validation"""
+    state = my_provider.create_initial_state()
+    op = create_operation("myprovider.add_database", ...)
+    
+    generator = my_provider.get_sql_generator(state)
+    result = generator.generate_sql_for_operation(op)
+    
+    # Validate SQL syntax
+    parsed = sqlglot.parse_one(result.sql, dialect="databricks")
+    assert parsed is not None, "Generated SQL is invalid"
+    assert "CREATE DATABASE" in result.sql
 ```
 
 ## Best Practices

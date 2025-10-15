@@ -109,18 +109,18 @@ class UnityProvider(BaseProvider):
         """Apply an operation to state"""
         unity_state = UnityState(**state) if not isinstance(state, UnityState) else state
         result_state = apply_operation(unity_state, op)
-        return result_state.dict(by_alias=True)
+        return result_state.model_dump(by_alias=True)
 
     def apply_operations(self, state: ProviderState, ops: List[Operation]) -> ProviderState:
         """Apply multiple operations to state"""
         unity_state = UnityState(**state) if not isinstance(state, UnityState) else state
         result_state = apply_operations(unity_state, ops)
-        return result_state.dict(by_alias=True)
+        return result_state.model_dump(by_alias=True)
 
     def get_sql_generator(self, state: ProviderState) -> SQLGenerator:
         """Get SQL generator for Unity Catalog"""
         unity_state = UnityState(**state) if not isinstance(state, UnityState) else state
-        return UnitySQLGenerator(unity_state.dict(by_alias=True))
+        return UnitySQLGenerator(unity_state.model_dump(by_alias=True))
 
     def create_initial_state(self) -> ProviderState:
         """Create an empty initial state"""
