@@ -5,7 +5,7 @@ Generates Databricks SQL DDL statements from operations.
 Migrated from TypeScript sql-generator.ts
 """
 
-from typing import Dict
+from typing import Dict, List
 
 from ..base.operations import Operation
 from ..base.sql_generator import BaseSQLGenerator, SQLGenerationResult
@@ -42,6 +42,59 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def can_generate_sql(self, op: Operation) -> bool:
         """Check if operation can be converted to SQL"""
         return op.op in UNITY_OPERATIONS.values()
+
+    def generate_sql(self, ops: List[Operation]) -> str:
+        """
+        Generate SQL statements with comprehensive batch optimizations.
+        
+        Optimizations include:
+        - Complete CREATE TABLE statements (no empty tables + ALTERs)
+        - Batched column reordering (minimal ALTER statements)
+        - Table property consolidation
+        """
+        # Pre-process: batch operations by table and type
+        table_batches = self._batch_table_operations(ops)
+        processed_op_ids = set()
+        statements = []
+
+        # Generate SQL for batched table operations
+        for table_id, batch_info in table_batches.items():
+            op_ids = batch_info["op_ids"]
+            
+            # Mark these operations as processed
+            processed_op_ids.update(op_ids)
+            
+            # Generate optimized SQL for this table
+            table_sql = self._generate_optimized_table_sql(table_id, batch_info)
+            
+            if table_sql and not table_sql.startswith("--"):
+                # Add batch header comment
+                operation_types = set(op.replace("unity.", "") for op in batch_info["operation_types"])
+                header = f"-- Batch Table Operations: {len(op_ids)} operations\n-- Table: {table_id}\n-- Types: {', '.join(sorted(operation_types))}\n-- Operations: {', '.join(op_ids)}"
+                statements.append(f"{header}\n{table_sql};")
+
+        # Process remaining operations normally (catalogs, schemas, etc.)
+        for op in ops:
+            if op.id in processed_op_ids:
+                continue  # Skip already processed table operations
+                
+            if not self.can_generate_sql(op):
+                print(f"Warning: Cannot generate SQL for operation: {op.op}")
+                continue
+
+            result = self.generate_sql_for_operation(op)
+
+            # Add header comment with operation metadata
+            header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
+
+            # Add warnings if any
+            warnings_comment = ""
+            if result.warnings:
+                warnings_comment = f"\n-- Warnings: {', '.join(result.warnings)}"
+
+            statements.append(f"{header}{warnings_comment}\n{result.sql};")
+
+        return "\n\n".join(statements)
 
     def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
         """Generate SQL for a single operation"""
@@ -249,6 +302,276 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _reorder_columns(self, op: Operation) -> str:
         # Databricks doesn't support direct column reordering
         return "-- Column reordering not directly supported in Databricks SQL"
+
+    def _batch_reorder_operations(self, ops: List[Operation]) -> Dict:
+        """
+        Batch reorder_columns operations by table to generate minimal SQL.
+        
+        Returns dict mapping table_id to:
+        {
+            "original_order": [...],  # Column order before any reorder ops
+            "final_order": [...],     # Column order after all reorder ops  
+            "op_ids": [...]          # List of operation IDs involved
+        }
+        """
+        reorder_batches = {}
+        
+        for op in ops:
+            op_type = op.op.replace("unity.", "")
+            
+            if op_type == "reorder_columns":
+                table_id = op.payload["tableId"]
+                desired_order = op.payload["order"]
+                
+                if table_id not in reorder_batches:
+                    # Find original column order from current state
+                    original_order = self._get_table_column_order(table_id)
+                    reorder_batches[table_id] = {
+                        "original_order": original_order,
+                        "final_order": original_order.copy(),  # Will be updated
+                        "op_ids": []
+                    }
+                
+                # Update final order and track operation
+                reorder_batches[table_id]["final_order"] = desired_order
+                reorder_batches[table_id]["op_ids"].append(op.id)
+        
+        return reorder_batches
+
+    def _get_table_column_order(self, table_id: str) -> List[str]:
+        """Get current column order for a table from state"""
+        for catalog in self.state["catalogs"]:
+            for schema in catalog.get("schemas", []):
+                for table in schema.get("tables", []):
+                    if table["id"] == table_id:
+                        return [col["id"] for col in table.get("columns", [])]
+        return []
+
+    def _generate_optimized_reorder_sql(
+        self, table_id: str, original_order: List[str], final_order: List[str], op_ids: List[str]
+    ) -> str:
+        """Generate minimal SQL to reorder columns from original to final order"""
+        
+        if not original_order or not final_order:
+            return "-- No columns to reorder"
+            
+        if original_order == final_order:
+            return "-- Column order unchanged"
+        
+        # Get table name for ALTER statements  
+        table_fqn = self.id_name_map.get(table_id, "unknown")
+        table_esc = self.escape_identifier(table_fqn)
+        
+        statements = []
+        current_order = original_order.copy()
+        
+        # Process columns in reverse order to handle dependencies correctly
+        for i in range(len(final_order) - 1, -1, -1):
+            col_id = final_order[i]
+            current_pos = current_order.index(col_id) if col_id in current_order else -1
+            
+            if current_pos == -1:
+                continue  # Column not found
+                
+            # If column is already in correct position, skip
+            if current_pos == i:
+                continue
+                
+            col_name = self.id_name_map.get(col_id, col_id)
+            col_esc = self.escape_identifier(col_name)
+            
+            if i == 0:
+                # Move to first position
+                statements.append(f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} FIRST")
+            else:
+                # Move after the previous column
+                prev_col_id = final_order[i - 1]
+                prev_col_name = self.id_name_map.get(prev_col_id, prev_col_id)
+                prev_col_esc = self.escape_identifier(prev_col_name)
+                statements.append(f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} AFTER {prev_col_esc}")
+            
+            # Update current_order to reflect the change for next iteration
+            current_order.pop(current_pos)
+            current_order.insert(i, col_id)
+        
+        if not statements:
+            return "-- No column reordering needed"
+        
+        return ";\n".join(statements)
+
+    def _batch_table_operations(self, ops: List[Operation]) -> Dict:
+        """
+        Batch operations by table to generate optimal DDL.
+        
+        Groups table-related operations (add_table, add_column, reorder_columns, 
+        set_table_property, etc.) to generate complete CREATE TABLE statements
+        for new tables or efficient ALTER statements for existing tables.
+        
+        Returns dict mapping table_id to batch info.
+        """
+        table_batches = {}
+        
+        for op in ops:
+            op_type = op.op.replace("unity.", "")
+            
+            # Identify table-related operations
+            table_id = None
+            if op_type in ["add_table", "rename_table", "drop_table", "set_table_comment"]:
+                table_id = op.target
+            elif op_type in ["add_column", "rename_column", "drop_column", "reorder_columns", 
+                           "change_column_type", "set_nullable", "set_column_comment",
+                           "set_column_tag", "unset_column_tag", "set_table_property", 
+                           "unset_table_property"]:
+                table_id = op.payload.get("tableId")
+            elif op_type in ["add_constraint", "drop_constraint", "add_row_filter", 
+                           "update_row_filter", "remove_row_filter", "add_column_mask",
+                           "update_column_mask", "remove_column_mask"]:
+                table_id = op.payload.get("tableId")
+            
+            if not table_id:
+                continue  # Not a table operation
+            
+            if table_id not in table_batches:
+                table_batches[table_id] = {
+                    "is_new_table": False,
+                    "table_op": None,
+                    "column_ops": [],
+                    "property_ops": [],
+                    "reorder_ops": [],
+                    "constraint_ops": [],
+                    "governance_ops": [],
+                    "other_ops": [],
+                    "op_ids": [],
+                    "operation_types": []
+                }
+            
+            batch = table_batches[table_id]
+            batch["op_ids"].append(op.id)
+            batch["operation_types"].append(op.op)
+            
+            # Categorize operation
+            if op_type == "add_table":
+                batch["is_new_table"] = True
+                batch["table_op"] = op
+            elif op_type == "add_column":
+                batch["column_ops"].append(op)
+            elif op_type in ["set_table_property", "unset_table_property"]:
+                batch["property_ops"].append(op)
+            elif op_type == "reorder_columns":
+                batch["reorder_ops"].append(op)
+            elif op_type in ["add_constraint", "drop_constraint"]:
+                batch["constraint_ops"].append(op)
+            elif op_type in ["add_row_filter", "update_row_filter", "remove_row_filter",
+                           "add_column_mask", "update_column_mask", "remove_column_mask"]:
+                batch["governance_ops"].append(op)
+            else:
+                batch["other_ops"].append(op)
+        
+        return table_batches
+
+    def _generate_optimized_table_sql(self, table_id: str, batch_info: Dict) -> str:
+        """Generate optimal SQL for table operations"""
+        
+        if batch_info["is_new_table"]:
+            # Generate complete CREATE TABLE statement
+            return self._generate_create_table_with_columns(table_id, batch_info)
+        else:
+            # Generate optimized ALTER statements for existing table
+            return self._generate_alter_statements_for_table(table_id, batch_info)
+
+    def _generate_create_table_with_columns(self, table_id: str, batch_info: Dict) -> str:
+        """Generate complete CREATE TABLE statement with all columns included"""
+        table_op = batch_info["table_op"]
+        column_ops = batch_info["column_ops"]
+        property_ops = batch_info["property_ops"]
+        
+        if not table_op:
+            return "-- Error: No table creation operation found"
+        
+        # Get table name and schema info
+        table_name = table_op.payload.get("name", "unknown")
+        schema_id = table_op.payload.get("schemaId")
+        schema_fqn = self.id_name_map.get(schema_id, "unknown.unknown") if schema_id else "unknown.unknown"
+        table_fqn = f"{schema_fqn}.{table_name}"
+        table_esc = self.escape_identifier(table_fqn)
+        
+        # Build column definitions
+        columns = []
+        for col_op in column_ops:
+            col_name = self.escape_identifier(col_op.payload["name"])
+            col_type = col_op.payload["type"]
+            nullable = "" if col_op.payload.get("nullable", True) else " NOT NULL"
+            comment = f" COMMENT '{self.escape_string(col_op.payload['comment'])}'" if col_op.payload.get("comment") else ""
+            columns.append(f"  {col_name} {col_type}{nullable}{comment}")
+        
+        # Note: reorder_columns operations are ignored for new table creation
+        # Column order for CREATE TABLE is determined by the order columns were added
+        # reorder_columns only applies to existing tables via ALTER statements
+        
+        # Build table format
+        table_format = table_op.payload.get("format", "DELTA").upper()
+        
+        # Build table properties
+        properties = []
+        for prop_op in property_ops:
+            if prop_op.op.endswith("set_table_property"):
+                key = prop_op.payload["key"]
+                value = prop_op.payload["value"]
+                properties.append(f"'{key}' = '{self.escape_string(value)}'")
+        
+        # Build table comment
+        table_comment = ""
+        if table_op.payload.get("comment"):
+            table_comment = f" COMMENT '{self.escape_string(table_op.payload['comment'])}'"
+        
+        # Assemble CREATE TABLE statement
+        columns_sql = ",\n".join(columns) if columns else ""
+        properties_sql = f"\nTBLPROPERTIES ({', '.join(properties)})" if properties else ""
+        
+        if columns_sql:
+            return f"""CREATE TABLE IF NOT EXISTS {table_esc} (
+{columns_sql}
+) USING {table_format}{table_comment}{properties_sql}"""
+        else:
+            # No columns yet - create empty table (fallback to original behavior)
+            return f"CREATE TABLE IF NOT EXISTS {table_esc} () USING {table_format}{table_comment}{properties_sql}"
+
+    def _generate_alter_statements_for_table(self, table_id: str, batch_info: Dict) -> str:
+        """Generate optimized ALTER statements for existing table modifications"""
+        statements = []
+        
+        # Handle column reordering first (using existing optimization)
+        # For existing tables, reorder_columns generates ALTER statements
+        if batch_info["reorder_ops"]:
+            original_order = self._get_table_column_order(table_id)
+            final_order = batch_info["reorder_ops"][-1].payload["order"]
+            reorder_sql = self._generate_optimized_reorder_sql(
+                table_id, original_order, final_order, 
+                [op.id for op in batch_info["reorder_ops"]]
+            )
+            if reorder_sql and not reorder_sql.startswith("--"):
+                statements.append(reorder_sql)
+        
+        # Handle other operations normally
+        for op in (batch_info["column_ops"] + batch_info["property_ops"] + 
+                  batch_info["constraint_ops"] + batch_info["governance_ops"] + 
+                  batch_info["other_ops"]):
+            
+            op_type = op.op.replace("unity.", "")
+            
+            # Skip reorder operations (already handled)
+            if op_type == "reorder_columns":
+                continue
+            
+            # Generate SQL for individual operation
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append(sql)
+            except Exception as e:
+                statements.append(f"-- Error generating SQL for {op.id}: {e}")
+        
+        return ";\n".join(statements) if statements else "-- No ALTER statements needed"
 
     def _change_column_type(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
