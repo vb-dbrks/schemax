@@ -514,7 +514,9 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     }
     
     // Handle column reordering for new table
-    if (batchInfo.reorderOps.length > 0 && columns.length > 0) {
+    // TEMPORARILY DISABLED: Testing core table batching without reordering
+    // TODO: Fix column ID mapping issue in reordering logic
+    if (false && batchInfo.reorderOps.length > 0 && columns.length > 0) {
       // Get final column order from last reorder operation
       const finalOrder = batchInfo.reorderOps[batchInfo.reorderOps.length - 1].payload.order;
       const columnMap = new Map<string, string>();
@@ -568,7 +570,9 @@ ${columnsSql}
     const statements: string[] = [];
     
     // Handle column reordering first (using existing optimization)
-    if (batchInfo.reorderOps.length > 0) {
+    // TEMPORARILY DISABLED: Testing core table batching without reordering
+    // TODO: Fix column ID mapping issue in reordering logic
+    if (false && batchInfo.reorderOps.length > 0) {
       const originalOrder = this.getTableColumnOrder(tableId);
       const finalOrder = batchInfo.reorderOps[batchInfo.reorderOps.length - 1].payload.order;
       const reorderSql = this.generateOptimizedReorderSQL(

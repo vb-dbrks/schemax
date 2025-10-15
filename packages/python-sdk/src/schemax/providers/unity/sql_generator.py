@@ -505,7 +505,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
             columns.append(f"  {col_name} {col_type}{nullable}{comment}")
         
         # Handle column reordering for new table
-        if batch_info["reorder_ops"] and columns:
+        # TEMPORARILY DISABLED: Testing core table batching without reordering
+        # TODO: Fix column ID mapping issue in reordering logic
+        if False and batch_info["reorder_ops"] and columns:
             # Get final column order from last reorder operation
             final_order = batch_info["reorder_ops"][-1].payload["order"]
             column_map = {op.target: col_def for op, col_def in zip(column_ops, columns)}
@@ -544,7 +546,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         statements = []
         
         # Handle column reordering first (using existing optimization)
-        if batch_info["reorder_ops"]:
+        # TEMPORARILY DISABLED: Testing core table batching without reordering
+        # TODO: Fix column ID mapping issue in reordering logic
+        if False and batch_info["reorder_ops"]:
             original_order = self._get_table_column_order(table_id)
             final_order = batch_info["reorder_ops"][-1].payload["order"]
             reorder_sql = self._generate_optimized_reorder_sql(
