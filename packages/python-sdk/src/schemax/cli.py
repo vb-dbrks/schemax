@@ -16,7 +16,6 @@ import schemax.providers  # noqa: F401
 from .providers import ProviderRegistry
 from .storage_v3 import (
     ensure_project_file,
-    get_last_deployment,
     load_current_state,
     read_project,
     write_deployment,
