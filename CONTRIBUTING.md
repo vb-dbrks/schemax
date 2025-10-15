@@ -239,7 +239,8 @@ See [devops/README.md](devops/README.md) for details.
 ```typescript
 // ✅ Good
 import * as vscode from 'vscode';
-import { ProjectFile } from './shared/model';
+import { Provider } from './providers/base/provider';
+import { UnityState } from './providers/unity/models';
 
 interface Options {
   name: string;
@@ -844,27 +845,35 @@ Releases are managed by maintainers:
 
 ### Operation Types
 
-When adding new operation types:
+When adding new operation types to a provider:
 
-1. **Define in shared/ops.ts:**
+1. **Define in provider's operations.ts:**
    ```typescript
-   export type OpType = 'add_column' | 'your_new_op' | ...;
+   // packages/vscode-extension/src/providers/unity/operations.ts
+   export const UNITY_OPERATIONS = [
+     'add_column',
+     'your_new_op',
+     // ...
+   ] as const;
    ```
 
-2. **Add to Python ops.py:**
+2. **Update Python provider's ops:**
    ```python
-   class OpType(str, Enum):
-       ADD_COLUMN = "add_column"
-       YOUR_NEW_OP = "your_new_op"
+   # packages/python-sdk/src/schemax/providers/unity/operations.py
+   UNITY_OPERATIONS = [
+       "add_column",
+       "your_new_op",
+       # ...
+   ]
    ```
 
-3. **Implement reducer in both languages:**
-   - TypeScript: `storage-v2.ts` → `applyOpsToState()`
-   - Python: `state.py` → `apply_ops_to_state()`
+3. **Implement state reducer in provider:**
+   - TypeScript: `providers/unity/state-reducer.ts` → `applyOperation()`
+   - Python: `providers/unity/state_reducer.py` → `apply_operation()`
 
-4. **Add SQL generation:**
-   - TypeScript: `sql-generator.ts`
-   - Python: `sql_generator.py`
+4. **Add SQL generation in provider:**
+   - TypeScript: `providers/unity/sql-generator.ts` → add new method
+   - Python: `providers/unity/sql_generator.py` → add new method
 
 5. **Update documentation:**
    - `.cursorrules` - Add to operation list

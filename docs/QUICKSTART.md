@@ -230,23 +230,26 @@ Create a script to use SchemaX programmatically:
 ```python
 #!/usr/bin/env python3
 from pathlib import Path
-from schemax.storage import load_current_state, read_project
-from schemax.sql_generator import SQLGenerator
+from schemax.storage_v3 import load_current_state, read_project
+from schemax.providers.base.operations import Operation
 
-# Load schema
+# Load schema with provider
 workspace = Path.cwd()
-state, changelog = load_current_state(workspace)
+state, changelog, provider = load_current_state(workspace)
 
 # Show summary
 project = read_project(workspace)
-print(f"Project: {project.name}")
-print(f"Catalogs: {len(state.catalogs)}")
-print(f"Pending operations: {len(changelog.ops)}")
+print(f"Project: {project['name']}")
+print(f"Provider: {provider.info.name}")
+if "catalogs" in state:
+    print(f"Catalogs: {len(state['catalogs'])}")
+print(f"Pending operations: {len(changelog['ops'])}")
 
 # Generate SQL
-if changelog.ops:
-    generator = SQLGenerator(state)
-    sql = generator.generate_sql(changelog.ops)
+if changelog["ops"]:
+    operations = [Operation(**op) for op in changelog["ops"]]
+    generator = provider.get_sql_generator(state)
+    sql = generator.generate_sql(operations)
     
     # Write to file
     Path("migration.sql").write_text(sql)

@@ -1,13 +1,14 @@
 # SchemaX Python SDK & CLI
 
-Python toolkit for managing Databricks Unity Catalog schemas with CI/CD integration.
+Python toolkit for managing catalog schemas with a provider-based architecture. Supports multiple catalog providers including Unity Catalog, Hive, PostgreSQL, and more.
 
 ## Features
 
+- **Multi-Provider Support**: Works with Unity Catalog, Hive, PostgreSQL, and more
 - **SQL Generation**: Generate SQL migration scripts from schema changes
 - **Schema Validation**: Validate `.schemax/` project files
 - **Deployment Tracking**: Track what's deployed to each environment
-- **DAB Generation**: Create Databricks Asset Bundles for deployment
+- **DAB Generation**: Create Databricks Asset Bundles for deployment (coming soon)
 - **CI/CD Ready**: Designed for GitHub Actions, GitLab CI, and other pipelines
 
 ## Installation
@@ -26,6 +27,16 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
+### Initialize a New Project
+
+```bash
+# Initialize with Unity Catalog provider (default)
+schemax init
+
+# Initialize with a specific provider
+schemax init --provider postgres
+```
+
 ### Validate Schema Files
 
 ```bash
@@ -39,7 +50,7 @@ schemax validate
 # Generate SQL from changelog
 schemax sql --output migration.sql
 
-# Generate SQL for specific version range
+# Generate SQL for specific version range (coming soon)
 schemax sql --from-version v0.1.0 --to-version v0.2.0 --output migration.sql
 ```
 
@@ -65,6 +76,22 @@ databricks bundle run schemax_migration
 ```
 
 ## CLI Commands
+
+### `schemax init`
+
+Initialize a new SchemaX project with provider selection.
+
+**Options:**
+- `--provider, -p`: Catalog provider (unity, hive, postgres) - default: unity
+
+**Examples:**
+```bash
+# Initialize with Unity Catalog
+schemax init
+
+# Initialize with PostgreSQL
+schemax init --provider postgres
+```
 
 ### `schemax sql`
 
@@ -140,31 +167,67 @@ schemax diff v0.1.0 v0.2.0
 
 ```python
 from pathlib import Path
-from schemax.storage import load_current_state
-from schemax.sql_generator import SQLGenerator
+from schemax.storage_v3 import load_current_state
+from schemax.providers.base.operations import Operation
 
-# Load schema
+# Load schema with provider
 workspace = Path.cwd()
-state, changelog = load_current_state(workspace)
+state, changelog, provider = load_current_state(workspace)
 
-# Generate SQL
-generator = SQLGenerator(state)
-sql = generator.generate_sql(changelog.ops)
+print(f"Provider: {provider.info.name} v{provider.info.version}")
+
+# Convert ops to Operation objects
+operations = [Operation(**op) for op in changelog["ops"]]
+
+# Generate SQL using provider's SQL generator
+generator = provider.get_sql_generator(state)
+sql = generator.generate_sql(operations)
 
 print(sql)
+```
+
+### Working with Multiple Providers
+
+```python
+from schemax import ProviderRegistry
+
+# List available providers
+providers = ProviderRegistry.get_all_ids()
+print(f"Available providers: {providers}")
+
+# Get specific provider
+unity_provider = ProviderRegistry.get("unity")
+print(f"Unity Catalog: {unity_provider.info.name}")
+print(f"Supported operations: {unity_provider.info.capabilities.supported_operations}")
+
+# Validate state
+validation = unity_provider.validate_state(state)
+if not validation.valid:
+    for error in validation.errors:
+        print(f"Error: {error.message}")
 ```
 
 ### Validate Schema
 
 ```python
-from schemax.storage import read_project, read_changelog
+from pathlib import Path
+from schemax.storage_v3 import read_project, load_current_state
 
 try:
-    project = read_project(Path.cwd())
-    changelog = read_changelog(Path.cwd())
-    print("✓ Schema is valid")
+    workspace = Path.cwd()
+    project = read_project(workspace)
+    state, changelog, provider = load_current_state(workspace)
+    
+    # Validate with provider
+    validation = provider.validate_state(state)
+    if validation.valid:
+        print("✓ Schema is valid")
+    else:
+        print("✗ Validation failed:")
+        for error in validation.errors:
+            print(f"  - {error.field}: {error.message}")
 except Exception as e:
-    print(f"✗ Validation failed: {e}")
+    print(f"✗ Error: {e}")
 ```
 
 ## CI/CD Integration

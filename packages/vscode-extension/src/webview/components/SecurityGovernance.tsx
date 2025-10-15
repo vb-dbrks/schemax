@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Table, RowFilter, ColumnMask } from '../../shared/model';
+import { Table, RowFilter, ColumnMask } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
 
 interface SecurityGovernanceProps {

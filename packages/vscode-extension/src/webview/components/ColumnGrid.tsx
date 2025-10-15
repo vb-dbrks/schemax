@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Column } from '../../shared/model';
+import { Column } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
 
 interface ColumnGridProps {

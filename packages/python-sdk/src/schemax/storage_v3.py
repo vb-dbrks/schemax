@@ -482,3 +482,39 @@ def _get_next_version(current_version: Optional[str], settings: Dict[str, Any]) 
     next_minor = int(minor) + 1
 
     return f"{settings['versionPrefix']}{major}.{next_minor}.0"
+
+
+def write_deployment(workspace_path: Path, deployment: Dict[str, Any]) -> None:
+    """
+    Add a deployment record to project file
+
+    Args:
+        workspace_path: Path to workspace
+        deployment: Deployment data
+    """
+    project = read_project(workspace_path)
+
+    if "deployments" not in project:
+        project["deployments"] = []
+
+    project["deployments"].append(deployment)
+    write_project(workspace_path, project)
+
+
+def get_last_deployment(project: Dict[str, Any], environment: str) -> Optional[Dict[str, Any]]:
+    """
+    Get the last deployment for a specific environment
+
+    Args:
+        project: Project data
+        environment: Environment name
+
+    Returns:
+        Last deployment record or None
+    """
+    deployments = [d for d in project.get("deployments", []) if d.get("environment") == environment]
+    if not deployments:
+        return None
+
+    # Sort by timestamp, return most recent
+    return sorted(deployments, key=lambda d: d.get("ts", ""), reverse=True)[0]
