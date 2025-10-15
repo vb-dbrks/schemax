@@ -31,15 +31,17 @@ echo "1️⃣  Checking Python code formatting (Black)..."
 echo "--------------------------------------"
 
 if command -v black &> /dev/null; then
-    if black packages/python-sdk/src/ --check --line-length 100 && \
+    if black packages/python-sdk/src/ packages/python-sdk/tests/ --check --line-length 100 && \
        black examples/python-scripts/ --check --line-length 100; then
         echo -e "${GREEN}✓${NC} Python code formatting is correct"
     else
         echo -e "${RED}✗${NC} Python code formatting check failed"
         echo ""
         echo "To fix, run:"
-        echo "  cd packages/python-sdk && black src/ --line-length 100"
+        echo "  cd packages/python-sdk && black src/ tests/ --line-length 100"
         echo "  cd examples/python-scripts && black . --line-length 100"
+        echo "Or use Ruff format:"
+        echo "  cd packages/python-sdk && ruff format src/ tests/"
         FAILURES=$((FAILURES + 1))
     fi
 else
@@ -56,13 +58,13 @@ echo "2️⃣  Linting Python code (Ruff)..."
 echo "--------------------------------------"
 
 if command -v ruff &> /dev/null; then
-    if (cd packages/python-sdk && ruff check src/); then
+    if (cd packages/python-sdk && ruff check src/ tests/); then
         echo -e "${GREEN}✓${NC} Python linting passed"
     else
         echo -e "${RED}✗${NC} Python linting failed"
         echo ""
         echo "To fix, run:"
-        echo "  cd packages/python-sdk && ruff check src/ --fix"
+        echo "  cd packages/python-sdk && ruff check src/ tests/ --fix"
         FAILURES=$((FAILURES + 1))
     fi
 else
@@ -73,9 +75,32 @@ fi
 echo ""
 
 # ==========================================
-# 3. Smoke Tests
+# 3. Python SDK Tests (pytest)
 # ==========================================
-echo "3️⃣  Running smoke tests..."
+echo "3️⃣  Running Python SDK tests (pytest)..."
+echo "--------------------------------------"
+
+if command -v pytest &> /dev/null; then
+    if (cd packages/python-sdk && pytest tests/ -q); then
+        echo -e "${GREEN}✓${NC} Python SDK tests passed (136 tests)"
+    else
+        echo -e "${RED}✗${NC} Python SDK tests failed"
+        echo ""
+        echo "To debug, run:"
+        echo "  cd packages/python-sdk && pytest tests/ -v"
+        FAILURES=$((FAILURES + 1))
+    fi
+else
+    echo -e "${YELLOW}⚠${NC}  Pytest not installed, skipping SDK tests"
+    echo "Install with: pip install pytest or uv pip install -e '.[dev]'"
+fi
+
+echo ""
+
+# ==========================================
+# 4. Smoke Tests
+# ==========================================
+echo "4️⃣  Running smoke tests..."
 echo "--------------------------------------"
 
 if [ -f "./scripts/smoke-test.sh" ]; then

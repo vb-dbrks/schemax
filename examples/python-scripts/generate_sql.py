@@ -2,7 +2,7 @@
 """
 Example: Generate SQL migration from schema changes
 
-This script demonstrates how to use the SchemaX Python SDK with the 
+This script demonstrates how to use the SchemaX Python SDK with the
 provider-based architecture to generate SQL migration scripts programmatically.
 """
 
@@ -20,7 +20,7 @@ def main():
     state, changelog, provider = load_current_state(workspace)
 
     print(f"\nProvider: {provider.info.name} v{provider.info.version}")
-    
+
     # Provider-specific stats (for Unity Catalog)
     if "catalogs" in state:
         print(f"Project: {len(state['catalogs'])} catalog(s)")

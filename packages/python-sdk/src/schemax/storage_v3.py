@@ -348,7 +348,7 @@ def append_ops(workspace_path: Path, ops: List[Operation]) -> None:
             raise ValueError(f"Invalid operation: {errors}")
 
     # Append ops
-    changelog["ops"].extend([op.dict(by_alias=True) for op in ops])
+    changelog["ops"].extend([op.model_dump(by_alias=True) for op in ops])
 
     # Write back
     write_changelog(workspace_path, changelog)

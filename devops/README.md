@@ -15,7 +15,8 @@ Run all quality checks locally:
 ### Pipelines
 
 - **`pipelines/quality-checks.yml`** - GitHub Actions workflow for automated quality checks
-  - Code formatting validation (Black for Python)
+  - Code formatting validation (Black/Ruff for Python)
+  - Python SDK tests (pytest with 136 tests + SQLGlot validation)
   - Smoke tests (extension build, SDK install, CLI validation)
   - GPG commit signature verification
   - Runs on push, pull requests, and manual trigger
@@ -24,6 +25,8 @@ Run all quality checks locally:
 
 - **`run-checks.sh`** - Local script to run all quality checks before committing
   - Checks Python code formatting with Black
+  - Lints Python code with Ruff
+  - Runs Python SDK tests (pytest)
   - Runs smoke tests
   - Returns exit code 0 if all pass, 1 if any fail
 
@@ -33,14 +36,14 @@ Run all quality checks locally:
 
 1. **Install dependencies:**
    ```bash
-   # Python formatting
-   pip install black
+   # Python formatting and linting
+   pip install black ruff
    
    # Extension dependencies
    cd packages/vscode-extension && npm install
    
-   # SDK dependencies
-   cd packages/python-sdk && pip install -e .
+   # SDK dependencies with dev tools (includes pytest, SQLGlot)
+   cd packages/python-sdk && pip install -e ".[dev]"
    ```
 
 2. **Run checks before committing:**
@@ -71,25 +74,67 @@ git push
 ### 1. Code Formatting
 
 **What it checks:**
-- All Python code in `packages/python-sdk/src/`
+- All Python code in `packages/python-sdk/src/` and `packages/python-sdk/tests/`
 - All Python examples in `examples/python-scripts/`
 - Uses Black with 100 character line length
+- Uses Ruff for linting
 
 **Run locally:**
 ```bash
 # Check formatting
 cd packages/python-sdk
-black src/ --check --line-length 100
+black src/ tests/ --check --line-length 100
+# Or use Ruff format (faster)
+ruff format src/ tests/ --check
 
 # Fix formatting
-black src/ --line-length 100
+black src/ tests/ --line-length 100
+# Or
+ruff format src/ tests/
+
+# Check linting
+ruff check src/ tests/
+
+# Fix linting issues
+ruff check src/ tests/ --fix
 ```
 
 **CI behavior:**
-- ✅ Pass: All files are properly formatted
-- ❌ Fail: Files need formatting (see job logs for details)
+- ✅ Pass: All files are properly formatted and linted
+- ❌ Fail: Files need formatting or have lint errors (see job logs for details)
 
-### 2. Smoke Tests
+### 2. Python SDK Tests
+
+**What it checks:**
+- 136 pytest tests covering all SDK functionality
+- Unit tests for storage, state reducer, SQL generator, provider system
+- Integration tests for complete workflows
+- SQL validation using SQLGlot for Databricks dialect
+- Code coverage reporting
+
+**Run locally:**
+```bash
+cd packages/python-sdk
+
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=src/schemax --cov-report=term-missing
+
+# Run specific test file
+pytest tests/unit/test_sql_generator.py -v
+
+# Run specific test
+pytest tests/unit/test_sql_generator.py::TestCatalogSQL::test_add_catalog -v
+```
+
+**CI behavior:**
+- ✅ Pass: All 124 tests pass (12 skipped for unimplemented features)
+- ❌ Fail: One or more tests failed (see job logs for details)
+- Coverage reports uploaded to Codecov
+
+### 3. Smoke Tests
 
 **What it checks:**
 1. VS Code extension builds successfully
@@ -107,7 +152,7 @@ black src/ --line-length 100
 - ✅ Pass: All smoke tests pass
 - ❌ Fail: One or more tests failed (see job logs for details)
 
-### 3. GPG Commit Signatures
+### 4. GPG Commit Signatures
 
 **What it checks:**
 - All commits in PR/push are signed with GPG
@@ -140,9 +185,16 @@ git log --show-signature -1
 ```
 Quality Checks Pipeline
 ├── code-formatting job
-│   ├── Install Black
-│   ├── Check Python SDK formatting
-│   └── Check examples formatting
+│   ├── Install Black + Ruff
+│   ├── Check Python SDK formatting (src/ + tests/)
+│   ├── Check examples formatting
+│   └── Run Ruff linting
+│
+├── python-tests job
+│   ├── Install Python + UV
+│   ├── Install SDK with dev dependencies (pytest, SQLGlot)
+│   ├── Run 136 pytest tests
+│   └── Upload coverage to Codecov
 │
 ├── smoke-tests job
 │   ├── Install Node.js + Python
@@ -156,7 +208,7 @@ Quality Checks Pipeline
 │   └── Verify signatures are valid
 │
 └── all-checks job (needs: all above)
-    └── Report success
+    └── Report success (4 jobs)
 ```
 
 ## Adding New Checks
@@ -197,7 +249,7 @@ new-check:
 Update `all-checks` job needs:
 ```yaml
 all-checks:
-  needs: [code-formatting, smoke-tests, new-check]
+  needs: [code-formatting, python-tests, smoke-tests, new-check]
 ```
 
 ## Pre-commit Hook
@@ -229,12 +281,27 @@ chmod +x .git/hooks/pre-commit
 
 ## Troubleshooting
 
-### Black Not Found
+### Black/Ruff Not Found
 
 ```bash
-pip install black
-# or
-pip install -e "packages/python-sdk[dev]"
+pip install black ruff
+# or install all dev dependencies
+cd packages/python-sdk
+pip install -e ".[dev]"
+```
+
+### Pytest Tests Fail
+
+```bash
+# Ensure dev dependencies are installed
+cd packages/python-sdk
+pip install -e ".[dev]"
+
+# Run tests with verbose output
+pytest tests/ -v
+
+# Run specific failing test
+pytest tests/unit/test_sql_generator.py -xvs
 ```
 
 ### Smoke Test Fails
@@ -295,16 +362,25 @@ Always run:
 Track these metrics from CI runs:
 
 - **Code Formatting Pass Rate**: % of commits with properly formatted code
-- **Smoke Test Pass Rate**: % of commits that pass all tests
+- **Test Pass Rate**: % of commits where all 136 pytest tests pass
+- **Test Coverage**: Code coverage percentage (tracked via Codecov)
+- **Smoke Test Pass Rate**: % of commits that pass all smoke tests
 - **Build Time**: Time to run all quality checks
 - **Failure Rate**: % of failed CI runs
+
+Current Status:
+- ✅ 124 passing pytest tests
+- ⏭️ 12 skipped tests (features in development)
+- ✅ SQLGlot validation integrated
+- ✅ Code coverage reporting enabled
 
 ## Future Enhancements
 
 Planned additions to the DevOps pipeline:
 
-- [ ] Unit test suite (pytest for Python, jest for TypeScript)
-- [ ] Test coverage reporting
+- [x] ~~Unit test suite (pytest for Python)~~ ✅ **Completed**
+- [x] ~~Test coverage reporting~~ ✅ **Completed**
+- [ ] Jest test suite for TypeScript/VS Code extension
 - [ ] Performance benchmarks
 - [ ] Security scanning (dependency vulnerabilities)
 - [ ] Automated changelog generation
@@ -344,11 +420,20 @@ check:
 
 .PHONY: format
 format:
-	@cd packages/python-sdk && black src/ --line-length 100
+	@cd packages/python-sdk && ruff format src/ tests/
 	@cd examples/python-scripts && black . --line-length 100
+
+.PHONY: test
+test:
+	@cd packages/python-sdk && pytest tests/ -v
+
+.PHONY: coverage
+coverage:
+	@cd packages/python-sdk && pytest tests/ --cov=src/schemax --cov-report=html
+	@open packages/python-sdk/htmlcov/index.html
 ```
 
-Run with: `make check` or `make format`
+Run with: `make check`, `make format`, `make test`, or `make coverage`
 
 ## Resources
 

@@ -7,7 +7,7 @@ Defines the contract that all catalog providers must implement.
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .hierarchy import Hierarchy
 from .models import ProviderState, ValidationResult
@@ -22,8 +22,7 @@ class ProviderCapabilities(BaseModel):
     supported_object_types: List[str]  # e.g., ['catalog', 'schema', 'table']
     hierarchy: Hierarchy  # Hierarchy definition
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # Feature flags
     features: Dict[str, bool] = {

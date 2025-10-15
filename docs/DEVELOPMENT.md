@@ -169,11 +169,24 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pytest
 
 # Run with coverage
-pytest --cov=schemax
+pytest --cov=schemax --cov-report=term-missing
 
 # Run specific test file
-pytest tests/providers/unity/test_provider.py
+pytest tests/unit/test_sql_generator.py
+
+# Run specific test class
+pytest tests/unit/test_sql_generator.py::TestTableSQL -v
+
+# Run with verbose output
+pytest -xvs
 ```
+
+**Test Status:**
+- ✅ 124 passing tests (91.2% of total)
+- ⏸️ 12 skipped tests (8.8%)
+  - 6 tests: Governance SQL generation ([issue #19](https://github.com/vb-dbrks/schemax-vscode/issues/19))
+  - 2 tests: Constraint SQL fixes ([issue #20](https://github.com/vb-dbrks/schemax-vscode/issues/20))
+  - 4 tests: Integration tests (blocked by above)
 
 **Linting and Type Checking:**
 
@@ -186,6 +199,25 @@ ruff check --fix src/
 
 # Type checking
 mypy src/
+```
+
+**SQL Validation (Optional):**
+
+SchemaX includes optional SQLGlot integration for validating generated SQL:
+
+```bash
+# Install SQLGlot
+pip install "schemax[validation]"
+# or
+pip install sqlglot>=20.0.0
+
+# Use in tests or scripts
+python -c "
+import sqlglot
+sql = 'ALTER TABLE \`catalog\`.\`schema\`.\`table\` ADD COLUMN \`id\` BIGINT'
+parsed = sqlglot.parse_one(sql, dialect='databricks')
+print('Valid SQL!' if parsed else 'Invalid SQL')
+"
 ```
 
 **Manual Testing:**
@@ -554,14 +586,43 @@ Before submitting a pull request, verify:
 ### Python SDK
 
 - [ ] All tests pass (`pytest`)
+- [ ] No new test failures (124 passing baseline)
 - [ ] Test coverage maintained at 30%+ (`pytest --cov=schemax --cov-fail-under=30`)
 - [ ] No linting errors (`ruff check src/`)
 - [ ] Type checking passes (`mypy src/`)
 - [ ] Code is formatted (`ruff format src/`)
 - [ ] CLI commands work (`schemax validate`, `schemax sql`)
 - [ ] Documentation updated if API changed
+- [ ] SQL validated with SQLGlot (if modifying SQL generator)
 
 **Note:** Coverage threshold is currently set to 30% (baseline). As test coverage improves, this threshold should be gradually increased.
+
+**Test Structure:**
+```
+tests/
+├── conftest.py                # Shared fixtures
+├── utils/
+│   └── operation_builders.py  # OperationBuilder helper
+├── unit/
+│   ├── test_storage_v3.py     # Storage layer tests
+│   ├── test_state_reducer.py  # State reducer tests
+│   ├── test_sql_generator.py  # SQL generation tests
+│   └── test_provider.py       # Provider system tests
+└── integration/
+    └── test_workflows.py       # End-to-end workflow tests
+```
+
+**Using Test Helpers:**
+
+Tests use `OperationBuilder` for creating test operations:
+
+```python
+from tests.utils import OperationBuilder
+
+builder = OperationBuilder()
+op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
+# Automatically includes: id, ts, provider, op, target, payload
+```
 
 ### Both (if applicable)
 

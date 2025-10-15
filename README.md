@@ -353,6 +353,26 @@ See [devops/README.md](devops/README.md) for pipeline details.
 ./scripts/smoke-test.sh
 ```
 
+### Python Tests
+
+```bash
+cd packages/python-sdk
+
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=schemax --cov-report=term-missing
+
+# Run specific test file
+pytest tests/unit/test_sql_generator.py -v
+```
+
+**Current Status:**
+- ✅ 124 passing tests (91.2%)
+- ⏸️ 12 skipped tests (documented in [issues #19](https://github.com/vb-dbrks/schemax-vscode/issues/19), [#20](https://github.com/vb-dbrks/schemax-vscode/issues/20))
+- Test Coverage: Unit tests, integration tests, provider tests
+
 ### Manual Testing
 
 See [TESTING.md](TESTING.md) for comprehensive testing guide.
@@ -400,8 +420,14 @@ pip install -e ".[dev]"
 # Extension build
 cd packages/vscode-extension && npm run build
 
-# Python tests (when added)
+# Python tests
 cd packages/python-sdk && pytest
+
+# Python tests with coverage
+cd packages/python-sdk && pytest --cov=schemax
+
+# SQL validation (optional - requires SQLGlot)
+pip install sqlglot>=20.0.0
 ```
 
 ## Roadmap
