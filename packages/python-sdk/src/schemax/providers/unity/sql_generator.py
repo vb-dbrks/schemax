@@ -5,7 +5,7 @@ Generates Databricks SQL DDL statements from operations.
 Migrated from TypeScript sql-generator.ts
 """
 
-from typing import Dict
+from typing import Dict, List
 
 from ..base.operations import Operation
 from ..base.sql_generator import BaseSQLGenerator, SQLGenerationResult
@@ -42,6 +42,60 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def can_generate_sql(self, op: Operation) -> bool:
         """Check if operation can be converted to SQL"""
         return op.op in UNITY_OPERATIONS.values()
+
+    def generate_sql(self, ops: List[Operation]) -> str:
+        """
+        Generate SQL statements with optimized batch processing for reorder operations.
+        
+        Multiple reorder_columns operations are batched together to generate minimal
+        ALTER statements from original → final column order.
+        """
+        # Pre-process: batch reorder operations by table
+        reorder_batches = self._batch_reorder_operations(ops)
+        processed_op_ids = set()
+        statements = []
+
+        # Generate SQL for batched reorder operations
+        for table_id, batch_info in reorder_batches.items():
+            original_order = batch_info["original_order"]
+            final_order = batch_info["final_order"]
+            op_ids = batch_info["op_ids"]
+            
+            # Mark these operations as processed
+            processed_op_ids.update(op_ids)
+            
+            # Generate optimized SQL for this table's reordering
+            reorder_sql = self._generate_optimized_reorder_sql(
+                table_id, original_order, final_order, op_ids
+            )
+            
+            if reorder_sql and not reorder_sql.startswith("--"):
+                # Add batch header comment
+                header = f"-- Batch Column Reordering: {len(op_ids)} operations\n-- Table: {table_id}\n-- Operations: {', '.join(op_ids)}"
+                statements.append(f"{header}\n{reorder_sql};")
+
+        # Process remaining operations normally
+        for op in ops:
+            if op.id in processed_op_ids:
+                continue  # Skip already processed reorder operations
+                
+            if not self.can_generate_sql(op):
+                print(f"Warning: Cannot generate SQL for operation: {op.op}")
+                continue
+
+            result = self.generate_sql_for_operation(op)
+
+            # Add header comment with operation metadata
+            header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
+
+            # Add warnings if any
+            warnings_comment = ""
+            if result.warnings:
+                warnings_comment = f"\n-- Warnings: {', '.join(result.warnings)}"
+
+            statements.append(f"{header}{warnings_comment}\n{result.sql};")
+
+        return "\n\n".join(statements)
 
     def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
         """Generate SQL for a single operation"""
@@ -249,6 +303,102 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _reorder_columns(self, op: Operation) -> str:
         # Databricks doesn't support direct column reordering
         return "-- Column reordering not directly supported in Databricks SQL"
+
+    def _batch_reorder_operations(self, ops: List[Operation]) -> Dict:
+        """
+        Batch reorder_columns operations by table to generate minimal SQL.
+        
+        Returns dict mapping table_id to:
+        {
+            "original_order": [...],  # Column order before any reorder ops
+            "final_order": [...],     # Column order after all reorder ops  
+            "op_ids": [...]          # List of operation IDs involved
+        }
+        """
+        reorder_batches = {}
+        
+        for op in ops:
+            op_type = op.op.replace("unity.", "")
+            
+            if op_type == "reorder_columns":
+                table_id = op.payload["tableId"]
+                desired_order = op.payload["order"]
+                
+                if table_id not in reorder_batches:
+                    # Find original column order from current state
+                    original_order = self._get_table_column_order(table_id)
+                    reorder_batches[table_id] = {
+                        "original_order": original_order,
+                        "final_order": original_order.copy(),  # Will be updated
+                        "op_ids": []
+                    }
+                
+                # Update final order and track operation
+                reorder_batches[table_id]["final_order"] = desired_order
+                reorder_batches[table_id]["op_ids"].append(op.id)
+        
+        return reorder_batches
+
+    def _get_table_column_order(self, table_id: str) -> List[str]:
+        """Get current column order for a table from state"""
+        for catalog in self.state["catalogs"]:
+            for schema in catalog.get("schemas", []):
+                for table in schema.get("tables", []):
+                    if table["id"] == table_id:
+                        return [col["id"] for col in table.get("columns", [])]
+        return []
+
+    def _generate_optimized_reorder_sql(
+        self, table_id: str, original_order: List[str], final_order: List[str], op_ids: List[str]
+    ) -> str:
+        """Generate minimal SQL to reorder columns from original to final order"""
+        
+        if not original_order or not final_order:
+            return "-- No columns to reorder"
+            
+        if original_order == final_order:
+            return "-- Column order unchanged"
+        
+        # Get table name for ALTER statements  
+        table_fqn = self.id_name_map.get(table_id, "unknown")
+        table_esc = self.escape_identifier(table_fqn)
+        
+        statements = []
+        current_order = original_order.copy()
+        
+        # Process columns in reverse order to handle dependencies correctly
+        for i in range(len(final_order) - 1, -1, -1):
+            col_id = final_order[i]
+            current_pos = current_order.index(col_id) if col_id in current_order else -1
+            
+            if current_pos == -1:
+                continue  # Column not found
+                
+            # If column is already in correct position, skip
+            if current_pos == i:
+                continue
+                
+            col_name = self.id_name_map.get(col_id, col_id)
+            col_esc = self.escape_identifier(col_name)
+            
+            if i == 0:
+                # Move to first position
+                statements.append(f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} FIRST")
+            else:
+                # Move after the previous column
+                prev_col_id = final_order[i - 1]
+                prev_col_name = self.id_name_map.get(prev_col_id, prev_col_id)
+                prev_col_esc = self.escape_identifier(prev_col_name)
+                statements.append(f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} AFTER {prev_col_esc}")
+            
+            # Update current_order to reflect the change for next iteration
+            current_order.pop(current_pos)
+            current_order.insert(i, col_id)
+        
+        if not statements:
+            return "-- No column reordering needed"
+        
+        return ";\n".join(statements)
 
     def _change_column_type(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")

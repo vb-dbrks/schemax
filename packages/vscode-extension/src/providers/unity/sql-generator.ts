@@ -47,6 +47,64 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const supportedOps = Object.values(UNITY_OPERATIONS);
     return supportedOps.includes(op.op as any);
   }
+
+  /**
+   * Generate SQL statements with optimized batch processing for reorder operations.
+   * 
+   * Multiple reorder_columns operations are batched together to generate minimal
+   * ALTER statements from original → final column order.
+   */
+  generateSQL(ops: Operation[]): string {
+    // Pre-process: batch reorder operations by table
+    const reorderBatches = this.batchReorderOperations(ops);
+    const processedOpIds = new Set<string>();
+    const statements: string[] = [];
+
+    // Generate SQL for batched reorder operations
+    for (const [tableId, batchInfo] of Object.entries(reorderBatches)) {
+      const { originalOrder, finalOrder, opIds } = batchInfo;
+      
+      // Mark these operations as processed
+      opIds.forEach(id => processedOpIds.add(id));
+      
+      // Generate optimized SQL for this table's reordering
+      const reorderSql = this.generateOptimizedReorderSQL(
+        tableId, originalOrder, finalOrder, opIds
+      );
+      
+      if (reorderSql && !reorderSql.startsWith('--')) {
+        // Add batch header comment
+        const header = `-- Batch Column Reordering: ${opIds.length} operations\n-- Table: ${tableId}\n-- Operations: ${opIds.join(', ')}`;
+        statements.push(`${header}\n${reorderSql};`);
+      }
+    }
+
+    // Process remaining operations normally
+    for (const op of ops) {
+      if (processedOpIds.has(op.id)) {
+        continue; // Skip already processed reorder operations
+      }
+      
+      if (!this.canGenerateSQL(op)) {
+        console.warn(`Cannot generate SQL for operation: ${op.op}`);
+        continue;
+      }
+      
+      const result = this.generateSQLForOperation(op);
+      
+      // Add header comment with operation metadata
+      const header = `-- Operation: ${op.id} (${op.ts})\n-- Type: ${op.op}`;
+      
+      // Add warnings if any
+      const warningsComment = result.warnings.length > 0
+        ? `\n-- Warnings: ${result.warnings.join(', ')}`
+        : '';
+      
+      statements.push(`${header}${warningsComment}\n${result.sql};`);
+    }
+    
+    return statements.join('\n\n');
+  }
   
   generateSQLForOperation(op: Operation): SQLGenerationResult {
     // Strip provider prefix for switch statement
@@ -259,6 +317,126 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   private reorderColumns(op: Operation): string {
     // Databricks doesn't support direct column reordering
     return '-- Column reordering not directly supported in Databricks SQL';
+  }
+
+  /**
+   * Batch reorder_columns operations by table to generate minimal SQL.
+   */
+  private batchReorderOperations(ops: Operation[]): Record<string, {
+    originalOrder: string[];
+    finalOrder: string[];
+    opIds: string[];
+  }> {
+    const reorderBatches: Record<string, {
+      originalOrder: string[];
+      finalOrder: string[];
+      opIds: string[];
+    }> = {};
+    
+    for (const op of ops) {
+      const opType = op.op.replace('unity.', '');
+      
+      if (opType === 'reorder_columns') {
+        const tableId = op.payload.tableId;
+        const desiredOrder = op.payload.order;
+        
+        if (!reorderBatches[tableId]) {
+          // Find original column order from current state
+          const originalOrder = this.getTableColumnOrder(tableId);
+          reorderBatches[tableId] = {
+            originalOrder: originalOrder,
+            finalOrder: [...originalOrder], // Will be updated
+            opIds: []
+          };
+        }
+        
+        // Update final order and track operation
+        reorderBatches[tableId].finalOrder = desiredOrder;
+        reorderBatches[tableId].opIds.push(op.id);
+      }
+    }
+    
+    return reorderBatches;
+  }
+
+  /**
+   * Get current column order for a table from state
+   */
+  private getTableColumnOrder(tableId: string): string[] {
+    for (const catalog of this.state.catalogs) {
+      for (const schema of catalog.schemas) {
+        for (const table of schema.tables) {
+          if (table.id === tableId) {
+            return table.columns.map(col => col.id);
+          }
+        }
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Generate minimal SQL to reorder columns from original to final order
+   */
+  private generateOptimizedReorderSQL(
+    tableId: string,
+    originalOrder: string[],
+    finalOrder: string[],
+    opIds: string[]
+  ): string {
+    if (!originalOrder.length || !finalOrder.length) {
+      return '-- No columns to reorder';
+    }
+    
+    if (JSON.stringify(originalOrder) === JSON.stringify(finalOrder)) {
+      return '-- Column order unchanged';
+    }
+    
+    // Get table name for ALTER statements
+    const tableFqn = this.idNameMap[tableId] || 'unknown';
+    const tableEsc = this.escapeIdentifier(tableFqn);
+    
+    const statements: string[] = [];
+    const currentOrder = [...originalOrder];
+    
+    // Process columns in reverse order to handle dependencies correctly
+    for (let i = finalOrder.length - 1; i >= 0; i--) {
+      const colId = finalOrder[i];
+      const currentPos = currentOrder.indexOf(colId);
+      
+      if (currentPos === -1) {
+        continue; // Column not found
+      }
+      
+      // If column is already in correct position, skip
+      if (currentPos === i) {
+        continue;
+      }
+      
+      const colName = this.idNameMap[colId] || colId;
+      const colEsc = this.escapeIdentifier(colName);
+      
+      if (i === 0) {
+        // Move to first position
+        statements.push(`ALTER TABLE ${tableEsc} ALTER COLUMN ${colEsc} FIRST`);
+      } else {
+        // Move after the previous column
+        const prevColId = finalOrder[i - 1];
+        const prevColName = this.idNameMap[prevColId] || prevColId;
+        const prevColEsc = this.escapeIdentifier(prevColName);
+        statements.push(`ALTER TABLE ${tableEsc} ALTER COLUMN ${colEsc} AFTER ${prevColEsc}`);
+      }
+      
+      // Update currentOrder to reflect the change for next iteration
+      currentOrder.splice(currentPos, 1);
+      currentOrder.splice(i, 0, colId);
+    }
+    
+    if (statements.length === 0) {
+      return '-- No column reordering needed';
+    }
+    
+    return statements.join(';\n');
   }
   
   private changeColumnType(op: Operation): string {
