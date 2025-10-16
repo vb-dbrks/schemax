@@ -1,5 +1,4 @@
-
-<img width="1024" height="1536" alt="Schematic official logo" src="https://github.com/user-attachments/assets/41b8a7cb-2b3b-4701-a999-8e15eab90433" />
+<img width="240" height="300" alt="Schematic official logo" src="https://github.com/user-attachments/assets/9a71de38-1a49-4084-b69f-b64dab588ab8" />
 
 # Schematic
 
