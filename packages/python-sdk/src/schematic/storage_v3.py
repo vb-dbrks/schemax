@@ -121,7 +121,10 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         json.dump(new_changelog, f, indent=2)
 
     provider_name = provider.info.name
-    print(f"[Schematic] Initialized new v3 project: {workspace_name} with provider: {provider_name}")
+    print(
+        f"[Schematic] Initialized new v3 project: {workspace_name} "
+        f"with provider: {provider_name}"
+    )
 
 
 def migrate_v2_to_v3(
