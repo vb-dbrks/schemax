@@ -23,33 +23,33 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install SchemaX CLI
-        run: pip install schemax-py
+      - name: Install Schematic CLI
+        run: pip install schematic-py
       
       - name: Validate schema
-        run: schemax validate
+        run: schematic validate
       
       - name: Generate Databricks Asset Bundle
         run: |
           VERSION=${{ github.event.release.tag_name || github.event.inputs.version }}
-          schemax bundle \
+          schematic bundle \
             --environment prod \
             --version $VERSION \
-            --output .schemax/dab
+            --output .schematic/dab
       
       - name: Deploy DAB to Databricks
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
         run: |
-          cd .schemax/dab/prod
+          cd .schematic/dab/prod
           databricks bundle deploy --target prod
-          databricks bundle run schemax_migration --target prod
+          databricks bundle run schematic_migration --target prod
       
       - name: Record deployment
         run: |
           VERSION=${{ github.event.release.tag_name || github.event.inputs.version }}
-          schemax deploy \
+          schematic deploy \
             --environment prod \
             --version $VERSION
       

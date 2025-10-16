@@ -1,5 +1,5 @@
 [project]
-name = "schemax-py"
+name = "schematic-py"
 version = "0.1.0"
 description = "Python SDK and CLI for Databricks Unity Catalog schema management"
 readme = "README.md"
@@ -45,20 +45,20 @@ validation = [
 ]
 
 [project.scripts]
-schemax = "schemax.cli:cli"
+schematic = "schematic.cli:cli"
 
 [project.urls]
-Homepage = "https://github.com/vb-dbrks/schemax"
-Documentation = "https://github.com/vb-dbrks/schemax/tree/main/docs"
-Repository = "https://github.com/vb-dbrks/schemax"
-Issues = "https://github.com/vb-dbrks/schemax/issues"
+Homepage = "https://github.com/vb-dbrks/Schematic"
+Documentation = "https://github.com/vb-dbrks/Schematic/tree/main/docs"
+Repository = "https://github.com/vb-dbrks/Schematic"
+Issues = "https://github.com/vb-dbrks/Schematic/issues"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/schemax"]
+packages = ["src/schematic"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

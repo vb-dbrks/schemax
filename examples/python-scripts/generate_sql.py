@@ -2,16 +2,16 @@
 """
 Example: Generate SQL migration from schema changes
 
-This script demonstrates how to use the SchemaX Python SDK with the
+This script demonstrates how to use the Schematic Python SDK with the
 provider-based architecture to generate SQL migration scripts programmatically.
 """
 
 from pathlib import Path
-from schemax.storage_v3 import load_current_state
+from schematic.storage_v3 import load_current_state
 
 
 def main():
-    # Set workspace path (directory containing .schemax/)
+    # Set workspace path (directory containing .schematic/)
     workspace = Path(__file__).parent.parent / "basic-schema"
 
     print(f"Loading schema from: {workspace}")
@@ -31,7 +31,7 @@ def main():
 
     if changelog["ops"]:
         # Convert ops to Operation objects
-        from schemax.providers.base.operations import Operation
+        from schematic.providers.base.operations import Operation
 
         operations = [Operation(**op) for op in changelog["ops"]]
 

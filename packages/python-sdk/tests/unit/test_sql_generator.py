@@ -7,8 +7,8 @@ Verifies SQL idempotency, correctness, and proper escaping.
 
 import pytest
 
-from schemax.providers.base.operations import Operation
-from schemax.providers.unity.sql_generator import UnitySQLGenerator
+from schematic.providers.base.operations import Operation
+from schematic.providers.unity.sql_generator import UnitySQLGenerator
 from tests.utils import OperationBuilder
 
 
@@ -646,7 +646,7 @@ class TestSQLOptimization:
         """Test that column operations can be batched"""
         builder = OperationBuilder()
         # Create base state with table
-        from schemax.providers.unity.state_reducer import apply_operations
+        from schematic.providers.unity.state_reducer import apply_operations
 
         setup_ops = [
             builder.add_catalog("cat_123", "test", op_id="setup_001"),

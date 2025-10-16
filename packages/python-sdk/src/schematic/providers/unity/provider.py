@@ -2,7 +2,7 @@
 Unity Catalog Provider
 
 Main provider implementation for Databricks Unity Catalog.
-Implements the Provider interface to enable Unity Catalog support in SchemaX.
+Implements the Provider interface to enable Unity Catalog support in Schematic.
 """
 
 from typing import List
@@ -32,7 +32,7 @@ class UnityProvider(BaseProvider):
             name="Unity Catalog",
             version="1.0.0",
             description="Databricks Unity Catalog provider with full governance features",
-            author="SchemaX Team",
+            author="Schematic Team",
             docs_url="https://docs.databricks.com/data-governance/unity-catalog/index.html",
         )
 

@@ -14,15 +14,15 @@ from datetime import datetime
 
 import pytest
 
-from schemax.providers.base.operations import Operation
-from schemax.storage_v3 import (
+from schematic.providers.base.operations import Operation
+from schematic.storage_v3 import (
     append_ops,
     create_snapshot,
     ensure_project_file,
     get_changelog_file_path,
     get_last_deployment,
     get_project_file_path,
-    get_schemax_dir,
+    get_schematic_dir,
     get_snapshot_file_path,
     get_snapshots_dir,
     get_uncommitted_ops_count,
@@ -42,30 +42,30 @@ from tests.utils import OperationBuilder
 class TestPathHelpers:
     """Test path helper functions"""
 
-    def test_get_schemax_dir(self, temp_workspace):
-        """Test getting .schemax directory path"""
-        schemax_dir = get_schemax_dir(temp_workspace)
-        assert schemax_dir == temp_workspace / ".schemax"
+    def test_get_schematic_dir(self, temp_workspace):
+        """Test getting .schematic directory path"""
+        schematic_dir = get_schematic_dir(temp_workspace)
+        assert schematic_dir == temp_workspace / ".schematic"
 
     def test_get_project_file_path(self, temp_workspace):
         """Test getting project file path"""
         project_path = get_project_file_path(temp_workspace)
-        assert project_path == temp_workspace / ".schemax" / "project.json"
+        assert project_path == temp_workspace / ".schematic" / "project.json"
 
     def test_get_changelog_file_path(self, temp_workspace):
         """Test getting changelog file path"""
         changelog_path = get_changelog_file_path(temp_workspace)
-        assert changelog_path == temp_workspace / ".schemax" / "changelog.json"
+        assert changelog_path == temp_workspace / ".schematic" / "changelog.json"
 
     def test_get_snapshots_dir(self, temp_workspace):
         """Test getting snapshots directory path"""
         snapshots_dir = get_snapshots_dir(temp_workspace)
-        assert snapshots_dir == temp_workspace / ".schemax" / "snapshots"
+        assert snapshots_dir == temp_workspace / ".schematic" / "snapshots"
 
     def test_get_snapshot_file_path(self, temp_workspace):
         """Test getting snapshot file path"""
         snapshot_path = get_snapshot_file_path(temp_workspace, "v0.1.0")
-        assert snapshot_path == temp_workspace / ".schemax" / "snapshots" / "v0.1.0.json"
+        assert snapshot_path == temp_workspace / ".schematic" / "snapshots" / "v0.1.0.json"
 
 
 class TestProjectInitialization:
@@ -75,8 +75,8 @@ class TestProjectInitialization:
         """Test creating a new project initializes all files"""
         ensure_project_file(temp_workspace, provider_id="unity")
 
-        # Verify .schemax directory exists
-        assert get_schemax_dir(temp_workspace).exists()
+        # Verify .schematic directory exists
+        assert get_schematic_dir(temp_workspace).exists()
         assert get_snapshots_dir(temp_workspace).exists()
 
         # Verify project file exists
@@ -123,8 +123,8 @@ class TestFileOperations:
 
     def test_read_write_project(self, temp_workspace, sample_project_v3):
         """Test reading and writing project file"""
-        # Create .schemax directory
-        get_schemax_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
+        # Create .schematic directory
+        get_schematic_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
 
         # Write project
         write_project(temp_workspace, sample_project_v3)
@@ -137,8 +137,8 @@ class TestFileOperations:
 
     def test_read_write_changelog(self, temp_workspace, sample_changelog):
         """Test reading and writing changelog file"""
-        # Create .schemax directory
-        get_schemax_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
+        # Create .schematic directory
+        get_schematic_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
 
         # Write changelog
         write_changelog(temp_workspace, sample_changelog)
@@ -151,8 +151,8 @@ class TestFileOperations:
 
     def test_read_changelog_creates_if_missing(self, temp_workspace):
         """Test that reading non-existent changelog creates it"""
-        # Create .schemax directory
-        get_schemax_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
+        # Create .schematic directory
+        get_schematic_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
 
         # Read changelog (should create it)
         changelog = read_changelog(temp_workspace)
@@ -162,8 +162,8 @@ class TestFileOperations:
 
     def test_read_write_snapshot(self, temp_workspace, sample_unity_state):
         """Test reading and writing snapshot file"""
-        # Create .schemax directory
-        get_schemax_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
+        # Create .schematic directory
+        get_schematic_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
         get_snapshots_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
 
         # Create snapshot
@@ -351,7 +351,7 @@ class TestMigration:
     def test_migrate_v2_to_v3(self, temp_workspace):
         """Test migrating v2 project to v3"""
         # Create v2 project
-        get_schemax_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
+        get_schematic_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
         v2_project = {
             "version": 2,
             "name": "old_project",
@@ -404,7 +404,7 @@ class TestMigration:
     def test_read_project_auto_migrates(self, temp_workspace):
         """Test that read_project auto-migrates v2 projects"""
         # Create v2 project
-        get_schemax_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
+        get_schematic_dir(temp_workspace).mkdir(parents=True, exist_ok=True)
         v2_project = {
             "version": 2,
             "name": "auto_migrate",

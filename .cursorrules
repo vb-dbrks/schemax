@@ -1,12 +1,12 @@
-# SchemaX - Project Context
+# Schematic - Project Context
 
 ## Overview
-SchemaX is a comprehensive toolkit for managing Databricks Unity Catalog schemas using a declarative, version-controlled approach. It consists of a VS Code extension for visual schema design and a Python SDK/CLI for automation and CI/CD integration.
+Schematic is a comprehensive toolkit for managing Databricks Unity Catalog schemas using a declarative, version-controlled approach. It consists of a VS Code extension for visual schema design and a Python SDK/CLI for automation and CI/CD integration.
 
 ## Repository Structure (Monorepo)
 
 ```
-schemax/
+schematic/
 ├── packages/
 │   ├── vscode-extension/       # VS Code Extension (TypeScript + React)
 │   │   ├── src/
@@ -20,7 +20,7 @@ schemax/
 │   │   └── package.json
 │   │
 │   └── python-sdk/             # Python SDK & CLI
-│       ├── src/schemax/
+│       ├── src/schematic/
 │       │   ├── models.py              # Pydantic models
 │       │   ├── storage.py             # File I/O operations
 │       │   ├── state.py               # State reducer
@@ -56,10 +56,10 @@ schemax/
 
 ## Architecture (V2)
 
-### File Structure (.schemax/)
+### File Structure (.schematic/)
 ```
 project-root/
-└── .schemax/
+└── .schematic/
     ├── project.json           # Project metadata (version, snapshots list, settings)
     ├── changelog.json         # Working changes (ops since last snapshot)
     ├── snapshots/
@@ -84,7 +84,7 @@ project-root/
    - This is the "working directory" of changes
 
 3. **Snapshots**: Point-in-time full state captures
-   - Stored as separate files: `.schemax/snapshots/vX.Y.Z.json`
+   - Stored as separate files: `.schematic/snapshots/vX.Y.Z.json`
    - Contains complete state + list of ops included
    - Metadata stored in `project.json`, full state in snapshot file
    - Semantic versioning (v0.1.0, v0.2.0, etc.)
@@ -97,7 +97,7 @@ project-root/
 5. **SQL Generation**: 
    - Convert changelog ops to SQL DDL
    - Idempotent statements (safe to run multiple times)
-   - Saved to `.schemax/migrations/` directory
+   - Saved to `.schematic/migrations/` directory
 
 ### Data Models
 
@@ -124,7 +124,7 @@ project-root/
 }
 ```
 
-**Snapshot File** (`.schemax/snapshots/vX.Y.Z.json`):
+**Snapshot File** (`.schematic/snapshots/vX.Y.Z.json`):
 ```typescript
 {
   id: string,
@@ -247,10 +247,10 @@ Catalog
 ### Extension (`packages/vscode-extension/src/extension.ts`)
 
 **Commands**:
-1. `schemax.openDesigner` - Opens React webview
-2. `schemax.showLastOps` - Shows changelog ops
-3. `schemax.createSnapshot` - Creates new snapshot
-4. `schemax.generateSQL` - Generates SQL migration file
+1. `schematic.openDesigner` - Opens React webview
+2. `schematic.showLastOps` - Shows changelog ops
+3. `schematic.createSnapshot` - Creates new snapshot
+4. `schematic.generateSQL` - Generates SQL migration file
 
 **Message Flow**:
 - Webview → Extension: `load-project`, `append-ops`
@@ -311,24 +311,24 @@ Catalog
 
 ```bash
 # Validate schema files
-schemax validate [workspace_path]
+schematic validate [workspace_path]
 
 # Generate SQL migration
-schemax sql [workspace_path] [--output FILE]
+schematic sql [workspace_path] [--output FILE]
 
 # Track deployment
-schemax deploy --environment ENV [--version VERSION] [--mark-deployed]
+schematic deploy --environment ENV [--version VERSION] [--mark-deployed]
 
 # Compare versions (stub)
-schemax diff VERSION1 VERSION2
+schematic diff VERSION1 VERSION2
 ```
 
 ### Python API
 
 ```python
 from pathlib import Path
-from schemax.storage import load_current_state, read_project
-from schemax.sql_generator import SQLGenerator
+from schematic.storage import load_current_state, read_project
+from schematic.sql_generator import SQLGenerator
 
 # Load schema
 state, changelog = load_current_state(Path.cwd())
@@ -498,7 +498,7 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 ### General Principles
 
 1. **Logging**: Always use `outputChannel.appendLine()` in extension, never `console.log()`
-2. **File Structure**: All SchemaX files in `.schemax/` folder
+2. **File Structure**: All Schematic files in `.schematic/` folder
 3. **Immutability**: Never mutate state directly, always create new objects
 4. **Op IDs**: Always generate UUIDs for new ops: `id: \`op_${uuidv4()}\``
 5. **Validation**: TypeScript (Zod) and Python (Pydantic) for all data models
@@ -537,10 +537,10 @@ export async function createTable(
 ): Promise<Table> {
   try {
     const table = await tableService.create(name, options);
-    outputChannel.appendLine(`[SchemaX] Created table: ${name}`);
+    outputChannel.appendLine(`[Schematic] Created table: ${name}`);
     return table;
   } catch (error) {
-    outputChannel.appendLine(`[SchemaX] ERROR: ${error}`);
+    outputChannel.appendLine(`[Schematic] ERROR: ${error}`);
     throw new Error(`Failed to create table: ${error}`);
   }
 }
@@ -653,10 +653,10 @@ pytest tests/unit/test_sql_generator.py -v
 pytest tests/unit/test_sql_generator.py::TestCatalogSQL::test_add_catalog -xvs
 
 # Run with coverage
-pytest tests/ --cov=src/schemax --cov-report=term-missing
+pytest tests/ --cov=src/schematic --cov-report=term-missing
 
 # Run with coverage HTML report
-pytest tests/ --cov=src/schemax --cov-report=html
+pytest tests/ --cov=src/schematic --cov-report=html
 open htmlcov/index.html
 ```
 
@@ -769,15 +769,15 @@ The quality checks pipeline runs automatically on:
 **VS Code Extension**:
 1. Press F5 in VS Code (launches Extension Development Host)
 2. Open a workspace folder
-3. Cmd+Shift+P → "SchemaX: Open Designer"
-4. Check logs: View → Output → "SchemaX"
+3. Cmd+Shift+P → "Schematic: Open Designer"
+4. Check logs: View → Output → "Schematic"
 
 **Python CLI**:
 ```bash
 cd packages/python-sdk
 pip install -e .
-schemax validate examples/basic-schema/
-schemax sql
+schematic validate examples/basic-schema/
+schematic sql
 ```
 
 **Current Test Status**:
@@ -800,11 +800,11 @@ schemax sql
 - `packages/vscode-extension/src/webview/state/useDesignerStore.ts` - Zustand store
 
 **Python SDK**:
-- `packages/python-sdk/src/schemax/models.py` - Pydantic models
-- `packages/python-sdk/src/schemax/storage.py` - File I/O
-- `packages/python-sdk/src/schemax/state.py` - State reducer
-- `packages/python-sdk/src/schemax/sql_generator.py` - SQL generation
-- `packages/python-sdk/src/schemax/cli.py` - CLI implementation
+- `packages/python-sdk/src/schematic/models.py` - Pydantic models
+- `packages/python-sdk/src/schematic/storage.py` - File I/O
+- `packages/python-sdk/src/schematic/state.py` - State reducer
+- `packages/python-sdk/src/schematic/sql_generator.py` - SQL generation
+- `packages/python-sdk/src/schematic/cli.py` - CLI implementation
 
 **Documentation**:
 - `README.md` - Project overview
@@ -849,7 +849,7 @@ All features implemented according to official Databricks Unity Catalog specific
 ## Git Strategy
 
 **Recommended**:
-- Commit `.schemax/` folder to git
+- Commit `.schematic/` folder to git
 - Snapshots = tagged releases
 - Changelog = work in progress
 - Easy to see what changed between versions
@@ -860,13 +860,13 @@ When starting a new conversation about this project:
 
 1. **Project Type**: Monorepo with VS Code extension (TypeScript) + Python SDK/CLI
 2. **Architecture**: Event sourcing with snapshots + changelog
-3. **Storage**: V3 architecture (`packages/vscode-extension/src/storage-v3.ts`, `packages/python-sdk/src/schemax/storage_v3.py`)
+3. **Storage**: V3 architecture (`packages/vscode-extension/src/storage-v3.ts`, `packages/python-sdk/src/schematic/storage_v3.py`)
 4. **UI**: React webview with inline editing and comprehensive governance features
 5. **State**: Snapshot + changelog = current state
 6. **SQL Generation**: ✅ Implemented in both TypeScript and Python
 7. **Deployment Tracking**: ✅ Implemented
 8. **Operations**: Provider-based architecture (Unity Catalog = 29 operations)
-9. **Logs**: Check "SchemaX" output channel in VS Code
+9. **Logs**: Check "Schematic" output channel in VS Code
 10. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
 11. **Code Formatting**: Ruff/Black for Python (100 char), manual for TypeScript
 12. **Documentation**: Clean structure, no redundant files

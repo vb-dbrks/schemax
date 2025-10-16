@@ -1,10 +1,10 @@
 # Provider Contract
 
-This document defines the contract that all SchemaX catalog providers must implement. Following this contract ensures your provider integrates seamlessly with both the VSCode extension and Python SDK.
+This document defines the contract that all Schematic catalog providers must implement. Following this contract ensures your provider integrates seamlessly with both the VSCode extension and Python SDK.
 
 ## Overview
 
-A **Provider** is a plugin that adds support for a specific catalog system (Unity Catalog, Hive Metastore, PostgreSQL, etc.). Each provider implements a standard interface that SchemaX uses for:
+A **Provider** is a plugin that adds support for a specific catalog system (Unity Catalog, Hive Metastore, PostgreSQL, etc.). Each provider implements a standard interface that Schematic uses for:
 
 - **State Management** - How objects are stored and modified
 - **Operations** - What actions users can perform  
@@ -378,7 +378,7 @@ describe('MyProvider', () => {
 ```python
 # Python example with SQLGlot validation
 import sqlglot
-from schemax.providers.myprovider import my_provider
+from schematic.providers.myprovider import my_provider
 
 def test_add_database_sql():
     """Test SQL generation with validation"""
@@ -465,7 +465,7 @@ Use consistent payload structure:
 See the Unity Catalog provider as a reference implementation:
 
 - TypeScript: `packages/vscode-extension/src/providers/unity/`
-- Python: `packages/python-sdk/src/schemax/providers/unity/`
+- Python: `packages/python-sdk/src/schematic/providers/unity/`
 
 ## Getting Help
 

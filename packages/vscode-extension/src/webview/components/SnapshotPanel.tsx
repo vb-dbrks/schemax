@@ -30,7 +30,7 @@ export const SnapshotPanel: React.FC = () => {
           {snapshots.length === 0 ? (
             <div className="empty-state">
               <p>No snapshots yet</p>
-              <p className="hint">Run "SchemaX: Create Snapshot" to create your first snapshot</p>
+              <p className="hint">Run "Schematic: Create Snapshot" to create your first snapshot</p>
             </div>
           ) : (
             <div className="snapshot-timeline">

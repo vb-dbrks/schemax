@@ -1,4 +1,4 @@
-"""Test utilities for SchemaX tests"""
+"""Test utilities for Schematic tests"""
 
 from .operation_builders import OperationBuilder, make_operation_sequence
 

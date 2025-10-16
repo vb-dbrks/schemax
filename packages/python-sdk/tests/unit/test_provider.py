@@ -10,7 +10,7 @@ Tests the provider registry and Unity provider implementation including:
 
 import pytest
 
-from schemax.providers import Operation, ProviderRegistry
+from schematic.providers import Operation, ProviderRegistry
 from tests.utils import OperationBuilder
 
 

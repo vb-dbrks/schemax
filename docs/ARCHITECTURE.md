@@ -1,10 +1,10 @@
 # Architecture
 
-This document describes the technical architecture and design decisions behind SchemaX.
+This document describes the technical architecture and design decisions behind Schematic.
 
 ## Overview
 
-SchemaX implements a **provider-based**, snapshot-driven schema versioning system. The core principle is to maintain an append-only operation log with periodic snapshots, enabling both state-based and change-based workflows across multiple catalog types (Unity Catalog, Hive Metastore, PostgreSQL, etc.).
+Schematic implements a **provider-based**, snapshot-driven schema versioning system. The core principle is to maintain an append-only operation log with periodic snapshots, enabling both state-based and change-based workflows across multiple catalog types (Unity Catalog, Hive Metastore, PostgreSQL, etc.).
 
 ## Design Goals
 
@@ -20,11 +20,11 @@ SchemaX implements a **provider-based**, snapshot-driven schema versioning syste
 
 ## Architectural Patterns
 
-SchemaX follows several well-established architectural patterns that work together to provide a robust, maintainable, and extensible system.
+Schematic follows several well-established architectural patterns that work together to provide a robust, maintainable, and extensible system.
 
 ### Primary Pattern: Event Sourcing
 
-The foundation of SchemaX is **Event Sourcing** - all changes are stored as immutable events (operations) in an append-only log.
+The foundation of Schematic is **Event Sourcing** - all changes are stored as immutable events (operations) in an append-only log.
 
 **Implementation:**
 
@@ -72,7 +72,7 @@ State at v0.3.0 =
   load_snapshot("v0.2.0") + 
   apply_operations(changelog.ops)
 
-.schemax/
+.schematic/
 ├── snapshots/v0.2.0.json    ← Full state checkpoint
 └── changelog.json            ← Only ops since v0.2.0
 ```
@@ -188,7 +188,7 @@ function applyOperation(state: ProviderState, operation: Operation): ProviderSta
 // Redux
 newState = reducer(state, action)
 
-// SchemaX
+// Schematic
 newState = provider.applyOperation(state, operation)
 ```
 
@@ -358,7 +358,7 @@ def sql(workspace: str):
              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │               Storage Repository (Repository Pattern)           │
-│                 Reads/writes .schemax/ files                    │
+│                 Reads/writes .schematic/ files                    │
 └────────────┬────────────────────────────────────────────────────┘
              │
              ▼
@@ -395,7 +395,7 @@ def sql(workspace: str):
 
 ## Architectural Style: Functional Core, Imperative Shell
 
-SchemaX follows the **Functional Core, Imperative Shell** pattern:
+Schematic follows the **Functional Core, Imperative Shell** pattern:
 
 **Functional Core (Pure Logic):**
 
@@ -489,7 +489,7 @@ SchemaX follows the **Functional Core, Imperative Shell** pattern:
 
 ## Architecture Inspirations
 
-SchemaX's architecture draws inspiration from:
+Schematic's architecture draws inspiration from:
 
 1. **Redux** (State Management)
     - Immutable state
@@ -522,7 +522,7 @@ SchemaX's architecture draws inspiration from:
 
 ### What is a Provider?
 
-A **Provider** is a plugin that adds support for a specific catalog system. Each provider implements a standard interface that SchemaX uses for:
+A **Provider** is a plugin that adds support for a specific catalog system. Each provider implements a standard interface that Schematic uses for:
 
 - **State Management** - How objects are stored and modified
 - **Operations** - What actions users can perform
@@ -549,7 +549,7 @@ Providers are registered at startup:
 import './providers'; // Auto-registers Unity provider
 
 // Python
-from schemax.providers import unity_provider
+from schematic.providers import unity_provider
 # Unity provider auto-registered on import
 ```
 
@@ -572,7 +572,7 @@ from schemax.providers import unity_provider
 
 ```text
 workspace-root/
-└── .schemax/
+└── .schematic/
     ├── project.json           # Project metadata with provider info
     ├── changelog.json         # Uncommitted operations
     ├── snapshots/
@@ -609,7 +609,7 @@ workspace-root/
       "id": "snap_uuid",
       "version": "v0.1.0",
       "name": "Initial schema",
-      "file": ".schemax/snapshots/v0.1.0.json",
+      "file": ".schematic/snapshots/v0.1.0.json",
       "ts": "2025-10-06T10:00:00Z",
       "opsCount": 15,
       "hash": "sha256...",
@@ -704,7 +704,7 @@ workspace-root/
 
 ### 1. Operations
 
-Operations are the fundamental unit of change in SchemaX. Every user action generates one or more operations.
+Operations are the fundamental unit of change in Schematic. Every user action generates one or more operations.
 
 **Operation Structure:**
 
@@ -990,7 +990,7 @@ src/
 ### Python (SDK/CLI)
 
 ```text
-src/schemax/
+src/schematic/
 ├── providers/
 │   ├── base/
 │   │   ├── provider.py
@@ -1266,7 +1266,7 @@ if (expectedHash !== actualHash) {
 
 ### Advanced Features
 
-1. **Drift Detection** - Compare deployed state vs SchemaX state
+1. **Drift Detection** - Compare deployed state vs Schematic state
 2. **Impact Analysis** - Show what a change will affect
 3. **Rollback Support** - Revert to previous snapshots
 4. **State Diffs** - Visual comparison between versions
@@ -1277,11 +1277,11 @@ if (expectedHash !== actualHash) {
 
 ### Test Coverage
 
-SchemaX includes comprehensive test suites for both Python and TypeScript implementations:
+Schematic includes comprehensive test suites for both Python and TypeScript implementations:
 
 **Python SDK Test Status:**
 - ✅ 124 passing tests (91.2%)
-- ⏸️ 12 skipped tests (8.8%) - documented in GitHub issues [#19](https://github.com/vb-dbrks/schemax-vscode/issues/19), [#20](https://github.com/vb-dbrks/schemax-vscode/issues/20)
+- ⏸️ 12 skipped tests (8.8%) - documented in GitHub issues [#19](https://github.com/vb-dbrks/schematic-vscode/issues/19), [#20](https://github.com/vb-dbrks/schematic-vscode/issues/20)
 - Test Categories:
   - Storage operations (28 tests)
   - State reducer (29 tests)
@@ -1303,7 +1303,7 @@ op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
 
 ### SQL Validation
 
-SchemaX includes optional **SQLGlot** integration for validating generated SQL:
+Schematic includes optional **SQLGlot** integration for validating generated SQL:
 
 ```python
 import sqlglot
@@ -1323,14 +1323,14 @@ assert parsed is not None  # Valid SQL
 ```bash
 pip install sqlglot>=20.0.0
 # or
-pip install "schemax[validation]"
+pip install "schematic[validation]"
 ```
 
 ---
 
 ## Conclusion
 
-SchemaX's provider-based architecture provides:
+Schematic's provider-based architecture provides:
 
 ✅ **Extensibility** - Easy to add new catalog types  
 ✅ **Flexibility** - Each provider can have unique features  

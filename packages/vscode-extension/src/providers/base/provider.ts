@@ -2,7 +2,7 @@
  * Base Provider Interface
  * 
  * Defines the contract that all catalog providers must implement.
- * This enables SchemaX to support multiple catalogs (Unity Catalog, Hive, PostgreSQL, etc.)
+ * This enables Schematic to support multiple catalogs (Unity Catalog, Hive, PostgreSQL, etc.)
  * through a unified interface while allowing provider-specific features.
  */
 

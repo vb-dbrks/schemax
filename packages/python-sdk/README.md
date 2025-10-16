@@ -1,4 +1,4 @@
-# SchemaX Python SDK & CLI
+# Schematic Python SDK & CLI
 
 Python toolkit for managing catalog schemas with a provider-based architecture. Supports multiple catalog providers including Unity Catalog, Hive, PostgreSQL, and more.
 
@@ -6,7 +6,7 @@ Python toolkit for managing catalog schemas with a provider-based architecture. 
 
 - **Multi-Provider Support**: Works with Unity Catalog, Hive, PostgreSQL, and more
 - **SQL Generation**: Generate SQL migration scripts from schema changes
-- **Schema Validation**: Validate `.schemax/` project files
+- **Schema Validation**: Validate `.schematic/` project files
 - **Deployment Tracking**: Track what's deployed to each environment
 - **DAB Generation**: Create Databricks Asset Bundles for deployment (coming soon)
 - **CI/CD Ready**: Designed for GitHub Actions, GitLab CI, and other pipelines
@@ -14,14 +14,14 @@ Python toolkit for managing catalog schemas with a provider-based architecture. 
 ## Installation
 
 ```bash
-pip install schemax-py
+pip install schematic-py
 ```
 
 ### Development Install
 
 ```bash
-git clone https://github.com/vb-dbrks/schemax.git
-cd schemax/packages/python-sdk
+git clone https://github.com/vb-dbrks/schematic.git
+cd schematic/packages/python-sdk
 pip install -e ".[dev]"
 ```
 
@@ -31,55 +31,55 @@ pip install -e ".[dev]"
 
 ```bash
 # Initialize with Unity Catalog provider (default)
-schemax init
+schematic init
 
 # Initialize with a specific provider
-schemax init --provider postgres
+schematic init --provider postgres
 ```
 
 ### Validate Schema Files
 
 ```bash
 cd your-project/
-schemax validate
+schematic validate
 ```
 
 ### Generate SQL Migration
 
 ```bash
 # Generate SQL from changelog
-schemax sql --output migration.sql
+schematic sql --output migration.sql
 
 # Generate SQL for specific version range (coming soon)
-schemax sql --from-version v0.1.0 --to-version v0.2.0 --output migration.sql
+schematic sql --from-version v0.1.0 --to-version v0.2.0 --output migration.sql
 ```
 
 ### Track Deployment
 
 ```bash
 # Record deployment to environment
-schemax deploy --environment prod --version v1.0.0
+schematic deploy --environment prod --version v1.0.0
 
 # Generate incremental SQL based on what's deployed
-schemax sql --environment prod --output incremental.sql
+schematic sql --environment prod --output incremental.sql
 ```
 
 ### Generate Databricks Asset Bundle
 
 ```bash
-schemax bundle --environment prod --version v1.0.0 --output .schemax/dab
+schematic bundle --environment prod --version v1.0.0 --output .schematic/dab
 
 # Then deploy with Databricks CLI
-cd .schemax/dab/prod
+cd .schematic/dab/prod
 databricks bundle deploy
-databricks bundle run schemax_migration
+databricks bundle run schematic_migration
 ```
 
 ## CLI Commands
 
-### `schemax init`
+### `schematic init`
 
-Initialize a new SchemaX project with provider selection.
+Initialize a new Schematic project with provider selection.
 
 **Options:**
 - `--provider, -p`: Catalog provider (unity, hive, postgres) - default: unity
@@ -87,13 +87,13 @@ Initialize a new SchemaX project with provider selection.
 **Examples:**
 ```bash
 # Initialize with Unity Catalog
-schemax init
+schematic init
 
 # Initialize with PostgreSQL
-schemax init --provider postgres
+schematic init --provider postgres
 ```
 
-### `schemax sql`
+### `schematic sql`
 
 Generate SQL migration scripts from operations.
 
@@ -106,25 +106,25 @@ Generate SQL migration scripts from operations.
 **Examples:**
 ```bash
 # Output to stdout
-schemax sql
+schematic sql
 
 # Save to file
-schemax sql -o migration.sql
+schematic sql -o migration.sql
 
 # Incremental migration for environment
-schemax sql -e prod -o prod-migration.sql
+schematic sql -e prod -o prod-migration.sql
 ```
 
-### `schemax validate`
+### `schematic validate`
 
-Validate `.schemax/` project files for correctness.
+Validate `.schematic/` project files for correctness.
 
 **Examples:**
 ```bash
-schemax validate
+schematic validate
 ```
 
-### `schemax deploy`
+### `schematic deploy`
 
 Track deployment metadata.
 
@@ -135,30 +135,30 @@ Track deployment metadata.
 **Examples:**
 ```bash
 # Record deployment
-schemax deploy -e prod -v v1.0.0
+schematic deploy -e prod -v v1.0.0
 ```
 
-### `schemax bundle`
+### `schematic bundle`
 
 Generate Databricks Asset Bundle for deployment.
 
 **Options:**
 - `--environment, -e`: Environment name (required)
 - `--version, -v`: Version to bundle (required)
-- `--output, -o`: Output directory (default: .schemax/dab)
+- `--output, -o`: Output directory (default: .schematic/dab)
 
 **Examples:**
 ```bash
-schemax bundle -e prod -v v1.0.0
+schematic bundle -e prod -v v1.0.0
 ```
 
-### `schemax diff`
+### `schematic diff`
 
 Compare two schema versions (coming soon).
 
 **Examples:**
 ```bash
-schemax diff v0.1.0 v0.2.0
+schematic diff v0.1.0 v0.2.0
 ```
 
 ## Python API
@@ -167,8 +167,8 @@ schemax diff v0.1.0 v0.2.0
 
 ```python
 from pathlib import Path
-from schemax.storage_v3 import load_current_state
-from schemax.providers.base.operations import Operation
+from schematic.storage_v3 import load_current_state
+from schematic.providers.base.operations import Operation
 
 # Load schema with provider
 workspace = Path.cwd()
@@ -189,7 +189,7 @@ print(sql)
 ### Working with Multiple Providers
 
 ```python
-from schemax import ProviderRegistry
+from schematic import ProviderRegistry
 
 # List available providers
 providers = ProviderRegistry.get_all_ids()
@@ -211,7 +211,7 @@ if not validation.valid:
 
 ```python
 from pathlib import Path
-from schemax.storage_v3 import read_project, load_current_state
+from schematic.storage_v3 import read_project, load_current_state
 
 try:
     workspace = Path.cwd()
@@ -250,14 +250,14 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install SchemaX
-        run: pip install schemax-py
+      - name: Install Schematic
+        run: pip install schematic-py
       
       - name: Validate Schema
-        run: schemax validate
+        run: schematic validate
       
       - name: Generate SQL
-        run: schemax sql --environment prod --output migration.sql
+        run: schematic sql --environment prod --output migration.sql
       
       - name: Upload SQL
         uses: actions/upload-artifact@v3
@@ -273,16 +273,16 @@ validate-schema:
   stage: test
   image: python:3.11
   script:
-    - pip install schemax-py
-    - schemax validate
+    - pip install schematic-py
+    - schematic validate
 
 deploy-prod:
   stage: deploy
   image: python:3.11
   script:
-    - pip install schemax-py
-    - schemax sql --environment prod --output migration.sql
-    - schemax bundle --environment prod --version $CI_COMMIT_TAG
+    - pip install schematic-py
+    - schematic sql --environment prod --output migration.sql
+    - schematic bundle --environment prod --version $CI_COMMIT_TAG
   only:
     - tags
 ```
@@ -290,7 +290,7 @@ deploy-prod:
 ## Requirements
 
 - Python 3.11 or higher
-- A SchemaX project (`.schemax/` directory)
+- A Schematic project (`.schematic/` directory)
 
 ## Documentation
 
@@ -305,8 +305,8 @@ deploy-prod:
 
 ```bash
 # Clone repository
-git clone https://github.com/vb-dbrks/schemax.git
-cd schemax/packages/python-sdk
+git clone https://github.com/vb-dbrks/schematic.git
+cd schematic/packages/python-sdk
 
 # Create virtual environment
 python -m venv .venv
@@ -320,7 +320,7 @@ pip install -e ".[dev]"
 
 ```bash
 pytest
-pytest --cov=schemax
+pytest --cov=schematic
 ```
 
 ### Linting
@@ -336,7 +336,7 @@ MIT License - see [LICENSE](../../LICENSE) for details.
 
 ## Links
 
-- **Repository**: https://github.com/vb-dbrks/schemax
-- **Issues**: https://github.com/vb-dbrks/schemax/issues
-- **PyPI**: https://pypi.org/project/schemax-py/ (coming soon)
+- **Repository**: https://github.com/vb-dbrks/schematic
+- **Issues**: https://github.com/vb-dbrks/schematic/issues
+- **PyPI**: https://pypi.org/project/schematic-py/ (coming soon)
 

@@ -19,15 +19,15 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install SchemaX CLI
-        run: pip install schemax-py
+      - name: Install Schematic CLI
+        run: pip install schematic-py
       
       - name: Validate schema
-        run: schemax validate
+        run: schematic validate
       
       - name: Generate SQL migration
         run: |
-          schemax sql \
+          schematic sql \
             --environment dev \
             --output migration-dev.sql
       
@@ -39,7 +39,7 @@ jobs:
       
       - name: Record deployment
         run: |
-          schemax deploy \
+          schematic deploy \
             --environment dev \
             --version ${{ github.sha }}
         
