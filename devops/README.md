@@ -1,6 +1,6 @@
 # DevOps
 
-This directory contains CI/CD pipelines and DevOps automation scripts for SchemaX.
+This directory contains CI/CD pipelines and DevOps automation scripts for Schematic.
 
 ## Quick Start
 
@@ -120,7 +120,7 @@ cd packages/python-sdk
 pytest tests/ -v
 
 # Run with coverage
-pytest tests/ --cov=src/schemax --cov-report=term-missing
+pytest tests/ --cov=src/schematic --cov-report=term-missing
 
 # Run specific test file
 pytest tests/unit/test_sql_generator.py -v
@@ -315,7 +315,7 @@ npm install
 npm run build
 
 # Reinstall SDK
-pip uninstall schemax-py
+pip uninstall schematic-py
 cd packages/python-sdk
 pip install -e .
 ```
@@ -429,7 +429,7 @@ test:
 
 .PHONY: coverage
 coverage:
-	@cd packages/python-sdk && pytest tests/ --cov=src/schemax --cov-report=html
+	@cd packages/python-sdk && pytest tests/ --cov=src/schematic --cov-report=html
 	@open packages/python-sdk/htmlcov/index.html
 ```
 

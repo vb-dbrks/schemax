@@ -17,7 +17,7 @@
       "name": "Initial schema",
       "ts": "2025-01-01T00:00:00.000Z",
       "createdBy": "example",
-      "file": ".schemax/snapshots/v0.1.0.json",
+      "file": ".schematic/snapshots/v0.1.0.json",
       "previousSnapshot": null,
       "opsCount": 5,
       "hash": "abc123",

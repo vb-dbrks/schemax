@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from schemax.providers.unity.models import (
+from schematic.providers.unity.models import (
     UnityCatalog,
     UnityColumn,
     UnitySchema,
@@ -29,11 +29,11 @@ def temp_workspace(tmp_path):
 
 
 @pytest.fixture
-def schemax_dir(temp_workspace):
-    """Create .schemax directory"""
-    schemax = temp_workspace / ".schemax"
-    schemax.mkdir()
-    return schemax
+def schematic_dir(temp_workspace):
+    """Create .schematic directory"""
+    schematic = temp_workspace / ".schematic"
+    schematic.mkdir()
+    return schematic
 
 
 @pytest.fixture
@@ -154,8 +154,8 @@ def empty_unity_state():
 
 @pytest.fixture
 def initialized_workspace(temp_workspace):
-    """Workspace with initialized .schemax project"""
-    from schemax.storage_v3 import ensure_project_file
+    """Workspace with initialized .schematic project"""
+    from schematic.storage_v3 import ensure_project_file
 
     ensure_project_file(temp_workspace, provider_id="unity")
     return temp_workspace
@@ -164,7 +164,7 @@ def initialized_workspace(temp_workspace):
 @pytest.fixture
 def workspace_with_operations(initialized_workspace, sample_operations):
     """Workspace with operations in changelog"""
-    from schemax.storage_v3 import append_ops
+    from schematic.storage_v3 import append_ops
 
     append_ops(initialized_workspace, sample_operations)
     return initialized_workspace

@@ -44,7 +44,7 @@ jobs:
       
       - name: Run tests
         working-directory: packages/python-sdk
-        run: pytest --cov=schemax --cov-report=xml --cov-fail-under=20
+        run: pytest --cov=schematic --cov-report=xml --cov-fail-under=20
       
       - name: Upload coverage
         uses: codecov/codecov-action@v3
@@ -66,15 +66,15 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install SchemaX
+      - name: Install Schematic
         working-directory: packages/python-sdk
         run: pip install -e .
       
       - name: Validate example schema
         working-directory: examples/basic-schema
-        run: schemax validate
+        run: schematic validate
       
       - name: Generate SQL from example
         working-directory: examples/basic-schema
-        run: schemax sql --output test-migration.sql
+        run: schematic sql --output test-migration.sql
 

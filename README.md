@@ -1,10 +1,10 @@
-# SchemaX
+# Schematic
 
 **Multi-provider data catalog schema management with version control**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalog, Hive Metastore, PostgreSQL) using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
+Schematic is an extensible toolkit for managing data catalog schemas (Unity Catalog, Hive Metastore, PostgreSQL) using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
 
 **Current Support:** Databricks Unity Catalog (v1.0) | **Coming Soon:** Hive Metastore, PostgreSQL/Lakebase
 
@@ -49,20 +49,20 @@ SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalo
 
 1. **Launch Extension Development Host**:
    ```bash
-   cd schemax
+   cd schematic
    code .
    # Press F5 (or Fn+F5)
    ```
 
 2. **In the new window**:
    - Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
-   - Type: **SchemaX: Open Designer**
+   - Type: **Schematic: Open Designer**
    - Start designing your schema!
 
 3. **Generate SQL**:
    - After making changes
    - Press `Cmd+Shift+P`
-   - Type: **SchemaX: Generate SQL Migration**
+   - Type: **Schematic: Generate SQL Migration**
 
 ### Python CLI
 
@@ -75,23 +75,23 @@ SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalo
 2. **Use CLI**:
    ```bash
    # Initialize new project with provider
-   schemax init --provider unity
+   schematic init --provider unity
    
    # Validate schema files
-   schemax validate
+   schematic validate
    
    # Generate SQL migration
-   schemax sql --output migration.sql
+   schematic sql --output migration.sql
    
    # Track deployment
-   schemax deploy --environment prod --version v1.0.0 --mark-deployed
+   schematic deploy --environment prod --version v1.0.0 --mark-deployed
    ```
 
 3. **Python API**:
    ```python
    from pathlib import Path
-   from schemax.storage_v3 import load_current_state
-   from schemax.providers.base.operations import Operation
+   from schematic.storage_v3 import load_current_state
+   from schematic.providers.base.operations import Operation
    
    # Load with provider
    state, changelog, provider = load_current_state(Path.cwd())
@@ -118,7 +118,7 @@ SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalo
 ## Repository Structure
 
 ```
-schemax/
+schematic/
 ├── packages/
 │   ├── vscode-extension/       # VS Code Extension (TypeScript + React)
 │   │   ├── src/
@@ -132,7 +132,7 @@ schemax/
 │   │   └── package.json
 │   │
 │   └── python-sdk/             # Python SDK & CLI
-│       ├── src/schemax/
+│       ├── src/schematic/
 │       │   ├── providers/            # Provider system (V3)
 │       │   │   ├── base/             # Base interfaces
 │       │   │   ├── unity/            # Unity Catalog provider
@@ -165,10 +165,10 @@ schemax/
 
 ### 1. Design Schema
 
-Use the VS Code visual designer or directly edit `.schemax/` files:
+Use the VS Code visual designer or directly edit `.schematic/` files:
 
 ```
-.schemax/
+.schematic/
 ├── project.json          # Project metadata
 ├── changelog.json        # Uncommitted operations
 └── snapshots/
@@ -210,18 +210,18 @@ ADD COLUMN `customer_id` BIGINT NOT NULL;
 Execute SQL on Databricks and track deployment:
 ```bash
 # Generate SQL
-schemax sql --environment prod --output deploy.sql
+schematic sql --environment prod --output deploy.sql
 
 # Execute on Databricks
 databricks sql execute --file deploy.sql --warehouse-id <id>
 
 # Track deployment
-schemax deploy --environment prod --version v1.0.0 --mark-deployed
+schematic deploy --environment prod --version v1.0.0 --mark-deployed
 ```
 
 ## Unity Catalog Support
 
-SchemaX supports all major Unity Catalog features:
+Schematic supports all major Unity Catalog features:
 
 ### Core Objects
 - ✅ Catalogs (CREATE, ALTER, DROP)
@@ -300,14 +300,14 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install SchemaX
-        run: pip install schemax-py
+      - name: Install Schematic
+        run: pip install schematic-py
       
       - name: Validate Schema
-        run: schemax validate
+        run: schematic validate
       
       - name: Generate SQL
-        run: schemax sql --environment prod --output migration.sql
+        run: schematic sql --environment prod --output migration.sql
       
       - name: Deploy to Databricks
         env:
@@ -362,7 +362,7 @@ cd packages/python-sdk
 pytest
 
 # Run with coverage
-pytest --cov=schemax --cov-report=term-missing
+pytest --cov=schematic --cov-report=term-missing
 
 # Run specific test file
 pytest tests/unit/test_sql_generator.py -v
@@ -370,7 +370,7 @@ pytest tests/unit/test_sql_generator.py -v
 
 **Current Status:**
 - ✅ 124 passing tests (91.2%)
-- ⏸️ 12 skipped tests (documented in [issues #19](https://github.com/vb-dbrks/schemax-vscode/issues/19), [#20](https://github.com/vb-dbrks/schemax-vscode/issues/20))
+- ⏸️ 12 skipped tests (documented in [issues #19](https://github.com/vb-dbrks/schematic-vscode/issues/19), [#20](https://github.com/vb-dbrks/schematic-vscode/issues/20))
 - Test Coverage: Unit tests, integration tests, provider tests
 
 ### Manual Testing
@@ -381,8 +381,8 @@ See [TESTING.md](TESTING.md) for comprehensive testing guide.
 
 ```bash
 cd examples/basic-schema
-schemax validate
-schemax sql
+schematic validate
+schematic sql
 ```
 
 ## Requirements
@@ -424,7 +424,7 @@ cd packages/vscode-extension && npm run build
 cd packages/python-sdk && pytest
 
 # Python tests with coverage
-cd packages/python-sdk && pytest --cov=schemax
+cd packages/python-sdk && pytest --cov=schematic
 
 # SQL validation (optional - requires SQLGlot)
 pip install sqlglot>=20.0.0
@@ -483,12 +483,12 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/vb-dbrks/schemax/issues)
+- **Issues**: [GitHub Issues](https://github.com/vb-dbrks/schematic/issues)
 - **Documentation**: [docs/](docs/)
 - **Examples**: [examples/](examples/)
 
 ---
 
-**SchemaX** - Making data catalog schema management declarative, extensible, and version-controlled. 🚀
+**Schematic** - Making data catalog schema management declarative, extensible, and version-controlled. 🚀
 
 **Current**: Unity Catalog | **Coming Soon**: Hive Metastore, PostgreSQL | **Extensible**: Add your own provider!

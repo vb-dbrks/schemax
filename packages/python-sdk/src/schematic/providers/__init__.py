@@ -1,5 +1,5 @@
 """
-Provider System for SchemaX Python SDK
+Provider System for Schematic Python SDK
 
 This module implements the provider architecture that enables support for
 multiple catalog types (Unity Catalog, Hive Metastore, PostgreSQL, etc.)

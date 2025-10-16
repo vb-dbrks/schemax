@@ -7,7 +7,7 @@ All methods use the create_operation() helper with provider="unity" pre-configur
 
 from typing import Any, Dict, List, Literal, Optional
 
-from schemax.providers.base.operations import Operation, create_operation
+from schematic.providers.base.operations import Operation, create_operation
 
 
 class OperationBuilder:

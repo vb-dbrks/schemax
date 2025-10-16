@@ -1,5 +1,5 @@
 """
-SchemaX Python SDK
+Schematic Python SDK
 
 Python library and CLI for managing catalog schemas using a provider-based architecture.
 Supports multiple catalog providers: Unity Catalog, Hive, PostgreSQL, and more.

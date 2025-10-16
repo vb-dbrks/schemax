@@ -1,6 +1,6 @@
-# SchemaX Quickstart Guide
+# Schematic Quickstart Guide
 
-Complete guide to get started with SchemaX - both the VS Code extension and Python SDK/CLI.
+Complete guide to get started with Schematic - both the VS Code extension and Python SDK/CLI.
 
 ## Table of Contents
 
@@ -16,7 +16,7 @@ Complete guide to get started with SchemaX - both the VS Code extension and Pyth
 
 ## Providers
 
-SchemaX uses a **provider-based architecture** to support different data catalog systems.
+Schematic uses a **provider-based architecture** to support different data catalog systems.
 
 ### Supported Providers
 
@@ -28,7 +28,7 @@ SchemaX uses a **provider-based architecture** to support different data catalog
 
 ### Default Provider
 
-**Unity Catalog is the default provider** for all new projects. When you create a new SchemaX project (by opening the designer for the first time), it automatically initializes with Unity Catalog.
+**Unity Catalog is the default provider** for all new projects. When you create a new Schematic project (by opening the designer for the first time), it automatically initializes with Unity Catalog.
 
 ### Provider Selection (Future)
 
@@ -36,12 +36,12 @@ In v0.3.0+, you'll be able to select a provider when creating a new project:
 
 ```bash
 # CLI (future)
-schemax init --provider unity      # Unity Catalog (default)
-schemax init --provider hive       # Hive Metastore
-schemax init --provider postgres   # PostgreSQL
+schematic init --provider unity      # Unity Catalog (default)
+schematic init --provider hive       # Hive Metastore
+schematic init --provider postgres   # PostgreSQL
 
 # For now, all projects use Unity Catalog
-schemax init
+schematic init
 ```
 
 **For this quickstart, we'll use Unity Catalog (the current provider).**
@@ -55,7 +55,7 @@ schemax init
 **Step 1**: Open the Project
 
 ```bash
-cd /path/to/schemax
+cd /path/to/schematic
 code .
 ```
 
@@ -66,7 +66,7 @@ Press **F5** (or **Fn+F5** on Mac)
 This will:
 - Build the extension automatically
 - Open a new VS Code window called "Extension Development Host"
-- Load SchemaX in that window
+- Load Schematic in that window
 
 **Step 3**: Open a Workspace
 
@@ -76,10 +76,10 @@ In the Extension Development Host window:
 
 ### Using the Designer
 
-**Step 4**: Launch SchemaX Designer
+**Step 4**: Launch Schematic Designer
 
 1. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
-2. Type: **SchemaX: Open Designer**
+2. Type: **Schematic: Open Designer**
 3. Press Enter
 
 The visual designer opens!
@@ -119,7 +119,7 @@ The visual designer opens!
 **Step 9**: Create a Snapshot
 
 1. Press `Cmd+Shift+P`
-2. Type: **SchemaX: Create Snapshot**
+2. Type: **Schematic: Create Snapshot**
 3. Enter name: `v0.1.0`
 4. Enter comment: `Initial schema`
 
@@ -128,18 +128,18 @@ Your schema is now versioned!
 ### Checking the Files
 
 ```bash
-ls -la .schemax/
-cat .schemax/project.json
-cat .schemax/changelog.json
-ls -la .schemax/snapshots/
+ls -la .schematic/
+cat .schematic/project.json
+cat .schematic/changelog.json
+ls -la .schematic/snapshots/
 ```
 
 ### Available Commands
 
-- `SchemaX: Open Designer` - Launch visual designer
-- `SchemaX: Create Snapshot` - Version your schema
-- `SchemaX: Generate SQL Migration` - Export to SQL
-- `SchemaX: Show Last Emitted Changes` - View operations
+- `Schematic: Open Designer` - Launch visual designer
+- `Schematic: Create Snapshot` - Version your schema
+- `Schematic: Generate SQL Migration` - Export to SQL
+- `Schematic: Show Last Emitted Changes` - View operations
 
 ---
 
@@ -150,21 +150,21 @@ ls -la .schemax/snapshots/
 **Option 1**: Install from Source (Development)
 
 ```bash
-cd schemax/packages/python-sdk
+cd schematic/packages/python-sdk
 pip install -e .
 ```
 
 **Option 2**: Install from PyPI (When Published)
 
 ```bash
-pip install schemax-py
+pip install schematic-py
 ```
 
 ### Verify Installation
 
 ```bash
-schemax --version
-# Output: schemax, version 0.1.0
+schematic --version
+# Output: schematic, version 0.1.0
 ```
 
 ### CLI Commands
@@ -173,7 +173,7 @@ schemax --version
 
 ```bash
 cd your-project
-schemax validate
+schematic validate
 ```
 
 Output:
@@ -194,10 +194,10 @@ Project: my_project
 
 ```bash
 # Output to stdout
-schemax sql
+schematic sql
 
 # Save to file
-schemax sql --output migration.sql
+schematic sql --output migration.sql
 
 # View the file
 cat migration.sql
@@ -207,7 +207,7 @@ cat migration.sql
 
 ```bash
 # Record deployment
-schemax deploy \
+schematic deploy \
   --environment prod \
   --version v1.0.0 \
   --mark-deployed
@@ -225,13 +225,13 @@ Output:
 
 ### Python API
 
-Create a script to use SchemaX programmatically:
+Create a script to use Schematic programmatically:
 
 ```python
 #!/usr/bin/env python3
 from pathlib import Path
-from schemax.storage_v3 import load_current_state, read_project
-from schemax.providers.base.operations import Operation
+from schematic.storage_v3 import load_current_state, read_project
+from schematic.providers.base.operations import Operation
 
 # Load schema with provider
 workspace = Path.cwd()
@@ -275,11 +275,11 @@ cd ~/my-first-schema
 code .
 ```
 
-### Step 3: Launch SchemaX (in Extension Development Host)
+### Step 3: Launch Schematic (in Extension Development Host)
 
 1. Press F5 in the main VS Code window
 2. In the new window, open the `~/my-first-schema` folder
-3. Press `Cmd+Shift+P` → **SchemaX: Open Designer**
+3. Press `Cmd+Shift+P` → **Schematic: Open Designer**
 
 ### Step 4: Build Schema
 
@@ -313,19 +313,19 @@ code .
 
 ### Step 5: Create Snapshot
 
-Press `Cmd+Shift+P` → **SchemaX: Create Snapshot**
+Press `Cmd+Shift+P` → **Schematic: Create Snapshot**
 - Name: `v1.0.0`
 - Comment: `Initial e-commerce schema`
 
 ### Step 6: Verify Files
 
 ```bash
-tree .schemax/
+tree .schematic/
 ```
 
 Output:
 ```
-.schemax/
+.schematic/
 ├── changelog.json
 ├── project.json
 └── snapshots/
@@ -340,19 +340,19 @@ Output:
 
 1. Make some changes (add columns, tables, etc.)
 2. Press `Cmd+Shift+P`
-3. Type: **SchemaX: Generate SQL Migration**
+3. Type: **Schematic: Generate SQL Migration**
 4. Review the SQL file that opens
 
 The SQL is saved to:
 ```
-.schemax/migrations/migration_YYYY-MM-DD_HH-MM-SS.sql
+.schematic/migrations/migration_YYYY-MM-DD_HH-MM-SS.sql
 ```
 
 ### From CLI
 
 ```bash
 # Generate SQL from changelog
-schemax sql --output deploy.sql
+schematic sql --output deploy.sql
 
 # Review
 cat deploy.sql
@@ -420,14 +420,14 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install SchemaX
-        run: pip install schemax-py
+      - name: Install Schematic
+        run: pip install schematic-py
       
       - name: Validate Schema
-        run: schemax validate
+        run: schematic validate
       
       - name: Generate SQL
-        run: schemax sql --output migration.sql
+        run: schematic sql --output migration.sql
       
       - name: Upload SQL
         uses: actions/upload-artifact@v3
@@ -458,8 +458,8 @@ jobs:
       
       - name: Track Deployment
         run: |
-          pip install schemax-py
-          schemax deploy \
+          pip install schematic-py
+          schematic deploy \
             --environment dev \
             --version ${{ github.sha }} \
             --mark-deployed
@@ -488,8 +488,8 @@ jobs:
       
       - name: Track Deployment
         run: |
-          pip install schemax-py
-          schemax deploy \
+          pip install schematic-py
+          schematic deploy \
             --environment prod \
             --version ${{ github.sha }} \
             --mark-deployed
@@ -509,9 +509,9 @@ validate-schema:
   stage: validate
   image: python:3.11
   script:
-    - pip install schemax-py
-    - schemax validate
-    - schemax sql --output migration.sql
+    - pip install schematic-py
+    - schematic validate
+    - schematic sql --output migration.sql
   artifacts:
     paths:
       - migration.sql
@@ -521,9 +521,9 @@ deploy-dev:
   stage: deploy-dev
   image: python:3.11
   script:
-    - pip install schemax-py databricks-cli
+    - pip install schematic-py databricks-cli
     - databricks sql execute --file migration.sql
-    - schemax deploy --environment dev --mark-deployed
+    - schematic deploy --environment dev --mark-deployed
   only:
     - develop
 
@@ -531,9 +531,9 @@ deploy-prod:
   stage: deploy-prod
   image: python:3.11
   script:
-    - pip install schemax-py databricks-cli
+    - pip install schematic-py databricks-cli
     - databricks sql execute --file migration.sql
-    - schemax deploy --environment prod --mark-deployed
+    - schematic deploy --environment prod --mark-deployed
   only:
     - main
   when: manual
@@ -558,7 +558,7 @@ deploy-prod:
 **Solution**:
 ```bash
 # Make sure you're in the right directory
-cd /path/to/schemax
+cd /path/to/schematic
 code .
 
 # Wait for VS Code to fully load, then press F5
@@ -569,26 +569,26 @@ code .
 **Problem**: Webview doesn't open
 
 **Solution**:
-1. Check "SchemaX" output channel (View → Output → SchemaX)
+1. Check "Schematic" output channel (View → Output → Schematic)
 2. Look for build errors
 3. Rebuild: `cd packages/vscode-extension && npm run build`
 
 ### Python CLI
 
-**Problem**: `schemax` command not found
+**Problem**: `schematic` command not found
 
 **Solution**:
 ```bash
 # Check if installed
-pip list | grep schemax
+pip list | grep schematic
 
 # Reinstall
 cd packages/python-sdk
 pip install -e .
 
 # Verify
-which schemax
-schemax --version
+which schematic
+schematic --version
 ```
 
 **Problem**: Import errors
@@ -605,14 +605,14 @@ pip install -e ".[dev]"
 **Solution**:
 ```bash
 # Check file structure
-ls .schemax/
+ls .schematic/
 
 # Validate JSON
-python -m json.tool .schemax/project.json
-python -m json.tool .schemax/changelog.json
+python -m json.tool .schematic/project.json
+python -m json.tool .schematic/changelog.json
 
 # Check permissions
-ls -la .schemax/
+ls -la .schematic/
 ```
 
 ### SQL Generation
@@ -621,7 +621,7 @@ ls -la .schemax/
 
 **Solution**:
 - Make sure there are operations in the changelog
-- Check: `cat .schemax/changelog.json`
+- Check: `cat .schematic/changelog.json`
 - Create some changes in the designer first
 
 **Problem**: SQL has errors
@@ -647,23 +647,23 @@ ls -la .schemax/
 | Command | What It Does |
 |---------|-------------|
 | F5 | Launch Extension Development Host |
-| `SchemaX: Open Designer` | Open visual designer |
-| `SchemaX: Create Snapshot` | Version your schema |
-| `SchemaX: Generate SQL Migration` | Export to SQL |
+| `Schematic: Open Designer` | Open visual designer |
+| `Schematic: Create Snapshot` | Version your schema |
+| `Schematic: Generate SQL Migration` | Export to SQL |
 
 ### CLI Commands
 
 | Command | What It Does |
 |---------|-------------|
-| `schemax validate` | Check schema files |
-| `schemax sql` | Generate SQL |
-| `schemax deploy` | Track deployment |
-| `schemax diff` | Compare versions |
+| `schematic validate` | Check schema files |
+| `schematic sql` | Generate SQL |
+| `schematic deploy` | Track deployment |
+| `schematic diff` | Compare versions |
 
 ### File Structure
 
 ```
-.schemax/
+.schematic/
 ├── project.json          # Metadata & configuration
 ├── changelog.json        # Pending operations
 ├── snapshots/           # Version snapshots

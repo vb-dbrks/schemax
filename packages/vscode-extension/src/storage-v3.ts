@@ -15,7 +15,7 @@ import { Provider } from './providers/base/provider';
 import { Operation } from './providers/base/operations';
 import { ProviderState } from './providers/base/models';
 
-const SCHEMAX_DIR = '.schemax';
+const SCHEMATIC_DIR = '.schematic';
 const PROJECT_FILENAME = 'project.json';
 const CHANGELOG_FILENAME = 'changelog.json';
 const SNAPSHOTS_DIR = 'snapshots';
@@ -112,10 +112,10 @@ function getChangelogFilePath(workspaceUri: vscode.Uri): string {
 }
 
 /**
- * Get the .schemax directory path
+ * Get the .schematic directory path
  */
 function getSchemaxDir(workspaceUri: vscode.Uri): string {
-  return path.join(workspaceUri.fsPath, SCHEMAX_DIR);
+  return path.join(workspaceUri.fsPath, SCHEMATIC_DIR);
 }
 
 /**
@@ -133,14 +133,14 @@ function getSnapshotFilePath(workspaceUri: vscode.Uri, version: string): string 
 }
 
 /**
- * Ensure .schemax/snapshots/ directory exists
+ * Ensure .schematic/snapshots/ directory exists
  */
-async function ensureSchemaxDir(workspaceUri: vscode.Uri): Promise<void> {
-  const schemaxDir = getSchemaxDir(workspaceUri);
+async function ensureSchematicDir(workspaceUri: vscode.Uri): Promise<void> {
+  const schematicDir = getSchematicDir(workspaceUri);
   const snapshotsDir = getSnapshotsDir(workspaceUri);
   
   try {
-    await fs.mkdir(schemaxDir, { recursive: true });
+    await fs.mkdir(schematicDir, { recursive: true });
     await fs.mkdir(snapshotsDir, { recursive: true });
   } catch (error) {
     // Directory might already exist, that's ok
@@ -205,11 +205,11 @@ export async function ensureProjectFile(
       lastModified: new Date().toISOString(),
     };
     
-    await ensureSchemaxDir(workspaceUri);
+    await ensureSchematicDir(workspaceUri);
     await fs.writeFile(projectPath, JSON.stringify(newProject, null, 2), 'utf8');
     await fs.writeFile(changelogPath, JSON.stringify(newChangelog, null, 2), 'utf8');
     
-    console.log(`[SchemaX] Initialized new v3 project: ${workspaceName} with provider: ${provider.info.name}`);
+    console.log(`[Schematic] Initialized new v3 project: ${workspaceName} with provider: ${provider.info.name}`);
   }
 }
 
@@ -221,7 +221,7 @@ async function migrateV2ToV3(
   v2Project: any,
   providerId: string = 'unity'
 ): Promise<void> {
-  console.log(`[SchemaX] Migrating project from v2 to v3...`);
+  console.log(`[Schematic] Migrating project from v2 to v3...`);
   
   const provider = ProviderRegistry.get(providerId);
   if (!provider) {
@@ -270,14 +270,14 @@ async function migrateV2ToV3(
       'utf8'
     );
   } catch (error) {
-    console.warn('[SchemaX] Could not migrate changelog operations:', error);
+    console.warn('[Schematic] Could not migrate changelog operations:', error);
   }
   
   // Write migrated project file
   const projectPath = getProjectFilePath(workspaceUri);
   await fs.writeFile(projectPath, JSON.stringify(v3Project, null, 2), 'utf8');
   
-  console.log(`[SchemaX] Migration complete: v2 → v3`);
+  console.log(`[Schematic] Migration complete: v2 → v3`);
 }
 
 /**
@@ -356,7 +356,7 @@ export async function readSnapshot(workspaceUri: vscode.Uri, version: string): P
  * Write a snapshot file
  */
 async function writeSnapshot(workspaceUri: vscode.Uri, snapshot: SnapshotFile): Promise<void> {
-  await ensureSchemaxDir(workspaceUri);
+  await ensureSchematicDir(workspaceUri);
   const filePath = getSnapshotFilePath(workspaceUri, snapshot.version);
   const content = JSON.stringify(snapshot, null, 2);
   await fs.writeFile(filePath, content, 'utf8');
@@ -479,7 +479,7 @@ export async function createSnapshot(
     name,
     ts: snapshotFile.ts,
     createdBy: snapshotFile.createdBy,
-    file: `.schemax/snapshots/${snapshotVersion}.json`,
+    file: `.schematic/snapshots/${snapshotVersion}.json`,
     previousSnapshot: project.latestSnapshot,
     opsCount: opsWithIds.length,
     hash,
@@ -501,9 +501,9 @@ export async function createSnapshot(
   };
   await writeChangelog(workspaceUri, newChangelog);
   
-  console.log(`[SchemaX] Created snapshot ${snapshotVersion}: ${name}`);
-  console.log(`[SchemaX] Snapshot file: ${snapshotMetadata.file}`);
-  console.log(`[SchemaX] Ops included: ${opsWithIds.length}`);
+  console.log(`[Schematic] Created snapshot ${snapshotVersion}: ${name}`);
+  console.log(`[Schematic] Snapshot file: ${snapshotMetadata.file}`);
+  console.log(`[Schematic] Ops included: ${opsWithIds.length}`);
   
   return { project, snapshot: snapshotFile };
 }

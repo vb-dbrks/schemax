@@ -1,6 +1,6 @@
 {
-  "name": "schemax-vscode",
-  "displayName": "SchemaX",
+  "name": "schematic-vscode",
+  "displayName": "Schematic",
   "description": "Visual designer for Databricks Unity Catalog schemas with version control",
   "publisher": "varunbhandary",
   "version": "0.1.0",
@@ -16,12 +16,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vb-dbrks/schemax-vscode.git"
+    "url": "https://github.com/vb-dbrks/Schematic.git"
   },
   "bugs": {
-    "url": "https://github.com/vb-dbrks/schemax-vscode/issues"
+    "url": "https://github.com/vb-dbrks/Schematic/issues"
   },
-  "homepage": "https://github.com/vb-dbrks/schemax-vscode#readme",
+  "homepage": "https://github.com/vb-dbrks/Schematic#readme",
   "keywords": [
     "databricks",
     "unity catalog",
@@ -45,20 +45,20 @@
   "contributes": {
     "commands": [
       {
-        "command": "schemax.openDesigner",
-        "title": "SchemaX: Open Designer"
+        "command": "schematic.openDesigner",
+        "title": "Schematic: Open Designer"
       },
       {
-        "command": "schemax.showLastOps",
-        "title": "SchemaX: Show Last Emitted Changes"
+        "command": "schematic.showLastOps",
+        "title": "Schematic: Show Last Emitted Changes"
       },
       {
-        "command": "schemax.createSnapshot",
-        "title": "SchemaX: Create Snapshot"
+        "command": "schematic.createSnapshot",
+        "title": "Schematic: Create Snapshot"
       },
       {
-        "command": "schemax.generateSQL",
-        "title": "SchemaX: Generate SQL Migration"
+        "command": "schematic.generateSQL",
+        "title": "Schematic: Generate SQL Migration"
       }
     ]
   },

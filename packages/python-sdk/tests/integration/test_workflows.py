@@ -10,8 +10,8 @@ Tests end-to-end workflows including:
 
 import pytest
 
-from schemax.providers.base.operations import Operation
-from schemax.storage_v3 import (
+from schematic.providers.base.operations import Operation
+from schematic.storage_v3 import (
     append_ops,
     create_snapshot,
     ensure_project_file,

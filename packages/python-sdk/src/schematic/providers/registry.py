@@ -30,7 +30,7 @@ class ProviderRegistryClass:
             raise ValueError(f"Provider with ID '{provider.info.id}' is already registered")
 
         self.providers[provider.info.id] = provider
-        print(f"[SchemaX] Registered provider: {provider.info.name} ({provider.info.id})")
+        print(f"[Schematic] Registered provider: {provider.info.name} ({provider.info.id})")
 
     def get(self, provider_id: str) -> Optional[Provider]:
         """

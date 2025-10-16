@@ -1,5 +1,5 @@
 """
-Unity Catalog Provider for SchemaX Python SDK
+Unity Catalog Provider for Schematic Python SDK
 """
 
 from .hierarchy import unity_hierarchy, unity_hierarchy_levels

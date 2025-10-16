@@ -1,5 +1,5 @@
 """
-Click-based CLI for SchemaX.
+Click-based CLI for Schematic.
 """
 
 import sys
@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 # Import providers to initialize them
-import schemax.providers  # noqa: F401
+import schematic.providers  # noqa: F401
 
 from .providers import ProviderRegistry
 from .storage_v3 import (
@@ -25,9 +25,9 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version="0.2.0", prog_name="schemax")
+@click.version_option(version="0.2.0", prog_name="schematic")
 def cli() -> None:
-    """SchemaX CLI for catalog schema management (Multi-Provider)"""
+    """Schematic CLI for catalog schema management (Multi-Provider)"""
     pass
 
 
@@ -40,7 +40,7 @@ def cli() -> None:
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def init(provider: str, workspace: str) -> None:
-    """Initialize a new SchemaX project"""
+    """Initialize a new Schematic project"""
     try:
         workspace_path = Path(workspace).resolve()
 
@@ -57,12 +57,12 @@ def init(provider: str, workspace: str) -> None:
         # Initialize project
         ensure_project_file(workspace_path, provider_id=provider)
 
-        console.print(f"[green]✓[/green] Initialized SchemaX project in {workspace_path}")
+        console.print(f"[green]✓[/green] Initialized Schematic project in {workspace_path}")
         console.print(f"[blue]Provider:[/blue] {provider_obj.info.name}")
         console.print(f"[blue]Version:[/blue] {provider_obj.info.version}")
         console.print("\nNext steps:")
-        console.print("  1. Run 'schemax sql' to generate SQL")
-        console.print("  2. Use SchemaX VSCode extension to design schemas")
+        console.print("  1. Run 'schematic sql' to generate SQL")
+        console.print("  2. Use Schematic VSCode extension to design schemas")
         console.print("  3. Check provider docs: " + (provider_obj.info.docs_url or "N/A"))
 
     except Exception as e:
@@ -148,7 +148,7 @@ def sql(
 @cli.command()
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def validate(workspace: str) -> None:
-    """Validate .schemax/ project files"""
+    """Validate .schematic/ project files"""
 
     try:
         workspace_path = Path(workspace).resolve()
@@ -307,8 +307,8 @@ def deploy(environment: str, version: Optional[str], mark_deployed: bool) -> Non
     "--output",
     "-o",
     type=click.Path(),
-    default=".schemax/dab",
-    help="Output directory (default: .schemax/dab)",
+    default=".schematic/dab",
+    help="Output directory (default: .schematic/dab)",
 )
 def bundle(environment: str, version: str, output: str) -> None:
     """Generate Databricks Asset Bundle for deployment"""

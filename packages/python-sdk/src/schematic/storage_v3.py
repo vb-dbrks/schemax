@@ -14,30 +14,30 @@ from uuid import uuid4
 
 from .providers import Operation, Provider, ProviderRegistry, ProviderState
 
-SCHEMAX_DIR = ".schemax"
+SCHEMATIC_DIR = ".schematic"
 PROJECT_FILENAME = "project.json"
 CHANGELOG_FILENAME = "changelog.json"
 SNAPSHOTS_DIR = "snapshots"
 
 
-def get_schemax_dir(workspace_path: Path) -> Path:
-    """Get the .schemax directory path"""
-    return workspace_path / SCHEMAX_DIR
+def get_schematic_dir(workspace_path: Path) -> Path:
+    """Get the .schematic directory path"""
+    return workspace_path / SCHEMATIC_DIR
 
 
 def get_project_file_path(workspace_path: Path) -> Path:
     """Get the project file path"""
-    return get_schemax_dir(workspace_path) / PROJECT_FILENAME
+    return get_schematic_dir(workspace_path) / PROJECT_FILENAME
 
 
 def get_changelog_file_path(workspace_path: Path) -> Path:
     """Get the changelog file path"""
-    return get_schemax_dir(workspace_path) / CHANGELOG_FILENAME
+    return get_schematic_dir(workspace_path) / CHANGELOG_FILENAME
 
 
 def get_snapshots_dir(workspace_path: Path) -> Path:
     """Get the snapshots directory path"""
-    return get_schemax_dir(workspace_path) / SNAPSHOTS_DIR
+    return get_schematic_dir(workspace_path) / SNAPSHOTS_DIR
 
 
 def get_snapshot_file_path(workspace_path: Path, version: str) -> Path:
@@ -45,12 +45,12 @@ def get_snapshot_file_path(workspace_path: Path, version: str) -> Path:
     return get_snapshots_dir(workspace_path) / f"{version}.json"
 
 
-def ensure_schemax_dir(workspace_path: Path) -> None:
-    """Ensure .schemax/snapshots/ directory exists"""
-    schemax_dir = get_schemax_dir(workspace_path)
+def ensure_schematic_dir(workspace_path: Path) -> None:
+    """Ensure .schematic/snapshots/ directory exists"""
+    schematic_dir = get_schematic_dir(workspace_path)
     snapshots_dir = get_snapshots_dir(workspace_path)
 
-    schemax_dir.mkdir(parents=True, exist_ok=True)
+    schematic_dir.mkdir(parents=True, exist_ok=True)
     snapshots_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -112,7 +112,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         "lastModified": datetime.utcnow().isoformat() + "Z",
     }
 
-    ensure_schemax_dir(workspace_path)
+    ensure_schematic_dir(workspace_path)
 
     with open(project_path, "w") as f:
         json.dump(new_project, f, indent=2)
@@ -121,7 +121,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         json.dump(new_changelog, f, indent=2)
 
     provider_name = provider.info.name
-    print(f"[SchemaX] Initialized new v3 project: {workspace_name} with provider: {provider_name}")
+    print(f"[Schematic] Initialized new v3 project: {workspace_name} with provider: {provider_name}")
 
 
 def migrate_v2_to_v3(
@@ -135,7 +135,7 @@ def migrate_v2_to_v3(
         v2_project: V2 project data
         provider_id: Provider ID (default: 'unity')
     """
-    print("[SchemaX] Migrating project from v2 to v3...")
+    print("[Schematic] Migrating project from v2 to v3...")
 
     provider = ProviderRegistry.get(provider_id)
     if provider is None:
@@ -187,13 +187,13 @@ def migrate_v2_to_v3(
             json.dump(changelog, f, indent=2)
 
     except Exception as e:
-        print(f"[SchemaX] Warning: Could not migrate changelog operations: {e}")
+        print(f"[Schematic] Warning: Could not migrate changelog operations: {e}")
 
     # Write migrated project file
     with open(get_project_file_path(workspace_path), "w") as f:
         json.dump(v3_project, f, indent=2)
 
-    print("[SchemaX] Migration complete: v2 → v3")
+    print("[Schematic] Migration complete: v2 → v3")
 
 
 def read_project(workspace_path: Path) -> Dict[str, Any]:
@@ -279,7 +279,7 @@ def read_snapshot(workspace_path: Path, version: str) -> Dict[str, Any]:
 
 def write_snapshot(workspace_path: Path, snapshot: Dict[str, Any]) -> None:
     """Write a snapshot file"""
-    ensure_schemax_dir(workspace_path)
+    ensure_schematic_dir(workspace_path)
     snapshot_path = get_snapshot_file_path(workspace_path, snapshot["version"])
 
     with open(snapshot_path, "w") as f:
@@ -425,7 +425,7 @@ def create_snapshot(
         "name": name,
         "ts": snapshot_file["ts"],
         "createdBy": snapshot_file["createdBy"],
-        "file": f".schemax/snapshots/{snapshot_version}.json",
+        "file": f".schematic/snapshots/{snapshot_version}.json",
         "previousSnapshot": project.get("latestSnapshot"),
         "opsCount": len(ops_with_ids),
         "hash": state_hash,
@@ -447,9 +447,9 @@ def create_snapshot(
     }
     write_changelog(workspace_path, new_changelog)
 
-    print(f"[SchemaX] Created snapshot {snapshot_version}: {name}")
-    print(f"[SchemaX] Snapshot file: {snapshot_metadata['file']}")
-    print(f"[SchemaX] Ops included: {len(ops_with_ids)}")
+    print(f"[Schematic] Created snapshot {snapshot_version}: {name}")
+    print(f"[Schematic] Snapshot file: {snapshot_metadata['file']}")
+    print(f"[Schematic] Ops included: {len(ops_with_ids)}")
 
     return project, snapshot_file
 
