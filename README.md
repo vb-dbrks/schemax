@@ -1,3 +1,6 @@
+
+<img width="1024" height="1536" alt="Schematic official logo" src="https://github.com/user-attachments/assets/41b8a7cb-2b3b-4701-a999-8e15eab90433" />
+
 # Schematic
 
 **Multi-provider data catalog schema management with version control**
