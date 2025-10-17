@@ -101,20 +101,20 @@ export interface SnapshotFile {
  * Get the project file path
  */
 function getProjectFilePath(workspaceUri: vscode.Uri): string {
-  return path.join(getSchemaxDir(workspaceUri), PROJECT_FILENAME);
+  return path.join(getSchematicDir(workspaceUri), PROJECT_FILENAME);
 }
 
 /**
  * Get the changelog file path
  */
 function getChangelogFilePath(workspaceUri: vscode.Uri): string {
-  return path.join(getSchemaxDir(workspaceUri), CHANGELOG_FILENAME);
+  return path.join(getSchematicDir(workspaceUri), CHANGELOG_FILENAME);
 }
 
 /**
  * Get the .schematic directory path
  */
-function getSchemaxDir(workspaceUri: vscode.Uri): string {
+function getSchematicDir(workspaceUri: vscode.Uri): string {
   return path.join(workspaceUri.fsPath, SCHEMATIC_DIR);
 }
 
@@ -122,7 +122,7 @@ function getSchemaxDir(workspaceUri: vscode.Uri): string {
  * Get the snapshots directory path
  */
 function getSnapshotsDir(workspaceUri: vscode.Uri): string {
-  return path.join(getSchemaxDir(workspaceUri), SNAPSHOTS_DIR);
+  return path.join(getSchematicDir(workspaceUri), SNAPSHOTS_DIR);
 }
 
 /**
