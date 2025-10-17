@@ -43,6 +43,24 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     return map;
   }
   
+  /**
+   * Build a fully-qualified name with each part escaped separately.
+   * 
+   * This ensures consistent identifier formatting: `catalog`.`schema`.`table`
+   * 
+   * @param parts - Catalog, schema, table, etc. (in order)
+   * @returns Escaped FQN like `catalog`.`schema`.`table`
+   * 
+   * @example
+   * buildFqn("bronze", "raw", "users") // Returns: `bronze`.`raw`.`users`
+   */
+  private buildFqn(...parts: string[]): string {
+    return parts
+      .filter(part => part) // Remove empty parts
+      .map(part => this.escapeIdentifier(part))
+      .join('.');
+  }
+  
   canGenerateSQL(op: Operation): boolean {
     const supportedOps = Object.values(UNITY_OPERATIONS);
     return supportedOps.includes(op.op as any);
@@ -148,68 +166,83 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   private addSchema(op: Operation): string {
     const catalogName = this.idNameMap[op.payload.catalogId] || 'unknown';
     const schemaName = op.payload.name;
-    return `CREATE SCHEMA IF NOT EXISTS ${this.escapeIdentifier(catalogName)}.${this.escapeIdentifier(schemaName)}`;
+    return `CREATE SCHEMA IF NOT EXISTS ${this.buildFqn(catalogName, schemaName)}`;
   }
   
   private renameSchema(op: Operation): string {
     const oldFqn = this.idNameMap[op.target] || 'unknown.unknown';
     const parts = oldFqn.split('.');
     const catalogName = parts[0];
+    const oldSchemaName = parts[1] || 'unknown';
     const newName = op.payload.newName;
-    return `ALTER SCHEMA ${this.escapeIdentifier(oldFqn)} RENAME TO ${this.escapeIdentifier(catalogName)}.${this.escapeIdentifier(newName)}`;
+    return `ALTER SCHEMA ${this.buildFqn(catalogName, oldSchemaName)} RENAME TO ${this.buildFqn(catalogName, newName)}`;
   }
   
   private dropSchema(op: Operation): string {
     const fqn = this.idNameMap[op.target] || 'unknown.unknown';
-    return `DROP SCHEMA IF EXISTS ${this.escapeIdentifier(fqn)}`;
+    const parts = fqn.split('.');
+    return `DROP SCHEMA IF EXISTS ${this.buildFqn(...parts)}`;
   }
   
   // Table operations
   private addTable(op: Operation): string {
     const schemaFqn = this.idNameMap[op.payload.schemaId] || 'unknown.unknown';
+    const parts = schemaFqn.split('.');
+    const catalogName = parts[0];
+    const schemaName = parts[1] || 'unknown';
     const tableName = op.payload.name;
     const tableFormat = op.payload.format.toUpperCase();
-    const fqn = `${schemaFqn}.${tableName}`;
     
     // Create empty table (columns added via add_column ops)
-    return `CREATE TABLE IF NOT EXISTS ${this.escapeIdentifier(fqn)} () USING ${tableFormat}`;
+    return `CREATE TABLE IF NOT EXISTS ${this.buildFqn(catalogName, schemaName, tableName)} () USING ${tableFormat}`;
   }
   
   private renameTable(op: Operation): string {
     const oldFqn = this.idNameMap[op.target] || 'unknown.unknown.unknown';
     const parts = oldFqn.split('.');
-    const schemaFqn = parts.slice(0, 2).join('.');
+    const catalogName = parts[0];
+    const schemaName = parts[1] || 'unknown';
+    const oldTableName = parts[2] || 'unknown';
     const newName = op.payload.newName;
-    return `ALTER TABLE ${this.escapeIdentifier(oldFqn)} RENAME TO ${this.escapeIdentifier(schemaFqn)}.${this.escapeIdentifier(newName)}`;
+    return `ALTER TABLE ${this.buildFqn(catalogName, schemaName, oldTableName)} RENAME TO ${this.buildFqn(catalogName, schemaName, newName)}`;
   }
   
   private dropTable(op: Operation): string {
     const fqn = this.idNameMap[op.target] || 'unknown.unknown.unknown';
-    return `DROP TABLE IF EXISTS ${this.escapeIdentifier(fqn)}`;
+    const parts = fqn.split('.');
+    return `DROP TABLE IF EXISTS ${this.buildFqn(...parts)}`;
   }
   
   private setTableComment(op: Operation): string {
     const fqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = fqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const comment = this.escapeString(op.payload.comment);
-    return `ALTER TABLE ${this.escapeIdentifier(fqn)} SET COMMENT '${comment}'`;
+    return `ALTER TABLE ${tableEscaped} SET COMMENT '${comment}'`;
   }
   
   private setTableProperty(op: Operation): string {
     const fqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = fqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const key = op.payload.key;
     const value = op.payload.value;
-    return `ALTER TABLE ${this.escapeIdentifier(fqn)} SET TBLPROPERTIES ('${key}' = '${value}')`;
+    return `ALTER TABLE ${tableEscaped} SET TBLPROPERTIES ('${key}' = '${value}')`;
   }
   
   private unsetTableProperty(op: Operation): string {
     const fqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = fqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const key = op.payload.key;
-    return `ALTER TABLE ${this.escapeIdentifier(fqn)} UNSET TBLPROPERTIES ('${key}')`;
+    return `ALTER TABLE ${tableEscaped} UNSET TBLPROPERTIES ('${key}')`;
   }
   
   // Column operations
   private addColumn(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const colName = op.payload.name;
     const colType = op.payload.type;
     const nullable = op.payload.nullable;
@@ -218,20 +251,24 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const nullClause = nullable ? '' : ' NOT NULL';
     const commentClause = comment ? ` COMMENT '${this.escapeString(comment)}'` : '';
     
-    return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ADD COLUMN ${this.escapeIdentifier(colName)} ${colType}${nullClause}${commentClause}`;
+    return `ALTER TABLE ${tableEscaped} ADD COLUMN ${this.escapeIdentifier(colName)} ${colType}${nullClause}${commentClause}`;
   }
   
   private renameColumn(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const oldName = this.idNameMap[op.target] || 'unknown';
     const newName = op.payload.newName;
-    return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} RENAME COLUMN ${this.escapeIdentifier(oldName)} TO ${this.escapeIdentifier(newName)}`;
+    return `ALTER TABLE ${tableEscaped} RENAME COLUMN ${this.escapeIdentifier(oldName)} TO ${this.escapeIdentifier(newName)}`;
   }
   
   private dropColumn(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const colName = this.idNameMap[op.target] || 'unknown';
-    return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} DROP COLUMN ${this.escapeIdentifier(colName)}`;
+    return `ALTER TABLE ${tableEscaped} DROP COLUMN ${this.escapeIdentifier(colName)}`;
   }
   
   private reorderColumns(op: Operation): string {
@@ -314,7 +351,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     
     // Get table name for ALTER statements
     const tableFqn = this.idNameMap[tableId] || 'unknown';
-    const tableEsc = this.escapeIdentifier(tableFqn);
+    const tableParts = tableFqn.split('.');
+    const tableEsc = this.buildFqn(...tableParts);
     
     const statements: string[] = [];
     const currentOrder = [...originalOrder];
@@ -501,7 +539,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const schemaId = tableOp.payload.schemaId;
     const schemaFqn = schemaId ? (this.idNameMap[schemaId] || 'unknown.unknown') : 'unknown.unknown';
     const tableFqn = `${schemaFqn}.${tableName}`;
-    const tableEsc = this.escapeIdentifier(tableFqn);
+    const tableParts = tableFqn.split('.');
+    const tableEsc = this.buildFqn(...tableParts);
     
     // Build column definitions
     let columns: string[] = [];
@@ -574,9 +613,48 @@ ${columnsSql}
       }
     }
     
-    // Handle other operations normally
+    // Batch ADD COLUMN operations if multiple exist
+    const addColumnOps = batchInfo.columnOps.filter(op => op.op.endsWith('add_column'));
+    
+    if (addColumnOps.length > 1) {
+      // Multiple ADD COLUMN operations - batch them into single ALTER TABLE ADD COLUMNS
+      const tableFqn = this.idNameMap[addColumnOps[0].payload.tableId] || 'unknown';
+      const tableParts = tableFqn.split('.');
+      const tableEscaped = this.buildFqn(...tableParts);
+      const columnDefs: string[] = [];
+      
+      for (const op of addColumnOps) {
+        const colName = op.payload.name;
+        const colType = op.payload.type;
+        const nullable = op.payload.nullable;
+        const comment = op.payload.comment || '';
+        
+        const nullClause = nullable ? '' : ' NOT NULL';
+        const commentClause = comment ? ` COMMENT '${this.escapeString(comment)}'` : '';
+        
+        columnDefs.push(`    ${this.escapeIdentifier(colName)} ${colType}${nullClause}${commentClause}`);
+      }
+      
+      const batchedSql = `ALTER TABLE ${tableEscaped}\nADD COLUMNS (\n${columnDefs.join(',\n')}\n)`;
+      statements.push(batchedSql);
+    } else if (addColumnOps.length === 1) {
+      // Single ADD COLUMN - use existing method
+      try {
+        const sql = this.addColumn(addColumnOps[0]);
+        if (sql && !sql.startsWith('--')) {
+          statements.push(sql);
+        }
+      } catch (e) {
+        statements.push(`-- Error generating SQL for ${addColumnOps[0].id}: ${e}`);
+      }
+    }
+    
+    // Handle other column operations (non-ADD COLUMN)
+    const otherColumnOps = batchInfo.columnOps.filter(op => !op.op.endsWith('add_column'));
+    
+    // Handle all other operations normally
     const allOtherOps = [
-      ...batchInfo.columnOps,
+      ...otherColumnOps,
       ...batchInfo.propertyOps,
       ...batchInfo.constraintOps,
       ...batchInfo.governanceOps,
@@ -644,49 +722,61 @@ ${columnsSql}
   
   private changeColumnType(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const colName = this.idNameMap[op.target] || 'unknown';
     const newType = op.payload.newType;
-    return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ALTER COLUMN ${this.escapeIdentifier(colName)} TYPE ${newType}`;
+    return `ALTER TABLE ${tableEscaped} ALTER COLUMN ${this.escapeIdentifier(colName)} TYPE ${newType}`;
   }
   
   private setNullable(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const colName = this.idNameMap[op.target] || 'unknown';
     const nullable = op.payload.nullable;
     
     if (nullable) {
-      return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ALTER COLUMN ${this.escapeIdentifier(colName)} DROP NOT NULL`;
+      return `ALTER TABLE ${tableEscaped} ALTER COLUMN ${this.escapeIdentifier(colName)} DROP NOT NULL`;
     } else {
-      return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ALTER COLUMN ${this.escapeIdentifier(colName)} SET NOT NULL`;
+      return `ALTER TABLE ${tableEscaped} ALTER COLUMN ${this.escapeIdentifier(colName)} SET NOT NULL`;
     }
   }
   
   private setColumnComment(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const colName = this.idNameMap[op.target] || 'unknown';
     const comment = this.escapeString(op.payload.comment);
-    return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ALTER COLUMN ${this.escapeIdentifier(colName)} COMMENT '${comment}'`;
+    return `ALTER TABLE ${tableEscaped} ALTER COLUMN ${this.escapeIdentifier(colName)} COMMENT '${comment}'`;
   }
   
   // Column tag operations
   private setColumnTag(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const colName = this.idNameMap[op.target] || 'unknown';
     const tagName = op.payload.tagName;
     const tagValue = this.escapeString(op.payload.tagValue);
-    return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ALTER COLUMN ${this.escapeIdentifier(colName)} SET TAGS ('${tagName}' = '${tagValue}')`;
+    return `ALTER TABLE ${tableEscaped} ALTER COLUMN ${this.escapeIdentifier(colName)} SET TAGS ('${tagName}' = '${tagValue}')`;
   }
   
   private unsetColumnTag(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const colName = this.idNameMap[op.target] || 'unknown';
     const tagName = op.payload.tagName;
-    return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ALTER COLUMN ${this.escapeIdentifier(colName)} UNSET TAGS ('${tagName}')`;
+    return `ALTER TABLE ${tableEscaped} ALTER COLUMN ${this.escapeIdentifier(colName)} UNSET TAGS ('${tagName}')`;
   }
   
   // Constraint operations
   private addConstraint(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     const constraintType = op.payload.type;
     const constraintName = op.payload.name || '';
     const columns = op.payload.columns.map((cid: string) => this.idNameMap[cid] || cid);
@@ -696,16 +786,18 @@ ${columnsSql}
     if (constraintType === 'primary_key') {
       const timeseriesClause = op.payload.timeseries ? ' TIMESERIES' : '';
       const colList = columns.map((c: string) => this.escapeIdentifier(c)).join(', ');
-      return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ADD ${nameClause}PRIMARY KEY(${colList})${timeseriesClause}`;
+      return `ALTER TABLE ${tableEscaped} ADD ${nameClause}PRIMARY KEY(${colList})${timeseriesClause}`;
     } else if (constraintType === 'foreign_key') {
       const parentTable = this.idNameMap[op.payload.parentTable] || 'unknown';
+      const parentParts = parentTable.split('.');
+      const parentEscaped = this.buildFqn(...parentParts);
       const parentColumns = op.payload.parentColumns.map((cid: string) => this.idNameMap[cid] || cid);
       const colList = columns.map((c: string) => this.escapeIdentifier(c)).join(', ');
       const parentColList = parentColumns.map((c: string) => this.escapeIdentifier(c)).join(', ');
-      return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ADD ${nameClause}FOREIGN KEY(${colList}) REFERENCES ${this.escapeIdentifier(parentTable)}(${parentColList})`;
+      return `ALTER TABLE ${tableEscaped} ADD ${nameClause}FOREIGN KEY(${colList}) REFERENCES ${parentEscaped}(${parentColList})`;
     } else if (constraintType === 'check') {
       const expression = op.payload.expression || 'TRUE';
-      return `ALTER TABLE ${this.escapeIdentifier(tableFqn)} ADD ${nameClause}CHECK (${expression})`;
+      return `ALTER TABLE ${tableEscaped} ADD ${nameClause}CHECK (${expression})`;
     }
     
     return '';
@@ -713,8 +805,10 @@ ${columnsSql}
   
   private dropConstraint(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = tableFqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
     // Would need constraint name from state
-    return `-- ALTER TABLE ${this.escapeIdentifier(tableFqn)} DROP CONSTRAINT (constraint name lookup needed)`;
+    return `-- ALTER TABLE ${tableEscaped} DROP CONSTRAINT (constraint name lookup needed)`;
   }
   
   // Row filter operations
