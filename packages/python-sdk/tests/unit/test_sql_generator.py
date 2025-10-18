@@ -855,3 +855,155 @@ class TestSQLOptimization:
 
         # DROP should be separate
         assert "DROP COLUMN" in sql
+
+    def test_single_column_move_to_first(self, empty_unity_state):
+        """Test that moving a single column to FIRST generates optimal SQL"""
+        builder = OperationBuilder()
+        from schematic.providers.unity.state_reducer import apply_operations
+
+        # Create base state with table and multiple columns (simulating post-snapshot state)
+        setup_ops = [
+            builder.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.add_table("table_789", "diamond", "schema_456", "delta", op_id="setup_003"),
+            builder.add_column(
+                "col_id", "table_789", "id", "INT", nullable=False, op_id="setup_004"
+            ),
+            builder.add_column(
+                "col_type", "table_789", "type", "STRING", nullable=True, op_id="setup_005"
+            ),
+            builder.add_column(
+                "col_name", "table_789", "name", "STRING", nullable=True, op_id="setup_006"
+            ),
+        ]
+        # Apply all setup operations to get the committed state
+        state_with_table = apply_operations(empty_unity_state, setup_ops)
+
+        # Apply reorder to get final state (simulating what state reducer does)
+        reorder_op = Operation(
+            id="reorder_001",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.reorder_columns",
+            target="table_789",
+            payload={
+                "tableId": "table_789",
+                "previousOrder": ["col_id", "col_type", "col_name"],
+                "order": ["col_type", "col_id", "col_name"],
+            },
+        )
+        final_state = apply_operations(state_with_table, [reorder_op])
+
+        # Generate SQL from the final state with just the reorder operation
+        generator = UnitySQLGenerator(final_state.model_dump(by_alias=True))
+        sql = generator.generate_sql([reorder_op])
+
+        # Should generate only ONE statement (optimal)
+        assert sql.count("ALTER TABLE") == 1, (
+            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
+        )
+        assert sql.count("ALTER COLUMN") == 1, (
+            f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
+        )
+
+        # Should use FIRST keyword
+        assert "ALTER COLUMN `type` FIRST" in sql
+        assert "AFTER" not in sql  # Should not use AFTER
+
+    def test_single_column_move_to_middle(self, empty_unity_state):
+        """Test that moving a single column to middle position generates optimal SQL"""
+        builder = OperationBuilder()
+        from schematic.providers.unity.state_reducer import apply_operations
+
+        # Create base state with table and multiple columns
+        setup_ops = [
+            builder.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
+            builder.add_column(
+                "col_id", "table_789", "id", "INT", nullable=False, op_id="setup_004"
+            ),
+            builder.add_column(
+                "col_type", "table_789", "type", "STRING", nullable=True, op_id="setup_005"
+            ),
+            builder.add_column(
+                "col_name", "table_789", "name", "STRING", nullable=True, op_id="setup_006"
+            ),
+        ]
+        state_with_table = apply_operations(empty_unity_state, setup_ops)
+
+        # Reorder: move 'name' between 'id' and 'type' (id, type, name -> id, name, type)
+        reorder_op = Operation(
+            id="reorder_001",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.reorder_columns",
+            target="table_789",
+            payload={
+                "tableId": "table_789",
+                "previousOrder": ["col_id", "col_type", "col_name"],
+                "order": ["col_id", "col_name", "col_type"],
+            },
+        )
+        final_state = apply_operations(state_with_table, [reorder_op])
+
+        generator = UnitySQLGenerator(final_state.model_dump(by_alias=True))
+        sql = generator.generate_sql([reorder_op])
+
+        # Should generate only ONE statement (optimal)
+        assert sql.count("ALTER TABLE") == 1, (
+            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
+        )
+        assert sql.count("ALTER COLUMN") == 1, (
+            f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
+        )
+
+        # Should use AFTER keyword with previous column
+        assert "ALTER COLUMN `name` AFTER `id`" in sql
+        assert "FIRST" not in sql  # Should not use FIRST
+
+    def test_multiple_columns_move_uses_general_algorithm(self, empty_unity_state):
+        """Test that moving multiple columns uses the general algorithm (not optimized)"""
+        builder = OperationBuilder()
+        from schematic.providers.unity.state_reducer import apply_operations
+
+        # Create base state with table and multiple columns
+        setup_ops = [
+            builder.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
+            builder.add_column(
+                "col_id", "table_789", "id", "INT", nullable=False, op_id="setup_004"
+            ),
+            builder.add_column(
+                "col_type", "table_789", "type", "STRING", nullable=True, op_id="setup_005"
+            ),
+            builder.add_column(
+                "col_name", "table_789", "name", "STRING", nullable=True, op_id="setup_006"
+            ),
+        ]
+        state_with_table = apply_operations(empty_unity_state, setup_ops)
+
+        # Reorder: reverse all columns (id, type, name -> name, type, id)
+        reorder_op = Operation(
+            id="reorder_001",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.reorder_columns",
+            target="table_789",
+            payload={
+                "tableId": "table_789",
+                "previousOrder": ["col_id", "col_type", "col_name"],
+                "order": ["col_name", "col_type", "col_id"],
+            },
+        )
+        final_state = apply_operations(state_with_table, [reorder_op])
+
+        generator = UnitySQLGenerator(final_state.model_dump(by_alias=True))
+        sql = generator.generate_sql([reorder_op])
+
+        # Should generate MULTIPLE statements (general algorithm)
+        # When reversing 3 columns, we need at least 2 moves
+        assert sql.count("ALTER COLUMN") >= 2, (
+            f"Expected >= 2 ALTER COLUMN for multiple moves, found {sql.count('ALTER COLUMN')}"
+        )

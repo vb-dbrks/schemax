@@ -187,7 +187,28 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   },
 
   reorderColumns: (tableId, order) => {
-    const op = createOperation(get(), 'reorder_columns', tableId, { tableId, order });
+    const state = get();
+    
+    // Find the current table to capture previous column order
+    let previousOrder: string[] = [];
+    if (state.project?.state?.catalogs) {
+      for (const catalog of state.project.state.catalogs) {
+        for (const schema of catalog.schemas || []) {
+          for (const table of schema.tables || []) {
+            if (table.id === tableId) {
+              previousOrder = table.columns.map(col => col.id);
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    const op = createOperation(state, 'reorder_columns', tableId, { 
+      tableId, 
+      order,
+      previousOrder // Capture the previous order for ALTER TABLE generation
+    });
     emitOps([op]);
   },
 

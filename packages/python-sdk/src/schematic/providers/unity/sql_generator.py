@@ -417,6 +417,39 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_fqn = self.id_name_map.get(table_id, "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
 
+        # OPTIMIZATION: Detect single-column drag for cleaner SQL
+        # A single drag means one column moved, and all others maintained relative order
+        # Find the column that was dragged by checking which column broke the sequence
+        single_move = None
+        for i, col_id in enumerate(final_order):
+            # Check if removing this column from both orders leaves them identical
+            orig_without = [c for c in original_order if c != col_id]
+            final_without = [c for c in final_order if c != col_id]
+            if orig_without == final_without:
+                # This column was the one that moved
+                original_pos = original_order.index(col_id)
+                new_pos = i
+                if original_pos != new_pos:
+                    single_move = (col_id, original_pos, new_pos)
+                    break
+
+        # If we detected a single column drag, generate optimal SQL
+        if single_move:
+            col_id, orig_pos, new_pos = single_move
+            col_name = self.id_name_map.get(col_id, col_id)
+            col_esc = self.escape_identifier(col_name)
+
+            if new_pos == 0:
+                # Column moved to first position
+                return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} FIRST"
+            else:
+                # Column moved after another column
+                prev_col_id = final_order[new_pos - 1]
+                prev_col_name = self.id_name_map.get(prev_col_id, prev_col_id)
+                prev_col_esc = self.escape_identifier(prev_col_name)
+                return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} AFTER {prev_col_esc}"
+
+        # Multiple columns moved - use general algorithm
         statements = []
         current_order = original_order.copy()
 
@@ -563,6 +596,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_op = batch_info["table_op"]
         column_ops = batch_info["column_ops"]
         property_ops = batch_info["property_ops"]
+        reorder_ops = batch_info.get("reorder_ops", [])
 
         if not table_op:
             return "-- Error: No table creation operation found"
@@ -576,9 +610,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_fqn = f"{schema_fqn}.{table_name}"
         table_esc = self._build_fqn(*table_fqn.split("."))
 
-        # Build column definitions
-        columns = []
+        # Build column definitions as a dictionary (by column ID)
+        columns_dict = {}
         for col_op in column_ops:
+            col_id = col_op.payload.get("colId")
             col_name = self.escape_identifier(col_op.payload["name"])
             col_type = col_op.payload["type"]
             nullable = "" if col_op.payload.get("nullable", True) else " NOT NULL"
@@ -587,11 +622,25 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 if col_op.payload.get("comment")
                 else ""
             )
-            columns.append(f"  {col_name} {col_type}{nullable}{comment}")
+            columns_dict[col_id] = f"  {col_name} {col_type}{nullable}{comment}"
 
-        # Note: reorder_columns operations are ignored for new table creation
-        # Column order for CREATE TABLE is determined by the order columns were added
-        # reorder_columns only applies to existing tables via ALTER statements
+        # Apply column reordering if present
+        # Use the final order from the last reorder operation
+        if reorder_ops:
+            final_order = reorder_ops[-1].payload.get("order", [])
+            # Include columns from the reorder in their specified order
+            columns = [columns_dict[col_id] for col_id in final_order if col_id in columns_dict]
+            # Append any columns added AFTER the reorder (not in the reorder list)
+            for col_id in columns_dict.keys():
+                if col_id not in final_order:
+                    columns.append(columns_dict[col_id])
+        else:
+            # No reorder: use the order columns were added
+            columns = [
+                columns_dict[col_op.payload.get("colId")]
+                for col_op in column_ops
+                if col_op.payload.get("colId") in columns_dict
+            ]
 
         # Build table format
         table_format = table_op.payload.get("format", "DELTA").upper()
@@ -631,8 +680,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Handle column reordering first (using existing optimization)
         # For existing tables, reorder_columns generates ALTER statements
         if batch_info["reorder_ops"]:
-            original_order = self._get_table_column_order(table_id)
-            final_order = batch_info["reorder_ops"][-1].payload["order"]
+            last_reorder_op = batch_info["reorder_ops"][-1]
+            # Use previousOrder from operation payload if available
+            # (prevents comparing state with itself)
+            original_order = last_reorder_op.payload.get("previousOrder")
+            if not original_order:
+                # Fallback: derive from current state
+                # (for backward compatibility with old operations)
+                original_order = self._get_table_column_order(table_id)
+            final_order = last_reorder_op.payload["order"]
             reorder_sql = self._generate_optimized_reorder_sql(
                 table_id, original_order, final_order, [op.id for op in batch_info["reorder_ops"]]
             )
