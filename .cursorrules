@@ -11,22 +11,46 @@ schematic/
 │   ├── vscode-extension/       # VS Code Extension (TypeScript + React)
 │   │   ├── src/
 │   │   │   ├── extension.ts           # Extension commands
-│   │   │   ├── storage-v2.ts          # File storage layer
-│   │   │   ├── sql-generator.ts       # SQL DDL generation
-│   │   │   ├── shared/
-│   │   │   │   ├── model.ts           # Zod schemas
-│   │   │   │   └── ops.ts             # Operation definitions
+│   │   │   ├── storage-v4.ts          # V4 file storage (multi-environment)
+│   │   │   ├── providers/             # Provider-based architecture
+│   │   │   │   ├── base/             # Base provider contracts
+│   │   │   │   │   ├── models.ts     # Zod schemas
+│   │   │   │   │   ├── operations.ts # Operation definitions
+│   │   │   │   │   └── sql-generator.ts # SQL generation
+│   │   │   │   └── unity/            # Unity Catalog provider
+│   │   │   │       ├── sql-generator.ts
+│   │   │   │       ├── state-reducer.ts
+│   │   │   │       └── operations.ts
 │   │   │   └── webview/               # React UI
 │   │   └── package.json
 │   │
 │   └── python-sdk/             # Python SDK & CLI
 │       ├── src/schematic/
-│       │   ├── models.py              # Pydantic models
-│       │   ├── storage.py             # File I/O operations
-│       │   ├── state.py               # State reducer
-│       │   ├── sql_generator.py       # SQL DDL generation
-│       │   ├── cli.py                 # CLI commands
-│       │   └── ops.py                 # Operation types
+│       │   ├── providers/             # Provider-based architecture
+│       │   │   ├── base/             # Base provider contracts
+│       │   │   │   ├── models.py     # Pydantic models
+│       │   │   │   ├── operations.py # Operation types
+│       │   │   │   ├── sql_generator.py  # SQL generation
+│       │   │   │   ├── provider.py   # Provider protocol
+│       │   │   │   └── executor.py   # SQL execution protocol
+│       │   │   ├── unity/            # Unity Catalog provider
+│       │   │   │   ├── models.py
+│       │   │   │   ├── operations.py
+│       │   │   │   ├── sql_generator.py
+│       │   │   │   ├── state_reducer.py
+│       │   │   │   ├── provider.py
+│       │   │   │   ├── auth.py       # Databricks authentication
+│       │   │   │   └── executor.py   # Databricks SQL executor
+│       │   │   └── registry.py       # Provider registry
+│       │   ├── commands/              # CLI command modules
+│       │   │   ├── apply.py          # Apply command
+│       │   │   ├── sql.py            # SQL generation command
+│       │   │   ├── validate.py       # Validation command
+│       │   │   └── deployment.py     # Deployment recording
+│       │   ├── storage_v4.py          # V4 file storage (multi-environment)
+│       │   ├── storage_v3.py          # V3 file storage (deprecated)
+│       │   ├── deployment_tracker.py  # Deployment tracking
+│       │   └── cli.py                 # CLI routing layer
 │       └── pyproject.toml
 │
 ├── examples/                   # Working examples
@@ -54,7 +78,7 @@ schematic/
 └── .cursorrules               # This file
 ```
 
-## Architecture (V2)
+## Architecture (V4)
 
 ### File Structure (.schematic/)
 ```
@@ -240,24 +264,29 @@ Catalog
 
 ## VS Code Extension
 
-### Storage Layer (`packages/vscode-extension/src/storage-v2.ts`)
+### Storage Layer (`packages/vscode-extension/src/storage-v4.ts`)
 
 **Key Functions**:
-- `ensureProjectFile()` - Initialize new project
+- `ensureProjectFile()` - Initialize new v4 project with environments
 - `loadCurrentState()` - Load snapshot + apply changelog
 - `appendOps()` - Add ops to changelog
 - `createSnapshot()` - Create snapshot file, update metadata, clear changelog
 - `readProject()`, `readChangelog()`, `readSnapshot()`
+- `getEnvironmentConfig()` - Get environment-specific configuration
 
 **Op Reducer**: `applyOpsToState()` applies ops to state immutably
 
-### SQL Generator (`packages/vscode-extension/src/sql-generator.ts`)
+**Catalog Mode**: Supports `single` mode with implicit catalog (`__implicit__`)
 
-**SQLGenerator class**:
+### SQL Generator (`packages/vscode-extension/src/providers/unity/sql-generator.ts`)
+
+**UnitySQLGenerator class**:
 - `generateSQL(ops: Op[]): string` - Main entry point
+- Accepts `catalogNameMapping` for environment-specific SQL
 - Private methods for each operation type
 - Generates idempotent DDL (CREATE IF NOT EXISTS, etc.)
-- Handles all 31 operation types
+- Handles all 29 Unity Catalog operations
+- Orders SQL by dependency (catalog → schema → table → operations)
 - Includes operation tracking in comments
 
 ### Extension (`packages/vscode-extension/src/extension.ts`)
@@ -315,25 +344,41 @@ Catalog
 
 **Location**: `packages/python-sdk/`
 
-**Modules**:
-- `models.py` - Pydantic models (port of TypeScript Zod schemas)
-- `storage.py` - File I/O operations
-- `state.py` - State reducer (applies all 31 operations)
-- `sql_generator.py` - SQL DDL generation
-- `cli.py` - Click-based CLI
-- `ops.py` - Operation type enum
+**Core Modules**:
+- `storage_v4.py` - V4 file I/O with multi-environment support
+- `storage_v3.py` - V3 file I/O (deprecated)
+- `deployment_tracker.py` - Database-backed deployment tracking
+- `cli.py` - Click-based CLI routing layer
+
+**Provider Architecture** (`providers/`):
+- `base/` - Provider contracts (models, operations, SQL generation, execution)
+- `unity/` - Unity Catalog implementation
+  - `models.py` - Pydantic models
+  - `operations.py` - Operation types (29 operations)
+  - `sql_generator.py` - SQL DDL generation with catalog mapping
+  - `state_reducer.py` - State reducer
+  - `provider.py` - Provider implementation
+  - `auth.py` - Databricks authentication helpers
+  - `executor.py` - SQL execution via Databricks API
+- `registry.py` - Provider registry
+
+**Command Modules** (`commands/`):
+- `apply.py` - Apply SQL to environment with deployment tracking
+- `sql.py` - Generate SQL migrations
+- `validate.py` - Validate project files
+- `deployment.py` - Manual deployment recording
 
 ### CLI Commands
 
 ```bash
+# Generate SQL migration (with environment-specific catalog mapping)
+schematic sql [--output FILE] [--target ENV]
+
+# Apply SQL to environment with deployment tracking
+schematic apply --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--sql FILE] [--dry-run] [--no-interaction]
+
 # Validate schema files
 schematic validate [workspace_path]
-
-# Generate SQL migration
-schematic sql [workspace_path] [--output FILE]
-
-# Apply SQL to environment (v4)
-schematic apply --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--dry-run] [--no-interaction]
 
 # Record deployment manually
 schematic record-deployment --environment ENV [--version VERSION] [--mark-deployed]
@@ -346,16 +391,41 @@ schematic diff VERSION1 VERSION2
 
 ```python
 from pathlib import Path
-from schematic.storage import load_current_state, read_project
-from schematic.sql_generator import SQLGenerator
+from schematic.storage_v4 import load_current_state, read_project, get_environment_config
+from schematic.providers.unity.sql_generator import UnitySQLGenerator
 
 # Load schema
-state, changelog = load_current_state(Path.cwd())
+state, changelog, provider = load_current_state(Path.cwd())
 
-# Generate SQL
-generator = SQLGenerator(state)
-sql = generator.generate_sql(changelog.ops)
+# Get environment config
+project = read_project(Path.cwd())
+env_config = get_environment_config(project, "dev")
+
+# Build catalog mapping
+catalog_mapping = {"__implicit__": env_config["catalog"]}
+
+# Generate environment-specific SQL
+generator = UnitySQLGenerator(state, catalog_mapping)
+sql = generator.generate_sql(changelog["ops"])
 ```
+
+### Deployment Tracking
+
+**Database-backed tracking** in `{catalog}.schematic` schema:
+
+Tables:
+- `deployments` - Main deployment records
+- `deployment_ops` - Individual operation tracking
+
+**Local tracking** in `project.json` → `deployments` array
+
+**Execution Flow** (`schematic apply`):
+1. Authenticate with Databricks
+2. Execute SQL statements (creates catalog if needed)
+3. Create tracking schema in `{catalog}.schematic`
+4. Record deployment to database
+5. Track individual operations
+6. Save deployment record to local `project.json`
 
 ### Code Formatting
 
@@ -373,7 +443,7 @@ line-length = 100
 target-version = ['py39', 'py310', 'py311', 'py312']
 ```
 
-## Operation Types (Complete List - 31 Total)
+## Operation Types (Complete List - 29 Unity Catalog Operations)
 
 **Catalog Operations** (3):
 - `add_catalog` - payload: `{catalogId, name}`
@@ -422,15 +492,24 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 
 ## Implementation Status
 
-### ✅ Completed Features (v0.1.0)
+### ✅ Completed Features (v0.2.0)
 
 **Core Functionality**:
 - ✅ Visual schema designer (VS Code extension)
 - ✅ Snapshot-based versioning
 - ✅ Operation log architecture
-- ✅ All 31 operation types
+- ✅ All 29 Unity Catalog operation types
 - ✅ Inline column editing
 - ✅ Context-aware UI elements
+- ✅ Implicit catalog mode for single-catalog projects
+
+**Multi-Environment Support (V4)**:
+- ✅ Project schema v4 with rich environment configurations
+- ✅ Environment-specific catalog mapping (logical → physical)
+- ✅ `dev`, `test`, `prod` environment templates
+- ✅ Per-environment settings (allowDrift, requireSnapshot, autoCreateCatalog, etc.)
+- ✅ Environment-specific SQL generation
+- ✅ Custom environment wizard with presets
 
 **Data Governance**:
 - ✅ Column tags (key-value metadata)
@@ -443,49 +522,78 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ TypeScript implementation (VS Code)
 - ✅ Python implementation (SDK/CLI)
 - ✅ Idempotent DDL statements
-- ✅ All 31 operation types supported
-- ✅ SQL file export
+- ✅ All 29 Unity Catalog operations supported
+- ✅ Environment-specific catalog name mapping
+- ✅ SQL dependency ordering (catalog → schema → table → operations)
+- ✅ SQL file export with environment suffix
+
+**Databricks Integration**:
+- ✅ `schematic apply` command for executing SQL
+- ✅ Databricks CLI profile authentication
+- ✅ SQL Statement Execution API integration
+- ✅ Fail-fast execution with error handling
+- ✅ Terraform-like preview with confirmation
+- ✅ Dry-run mode and no-interaction mode
+
+**Deployment Tracking**:
+- ✅ Database-backed tracking in `{catalog}.schematic` schema
+- ✅ `deployments` and `deployment_ops` tables
+- ✅ Local tracking in `project.json`
+- ✅ Deployment status tracking (success/failed/partial)
+- ✅ Individual operation tracking
+- ✅ Execution time and error logging
 
 **Python SDK & CLI**:
-- ✅ Complete SDK with all models
-- ✅ CLI with validate, sql, deploy commands
+- ✅ Provider-based architecture (Unity Catalog)
+- ✅ Modular command structure (`commands/` folder)
+- ✅ CLI commands: `apply`, `sql`, `validate`, `record-deployment`
 - ✅ Python API for custom scripts
+- ✅ Databricks authentication helpers
 - ✅ Black code formatting (100 char line length)
+- ✅ Ruff linting
 
-**Deployment**:
-- ✅ Deployment tracking
-- ✅ Environment management
-- ✅ Version tracking
+**Testing**:
+- ✅ 165 passing pytest tests (unit + integration)
+- ✅ Test coverage for v4 storage, catalog mapping, auth, executor
+- ✅ SQLGlot validation for generated SQL
+- ✅ OperationBuilder pattern for test utilities
+- ✅ Smoke tests (extension build, SDK install, CLI validation)
 
 **Infrastructure**:
 - ✅ Monorepo structure
 - ✅ CI/CD workflows (GitHub Actions)
 - ✅ Comprehensive documentation
-- ✅ Testing infrastructure (smoke tests)
+- ✅ Quality checks pipeline (formatting, linting, tests)
 - ✅ Examples and templates
 
 ### ⏭️ Future Enhancements (Not Yet Implemented)
 
 **Databricks Integration**:
 - Schema import from Databricks
-- Live deployment execution
-- Drift detection
+- Drift detection and reconciliation
 - Databricks Asset Bundle (DAB) generation
+- Multi-table transaction support
+- Rollback statements generation
 
 **Testing**:
-- Unit test suites (pytest, jest)
-- Automated test coverage
-- Integration test suites
+- Real integration tests against Databricks workspace
+- End-to-end tests for `schematic apply`
+- Performance tests for large schemas
+- Concurrency tests
 
 **Advanced Features**:
 - Visual diff viewer
 - Template library
+- Multi-catalog project support
 - Constraint validation UI
 - Multi-user collaboration
+- Schema versioning with git integration
 
 **Tooling**:
 - VS Code Marketplace publication
 - PyPI package publication
+- Homebrew formula
+- Docker images
 
 ## Documentation Structure
 
@@ -645,7 +753,7 @@ def create_table(name: str, schema_id: str) -> Table:
 This script runs:
 1. ✅ Python code formatting check (Black, 100 char line length)
 2. ✅ Python linting (Ruff)
-3. ✅ Python SDK tests (pytest - 124 passing, 12 skipped)
+3. ✅ Python SDK tests (pytest - 165 passing, 12 skipped)
 4. ✅ Smoke tests (extension build, SDK install, CLI validation)
 
 **Exit code 0** = All checks passed, ready to commit
@@ -770,7 +878,7 @@ The quality checks pipeline runs automatically on:
 
 **Pipeline jobs**:
 1. **code-formatting**: Black + Ruff checks
-2. **python-tests**: 136 pytest tests + coverage reporting
+2. **python-tests**: 165 pytest tests + coverage reporting (12 skipped)
 3. **smoke-tests**: Extension build + SDK validation
 4. **commit-signatures**: GPG signature verification
 
@@ -800,11 +908,18 @@ schematic sql
 ```
 
 **Current Test Status**:
-- ✅ 124 pytest tests passing
+- ✅ 165 pytest tests passing (34 new tests added in v0.2.0)
 - ⏭️ 12 tests skipped (features in development - see issues #19, #20)
 - ✅ SQLGlot validation integrated
 - ✅ Code coverage reporting enabled
 - ✅ OperationBuilder pattern for test utilities
+- ✅ Test coverage: v4 storage, catalog mapping, auth, executor, deployment tracking
+
+**New Test Files (v0.2.0)**:
+- `test_storage_v4.py` - V4 storage with multi-environment support
+- `test_catalog_mapping.py` - Logical → Physical catalog name mapping
+- `test_unity_executor.py` - Databricks SQL executor & authentication
+- `test_deployment_tracker.py` - Deployment tracking
 
 **See**: `TESTING.md` for comprehensive testing guide
 
@@ -820,11 +935,18 @@ schematic sql
 
 **Python SDK**:
 - `packages/python-sdk/src/schematic/providers/base/models.py` - Pydantic models
+- `packages/python-sdk/src/schematic/providers/base/executor.py` - SQL execution protocol
 - `packages/python-sdk/src/schematic/storage_v4.py` - File I/O (v4 multi-environment)
 - `packages/python-sdk/src/schematic/providers/unity/state_reducer.py` - State reducer
-- `packages/python-sdk/src/schematic/providers/unity/sql_generator.py` - SQL generation
-- `packages/python-sdk/src/schematic/cli.py` - CLI implementation (thin routing layer)
-- `packages/python-sdk/src/schematic/commands/` - Command modules (apply, sql, validate, deployment)
+- `packages/python-sdk/src/schematic/providers/unity/sql_generator.py` - SQL generation with catalog mapping
+- `packages/python-sdk/src/schematic/providers/unity/executor.py` - Databricks SQL executor
+- `packages/python-sdk/src/schematic/providers/unity/auth.py` - Databricks authentication
+- `packages/python-sdk/src/schematic/deployment_tracker.py` - Deployment tracking
+- `packages/python-sdk/src/schematic/cli.py` - CLI routing layer
+- `packages/python-sdk/src/schematic/commands/apply.py` - Apply command
+- `packages/python-sdk/src/schematic/commands/sql.py` - SQL generation command
+- `packages/python-sdk/src/schematic/commands/validate.py` - Validation command
+- `packages/python-sdk/src/schematic/commands/deployment.py` - Deployment recording
 
 **Documentation**:
 - `README.md` - Project overview
@@ -863,7 +985,7 @@ All features implemented according to official Databricks Unity Catalog specific
 - Dev: `typescript`, `esbuild`, `vite`, `@vitejs/plugin-react`, `@vscode/vsce`
 
 **Python SDK**:
-- Runtime: `pydantic>=2.0.0`, `click>=8.0.0`, `rich>=13.0.0`, `pyyaml>=6.0.0`
+- Runtime: `pydantic>=2.0.0`, `click>=8.0.0`, `rich>=13.0.0`, `pyyaml>=6.0.0`, `databricks-sdk>=0.1.0`
 - Dev: `pytest>=7.0.0`, `pytest-cov>=4.0.0`, `ruff>=0.1.0`, `mypy>=1.0.0`, `sqlglot>=20.0.0`
 
 ## Git Strategy
@@ -883,24 +1005,31 @@ When starting a new conversation about this project:
 3. **Storage**: V4 architecture with multi-environment support
    - Python: `packages/python-sdk/src/schematic/storage_v4.py`
    - TypeScript: `packages/vscode-extension/src/storage-v4.ts`
-4. **UI**: React webview with inline editing and comprehensive governance features
+4. **UI**: React webview with inline editing, implicit catalog mode, comprehensive governance features
 5. **State**: Snapshot + changelog = current state
-6. **SQL Generation**: ✅ Implemented in both TypeScript and Python
-7. **Deployment Tracking**: ✅ Implemented (database-backed in Unity Catalog)
-8. **Operations**: Provider-based architecture (Unity Catalog = 29 operations)
-9. **Logs**: Check "Schematic" output channel in VS Code
-10. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
-11. **Code Formatting**: Ruff/Black for Python (100 char), manual for TypeScript
-12. **Documentation**: Clean structure, no redundant files
-13. **Testing**: 
+6. **SQL Generation**: ✅ Implemented in both TypeScript and Python with environment-specific catalog mapping
+7. **Deployment Tracking**: ✅ Fully implemented
+   - Database-backed in `{catalog}.schematic` schema (Unity Catalog)
+   - Local tracking in `project.json` → `deployments` array
+8. **Databricks Integration**: ✅ `schematic apply` command with SQL execution, authentication, deployment tracking
+9. **Operations**: Provider-based architecture (Unity Catalog = 29 operations)
+10. **Catalog Mapping**: Logical names (`__implicit__`, explicit) → Physical names per environment
+11. **Logs**: Check "Schematic" output channel in VS Code
+12. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
+13. **Code Formatting**: Ruff/Black for Python (100 char), manual for TypeScript
+14. **Documentation**: Clean structure, no redundant files
+15. **Testing**: 
     - **Before committing**: Run `./devops/run-checks.sh` (includes all checks)
-    - **Python tests**: `pytest tests/ -v` (124 passing, 12 skipped)
+    - **Python tests**: `pytest tests/ -v` (165 passing, 12 skipped)
     - **Smoke test**: `./scripts/smoke-test.sh`
     - **SQLGlot validation**: Integrated in pytest tests
-14. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
-15. **Project Schema**: V4 with environment-specific catalog configurations (breaking change from v3)
+    - **New test files**: v4 storage, catalog mapping, auth, executor, deployment tracker
+16. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
+17. **Project Schema**: V4 with environment-specific catalog configurations (breaking change from v3)
+18. **CLI Commands**: `apply`, `sql`, `validate`, `record-deployment`, `diff` (stub)
+19. **Execution Flow**: Authenticate → Execute SQL → Create tracking schema → Record deployment
 
-**Status**: Production-ready MVP (v0.1.0) with complete Unity Catalog governance features and SQL generation. Future: DAB generation, Databricks integration, drift detection.
+**Status**: Production-ready v0.2.0 with complete Unity Catalog governance, multi-environment support, and Databricks integration. Future: Schema import, drift detection, DAB generation, multi-catalog support.
 
 ## Key Design Patterns
 
@@ -916,3 +1045,11 @@ When starting a new conversation about this project:
 10. **Dual Implementation**: Same logic in TypeScript and Python for consistency
 11. **Black Formatting**: Automated Python code formatting (100 char)
 12. **Documentation Standards**: Single source of truth, no duplication
+13. **Provider-Based Architecture**: Pluggable providers (Unity, Hive, Postgres) with shared contracts
+14. **Catalog Name Mapping**: Logical → Physical catalog names per environment
+15. **Implicit Catalog Mode**: Hidden catalog level for single-catalog projects
+16. **SQL Dependency Ordering**: Catalog → Schema → Table → Operations
+17. **Fail-Fast Execution**: Stop on first error, detailed error reporting
+18. **Database-Backed Tracking**: Deployment history stored in target catalog
+19. **Terraform-Like Preview**: Show changes before execution with confirmation
+20. **Execution Flow**: SQL first → Tracking schema after (catalog must exist)
