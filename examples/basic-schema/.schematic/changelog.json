@@ -1,6 +1,18 @@
 {
   "version": 1,
-  "sinceSnapshot": "v0.1.0",
-  "ops": [],
-  "lastModified": "2025-01-01T00:00:00.000Z"
+  "sinceSnapshot": null,
+  "ops": [
+    {
+      "id": "op_init_catalog",
+      "ts": "2025-10-20T00:00:00.000Z",
+      "provider": "unity",
+      "op": "unity.add_catalog",
+      "target": "cat_implicit",
+      "payload": {
+        "catalogId": "cat_implicit",
+        "name": "__implicit__"
+      }
+    }
+  ],
+  "lastModified": "2025-10-20T00:00:00.000Z"
 }
