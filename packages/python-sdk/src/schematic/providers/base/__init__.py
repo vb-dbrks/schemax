@@ -1,5 +1,6 @@
 """Base provider abstractions"""
 
+from .executor import ExecutionConfig, ExecutionResult, SQLExecutor, StatementResult
 from .hierarchy import Hierarchy, HierarchyLevel
 from .models import ProviderState, ValidationError, ValidationResult
 from .operations import Operation, OperationCategory, OperationMetadata, create_operation
@@ -28,4 +29,8 @@ __all__ = [
     "SQLGenerator",
     "BaseSQLGenerator",
     "SQLGenerationResult",
+    "ExecutionConfig",
+    "ExecutionResult",
+    "SQLExecutor",
+    "StatementResult",
 ]

@@ -101,18 +101,34 @@ project-root/
 
 ### Data Models
 
-**Project File** (`project.json`):
+**Project File** (`project.json` - v4 Schema):
 ```typescript
 {
-  version: 2,
+  version: 4,
   name: string,
-  environments: ["dev", "test", "prod"],
+  provider: {
+    type: string,  // e.g., "unity"
+    version: string,  // e.g., "1.0.0"
+    environments: {
+      [envName: string]: {
+        catalog: string,  // Physical catalog name
+        description?: string,
+        allowDrift: boolean,
+        requireSnapshot: boolean,
+        requireApproval?: boolean,
+        autoCreateCatalog: boolean,
+        autoCreateSchematicSchema: boolean
+      }
+    }
+  },
   snapshots: SnapshotMetadata[], // Just metadata, references to files
   deployments: Deployment[],
   settings: ProjectSettings,
   latestSnapshot: string | null  // version string
 }
 ```
+
+**Note:** v4 replaces v3's simple environments array with rich environment configuration objects.
 
 **Changelog File** (`changelog.json`):
 ```typescript
@@ -316,8 +332,11 @@ schematic validate [workspace_path]
 # Generate SQL migration
 schematic sql [workspace_path] [--output FILE]
 
-# Track deployment
-schematic deploy --environment ENV [--version VERSION] [--mark-deployed]
+# Apply SQL to environment (v4)
+schematic apply --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--dry-run] [--no-interaction]
+
+# Record deployment manually
+schematic record-deployment --environment ENV [--version VERSION] [--mark-deployed]
 
 # Compare versions (stub)
 schematic diff VERSION1 VERSION2
@@ -793,18 +812,19 @@ schematic sql
 
 **VS Code Extension**:
 - `packages/vscode-extension/src/extension.ts` - Extension host
-- `packages/vscode-extension/src/storage-v2.ts` - V2 storage layer
-- `packages/vscode-extension/src/sql-generator.ts` - SQL generation
-- `packages/vscode-extension/src/shared/model.ts` - Zod schemas
-- `packages/vscode-extension/src/shared/ops.ts` - Op definitions
+- `packages/vscode-extension/src/storage-v4.ts` - V4 storage layer (multi-environment support)
+- `packages/vscode-extension/src/providers/base/sql-generator.ts` - SQL generation
+- `packages/vscode-extension/src/providers/base/models.ts` - TypeScript types
+- `packages/vscode-extension/src/providers/base/operations.ts` - Op definitions
 - `packages/vscode-extension/src/webview/state/useDesignerStore.ts` - Zustand store
 
 **Python SDK**:
-- `packages/python-sdk/src/schematic/models.py` - Pydantic models
-- `packages/python-sdk/src/schematic/storage.py` - File I/O
-- `packages/python-sdk/src/schematic/state.py` - State reducer
-- `packages/python-sdk/src/schematic/sql_generator.py` - SQL generation
-- `packages/python-sdk/src/schematic/cli.py` - CLI implementation
+- `packages/python-sdk/src/schematic/providers/base/models.py` - Pydantic models
+- `packages/python-sdk/src/schematic/storage_v4.py` - File I/O (v4 multi-environment)
+- `packages/python-sdk/src/schematic/providers/unity/state_reducer.py` - State reducer
+- `packages/python-sdk/src/schematic/providers/unity/sql_generator.py` - SQL generation
+- `packages/python-sdk/src/schematic/cli.py` - CLI implementation (thin routing layer)
+- `packages/python-sdk/src/schematic/commands/` - Command modules (apply, sql, validate, deployment)
 
 **Documentation**:
 - `README.md` - Project overview
@@ -860,11 +880,13 @@ When starting a new conversation about this project:
 
 1. **Project Type**: Monorepo with VS Code extension (TypeScript) + Python SDK/CLI
 2. **Architecture**: Event sourcing with snapshots + changelog
-3. **Storage**: V3 architecture (`packages/vscode-extension/src/storage-v3.ts`, `packages/python-sdk/src/schematic/storage_v3.py`)
+3. **Storage**: V4 architecture with multi-environment support
+   - Python: `packages/python-sdk/src/schematic/storage_v4.py`
+   - TypeScript: `packages/vscode-extension/src/storage-v4.ts`
 4. **UI**: React webview with inline editing and comprehensive governance features
 5. **State**: Snapshot + changelog = current state
 6. **SQL Generation**: ✅ Implemented in both TypeScript and Python
-7. **Deployment Tracking**: ✅ Implemented
+7. **Deployment Tracking**: ✅ Implemented (database-backed in Unity Catalog)
 8. **Operations**: Provider-based architecture (Unity Catalog = 29 operations)
 9. **Logs**: Check "Schematic" output channel in VS Code
 10. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
@@ -876,6 +898,7 @@ When starting a new conversation about this project:
     - **Smoke test**: `./scripts/smoke-test.sh`
     - **SQLGlot validation**: Integrated in pytest tests
 14. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
+15. **Project Schema**: V4 with environment-specific catalog configurations (breaking change from v3)
 
 **Status**: Production-ready MVP (v0.1.0) with complete Unity Catalog governance features and SQL generation. Future: DAB generation, Databricks integration, drift detection.
 

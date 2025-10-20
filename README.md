@@ -92,7 +92,7 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 3. **Python API**:
    ```python
    from pathlib import Path
-   from schematic.storage_v3 import load_current_state
+   from schematic.storage_v4 import load_current_state
    from schematic.providers.base.operations import Operation
    
    # Load with provider
@@ -110,9 +110,9 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 | Document | Description |
 |----------|-------------|
 | **[Quickstart Guide](docs/QUICKSTART.md)** | Complete getting started guide |
-| **[Architecture](docs/ARCHITECTURE.md)** | **V3** provider-based technical design |
+| **[Architecture](docs/ARCHITECTURE.md)** | **V4** provider-based technical design with multi-environment support |
 | **[Development](docs/DEVELOPMENT.md)** | Contributing, building, **provider development** |
-| **[Provider Contract](docs/PROVIDER_CONTRACT.md)** | **NEW** - Guide for implementing providers |
+| **[Provider Contract](docs/PROVIDER_CONTRACT.md)** | Guide for implementing providers |
 | **[Testing Guide](TESTING.md)** | How to test all components |
 | **[VS Code Extension](packages/vscode-extension/README.md)** | Extension-specific documentation |
 | **[Python SDK](packages/python-sdk/README.md)** | SDK and CLI reference |
@@ -124,23 +124,24 @@ schematic/
 ├── packages/
 │   ├── vscode-extension/       # VS Code Extension (TypeScript + React)
 │   │   ├── src/
-│   │   │   ├── providers/            # Provider system (V3)
+│   │   │   ├── providers/            # Provider system (V4)
 │   │   │   │   ├── base/             # Base interfaces
 │   │   │   │   ├── unity/            # Unity Catalog provider
 │   │   │   │   └── registry.ts       # Provider registry
-│   │   │   ├── storage-v3.ts         # Provider-aware storage
+│   │   │   ├── storage-v4.ts         # Multi-environment storage
 │   │   │   ├── extension.ts          # Extension commands
 │   │   │   └── webview/              # React UI
 │   │   └── package.json
 │   │
 │   └── python-sdk/             # Python SDK & CLI
 │       ├── src/schematic/
-│       │   ├── providers/            # Provider system (V3)
+│       │   ├── providers/            # Provider system (V4)
 │       │   │   ├── base/             # Base interfaces
 │       │   │   ├── unity/            # Unity Catalog provider
 │       │   │   └── registry.py       # Provider registry
-│       │   ├── storage_v3.py         # Provider-aware storage
-│       │   └── cli.py                # CLI commands
+│       │   ├── commands/             # Command modules
+│       │   ├── storage_v4.py         # Multi-environment storage
+│       │   └── cli.py                # CLI routing layer
 │       └── pyproject.toml
 │
 ├── examples/                   # Working examples
@@ -150,7 +151,7 @@ schematic/
 │
 ├── docs/                       # Documentation
 │   ├── QUICKSTART.md          # Getting started
-│   ├── ARCHITECTURE.md        # V3 provider architecture
+│   ├── ARCHITECTURE.md        # V4 provider architecture
 │   ├── DEVELOPMENT.md         # Contributing + provider dev
 │   └── PROVIDER_CONTRACT.md   # Provider implementation guide
 │
@@ -448,7 +449,7 @@ pip install sqlglot>=20.0.0
 - ✅ Extensible provider system
 - ✅ Provider registry
 - ✅ Unity Catalog provider (v1.0)
-- ✅ Provider-aware storage (V3)
+- ✅ Multi-environment storage (V4)
 - ✅ Comprehensive provider documentation
 - ✅ Provider development guide
 

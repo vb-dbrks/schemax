@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as storageV3 from './storage-v3';
+import * as storageV4 from './storage-v4';
 import { Operation } from './providers/base/operations';
+import { ProviderRegistry } from './providers/registry';
 import { trackEvent } from './telemetry';
 import './providers'; // Initialize providers
 
@@ -49,6 +50,360 @@ export function deactivate() {
 }
 
 /**
+ * Environment presets with their configurations
+ */
+interface EnvironmentPreset {
+  label: string;
+  description: string;
+  config: Partial<storageV4.EnvironmentConfig>;
+}
+
+const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
+  {
+    label: 'Development-like',
+    description: '✅ Manual changes allowed, ✅ Direct changelog deployment, ✅ Auto-creates catalog',
+    config: {
+      allowDrift: true,
+      requireSnapshot: false,
+      autoCreateCatalog: true,
+      autoCreateSchematicSchema: true,
+    }
+  },
+  {
+    label: 'Staging-like',
+    description: '⚠️ No manual changes [planned], ✅ Requires snapshot, ✅ Auto-creates catalog',
+    config: {
+      allowDrift: false,
+      requireSnapshot: true,
+      autoCreateCatalog: true,
+      autoCreateSchematicSchema: true,
+    }
+  },
+  {
+    label: 'Production-like',
+    description: '⚠️ No manual changes [planned], ✅ Requires snapshot, Catalog must exist',
+    config: {
+      allowDrift: false,
+      requireSnapshot: true,
+      autoCreateCatalog: false,
+      autoCreateSchematicSchema: true,
+    }
+  }
+];
+
+/**
+ * Configure custom environments (add to defaults)
+ */
+async function configureCustomEnvironments(
+  projectName: string,
+  sanitizedProjectName: string,
+  outputChannel: vscode.OutputChannel
+): Promise<Record<string, storageV4.EnvironmentConfig> | null> {
+  const customEnvironments: Record<string, storageV4.EnvironmentConfig> = {};
+  
+  outputChannel.appendLine('[Schematic] Starting custom environment configuration...');
+  
+  // Loop to add custom environments
+  while (true) {
+    // Ask if user wants to add a custom environment
+    const addEnvironment = await vscode.window.showQuickPick(
+      [
+        { label: 'Add custom environment', value: true },
+        { label: 'Done - use configured environments', value: false }
+      ],
+      {
+        placeHolder: `${Object.keys(customEnvironments).length} custom environment(s) configured. Add another?`,
+        ignoreFocusOut: true
+      }
+    );
+    
+    if (!addEnvironment || !addEnvironment.value) {
+      break; // Done adding environments
+    }
+    
+    // Step 1: Environment name
+    const envName = await vscode.window.showInputBox({
+      prompt: 'Enter environment name (alphanumeric and underscore only)',
+      placeHolder: 'staging',
+      validateInput: (value) => {
+        if (!value) {
+          return 'Environment name is required';
+        }
+        if (!/^[a-zA-Z0-9_]+$/.test(value)) {
+          return 'Only alphanumeric characters and underscores allowed';
+        }
+        if (customEnvironments[value] || ['dev', 'test', 'prod'].includes(value)) {
+          return 'Environment name already exists';
+        }
+        return null;
+      },
+      ignoreFocusOut: true
+    });
+    
+    if (!envName) {
+      continue; // User cancelled or invalid, try again
+    }
+    
+    outputChannel.appendLine(`[Schematic]   Adding environment: ${envName}`);
+    
+    // Step 2: Physical catalog name (with suggestion)
+    const suggestedCatalog = `${envName}_${sanitizedProjectName}`;
+    const catalogName = await vscode.window.showInputBox({
+      prompt: `Enter physical catalog name for '${envName}' environment`,
+      value: suggestedCatalog,
+      placeHolder: suggestedCatalog,
+      validateInput: (value) => {
+        if (!value) {
+          return 'Catalog name is required';
+        }
+        if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(value)) {
+          return 'Catalog name must start with a letter and contain only alphanumeric characters and underscores';
+        }
+        return null;
+      },
+      ignoreFocusOut: true
+    });
+    
+    if (!catalogName) {
+      continue; // User cancelled, try again
+    }
+    
+    outputChannel.appendLine(`[Schematic]     Catalog: ${catalogName}`);
+    
+    // Step 3: Select environment preset
+    const presetOptions = ENVIRONMENT_PRESETS.map(preset => ({
+      label: preset.label,
+      description: preset.description,
+      preset: preset
+    }));
+    
+    const selectedPreset = await vscode.window.showQuickPick(presetOptions, {
+      placeHolder: `Select environment type for '${envName}'`,
+      ignoreFocusOut: true
+    });
+    
+    if (!selectedPreset) {
+      continue; // User cancelled, try again
+    }
+    
+    outputChannel.appendLine(`[Schematic]     Type: ${selectedPreset.label}`);
+    
+    // Step 4: Optional description
+    const description = await vscode.window.showInputBox({
+      prompt: `Enter description for '${envName}' environment (optional)`,
+      placeHolder: `${envName.charAt(0).toUpperCase() + envName.slice(1)} environment`,
+      ignoreFocusOut: true
+    });
+    
+    // Create environment config
+    customEnvironments[envName] = {
+      catalog: catalogName,
+      description: description || `${envName.charAt(0).toUpperCase() + envName.slice(1)} environment`,
+      ...selectedPreset.preset.config
+    };
+    
+    outputChannel.appendLine(`[Schematic]   ✓ Environment '${envName}' configured`);
+  }
+  
+  return customEnvironments;
+}
+
+/**
+ * Prompt user for project setup (provider, environments, catalog names)
+ */
+async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vscode.OutputChannel): Promise<boolean> {
+  outputChannel.appendLine('[Schematic] Starting project setup wizard...');
+  
+  // Step 1: Select provider (for now, only Unity is available)
+  const providers = [
+    { label: 'Unity Catalog', description: 'Databricks Unity Catalog', id: 'unity' }
+  ];
+  
+  const selectedProvider = await vscode.window.showQuickPick(providers, {
+    placeHolder: 'Select your catalog provider',
+    ignoreFocusOut: true
+  });
+  
+  if (!selectedProvider) {
+    return false; // User cancelled
+  }
+  
+  outputChannel.appendLine(`[Schematic] Provider selected: ${selectedProvider.label}`);
+  
+  // Step 2: Project name (default to workspace folder name)
+  const workspaceName = path.basename(workspaceUri.fsPath);
+  const projectName = await vscode.window.showInputBox({
+    prompt: 'Enter project name',
+    value: workspaceName,
+    placeHolder: 'my-analytics-project',
+    ignoreFocusOut: true
+  });
+  
+  if (!projectName) {
+    return false; // User cancelled
+  }
+  
+  outputChannel.appendLine(`[Schematic] Project name: ${projectName}`);
+  
+  // Step 3: Configure environments and catalogs
+  const useDefaultEnvs = await vscode.window.showQuickPick(
+    [
+      { label: 'Use default environments', description: 'dev, test, prod with standard catalog naming', value: true },
+      { label: 'Configure custom environments', description: 'Manually configure environment settings', value: false }
+    ],
+    {
+      placeHolder: 'Environment configuration',
+      ignoreFocusOut: true
+    }
+  );
+  
+  if (!useDefaultEnvs) {
+    return false; // User cancelled
+  }
+  
+  let environments: Record<string, storageV4.EnvironmentConfig>;
+  
+  // Create default environments first
+  const sanitizedName = projectName.replace(/[^a-zA-Z0-9_]/g, '_');
+  environments = {
+    dev: {
+      catalog: `dev_${sanitizedName}`,
+      description: 'Development environment',
+      allowDrift: true,
+      requireSnapshot: false,
+      autoCreateCatalog: true,
+      autoCreateSchematicSchema: true,
+    },
+    test: {
+      catalog: `test_${sanitizedName}`,
+      description: 'Test/staging environment',
+      allowDrift: false,
+      requireSnapshot: true,
+      autoCreateCatalog: true,
+      autoCreateSchematicSchema: true,
+    },
+    prod: {
+      catalog: `prod_${sanitizedName}`,
+      description: 'Production environment',
+      allowDrift: false,
+      requireSnapshot: true,
+      requireApproval: false,
+      autoCreateCatalog: false,
+      autoCreateSchematicSchema: true,
+    },
+  };
+  
+  outputChannel.appendLine('[Schematic] Default environments created:');
+  outputChannel.appendLine(`  - dev → ${environments.dev.catalog}`);
+  outputChannel.appendLine(`  - test → ${environments.test.catalog}`);
+  outputChannel.appendLine(`  - prod → ${environments.prod.catalog}`);
+  
+  // If custom configuration requested, allow adding more environments
+  if (!useDefaultEnvs.value) {
+    const customEnvs = await configureCustomEnvironments(projectName, sanitizedName, outputChannel);
+    if (customEnvs === null) {
+      return false; // User cancelled
+    }
+    
+    // Merge custom environments with defaults
+    Object.assign(environments, customEnvs);
+  }
+  
+  // Step 4: Create the project
+  try {
+    await storageV4.ensureSchematicDir(workspaceUri);
+    
+    const provider = ProviderRegistry.get(selectedProvider.id);
+    if (!provider) {
+      throw new Error(`Provider '${selectedProvider.id}' not found`);
+    }
+    
+    // Create v4 project
+    const newProject: storageV4.ProjectFileV4 = {
+      version: 4,
+      name: projectName,
+      provider: {
+        type: selectedProvider.id,
+        version: provider.info.version,
+        environments: environments,
+      },
+      snapshots: [],
+      deployments: [],
+      settings: {
+        autoIncrementVersion: true,
+        versionPrefix: 'v',
+        catalogMode: 'single', // Use implicit catalog (simpler UX)
+      },
+      latestSnapshot: null,
+    };
+    
+    // Initialize changelog with implicit catalog for single-catalog mode
+    const initialOps: Operation[] = [];
+    
+    if (newProject.settings.catalogMode === 'single') {
+      // Auto-create implicit catalog
+      const catalogId = `cat_implicit`;
+      initialOps.push({
+        id: `op_init_catalog`,
+        ts: new Date().toISOString(),
+        provider: selectedProvider.id,
+        op: `${selectedProvider.id}.add_catalog`,
+        target: catalogId,
+        payload: {
+          catalogId,
+          name: '__implicit__'
+        }
+      });
+      
+      outputChannel.appendLine('[Schematic] Auto-created implicit catalog for single-catalog mode');
+    }
+    
+    const newChangelog: storageV4.ChangelogFile = {
+      version: 1,
+      sinceSnapshot: null,
+      ops: initialOps,
+      lastModified: new Date().toISOString(),
+    };
+    
+    await storageV4.writeProject(workspaceUri, newProject);
+    await storageV4.writeChangelog(workspaceUri, newChangelog);
+    
+    outputChannel.appendLine('[Schematic] ✓ Project created successfully');
+    
+    // Show success message with next steps
+    const envCount = Object.keys(environments).length;
+    const customCount = envCount - 3; // Subtract default dev/test/prod
+    
+    const envList = Object.entries(environments)
+      .map(([name, config]) => {
+        const isDefault = ['dev', 'test', 'prod'].includes(name);
+        const badge = isDefault ? '' : ' [custom]';
+        return `  • ${name}${badge} → ${config.catalog}`;
+      })
+      .join('\n');
+    
+    const message = `Schematic project initialized!\n\n` +
+      `Project: ${projectName}\n` +
+      `Provider: ${selectedProvider.label}\n` +
+      `Environments: ${envCount} (${3} default${customCount > 0 ? ` + ${customCount} custom` : ''})\n\n` +
+      envList + '\n\n' +
+      `Next steps:\n` +
+      `  1. Design your schema in the visual designer\n` +
+      `  2. Generate SQL for an environment (Cmd+Shift+P → "Generate SQL")\n` +
+      `  3. Apply changes with the CLI: schematic apply --target dev`;
+    
+    vscode.window.showInformationMessage(message);
+    
+    return true;
+    
+  } catch (error) {
+    outputChannel.appendLine(`[Schematic] ERROR: Failed to create project: ${error}`);
+    vscode.window.showErrorMessage(`Failed to initialize project: ${error}`);
+    return false;
+  }
+}
+
+/**
  * Open the Schematic Designer webview
  */
 async function openDesigner(context: vscode.ExtensionContext) {
@@ -58,8 +413,27 @@ async function openDesigner(context: vscode.ExtensionContext) {
     return;
   }
 
-  // Ensure project file exists (v3) - defaults to Unity provider
-  await storageV3.ensureProjectFile(workspaceFolder.uri, 'unity');
+  // Check if project already exists
+  const projectPath = vscode.Uri.joinPath(workspaceFolder.uri, '.schematic', 'project.json');
+  let projectExists = false;
+  
+  try {
+    await vscode.workspace.fs.stat(projectPath);
+    projectExists = true;
+  } catch {
+    // Project doesn't exist, will prompt for setup
+  }
+
+  // If project doesn't exist, prompt for initial setup
+  if (!projectExists) {
+    const setupComplete = await promptForProjectSetup(workspaceFolder.uri, outputChannel);
+    if (!setupComplete) {
+      return; // User cancelled
+    }
+  } else {
+    // Ensure existing project is v4 (will error if not)
+    await storageV4.ensureProjectFile(workspaceFolder.uri, outputChannel, 'unity');
+  }
 
   // If panel already exists, just reveal it
   if (currentPanel) {
@@ -101,8 +475,8 @@ async function openDesigner(context: vscode.ExtensionContext) {
             outputChannel.appendLine(`[Schematic] Loading project from: ${workspaceFolder.uri.fsPath}`);
             
             // Load v3: project metadata + current state (snapshot + changelog) + provider
-            const project = await storageV3.readProject(workspaceFolder.uri);
-            const { state, changelog, provider } = await storageV3.loadCurrentState(workspaceFolder.uri);
+            const project = await storageV4.readProject(workspaceFolder.uri);
+            const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
             
             outputChannel.appendLine(`[Schematic] Project loaded successfully (v${project.version})`);
             outputChannel.appendLine(`[Schematic] - Provider: ${provider.info.name} v${provider.info.version}`);
@@ -149,11 +523,11 @@ async function openDesigner(context: vscode.ExtensionContext) {
             outputChannel.appendLine(`[Schematic] Appending ${ops.length} operation(s) to changelog`);
             
             // Append to changelog (v3 validates operations via provider)
-            await storageV3.appendOps(workspaceFolder.uri, ops);
+            await storageV4.appendOps(workspaceFolder.uri, ops);
             
             // Reload state and provider
-            const project = await storageV3.readProject(workspaceFolder.uri);
-            const { state, changelog, provider } = await storageV3.loadCurrentState(workspaceFolder.uri);
+            const project = await storageV4.readProject(workspaceFolder.uri);
+            const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
             
             outputChannel.appendLine(`[Schematic] Operations appended successfully`);
             outputChannel.appendLine(`[Schematic] - Changelog ops: ${changelog.ops.length}`);
@@ -204,8 +578,8 @@ async function showLastOps() {
   }
 
   try {
-    const project = await storageV3.readProject(workspaceFolder.uri);
-    const changelog = await storageV3.readChangelog(workspaceFolder.uri);
+    const project = await storageV4.readProject(workspaceFolder.uri);
+    const changelog = await storageV4.readChangelog(workspaceFolder.uri);
     const lastOps = changelog.ops.slice(-20);
 
     outputChannel.clear();
@@ -286,8 +660,8 @@ async function createSnapshotCommand_impl() {
 
   try {
     outputChannel.appendLine(`[Schematic] Reading project from: ${workspaceFolder.uri.fsPath}`);
-    const project = await storageV3.readProject(workspaceFolder.uri);
-    const changelog = await storageV3.readChangelog(workspaceFolder.uri);
+    const project = await storageV4.readProject(workspaceFolder.uri);
+    const changelog = await storageV4.readChangelog(workspaceFolder.uri);
     const uncommittedOpsCount = changelog.ops.length;
     
     outputChannel.appendLine(`[Schematic] Provider: ${project.provider.type}`);
@@ -331,7 +705,7 @@ async function createSnapshotCommand_impl() {
       title: 'Creating snapshot...',
       cancellable: false
     }, async (progress) => {
-      const { project: updatedProject, snapshot } = await storageV3.createSnapshot(
+      const { project: updatedProject, snapshot } = await storageV4.createSnapshot(
         workspaceFolder.uri, 
         name, 
         undefined, 
@@ -353,7 +727,7 @@ async function createSnapshotCommand_impl() {
         outputChannel.appendLine('[Schematic] Notifying webview of snapshot creation');
         
         // Reload state and provider for webview
-        const { state, changelog, provider } = await storageV3.loadCurrentState(workspaceFolder.uri);
+        const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
         const payloadForWebview = {
           ...updatedProject,
           state,
@@ -397,6 +771,55 @@ async function createSnapshotCommand_impl() {
 /**
  * Generate SQL migration command implementation
  */
+/**
+ * Build catalog name mapping (logical → physical) for environment-specific SQL generation.
+ * 
+ * For the MVP, we support single-catalog projects only. The logical catalog name
+ * is automatically mapped to the environment's physical catalog name.
+ * 
+ * Multi-catalog support is a future enhancement (see GitHub issue #XX).
+ */
+/**
+ * Build catalog name mapping (logical → physical) for environment-specific SQL generation.
+ * 
+ * Supports two modes:
+ * 1. Single-catalog (implicit): Catalog stored as __implicit__ in state, mapped to env catalog
+ * 2. Single-catalog (explicit): One named catalog, mapped to env catalog
+ * 3. Multi-catalog: Not yet supported
+ */
+function buildCatalogMapping(state: any, envConfig: storageV4.EnvironmentConfig): Record<string, string> {
+  const catalogs = state.catalogs || [];
+  
+  if (catalogs.length === 0) {
+    // No catalogs yet - no mapping needed
+    return {};
+  }
+  
+  if (catalogs.length === 1) {
+    const logicalName = catalogs[0].name;
+    const physicalName = envConfig.catalog;
+    
+    // Check if this is an implicit catalog (single-catalog mode)
+    if (logicalName === '__implicit__') {
+      outputChannel.appendLine(`[Schematic] Implicit catalog mode: __implicit__ → ${physicalName}`);
+    } else {
+      outputChannel.appendLine(`[Schematic] Single-catalog mapping: ${logicalName} → ${physicalName}`);
+    }
+    
+    return {
+      [logicalName]: physicalName
+    };
+  }
+  
+  // Multiple catalogs - not supported yet
+  throw new Error(
+    `Multi-catalog projects are not yet supported. ` +
+    `Found ${catalogs.length} catalogs: ${catalogs.map((c: any) => c.name).join(', ')}. ` +
+    `For now, please use a single catalog per project. ` +
+    `Multi-catalog support is tracked in issue #XX.`
+  );
+}
+
 async function generateSQLMigration() {
   outputChannel.appendLine('[Schematic] Generate SQL migration command invoked');
   
@@ -410,8 +833,9 @@ async function generateSQLMigration() {
   try {
     outputChannel.appendLine(`[Schematic] Loading current state from: ${workspaceFolder.uri.fsPath}`);
     
-    // Load current state, changelog, and provider
-    const { state, changelog, provider } = await storageV3.loadCurrentState(workspaceFolder.uri);
+    // Load project and state
+    const project = await storageV4.readProject(workspaceFolder.uri);
+    const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
     
     outputChannel.appendLine(`[Schematic] Provider: ${provider.info.name} v${provider.info.version}`);
     outputChannel.appendLine(`[Schematic] Changelog operations: ${changelog.ops.length}`);
@@ -427,8 +851,33 @@ async function generateSQLMigration() {
       return;
     }
 
-    // Generate SQL using provider's SQL generator
-    const generator = provider.getSQLGenerator(state);
+    // Ask for target environment
+    const environments = Object.keys(project.provider.environments);
+    if (environments.length === 0) {
+      vscode.window.showErrorMessage('No environments configured in project.json');
+      return;
+    }
+
+    const targetEnv = await vscode.window.showQuickPick(environments, {
+      placeHolder: 'Select target environment for SQL generation',
+      ignoreFocusOut: true
+    });
+
+    if (!targetEnv) {
+      outputChannel.appendLine('[Schematic] SQL generation cancelled - no environment selected');
+      return;
+    }
+
+    const envConfig = storageV4.getEnvironmentConfig(project, targetEnv);
+    outputChannel.appendLine(`[Schematic] Target environment: ${targetEnv}`);
+    outputChannel.appendLine(`[Schematic] Physical catalog: ${envConfig.catalog}`);
+
+    // Build catalog name mapping (logical → physical)
+    const catalogMapping = buildCatalogMapping(state, envConfig);
+    outputChannel.appendLine(`[Schematic] Catalog mapping: ${JSON.stringify(catalogMapping)}`);
+
+    // Generate SQL using provider's SQL generator with catalog mapping
+    const generator = provider.getSQLGenerator(state, catalogMapping);
     const sql = generator.generateSQL(changelog.ops);
     
     outputChannel.appendLine(`[Schematic] Generated SQL (${sql.length} characters)`);
@@ -440,9 +889,9 @@ async function generateSQLMigration() {
       outputChannel.appendLine(`[Schematic] Created migrations directory: ${migrationsDir}`);
     }
 
-    // Generate filename with timestamp
+    // Generate filename with timestamp and environment
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').substring(0, 19);
-    const filename = `migration_${timestamp}.sql`;
+    const filename = `migration_${targetEnv}_${timestamp}.sql`;
     const filepath = path.join(migrationsDir, filename);
     
     // Write SQL to file

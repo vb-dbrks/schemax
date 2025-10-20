@@ -720,9 +720,9 @@ class TestSQLOptimization:
         sql = generator.generate_sql(column_ops)
 
         # Should have only ONE ALTER TABLE statement (batched)
-        assert sql.count("ALTER TABLE") == 1, (
-            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
-        )
+        assert (
+            sql.count("ALTER TABLE") == 1
+        ), f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
 
         # Should use ADD COLUMNS (plural) syntax with parentheses
         assert "ADD COLUMNS (" in sql
@@ -798,9 +798,9 @@ class TestSQLOptimization:
         sql = generator.generate_sql(column_ops)
 
         # Should have TWO separate ALTER TABLE statements
-        assert sql.count("ALTER TABLE") == 2, (
-            f"Expected 2 ALTER TABLE statements, found {sql.count('ALTER TABLE')}"
-        )
+        assert (
+            sql.count("ALTER TABLE") == 2
+        ), f"Expected 2 ALTER TABLE statements, found {sql.count('ALTER TABLE')}"
 
         # Each should be for different table (with full qualification)
         assert "table1" in sql
@@ -844,9 +844,9 @@ class TestSQLOptimization:
         sql = generator.generate_sql(mixed_ops)
 
         # Should have batched ADD COLUMNS and separate DROP COLUMN
-        assert sql.count("ALTER TABLE") >= 2, (
-            "Should have separate statements for batched ADD and DROP"
-        )
+        assert (
+            sql.count("ALTER TABLE") >= 2
+        ), "Should have separate statements for batched ADD and DROP"
 
         # Batched ADD COLUMNS should use proper syntax
         assert "ADD COLUMNS (" in sql
@@ -899,12 +899,12 @@ class TestSQLOptimization:
         sql = generator.generate_sql([reorder_op])
 
         # Should generate only ONE statement (optimal)
-        assert sql.count("ALTER TABLE") == 1, (
-            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
-        )
-        assert sql.count("ALTER COLUMN") == 1, (
-            f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
-        )
+        assert (
+            sql.count("ALTER TABLE") == 1
+        ), f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
+        assert (
+            sql.count("ALTER COLUMN") == 1
+        ), f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
 
         # Should use FIRST keyword
         assert "ALTER COLUMN `type` FIRST" in sql
@@ -951,12 +951,12 @@ class TestSQLOptimization:
         sql = generator.generate_sql([reorder_op])
 
         # Should generate only ONE statement (optimal)
-        assert sql.count("ALTER TABLE") == 1, (
-            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
-        )
-        assert sql.count("ALTER COLUMN") == 1, (
-            f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
-        )
+        assert (
+            sql.count("ALTER TABLE") == 1
+        ), f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
+        assert (
+            sql.count("ALTER COLUMN") == 1
+        ), f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
 
         # Should use AFTER keyword with previous column
         assert "ALTER COLUMN `name` AFTER `id`" in sql
@@ -1004,6 +1004,6 @@ class TestSQLOptimization:
 
         # Should generate MULTIPLE statements (general algorithm)
         # When reversing 3 columns, we need at least 2 moves
-        assert sql.count("ALTER COLUMN") >= 2, (
-            f"Expected >= 2 ALTER COLUMN for multiple moves, found {sql.count('ALTER COLUMN')}"
-        )
+        assert (
+            sql.count("ALTER COLUMN") >= 2
+        ), f"Expected >= 2 ALTER COLUMN for multiple moves, found {sql.count('ALTER COLUMN')}"

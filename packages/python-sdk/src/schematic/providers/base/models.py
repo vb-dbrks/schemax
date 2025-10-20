@@ -6,6 +6,8 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel
 
+from .executor import ExecutionConfig, ExecutionResult, SQLExecutor, StatementResult
+
 
 class ValidationError(BaseModel):
     """Validation error details"""
@@ -24,3 +26,14 @@ class ValidationResult(BaseModel):
 
 # Provider state is just a dictionary - providers define their own structure
 ProviderState = Dict[str, Any]
+
+
+__all__ = [
+    "ValidationError",
+    "ValidationResult",
+    "ProviderState",
+    "ExecutionConfig",
+    "ExecutionResult",
+    "SQLExecutor",
+    "StatementResult",
+]

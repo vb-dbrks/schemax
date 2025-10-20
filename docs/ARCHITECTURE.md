@@ -1255,11 +1255,242 @@ if (expectedHash !== actualHash) {
 
 ---
 
+## Multi-Environment Support (v4)
+
+Schematic v4 introduces comprehensive multi-environment support, enabling users to design schemas once and deploy them to multiple environments (dev, test, prod) with different physical catalog names.
+
+### Logical vs Physical Naming
+
+**Design Pattern:**
+- **Logical names** stored in Schematic state (environment-agnostic)
+- **Physical names** generated at SQL generation time (environment-specific)
+- **Mapping** defined in `project.json` environment configuration
+
+**Example:**
+
+```typescript
+// Logical state (in changelog.json)
+{
+  "catalogs": [{ "name": "__implicit__" }],
+  "schemas": [{ "name": "customer_360" }]
+}
+
+// Environment configuration (in project.json v4)
+{
+  "provider": {
+    "environments": {
+      "dev": { "catalog": "dev_my_analytics" },
+      "prod": { "catalog": "prod_my_analytics" }
+    }
+  }
+}
+
+// Generated SQL
+schematic sql --target dev  → CREATE SCHEMA `dev_my_analytics`.`customer_360`;
+schematic sql --target prod → CREATE SCHEMA `prod_my_analytics`.`customer_360`;
+```
+
+### Project Schema v4
+
+**Environment Configuration:**
+
+```json
+{
+  "version": 4,
+  "provider": {
+    "type": "unity",
+    "environments": {
+      "dev": {
+        "catalog": "dev_analytics",
+        "description": "Development environment",
+        "allowDrift": true,
+        "requireSnapshot": false,
+        "autoCreateCatalog": true,
+        "autoCreateSchematicSchema": true
+      },
+      "prod": {
+        "catalog": "prod_analytics",
+        "description": "Production environment",
+        "allowDrift": false,
+        "requireSnapshot": true,
+        "autoCreateCatalog": false
+      }
+    }
+  }
+}
+```
+
+**Environment Settings:**
+
+| Setting | Type | Description |
+|---------|------|-------------|
+| `catalog` | string | Physical catalog name in target system |
+| `description` | string | Human-readable description |
+| `allowDrift` | boolean | Allow actual state to differ from Schematic |
+| `requireSnapshot` | boolean | Require snapshot before deployment |
+| `autoCreateCatalog` | boolean | Create catalog if it doesn't exist |
+| `autoCreateSchematicSchema` | boolean | Auto-create tracking schema |
+
+### Catalog Name Mapping
+
+**Implementation (TypeScript):**
+
+```typescript
+// extension.ts
+function buildCatalogMapping(
+  state: any,
+  envConfig: EnvironmentConfig
+): Record<string, string> {
+  const catalogs = state.catalogs || [];
+  
+  if (catalogs.length === 1) {
+    const logicalName = catalogs[0].name;  // e.g., "__implicit__"
+    const physicalName = envConfig.catalog; // e.g., "dev_analytics"
+    return { [logicalName]: physicalName };
+  }
+  
+  if (catalogs.length > 1) {
+    throw new Error("Multi-catalog projects not yet supported");
+  }
+  
+  return {};
+}
+
+// UnitySQLGenerator
+constructor(state: UnityState, catalogNameMapping?: Record<string, string>) {
+  this.catalogNameMapping = catalogNameMapping || {};
+  // Mapping applied when building fully-qualified names
+}
+```
+
+**Benefits:**
+- ✅ Clean separation: logical names in state, physical names in deployment
+- ✅ Automatic mapping for single-catalog projects (90%+ use case)
+- ✅ Environment isolation: same schema → different catalogs per environment
+- ✅ Git-friendly: logical names in version control, physical names in config
+
+### Implicit Catalog Mode
+
+For single-catalog projects (the vast majority), Schematic uses **implicit catalog mode** to simplify the user experience.
+
+**User Experience:**
+
+Instead of:
+1. Configure environment catalog: `dev_analytics`
+2. Create catalog in UI: `analytics`
+3. Map during deployment: `analytics` → `dev_analytics`
+
+Users now experience:
+1. Configure environment catalog: `dev_analytics`
+2. **Directly add schemas** (no catalog creation step)
+3. Auto-map: `__implicit__` → `dev_analytics`
+
+**Implementation:**
+
+```typescript
+// Project settings
+{
+  "settings": {
+    "catalogMode": "single"  // Default mode
+  }
+}
+
+// Auto-created implicit catalog
+{
+  "catalogs": [
+    {
+      "id": "cat_implicit",
+      "name": "__implicit__",  // Special marker
+      "schemas": [...]
+    }
+  ]
+}
+```
+
+**UI Changes:**
+- ✅ No "+ Catalog" button in single-catalog mode
+- ✅ Schemas shown at root level (flat hierarchy)
+- ✅ Catalog layer invisible to user
+- ✅ Physical catalog names shown in SQL generation prompts
+
+**Benefits:**
+- Simpler mental model (schemas and tables, not catalogs)
+- Matches how users think ("I'm designing customer data")
+- Physical catalog per environment already configured
+- No confusion about logical vs physical names
+
+### Deployment Tracking
+
+Schematic tracks deployments in the target catalog itself using a dedicated `schematic` schema:
+
+```sql
+-- Auto-created on first deployment
+CREATE SCHEMA IF NOT EXISTS <catalog>.schematic;
+
+-- Deployment history
+CREATE TABLE <catalog>.schematic.deployments (
+  id STRING,
+  environment STRING,
+  snapshot_version STRING,
+  deployed_at TIMESTAMP,
+  deployed_by STRING,
+  status STRING,  -- pending/success/failed
+  ops_count INT,
+  error_message STRING,
+  sql_executed STRING,
+  PRIMARY KEY (id)
+);
+
+-- Per-operation tracking
+CREATE TABLE <catalog>.schematic.deployment_ops (
+  deployment_id STRING,
+  op_id STRING,
+  op_type STRING,
+  sql_statement STRING,
+  status STRING,
+  execution_order INT,
+  PRIMARY KEY (deployment_id, op_id)
+);
+```
+
+**Benefits:**
+- ✅ Queryable audit trail
+- ✅ Multi-user visibility
+- ✅ Compliance and governance
+- ✅ Tracks partial failures
+
+### Apply Command Workflow
+
+```bash
+# Generate SQL for dev
+schematic sql --target dev --output migration.sql
+
+# Preview changes (dry run)
+schematic apply --target dev --profile DEV --warehouse-id abc123 --dry-run
+
+# Apply with confirmation
+schematic apply --target dev --profile DEV --warehouse-id abc123
+
+# Non-interactive (CI/CD)
+schematic apply --target dev --profile DEV --warehouse-id abc123 --no-interaction
+```
+
+**Execution Flow:**
+1. Load project and validate environment config
+2. Build catalog name mapping (logical → physical)
+3. Generate SQL with mapped names
+4. Show preview and prompt for confirmation
+5. Execute SQL statements sequentially
+6. Record deployment in `<catalog>.schematic.deployments`
+7. On failure: stop immediately, record error, show status
+
+---
+
 ## Future Architecture Plans
 
 ### Stage 2 Enhancements
 
-1. **Multi-Provider Projects** - Support multiple providers in one project
+1. **Multi-Catalog Projects** - Support explicit multiple catalogs per environment
 2. **Provider Plugins** - Load providers from external packages
 3. **Cross-Provider References** - Reference objects across providers
 4. **Provider Marketplace** - Community-contributed providers
@@ -1270,6 +1501,8 @@ if (expectedHash !== actualHash) {
 2. **Impact Analysis** - Show what a change will affect
 3. **Rollback Support** - Revert to previous snapshots
 4. **State Diffs** - Visual comparison between versions
+5. **Schema Import** - Reverse-engineer existing catalogs into Schematic
+6. **DAB Generation** - Export as Databricks Asset Bundles
 
 ---
 
