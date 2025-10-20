@@ -305,23 +305,27 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _set_table_comment(self, op: Operation) -> str:
         fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        fqn_esc = self._build_fqn(*fqn.split("."))
         comment = self.escape_string(op.payload["comment"])
-        return f"ALTER TABLE {self.escape_identifier(fqn)} SET COMMENT '{comment}'"
+        return f"ALTER TABLE {fqn_esc} SET COMMENT '{comment}'"
 
     def _set_table_property(self, op: Operation) -> str:
         fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        fqn_esc = self._build_fqn(*fqn.split("."))
         key = op.payload["key"]
         value = op.payload["value"]
-        return f"ALTER TABLE {self.escape_identifier(fqn)} SET TBLPROPERTIES ('{key}' = '{value}')"
+        return f"ALTER TABLE {fqn_esc} SET TBLPROPERTIES ('{key}' = '{value}')"
 
     def _unset_table_property(self, op: Operation) -> str:
         fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        fqn_esc = self._build_fqn(*fqn.split("."))
         key = op.payload["key"]
-        return f"ALTER TABLE {self.escape_identifier(fqn)} UNSET TBLPROPERTIES ('{key}')"
+        return f"ALTER TABLE {fqn_esc} UNSET TBLPROPERTIES ('{key}')"
 
     # Column operations
     def _add_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         col_name = op.payload["name"]
         col_type = op.payload["type"]
         nullable = op.payload["nullable"]
@@ -329,7 +333,6 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         null_clause = "" if nullable else " NOT NULL"
         comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
-        table_esc = self.escape_identifier(table_fqn)
         col_esc = self.escape_identifier(col_name)
 
         sql = f"ALTER TABLE {table_esc} ADD COLUMN {col_esc} {col_type}"
@@ -337,17 +340,17 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _rename_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         old_name = self.id_name_map.get(op.target, "unknown")
         new_name = op.payload["newName"]
-        table_esc = self.escape_identifier(table_fqn)
         old_esc = self.escape_identifier(old_name)
         new_esc = self.escape_identifier(new_name)
         return f"ALTER TABLE {table_esc} RENAME COLUMN {old_esc} TO {new_esc}"
 
     def _drop_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         col_name = self.id_name_map.get(op.target, "unknown")
-        table_esc = self.escape_identifier(table_fqn)
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} DROP COLUMN {col_esc}"
 
@@ -412,8 +415,41 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         # Get table name for ALTER statements
         table_fqn = self.id_name_map.get(table_id, "unknown")
-        table_esc = self.escape_identifier(table_fqn)
+        table_esc = self._build_fqn(*table_fqn.split("."))
 
+        # OPTIMIZATION: Detect single-column drag for cleaner SQL
+        # A single drag means one column moved, and all others maintained relative order
+        # Find the column that was dragged by checking which column broke the sequence
+        single_move = None
+        for i, col_id in enumerate(final_order):
+            # Check if removing this column from both orders leaves them identical
+            orig_without = [c for c in original_order if c != col_id]
+            final_without = [c for c in final_order if c != col_id]
+            if orig_without == final_without:
+                # This column was the one that moved
+                original_pos = original_order.index(col_id)
+                new_pos = i
+                if original_pos != new_pos:
+                    single_move = (col_id, original_pos, new_pos)
+                    break
+
+        # If we detected a single column drag, generate optimal SQL
+        if single_move:
+            col_id, orig_pos, new_pos = single_move
+            col_name = self.id_name_map.get(col_id, col_id)
+            col_esc = self.escape_identifier(col_name)
+
+            if new_pos == 0:
+                # Column moved to first position
+                return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} FIRST"
+            else:
+                # Column moved after another column
+                prev_col_id = final_order[new_pos - 1]
+                prev_col_name = self.id_name_map.get(prev_col_id, prev_col_id)
+                prev_col_esc = self.escape_identifier(prev_col_name)
+                return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} AFTER {prev_col_esc}"
+
+        # Multiple columns moved - use general algorithm
         statements = []
         current_order = original_order.copy()
 
@@ -560,6 +596,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_op = batch_info["table_op"]
         column_ops = batch_info["column_ops"]
         property_ops = batch_info["property_ops"]
+        reorder_ops = batch_info.get("reorder_ops", [])
 
         if not table_op:
             return "-- Error: No table creation operation found"
@@ -571,11 +608,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
             self.id_name_map.get(schema_id, "unknown.unknown") if schema_id else "unknown.unknown"
         )
         table_fqn = f"{schema_fqn}.{table_name}"
-        table_esc = self.escape_identifier(table_fqn)
+        table_esc = self._build_fqn(*table_fqn.split("."))
 
-        # Build column definitions
-        columns = []
+        # Build column definitions as a dictionary (by column ID)
+        columns_dict = {}
         for col_op in column_ops:
+            col_id = col_op.payload.get("colId")
             col_name = self.escape_identifier(col_op.payload["name"])
             col_type = col_op.payload["type"]
             nullable = "" if col_op.payload.get("nullable", True) else " NOT NULL"
@@ -584,11 +622,25 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 if col_op.payload.get("comment")
                 else ""
             )
-            columns.append(f"  {col_name} {col_type}{nullable}{comment}")
+            columns_dict[col_id] = f"  {col_name} {col_type}{nullable}{comment}"
 
-        # Note: reorder_columns operations are ignored for new table creation
-        # Column order for CREATE TABLE is determined by the order columns were added
-        # reorder_columns only applies to existing tables via ALTER statements
+        # Apply column reordering if present
+        # Use the final order from the last reorder operation
+        if reorder_ops:
+            final_order = reorder_ops[-1].payload.get("order", [])
+            # Include columns from the reorder in their specified order
+            columns = [columns_dict[col_id] for col_id in final_order if col_id in columns_dict]
+            # Append any columns added AFTER the reorder (not in the reorder list)
+            for col_id in columns_dict.keys():
+                if col_id not in final_order:
+                    columns.append(columns_dict[col_id])
+        else:
+            # No reorder: use the order columns were added
+            columns = [
+                columns_dict[col_op.payload.get("colId")]
+                for col_op in column_ops
+                if col_op.payload.get("colId") in columns_dict
+            ]
 
         # Build table format
         table_format = table_op.payload.get("format", "DELTA").upper()
@@ -628,17 +680,63 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Handle column reordering first (using existing optimization)
         # For existing tables, reorder_columns generates ALTER statements
         if batch_info["reorder_ops"]:
-            original_order = self._get_table_column_order(table_id)
-            final_order = batch_info["reorder_ops"][-1].payload["order"]
+            last_reorder_op = batch_info["reorder_ops"][-1]
+            # Use previousOrder from operation payload if available
+            # (prevents comparing state with itself)
+            original_order = last_reorder_op.payload.get("previousOrder")
+            if not original_order:
+                # Fallback: derive from current state
+                # (for backward compatibility with old operations)
+                original_order = self._get_table_column_order(table_id)
+            final_order = last_reorder_op.payload["order"]
             reorder_sql = self._generate_optimized_reorder_sql(
                 table_id, original_order, final_order, [op.id for op in batch_info["reorder_ops"]]
             )
             if reorder_sql and not reorder_sql.startswith("--"):
                 statements.append(reorder_sql)
 
-        # Handle other operations normally
+        # Batch ADD COLUMN operations if multiple exist
+        add_column_ops = [op for op in batch_info["column_ops"] if op.op.endswith("add_column")]
+
+        if len(add_column_ops) > 1:
+            # Multiple ADD COLUMN operations - batch them into single ALTER TABLE ADD COLUMNS
+            table_fqn = self.id_name_map.get(add_column_ops[0].payload["tableId"], "unknown")
+            table_esc = self._build_fqn(*table_fqn.split("."))
+            column_defs = []
+
+            for op in add_column_ops:
+                col_name = op.payload["name"]
+                col_type = op.payload["type"]
+                nullable = op.payload["nullable"]
+                comment = op.payload.get("comment", "")
+
+                null_clause = "" if nullable else " NOT NULL"
+                comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
+                col_esc = self.escape_identifier(col_name)
+
+                column_defs.append(f"    {col_esc} {col_type}{null_clause}{comment_clause}")
+
+            batched_sql = (
+                f"ALTER TABLE {table_esc}\nADD COLUMNS (\n" + ",\n".join(column_defs) + "\n)"
+            )
+            statements.append(batched_sql)
+        elif len(add_column_ops) == 1:
+            # Single ADD COLUMN - use existing method
+            try:
+                sql = self._add_column(add_column_ops[0])
+                if sql and not sql.startswith("--"):
+                    statements.append(sql)
+            except Exception as e:
+                statements.append(f"-- Error generating SQL for {add_column_ops[0].id}: {e}")
+
+        # Handle other column operations (non-ADD COLUMN)
+        other_column_ops = [
+            op for op in batch_info["column_ops"] if not op.op.endswith("add_column")
+        ]
+
+        # Handle all other operations normally
         for op in (
-            batch_info["column_ops"]
+            other_column_ops
             + batch_info["property_ops"]
             + batch_info["constraint_ops"]
             + batch_info["governance_ops"]
@@ -662,17 +760,17 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _change_column_type(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         col_name = self.id_name_map.get(op.target, "unknown")
         new_type = op.payload["newType"]
-        table_esc = self.escape_identifier(table_fqn)
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} TYPE {new_type}"
 
     def _set_nullable(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         col_name = self.id_name_map.get(op.target, "unknown")
         nullable = op.payload["nullable"]
-        table_esc = self.escape_identifier(table_fqn)
         col_esc = self.escape_identifier(col_name)
 
         if nullable:
@@ -682,34 +780,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _set_column_comment(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         col_name = self.id_name_map.get(op.target, "unknown")
         comment = self.escape_string(op.payload["comment"])
-        table_esc = self.escape_identifier(table_fqn)
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} COMMENT '{comment}'"
 
     # Column tag operations
     def _set_column_tag(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         col_name = self.id_name_map.get(op.target, "unknown")
         tag_name = op.payload["tagName"]
         tag_value = self.escape_string(op.payload["tagValue"])
-        table_esc = self.escape_identifier(table_fqn)
         col_esc = self.escape_identifier(col_name)
         sql = f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc}"
         return f"{sql} SET TAGS ('{tag_name}' = '{tag_value}')"
 
     def _unset_column_tag(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         col_name = self.id_name_map.get(op.target, "unknown")
         tag_name = op.payload["tagName"]
-        table_esc = self.escape_identifier(table_fqn)
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} UNSET TAGS ('{tag_name}')"
 
     # Constraint operations
     def _add_constraint(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         constraint_type = op.payload["type"]
         constraint_name = op.payload.get("name", "")
         columns = [self.id_name_map.get(cid, cid) for cid in op.payload["columns"]]
@@ -717,7 +816,6 @@ class UnitySQLGenerator(BaseSQLGenerator):
         name_clause = (
             f"CONSTRAINT {self.escape_identifier(constraint_name)} " if constraint_name else ""
         )
-        table_esc = self.escape_identifier(table_fqn)
 
         if constraint_type == "primary_key":
             timeseries = " TIMESERIES" if op.payload.get("timeseries") else ""
@@ -726,12 +824,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         elif constraint_type == "foreign_key":
             parent_table = self.id_name_map.get(op.payload.get("parentTable", ""), "unknown")
+            parent_esc = self._build_fqn(*parent_table.split("."))
             parent_columns = [
                 self.id_name_map.get(cid, cid) for cid in op.payload.get("parentColumns", [])
             ]
             cols = ", ".join(self.escape_identifier(c) for c in columns)
             parent_cols = ", ".join(self.escape_identifier(c) for c in parent_columns)
-            parent_esc = self.escape_identifier(parent_table)
             return (
                 f"ALTER TABLE {table_esc} ADD {name_clause}"
                 f"FOREIGN KEY({cols}) REFERENCES {parent_esc}({parent_cols})"
@@ -745,8 +843,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _drop_constraint(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_esc = self._build_fqn(*table_fqn.split("."))
         # Would need constraint name from state
-        table_esc = self.escape_identifier(table_fqn)
         return f"-- ALTER TABLE {table_esc} DROP CONSTRAINT (constraint name lookup needed)"
 
     # Row filter operations
