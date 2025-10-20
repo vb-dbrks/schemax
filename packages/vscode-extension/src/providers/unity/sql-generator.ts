@@ -354,6 +354,45 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const tableParts = tableFqn.split('.');
     const tableEsc = this.buildFqn(...tableParts);
     
+    // OPTIMIZATION: Detect single-column drag for cleaner SQL
+    // A single drag means one column moved, and all others maintained relative order
+    // Find the column that was dragged by checking which column broke the sequence
+    let singleMove: { colId: string; origPos: number; newPos: number } | null = null;
+    for (let i = 0; i < finalOrder.length; i++) {
+      const colId = finalOrder[i];
+      // Check if removing this column from both orders leaves them identical
+      const origWithout = originalOrder.filter(c => c !== colId);
+      const finalWithout = finalOrder.filter(c => c !== colId);
+      if (JSON.stringify(origWithout) === JSON.stringify(finalWithout)) {
+        // This column was the one that moved
+        const originalPos = originalOrder.indexOf(colId);
+        const newPos = i;
+        if (originalPos !== newPos) {
+          singleMove = { colId, origPos: originalPos, newPos };
+          break;
+        }
+      }
+    }
+    
+    // If we detected a single column drag, generate optimal SQL
+    if (singleMove) {
+      const { colId, newPos } = singleMove;
+      const colName = this.idNameMap[colId] || colId;
+      const colEsc = this.escapeIdentifier(colName);
+      
+      if (newPos === 0) {
+        // Column moved to first position
+        return `ALTER TABLE ${tableEsc} ALTER COLUMN ${colEsc} FIRST`;
+      } else {
+        // Column moved after another column
+        const prevColId = finalOrder[newPos - 1];
+        const prevColName = this.idNameMap[prevColId] || prevColId;
+        const prevColEsc = this.escapeIdentifier(prevColName);
+        return `ALTER TABLE ${tableEsc} ALTER COLUMN ${colEsc} AFTER ${prevColEsc}`;
+      }
+    }
+    
+    // Multiple columns moved - use general algorithm
     const statements: string[] = [];
     const currentOrder = [...originalOrder];
     
@@ -529,6 +568,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const tableOp = batchInfo.tableOp;
     const columnOps = batchInfo.columnOps;
     const propertyOps = batchInfo.propertyOps;
+    const reorderOps = batchInfo.reorderOps;
     
     if (!tableOp) {
       return '-- Error: No table creation operation found';
@@ -542,19 +582,38 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const tableParts = tableFqn.split('.');
     const tableEsc = this.buildFqn(...tableParts);
     
-    // Build column definitions
-    let columns: string[] = [];
+    // Build column definitions as a map (by column ID)
+    const columnsMap: Record<string, string> = {};
     for (const colOp of columnOps) {
+      const colId = colOp.payload.colId;
       const colName = this.escapeIdentifier(colOp.payload.name);
       const colType = colOp.payload.type;
       const nullable = colOp.payload.nullable !== false ? '' : ' NOT NULL';
       const comment = colOp.payload.comment ? ` COMMENT '${this.escapeString(colOp.payload.comment)}'` : '';
-      columns.push(`  ${colName} ${colType}${nullable}${comment}`);
+      columnsMap[colId] = `  ${colName} ${colType}${nullable}${comment}`;
     }
     
-    // Note: reorder_columns operations are ignored for new table creation
-    // Column order for CREATE TABLE is determined by the order columns were added
-    // reorder_columns only applies to existing tables via ALTER statements
+    // Apply column reordering if present
+    // Use the final order from the last reorder operation
+    let columns: string[];
+    if (reorderOps.length > 0) {
+      const finalOrder = reorderOps[reorderOps.length - 1].payload.order;
+      // Include columns from the reorder in their specified order
+      columns = finalOrder
+        .filter((colId: string) => colId in columnsMap)
+        .map((colId: string) => columnsMap[colId]);
+      // Append any columns added AFTER the reorder (not in the reorder list)
+      for (const colId of Object.keys(columnsMap)) {
+        if (!finalOrder.includes(colId)) {
+          columns.push(columnsMap[colId]);
+        }
+      }
+    } else {
+      // No reorder: use the order columns were added
+      columns = columnOps
+        .filter(colOp => colOp.payload.colId in columnsMap)
+        .map(colOp => columnsMap[colOp.payload.colId]);
+    }
     
     // Build table format
     const tableFormat = (tableOp.payload.format || 'DELTA').toUpperCase();
@@ -602,8 +661,14 @@ ${columnsSql}
     // Handle column reordering first (using existing optimization)
     // For existing tables, reorder_columns generates ALTER statements
     if (batchInfo.reorderOps.length > 0) {
-      const originalOrder = this.getTableColumnOrder(tableId);
-      const finalOrder = batchInfo.reorderOps[batchInfo.reorderOps.length - 1].payload.order;
+      const lastReorderOp = batchInfo.reorderOps[batchInfo.reorderOps.length - 1];
+      // Use previousOrder from the operation payload if available (prevents comparing state with itself)
+      let originalOrder = lastReorderOp.payload.previousOrder;
+      if (!originalOrder) {
+        // Fallback: derive from current state (for backward compatibility with old operations)
+        originalOrder = this.getTableColumnOrder(tableId);
+      }
+      const finalOrder = lastReorderOp.payload.order;
       const reorderSql = this.generateOptimizedReorderSQL(
         tableId, originalOrder, finalOrder, 
         batchInfo.reorderOps.map(op => op.id)
