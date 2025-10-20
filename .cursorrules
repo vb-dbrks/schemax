@@ -553,7 +553,8 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ Ruff linting
 
 **Testing**:
-- ✅ 165 passing pytest tests (unit + integration)
+- ✅ 138 passing pytest tests (unit + integration)
+- ⏭️ 12 tests skipped (features in development)
 - ✅ Test coverage for v4 storage, catalog mapping, auth, executor
 - ✅ SQLGlot validation for generated SQL
 - ✅ OperationBuilder pattern for test utilities
@@ -753,7 +754,7 @@ def create_table(name: str, schema_id: str) -> Table:
 This script runs:
 1. ✅ Python code formatting check (Black, 100 char line length)
 2. ✅ Python linting (Ruff)
-3. ✅ Python SDK tests (pytest - 165 passing, 12 skipped)
+3. ✅ Python SDK tests (pytest - 138 passing, 12 skipped)
 4. ✅ Smoke tests (extension build, SDK install, CLI validation)
 
 **Exit code 0** = All checks passed, ready to commit
@@ -878,7 +879,7 @@ The quality checks pipeline runs automatically on:
 
 **Pipeline jobs**:
 1. **code-formatting**: Black + Ruff checks
-2. **python-tests**: 165 pytest tests + coverage reporting (12 skipped)
+2. **python-tests**: 138 pytest tests + coverage reporting (12 skipped)
 3. **smoke-tests**: Extension build + SDK validation
 4. **commit-signatures**: GPG signature verification
 
@@ -908,18 +909,21 @@ schematic sql
 ```
 
 **Current Test Status**:
-- ✅ 165 pytest tests passing (34 new tests added in v0.2.0)
+- ✅ 138 pytest tests passing
 - ⏭️ 12 tests skipped (features in development - see issues #19, #20)
 - ✅ SQLGlot validation integrated
 - ✅ Code coverage reporting enabled
 - ✅ OperationBuilder pattern for test utilities
 - ✅ Test coverage: v4 storage, catalog mapping, auth, executor, deployment tracking
 
-**New Test Files (v0.2.0)**:
-- `test_storage_v4.py` - V4 storage with multi-environment support
-- `test_catalog_mapping.py` - Logical → Physical catalog name mapping
-- `test_unity_executor.py` - Databricks SQL executor & authentication
-- `test_deployment_tracker.py` - Deployment tracking
+**V4 Test Files**:
+- `test_storage_v4.py` - V4 storage with multi-environment support (19 tests)
+- `test_catalog_mapping.py` - Logical → Physical catalog name mapping (8 tests)
+- `test_unity_executor.py` - Databricks SQL executor & authentication (6 tests)
+- `test_deployment_tracker.py` - Deployment tracking (1 test)
+- `test_workflows.py` - Integration tests for complete workflows (8 tests)
+
+**Note**: V3 storage tests removed as v3 is deprecated in favor of v4.
 
 **See**: `TESTING.md` for comprehensive testing guide
 
@@ -1020,10 +1024,11 @@ When starting a new conversation about this project:
 14. **Documentation**: Clean structure, no redundant files
 15. **Testing**: 
     - **Before committing**: Run `./devops/run-checks.sh` (includes all checks)
-    - **Python tests**: `pytest tests/ -v` (165 passing, 12 skipped)
+    - **Python tests**: `pytest tests/ -v` (138 passing, 12 skipped)
     - **Smoke test**: `./scripts/smoke-test.sh`
     - **SQLGlot validation**: Integrated in pytest tests
-    - **New test files**: v4 storage, catalog mapping, auth, executor, deployment tracker
+    - **V4 test coverage**: storage_v4, catalog_mapping, unity_executor, deployment_tracker, integration workflows
+    - **Note**: V3 storage tests removed (deprecated)
 16. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
 17. **Project Schema**: V4 with environment-specific catalog configurations (breaking change from v3)
 18. **CLI Commands**: `apply`, `sql`, `validate`, `record-deployment`, `diff` (stub)

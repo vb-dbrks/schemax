@@ -7,7 +7,7 @@ Breaking change from v3: environments are now rich objects instead of simple arr
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -141,7 +141,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         initial_ops.append(
             {
                 "id": "op_init_catalog",
-                "ts": datetime.utcnow().isoformat() + "Z",
+                "ts": datetime.now(UTC).isoformat(),
                 "provider": provider_id,
                 "op": f"{provider_id}.add_catalog",
                 "target": catalog_id,
@@ -154,7 +154,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         "version": 1,
         "sinceSnapshot": None,
         "ops": initial_ops,
-        "lastModified": datetime.utcnow().isoformat() + "Z",
+        "lastModified": datetime.now(UTC).isoformat(),
     }
 
     ensure_schematic_dir(workspace_path)
@@ -234,7 +234,7 @@ def read_changelog(workspace_path: Path) -> Dict[str, Any]:
             "version": 1,
             "sinceSnapshot": None,
             "ops": [],
-            "lastModified": datetime.utcnow().isoformat() + "Z",
+            "lastModified": datetime.now(UTC).isoformat(),
         }
 
         with open(changelog_path, "w") as f:
@@ -246,7 +246,7 @@ def read_changelog(workspace_path: Path) -> Dict[str, Any]:
 def write_changelog(workspace_path: Path, changelog: Dict[str, Any]) -> None:
     """Write changelog file"""
     changelog_path = get_changelog_file_path(workspace_path)
-    changelog["lastModified"] = datetime.utcnow().isoformat() + "Z"
+    changelog["lastModified"] = datetime.now(UTC).isoformat()
 
     with open(changelog_path, "w") as f:
         json.dump(changelog, f, indent=2)
@@ -385,7 +385,7 @@ def create_snapshot(
         "id": f"snap_{uuid4()}",
         "version": snapshot_version,
         "name": name,
-        "ts": datetime.utcnow().isoformat() + "Z",
+        "ts": datetime.now(UTC).isoformat(),
         "createdBy": os.environ.get("USER") or os.environ.get("USERNAME") or "unknown",
         "state": state,
         "opsIncluded": [op["id"] for op in ops_with_ids],
@@ -423,7 +423,7 @@ def create_snapshot(
         "version": 1,
         "sinceSnapshot": snapshot_version,
         "ops": [],
-        "lastModified": datetime.utcnow().isoformat() + "Z",
+        "lastModified": datetime.now(UTC).isoformat(),
     }
     write_changelog(workspace_path, new_changelog)
 

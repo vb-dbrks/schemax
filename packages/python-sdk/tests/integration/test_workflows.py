@@ -11,7 +11,7 @@ Tests end-to-end workflows including:
 import pytest
 
 from schematic.providers.base.operations import Operation
-from schematic.storage_v3 import (
+from schematic.storage_v4 import (
     append_ops,
     create_snapshot,
     ensure_project_file,
@@ -41,7 +41,7 @@ class TestBasicWorkflow:
 
         # Verify initialization
         project = read_project(temp_workspace)
-        assert project["version"] == 3
+        assert project["version"] == 4
         assert project["provider"]["type"] == "unity"
 
         # Step 2: Add operations
@@ -115,7 +115,8 @@ class TestSnapshotWorkflow:
         snapshot_data = read_snapshot(initialized_workspace, "v0.1.0")
         assert snapshot_data["version"] == "v0.1.0"
         assert "state" in snapshot_data
-        assert len(snapshot_data["opsIncluded"]) == len(sample_operations)
+        # V4 auto-creates implicit catalog, so opsIncluded = sample_operations + 1
+        assert len(snapshot_data["opsIncluded"]) == len(sample_operations) + 1
 
     def test_multiple_snapshots_workflow(self, initialized_workspace, sample_operations):
         """Test creating multiple snapshots with auto-incrementing versions"""
@@ -167,8 +168,11 @@ class TestSnapshotWorkflow:
         state, changelog, provider = load_current_state(initialized_workspace)
 
         # Verify state includes operations from snapshot
-        assert len(state["catalogs"]) == 1
-        assert len(state["catalogs"][0]["schemas"]) == 1
+        # V4 has implicit catalog + user-defined catalog = 2
+        assert len(state["catalogs"]) == 2
+        # User-defined catalog is the second one (index 1)
+        user_catalog = next(c for c in state["catalogs"] if c["name"] == "bronze")
+        assert len(user_catalog["schemas"]) == 1
 
         # Verify changelog only has new operations
         assert len(changelog["ops"]) == 1
@@ -342,7 +346,9 @@ class TestCompleteSchemaWorkflow:
         # Load and verify final state
         state, changelog, provider = load_current_state(initialized_workspace)
 
-        table = state["catalogs"][0]["schemas"][0]["tables"][0]
+        # Find user-defined catalog (not the implicit one)
+        user_catalog = next(c for c in state["catalogs"] if c["name"] == "test")
+        table = user_catalog["schemas"][0]["tables"][0]
         assert len(table["columns"]) == 2
 
         # Verify column was renamed
@@ -415,8 +421,9 @@ class TestErrorRecovery:
         append_ops(initialized_workspace, sample_operations)
 
         # Verify operations are in changelog
+        # V4 auto-creates implicit catalog, so total ops = sample_operations + 1
         ops_count = get_uncommitted_ops_count(initialized_workspace)
-        assert ops_count == len(sample_operations)
+        assert ops_count == len(sample_operations) + 1
 
         # Even if snapshot creation fails, operations should still be in changelog
         # This is implicit - they're not deleted until snapshot succeeds
@@ -426,8 +433,11 @@ class TestErrorRecovery:
         # Load state from empty project
         state, changelog, provider = load_current_state(initialized_workspace)
 
-        assert state["catalogs"] == []
-        assert len(changelog["ops"]) == 0
+        # V4 auto-creates implicit catalog
+        assert len(state["catalogs"]) == 1
+        assert state["catalogs"][0]["name"] == "__implicit__"
+        # Changelog has the implicit catalog operation
+        assert len(changelog["ops"]) == 1
 
         # Generate SQL from empty state
         generator = provider.get_sql_generator(state)
