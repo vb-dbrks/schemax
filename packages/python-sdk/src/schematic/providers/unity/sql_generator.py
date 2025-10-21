@@ -16,22 +16,30 @@ from .operations import UNITY_OPERATIONS
 class UnitySQLGenerator(BaseSQLGenerator):
     """Unity Catalog SQL Generator"""
 
-    def __init__(self, state: UnityState):
+    def __init__(self, state: UnityState, catalog_name_mapping: Dict[str, str] = None):
         super().__init__(state)
+        self.catalog_name_mapping = catalog_name_mapping or {}  # logical → physical
         self.id_name_map = self._build_id_name_map()
 
     def _build_id_name_map(self) -> Dict[str, str]:
-        """Build a mapping from IDs to fully-qualified names"""
+        """
+        Build a mapping from IDs to fully-qualified names.
+
+        Uses catalog_name_mapping to replace logical catalog names with physical names
+        when generating environment-specific SQL.
+        """
         id_map = {}
 
         for catalog in self.state["catalogs"]:
-            id_map[catalog["id"]] = catalog["name"]
+            # Apply catalog name mapping if present (for environment-specific SQL)
+            catalog_name = self.catalog_name_mapping.get(catalog["name"], catalog["name"])
+            id_map[catalog["id"]] = catalog_name
 
             for schema in catalog.get("schemas", []):
-                id_map[schema["id"]] = f"{catalog['name']}.{schema['name']}"
+                id_map[schema["id"]] = f"{catalog_name}.{schema['name']}"
 
                 for table in schema.get("tables", []):
-                    table_fqn = f"{catalog['name']}.{schema['name']}.{table['name']}"
+                    table_fqn = f"{catalog_name}.{schema['name']}.{table['name']}"
                     id_map[table["id"]] = table_fqn
 
                     for column in table.get("columns", []):
@@ -61,21 +69,44 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """Check if operation can be converted to SQL"""
         return op.op in UNITY_OPERATIONS.values()
 
+    def _get_operation_level(self, op_type: str) -> int:
+        """
+        Get dependency level for operation type (for ordering)
+        0 = catalog, 1 = schema, 2 = table, 3 = table modifications
+        """
+        if "catalog" in op_type:
+            return 0
+        if "schema" in op_type:
+            return 1
+        if "add_table" in op_type:
+            return 2
+        return 3  # All other table operations (columns, properties, etc.)
+
     def generate_sql(self, ops: List[Operation]) -> str:
         """
         Generate SQL statements with comprehensive batch optimizations.
 
         Optimizations include:
+        - Dependency-ordered operations (catalog → schema → table)
         - Complete CREATE TABLE statements (no empty tables + ALTERs)
         - Batched column reordering (minimal ALTER statements)
         - Table property consolidation
         """
+        # Sort operations by dependency level first
+        sorted_ops = sorted(ops, key=lambda op: self._get_operation_level(op.op))
+
         # Pre-process: batch operations by table and type
-        table_batches = self._batch_table_operations(ops)
+        table_batches = self._batch_table_operations(sorted_ops)
         processed_op_ids = set()
         statements = []
 
-        # Generate SQL for batched table operations
+        # Separate operations by level
+        catalog_ops = []
+        schema_ops = []
+        table_stmts = []
+        other_ops = []
+
+        # Process batched table operations
         for table_id, batch_info in table_batches.items():
             op_ids = batch_info["op_ids"]
 
@@ -96,10 +127,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     f"-- Types: {', '.join(sorted(operation_types))}\n"
                     f"-- Operations: {', '.join(op_ids)}"
                 )
-                statements.append(f"{header}\n{table_sql};")
+                table_stmts.append(f"{header}\n{table_sql};")
 
-        # Process remaining operations normally (catalogs, schemas, etc.)
-        for op in ops:
+        # Categorize remaining operations
+        for op in sorted_ops:
             if op.id in processed_op_ids:
                 continue  # Skip already processed table operations
 
@@ -107,16 +138,41 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 print(f"Warning: Cannot generate SQL for operation: {op.op}")
                 continue
 
+            level = self._get_operation_level(op.op)
+            if level == 0:
+                catalog_ops.append(op)
+            elif level == 1:
+                schema_ops.append(op)
+            else:
+                other_ops.append(op)
+
+        # Generate SQL in dependency order: catalogs → schemas → tables → others
+        for op in catalog_ops:
             result = self.generate_sql_for_operation(op)
-
-            # Add header comment with operation metadata
             header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
-
-            # Add warnings if any
             warnings_comment = ""
             if result.warnings:
                 warnings_comment = f"\n-- Warnings: {', '.join(result.warnings)}"
+            statements.append(f"{header}{warnings_comment}\n{result.sql};")
 
+        for op in schema_ops:
+            result = self.generate_sql_for_operation(op)
+            header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
+            warnings_comment = ""
+            if result.warnings:
+                warnings_comment = f"\n-- Warnings: {', '.join(result.warnings)}"
+            statements.append(f"{header}{warnings_comment}\n{result.sql};")
+
+        # Add table operations
+        statements.extend(table_stmts)
+
+        # Add other operations
+        for op in other_ops:
+            result = self.generate_sql_for_operation(op)
+            header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
+            warnings_comment = ""
+            if result.warnings:
+                warnings_comment = f"\n-- Warnings: {', '.join(result.warnings)}"
             statements.append(f"{header}{warnings_comment}\n{result.sql};")
 
         return "\n\n".join(statements)
@@ -216,7 +272,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     # Catalog operations
     def _add_catalog(self, op: Operation) -> str:
-        name = op.payload["name"]
+        # Use mapped name from id_name_map (handles __implicit__ → physical catalog)
+        name = self.id_name_map.get(op.target, op.payload["name"])
         return f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
 
     def _rename_catalog(self, op: Operation) -> str:

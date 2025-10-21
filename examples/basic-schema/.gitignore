@@ -1,0 +1,8 @@
+# Generated SQL migrations (optional - you may want to commit these)
+*.sql
+
+# Temporary files
+*.tmp
+*.bak
+*~
+

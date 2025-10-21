@@ -8,18 +8,24 @@ from typing import Optional
 
 import click
 from rich.console import Console
-from rich.syntax import Syntax
 
 # Import providers to initialize them
 import schematic.providers  # noqa: F401
 
-from .providers import ProviderRegistry
-from .storage_v3 import (
-    ensure_project_file,
-    load_current_state,
-    read_project,
-    write_deployment,
+from .commands import (
+    ApplyError,
+    DeploymentRecordingError,
+    SQLGenerationError,
+    apply_to_environment,
+    generate_sql_migration,
+    record_deployment_to_environment,
+    validate_project,
 )
+from .commands import (
+    ValidationError as CommandValidationError,
+)
+from .providers import ProviderRegistry
+from .storage_v4 import ensure_project_file
 
 console = Console()
 
@@ -86,62 +92,36 @@ def init(provider: str, workspace: str) -> None:
     help="Generate SQL to this version",
 )
 @click.option(
-    "--environment",
-    "-e",
-    help="Target environment (generates incremental SQL based on last deployment)",
+    "--target",
+    "-t",
+    help="Target environment (maps logical catalog names to physical catalog names)",
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def sql(
     output: Optional[str],
     from_version: Optional[str],
     to_version: Optional[str],
-    environment: Optional[str],
+    target: Optional[str],
     workspace: str,
 ) -> None:
     """Generate SQL migration script from schema changes"""
-
     try:
         workspace_path = Path(workspace).resolve()
+        output_path = Path(output).resolve() if output else None
 
-        # Load current state, changelog, and provider
-        state, changelog, provider = load_current_state(workspace_path)
+        generate_sql_migration(
+            workspace=workspace_path,
+            output=output_path,
+            from_version=from_version,
+            to_version=to_version,
+            target_env=target,
+        )
 
-        console.print(f"[blue]Provider:[/blue] {provider.info.name}")
-        console.print(f"[blue]Operations:[/blue] {len(changelog['ops'])}")
-
-        # TODO: Handle version ranges and environment-based incremental SQL
-        # For now, generate SQL for all changelog ops
-        ops_to_process = changelog["ops"]
-
-        if not ops_to_process:
-            console.print("[yellow]No operations to generate SQL for[/yellow]")
-            return
-
-        # Convert to Operation objects
-        from .providers.base.operations import Operation
-
-        operations = [Operation(**op) for op in ops_to_process]
-
-        # Generate SQL using provider's SQL generator
-        generator = provider.get_sql_generator(state)
-        sql_output = generator.generate_sql(operations)
-
-        if output:
-            # Write to file
-            output_path = Path(output)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(sql_output)
-            console.print(f"[green]✓[/green] SQL written to {output}")
-        else:
-            # Print to stdout with syntax highlighting
-            syntax = Syntax(sql_output, "sql", theme="monokai", line_numbers=False)
-            console.print(syntax)
-
-    except FileNotFoundError as e:
-        console.print(f"[red]✗ Error:[/red] {e}", err=True)
+    except SQLGenerationError as e:
+        console.print(f"[red]✗ SQL generation failed:[/red] {e}")
         sys.exit(1)
     except Exception as e:
-        console.print(f"[red]✗ Error:[/red] {e}", err=True)
+        console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
 
 
@@ -149,50 +129,15 @@ def sql(
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def validate(workspace: str) -> None:
     """Validate .schematic/ project files"""
-
     try:
         workspace_path = Path(workspace).resolve()
+        validate_project(workspace_path)
 
-        # Try to load project and changelog
-        console.print("Validating project files...")
-        project = read_project(workspace_path)
-        console.print(f"  [green]✓[/green] project.json (version {project['version']})")
-
-        state, changelog, provider = load_current_state(workspace_path)
-        console.print(f"  [green]✓[/green] changelog.json ({len(changelog['ops'])} operations)")
-
-        # Validate state using provider
-        validation = provider.validate_state(state)
-        if not validation.valid:
-            console.print("[red]✗ State validation failed:[/red]")
-            for error in validation.errors:
-                console.print(f"  - {error.field}: {error.message}")
-            sys.exit(1)
-
-        console.print("  [green]✓[/green] State structure valid")
-
-        # Display summary
-        console.print(f"\n[bold]Project:[/bold] {project['name']}")
-        console.print(f"[bold]Provider:[/bold] {provider.info.name} v{provider.info.version}")
-        console.print(f"[bold]Uncommitted Ops:[/bold] {len(changelog['ops'])}")
-
-        # Provider-specific stats (works for Unity Catalog)
-        if "catalogs" in state:
-            console.print(f"[bold]Catalogs:[/bold] {len(state['catalogs'])}")
-            total_schemas = sum(len(c.get("schemas", [])) for c in state["catalogs"])
-            console.print(f"[bold]Schemas:[/bold] {total_schemas}")
-            total_tables = sum(
-                len(s.get("tables", [])) for c in state["catalogs"] for s in c.get("schemas", [])
-            )
-            console.print(f"[bold]Tables:[/bold] {total_tables}")
-
-        console.print("\n[green]✓ Schema files are valid[/green]")
-
-    except FileNotFoundError as e:
-        console.print(f"[red]✗ Error:[/red] {e}", err=True)
+    except CommandValidationError as e:
+        console.print(f"[red]✗ Validation failed:[/red] {e}")
         sys.exit(1)
     except Exception as e:
-        console.print(f"[red]✗ Validation failed:[/red] {e}", err=True)
+        console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
 
 
@@ -207,7 +152,7 @@ def diff(version1: str, version2: str) -> None:
     # TODO: Implement version comparison
 
 
-@cli.command()
+@cli.command(name="record-deployment")
 @click.option(
     "--environment",
     "-e",
@@ -224,70 +169,58 @@ def diff(version1: str, version2: str) -> None:
     is_flag=True,
     help="Mark the deployment as successful",
 )
-def deploy(environment: str, version: Optional[str], mark_deployed: bool) -> None:
-    """Track deployment to an environment"""
+def record_deployment(environment: str, version: Optional[str], mark_deployed: bool) -> None:
+    """Record a deployment to an environment (manual tracking)
 
+    This command manually tracks a deployment record in project.json.
+    For automated deployment with execution, use 'schematic apply' instead.
+    """
     try:
-        workspace = Path.cwd()
+        workspace_path = Path.cwd()
 
-        from datetime import datetime
-        from uuid import uuid4
+        record_deployment_to_environment(
+            workspace=workspace_path,
+            environment=environment,
+            version=version,
+            mark_deployed=mark_deployed,
+        )
 
-        console.print(f"Recording deployment to [cyan]{environment}[/cyan]...")
-
-        # Load project and changelog
-        state, changelog_data, provider = load_current_state(workspace)
-        project = read_project(workspace)
-
-        # Determine version to deploy
-        if not version:
-            if project.get("latestSnapshot"):
-                version = project["latestSnapshot"]
-                console.print(f"Using latest snapshot: [cyan]{version}[/cyan]")
-            else:
-                version = "changelog"
-                console.print("Using [cyan]changelog[/cyan] (no snapshots yet)")
-
-        # Get operations that were applied
-        if version == "changelog":
-            ops_applied = [
-                op.get("id", f"op_{i}") for i, op in enumerate(changelog_data.get("ops", []))
-            ]
-            snapshot_id = None
-        else:
-            # For snapshot deployments, we'd need to track ops since last deployment
-            # For now, mark as snapshot-based deployment
-            ops_applied = []
-            snapshot_id = version
-
-        # Create deployment record
-        deployment = {
-            "id": f"deploy_{uuid4().hex[:8]}",
-            "environment": environment,
-            "ts": datetime.utcnow().isoformat() + "Z",
-            "deployedBy": "cli",
-            "snapshotId": snapshot_id,
-            "opsApplied": ops_applied,
-            "schemaVersion": version,
-            "status": "success" if mark_deployed else "pending",
-        }
-
-        # Write deployment
-        write_deployment(workspace, deployment)
-
-        console.print("[green]✓[/green] Deployment recorded")
-        console.print(f"  Deployment ID: {deployment['id']}")
-        console.print(f"  Environment: {deployment['environment']}")
-        console.print(f"  Version: {deployment['schemaVersion']}")
-        console.print(f"  Operations: {len(deployment['opsApplied'])}")
-        console.print(f"  Status: {deployment['status']}")
-
-    except FileNotFoundError as e:
-        console.print(f"[red]✗ Error:[/red] {e}", err=True)
+    except DeploymentRecordingError as e:
+        console.print(f"[red]✗ Deployment recording failed:[/red] {e}")
         sys.exit(1)
     except Exception as e:
-        console.print(f"[red]✗ Error:[/red] {e}", err=True)
+        console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
+
+
+@cli.command(name="deploy", hidden=True)
+@click.option(
+    "--environment",
+    "-e",
+    required=True,
+    help="Environment name (dev/test/prod)",
+)
+@click.option(
+    "--version",
+    "-v",
+    help="Version to deploy (default: latest snapshot or 'changelog')",
+)
+@click.option(
+    "--mark-deployed",
+    is_flag=True,
+    help="Mark the deployment as successful",
+)
+def deploy_alias(environment: str, version: Optional[str], mark_deployed: bool) -> None:
+    """[DEPRECATED] Use 'record-deployment' instead
+
+    This command is deprecated. Use 'schematic record-deployment' for manual
+    deployment tracking, or 'schematic apply' for automated deployment with execution.
+    """
+    console.print(
+        "[yellow]⚠️  'deploy' is deprecated. Use 'record-deployment' for manual tracking "
+        "or 'apply' for automated deployment.[/yellow]\n"
+    )
+    record_deployment(environment, version, mark_deployed)
 
 
 @cli.command()
@@ -325,7 +258,72 @@ def bundle(environment: str, version: str, output: str) -> None:
         console.print("[yellow]DAB generation not yet implemented[/yellow]")
 
     except Exception as e:
-        console.print(f"[red]✗ Error:[/red] {e}", err=True)
+        console.print(f"[red]✗ Error:[/red] {e}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--target", "-t", required=True, help="Target environment (dev/test/prod)")
+@click.option("--profile", "-p", required=True, help="Databricks profile name")
+@click.option("--warehouse-id", "-w", required=True, help="SQL warehouse ID")
+@click.option("--sql", type=click.Path(exists=True), help="SQL file to execute (optional)")
+@click.option("--dry-run", is_flag=True, help="Preview changes without executing")
+@click.option("--no-interaction", is_flag=True, help="Skip confirmation prompt (for CI/CD)")
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def apply(
+    target: str,
+    profile: str,
+    warehouse_id: str,
+    sql: Optional[str],
+    dry_run: bool,
+    no_interaction: bool,
+    workspace: str,
+) -> None:
+    """Execute SQL against target environment
+
+    Applies schema changes to the target environment by executing SQL statements.
+    Shows a Terraform-like preview before execution and tracks deployment in the
+    target catalog's schematic schema.
+
+    Examples:
+
+        # Preview changes (dry-run)
+        schematic apply --target dev --profile DEV --warehouse-id abc123 --dry-run
+
+        # Apply to dev environment
+        schematic apply --target dev --profile DEV --warehouse-id abc123
+
+        # Apply specific SQL file
+        schematic apply --target prod --profile PROD --warehouse-id xyz789 --sql migration.sql
+
+        # CI/CD mode (non-interactive)
+        schematic apply --target dev --profile DEV --warehouse-id $WAREHOUSE_ID --no-interaction
+    """
+    try:
+        workspace_path = Path(workspace).resolve()
+        sql_file = Path(sql).resolve() if sql else None
+
+        result = apply_to_environment(
+            workspace=workspace_path,
+            target_env=target,
+            profile=profile,
+            warehouse_id=warehouse_id,
+            dry_run=dry_run,
+            no_interaction=no_interaction,
+            sql_file=sql_file,
+        )
+
+        # Exit with appropriate code
+        if result.status == "success":
+            sys.exit(0)
+        else:
+            sys.exit(1)
+
+    except ApplyError as e:
+        console.print(f"[red]✗ Apply failed:[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
 
 

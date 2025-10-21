@@ -1,40 +1,43 @@
 {
-  "version": 3,
+  "version": 4,
   "name": "basic_schema_example",
   "provider": {
     "type": "unity",
-    "version": "1.0.0"
-  },
-  "environments": [
-    "dev",
-    "test",
-    "prod"
-  ],
-  "snapshots": [
-    {
-      "id": "snap_001",
-      "version": "v0.1.0",
-      "name": "Initial schema",
-      "ts": "2025-01-01T00:00:00.000Z",
-      "createdBy": "example",
-      "file": ".schematic/snapshots/v0.1.0.json",
-      "previousSnapshot": null,
-      "opsCount": 5,
-      "hash": "abc123",
-      "tags": [
-        "initial"
-      ],
-      "comment": "First version of the schema with basic catalog and tables"
+    "version": "1.0.0",
+    "environments": {
+      "dev": {
+        "catalog": "dev_example",
+        "description": "Development environment",
+        "allowDrift": true,
+        "requireSnapshot": false,
+        "autoCreateCatalog": true,
+        "autoCreateSchematicSchema": true
+      },
+      "test": {
+        "catalog": "test_example",
+        "description": "Test/staging environment",
+        "allowDrift": false,
+        "requireSnapshot": true,
+        "autoCreateCatalog": true,
+        "autoCreateSchematicSchema": true
+      },
+      "prod": {
+        "catalog": "prod_example",
+        "description": "Production environment",
+        "allowDrift": false,
+        "requireSnapshot": true,
+        "requireApproval": false,
+        "autoCreateCatalog": false,
+        "autoCreateSchematicSchema": true
+      }
     }
-  ],
+  },
+  "snapshots": [],
   "deployments": [],
   "settings": {
     "autoIncrementVersion": true,
     "versionPrefix": "v",
-    "requireSnapshotForProd": true,
-    "allowDrift": false,
-    "requireComments": false,
-    "warnOnBreakingChanges": true
+    "catalogMode": "single"
   },
-  "latestSnapshot": "v0.1.0"
+  "latestSnapshot": null
 }

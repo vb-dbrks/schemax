@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -37,22 +37,48 @@ def schematic_dir(temp_workspace):
 
 
 @pytest.fixture
-def sample_project_v3():
-    """Sample v3 project structure"""
+def sample_project_v4():
+    """Sample v4 project structure"""
     return {
-        "version": 3,
+        "version": 4,
         "name": "test_project",
-        "provider": {"type": "unity", "version": "1.0.0"},
-        "environments": ["dev", "test", "prod"],
+        "provider": {
+            "type": "unity",
+            "version": "1.0.0",
+            "environments": {
+                "dev": {
+                    "catalog": "dev_test_project",
+                    "description": "Development environment",
+                    "allowDrift": True,
+                    "requireSnapshot": False,
+                    "autoCreateCatalog": True,
+                    "autoCreateSchematicSchema": True,
+                },
+                "test": {
+                    "catalog": "test_test_project",
+                    "description": "Test environment",
+                    "allowDrift": False,
+                    "requireSnapshot": True,
+                    "autoCreateCatalog": True,
+                    "autoCreateSchematicSchema": True,
+                },
+                "prod": {
+                    "catalog": "prod_test_project",
+                    "description": "Production environment",
+                    "allowDrift": False,
+                    "requireSnapshot": True,
+                    "requireApproval": False,
+                    "autoCreateCatalog": False,
+                    "autoCreateSchematicSchema": True,
+                },
+            },
+        },
         "snapshots": [],
         "deployments": [],
         "settings": {
             "autoIncrementVersion": True,
             "versionPrefix": "v",
-            "requireSnapshotForProd": True,
-            "allowDrift": False,
-            "requireComments": False,
-            "warnOnBreakingChanges": True,
+            "catalogMode": "single",
         },
         "latestSnapshot": None,
     }
@@ -65,7 +91,7 @@ def sample_changelog():
         "version": 1,
         "sinceSnapshot": None,
         "ops": [],
-        "lastModified": datetime.utcnow().isoformat() + "Z",
+        "lastModified": datetime.now(UTC).isoformat(),
     }
 
 
@@ -154,8 +180,8 @@ def empty_unity_state():
 
 @pytest.fixture
 def initialized_workspace(temp_workspace):
-    """Workspace with initialized .schematic project"""
-    from schematic.storage_v3 import ensure_project_file
+    """Workspace with initialized .schematic project (v4)"""
+    from schematic.storage_v4 import ensure_project_file
 
     ensure_project_file(temp_workspace, provider_id="unity")
     return temp_workspace
@@ -164,7 +190,7 @@ def initialized_workspace(temp_workspace):
 @pytest.fixture
 def workspace_with_operations(initialized_workspace, sample_operations):
     """Workspace with operations in changelog"""
-    from schematic.storage_v3 import append_ops
+    from schematic.storage_v4 import append_ops
 
     append_ops(initialized_workspace, sample_operations)
     return initialized_workspace

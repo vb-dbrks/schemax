@@ -12,26 +12,33 @@ import { UNITY_OPERATIONS } from './operations';
 
 export class UnitySQLGenerator extends BaseSQLGenerator {
   private idNameMap: Record<string, string> = {};
+  private catalogNameMapping: Record<string, string> = {}; // logical → physical
   
-  constructor(protected state: UnityState) {
+  constructor(protected state: UnityState, catalogNameMapping?: Record<string, string>) {
     super(state);
+    this.catalogNameMapping = catalogNameMapping || {};
     this.idNameMap = this.buildIdNameMap();
   }
   
   /**
    * Build a mapping from IDs to fully-qualified names
+   * 
+   * Uses catalogNameMapping to replace logical catalog names with physical names
+   * when generating environment-specific SQL.
    */
   private buildIdNameMap(): Record<string, string> {
     const map: Record<string, string> = {};
     
     for (const catalog of this.state.catalogs) {
-      map[catalog.id] = catalog.name;
+      // Apply catalog name mapping if present (for environment-specific SQL)
+      const catalogName = this.catalogNameMapping[catalog.name] || catalog.name;
+      map[catalog.id] = catalogName;
       
       for (const schema of catalog.schemas) {
-        map[schema.id] = `${catalog.name}.${schema.name}`;
+        map[schema.id] = `${catalogName}.${schema.name}`;
         
         for (const table of schema.tables) {
-          map[table.id] = `${catalog.name}.${schema.name}.${table.name}`;
+          map[table.id] = `${catalogName}.${schema.name}.${table.name}`;
           
           for (const column of table.columns) {
             map[column.id] = column.name;
@@ -67,20 +74,45 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
 
   /**
+   * Get dependency level for operation type (for ordering)
+   * 0 = catalog, 1 = schema, 2 = table, 3 = table modifications
+   */
+  private getOperationLevel(opType: string): number {
+    if (opType.includes('catalog')) return 0;
+    if (opType.includes('schema')) return 1;
+    if (opType.includes('add_table')) return 2;
+    return 3; // All other table operations (columns, properties, etc.)
+  }
+
+  /**
    * Generate SQL statements with comprehensive batch optimizations.
    * 
    * Optimizations include:
+   * - Dependency-ordered operations (catalog → schema → table)
    * - Complete CREATE TABLE statements (no empty tables + ALTERs)
    * - Batched column reordering (minimal ALTER statements)
    * - Table property consolidation
    */
   generateSQL(ops: Operation[]): string {
+    // Sort operations by dependency level first
+    const sortedOps = [...ops].sort((a, b) => {
+      const levelA = this.getOperationLevel(a.op);
+      const levelB = this.getOperationLevel(b.op);
+      return levelA - levelB;
+    });
+
     // Pre-process: batch operations by table and type
-    const tableBatches = this.batchTableOperations(ops);
+    const tableBatches = this.batchTableOperations(sortedOps);
     const processedOpIds = new Set<string>();
     const statements: string[] = [];
 
-    // Generate SQL for batched table operations
+    // Separate operations by level
+    const catalogOps: Operation[] = [];
+    const schemaOps: Operation[] = [];
+    const tableOps: string[] = [];
+    const otherOps: Operation[] = [];
+
+    // Process batched table operations
     for (const [tableId, batchInfo] of Object.entries(tableBatches)) {
       const { opIds, operationTypes } = batchInfo;
       
@@ -94,12 +126,12 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         // Add batch header comment
         const uniqueTypes = [...new Set(operationTypes.map(op => op.replace('unity.', '')))];
         const header = `-- Batch Table Operations: ${opIds.length} operations\n-- Table: ${tableId}\n-- Types: ${uniqueTypes.sort().join(', ')}\n-- Operations: ${opIds.join(', ')}`;
-        statements.push(`${header}\n${tableSql};`);
+        tableOps.push(`${header}\n${tableSql};`);
       }
     }
 
-    // Process remaining operations normally (catalogs, schemas, etc.)
-    for (const op of ops) {
+    // Categorize remaining operations
+    for (const op of sortedOps) {
       if (processedOpIds.has(op.id)) {
         continue; // Skip already processed table operations
       }
@@ -108,17 +140,46 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         console.warn(`Cannot generate SQL for operation: ${op.op}`);
         continue;
       }
-      
+
+      const level = this.getOperationLevel(op.op);
+      if (level === 0) {
+        catalogOps.push(op);
+      } else if (level === 1) {
+        schemaOps.push(op);
+      } else {
+        otherOps.push(op);
+      }
+    }
+
+    // Generate SQL in dependency order: catalogs → schemas → tables → others
+    for (const op of catalogOps) {
       const result = this.generateSQLForOperation(op);
-      
-      // Add header comment with operation metadata
       const header = `-- Operation: ${op.id} (${op.ts})\n-- Type: ${op.op}`;
-      
-      // Add warnings if any
       const warningsComment = result.warnings.length > 0
         ? `\n-- Warnings: ${result.warnings.join(', ')}`
         : '';
-      
+      statements.push(`${header}${warningsComment}\n${result.sql};`);
+    }
+
+    for (const op of schemaOps) {
+      const result = this.generateSQLForOperation(op);
+      const header = `-- Operation: ${op.id} (${op.ts})\n-- Type: ${op.op}`;
+      const warningsComment = result.warnings.length > 0
+        ? `\n-- Warnings: ${result.warnings.join(', ')}`
+        : '';
+      statements.push(`${header}${warningsComment}\n${result.sql};`);
+    }
+
+    // Add table operations
+    statements.push(...tableOps);
+
+    // Add other operations
+    for (const op of otherOps) {
+      const result = this.generateSQLForOperation(op);
+      const header = `-- Operation: ${op.id} (${op.ts})\n-- Type: ${op.op}`;
+      const warningsComment = result.warnings.length > 0
+        ? `\n-- Warnings: ${result.warnings.join(', ')}`
+        : '';
       statements.push(`${header}${warningsComment}\n${result.sql};`);
     }
     
@@ -147,7 +208,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   
   // Catalog operations
   private addCatalog(op: Operation): string {
-    const name = op.payload.name;
+    // Use mapped name from idNameMap (handles __implicit__ → physical catalog)
+    const name = this.idNameMap[op.target] || op.payload.name;
     return `CREATE CATALOG IF NOT EXISTS ${this.escapeIdentifier(name)}`;
   }
   
@@ -753,6 +815,34 @@ ${columnsSql}
    */
   private generateSQLForOpType(opType: string, op: Operation): string {
     switch (opType) {
+      // Catalog operations
+      case 'add_catalog':
+        return this.addCatalog(op);
+      case 'rename_catalog':
+        return this.renameCatalog(op);
+      case 'drop_catalog':
+        return this.dropCatalog(op);
+      
+      // Schema operations
+      case 'add_schema':
+        return this.addSchema(op);
+      case 'rename_schema':
+        return this.renameSchema(op);
+      case 'drop_schema':
+        return this.dropSchema(op);
+      
+      // Table operations
+      case 'add_table':
+        return this.addTable(op);
+      case 'rename_table':
+        return this.renameTable(op);
+      case 'drop_table':
+        return this.dropTable(op);
+      case 'set_table_comment':
+        return this.setTableComment(op);
+      case 'reorder_columns':
+        return this.reorderColumns(op);
+      
       // Column operations
       case 'add_column':
         return this.addColumn(op);
@@ -779,7 +869,28 @@ ${columnsSql}
       case 'unset_table_property':
         return this.unsetTableProperty(op);
       
-      // Other operations would be handled here...
+      // Constraint operations
+      case 'add_constraint':
+        return this.addConstraint(op);
+      case 'drop_constraint':
+        return this.dropConstraint(op);
+      
+      // Row filter operations
+      case 'add_row_filter':
+        return this.addRowFilter(op);
+      case 'update_row_filter':
+        return this.updateRowFilter(op);
+      case 'remove_row_filter':
+        return this.removeRowFilter(op);
+      
+      // Column mask operations
+      case 'add_column_mask':
+        return this.addColumnMask(op);
+      case 'update_column_mask':
+        return this.updateColumnMask(op);
+      case 'remove_column_mask':
+        return this.removeColumnMask(op);
+      
       default:
         return `-- Unsupported operation: ${opType}`;
     }

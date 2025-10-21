@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
+from .executor import ExecutionConfig, SQLExecutor
 from .hierarchy import Hierarchy
 from .models import ProviderState, ValidationResult
 from .operations import Operation, OperationMetadata
@@ -104,6 +105,36 @@ class Provider(ABC):
     @abstractmethod
     def validate_state(self, state: ProviderState) -> ValidationResult:
         """Validate the entire state structure"""
+        pass
+
+    @abstractmethod
+    def get_sql_executor(self, config: ExecutionConfig) -> SQLExecutor:
+        """Get SQL executor for this provider
+
+        Args:
+            config: Execution configuration (auth, warehouse, etc.)
+
+        Returns:
+            SQLExecutor instance for executing SQL statements
+
+        Raises:
+            NotImplementedError: If provider doesn't support SQL execution
+        """
+        pass
+
+    @abstractmethod
+    def validate_execution_config(self, config: ExecutionConfig) -> ValidationResult:
+        """Validate execution configuration
+
+        Validates authentication, warehouse/endpoint configuration, and
+        other provider-specific execution requirements.
+
+        Args:
+            config: Execution configuration to validate
+
+        Returns:
+            ValidationResult with any configuration errors
+        """
         pass
 
 
