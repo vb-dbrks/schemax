@@ -38,7 +38,8 @@ describe('Sidebar Component', () => {
   test('should render sidebar component', () => {
     const { container } = render(<Sidebar />);
     // Sidebar container should be present
-    expect(container.querySelector('.sidebar')).toBeInTheDocument();
+    const sidebarElement = container.querySelector('.sidebar');
+    expect(sidebarElement).not.toBeNull();
   });
 
   test('should render without crashing with empty state', () => {
