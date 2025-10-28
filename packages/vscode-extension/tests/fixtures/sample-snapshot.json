@@ -1,0 +1,29 @@
+{
+  "id": "snap_001",
+  "version": "v0.1.0",
+  "name": "Initial schema",
+  "ts": "2025-01-01T00:00:00.000Z",
+  "createdBy": "test@example.com",
+  "state": {
+    "catalogs": [
+      {
+        "id": "cat_001",
+        "name": "__implicit__",
+        "schemas": [
+          {
+            "id": "schema_001",
+            "name": "default",
+            "catalogId": "cat_001",
+            "tables": []
+          }
+        ]
+      }
+    ]
+  },
+  "opsIncluded": [],
+  "previousSnapshot": null,
+  "hash": "abc123def456",
+  "tags": ["initial"],
+  "comment": "Initial empty schema"
+}
+

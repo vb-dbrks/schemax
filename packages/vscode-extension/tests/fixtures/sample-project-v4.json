@@ -1,0 +1,48 @@
+{
+  "version": 4,
+  "name": "test-project",
+  "provider": {
+    "type": "unity",
+    "version": "1.0.0",
+    "environments": {
+      "dev": {
+        "catalog": "dev_catalog",
+        "description": "Development environment",
+        "allowDrift": true,
+        "requireSnapshot": false,
+        "autoCreateCatalog": true,
+        "autoCreateSchematicSchema": true
+      },
+      "prod": {
+        "catalog": "prod_catalog",
+        "description": "Production environment",
+        "allowDrift": false,
+        "requireSnapshot": true,
+        "requireApproval": true,
+        "autoCreateCatalog": false,
+        "autoCreateSchematicSchema": true
+      }
+    }
+  },
+  "snapshots": [
+    {
+      "id": "snap_001",
+      "version": "v0.1.0",
+      "name": "Initial schema",
+      "ts": "2025-01-01T00:00:00.000Z",
+      "createdBy": "test@example.com",
+      "opsIncluded": [],
+      "previousSnapshot": null,
+      "hash": "abc123",
+      "tags": ["initial"]
+    }
+  ],
+  "deployments": [],
+  "settings": {
+    "autoIncrementVersion": true,
+    "versionPrefix": "v",
+    "catalogMode": "single"
+  },
+  "latestSnapshot": "v0.1.0"
+}
+

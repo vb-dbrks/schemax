@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "sinceSnapshot": "v0.1.0",
+  "ops": [
+    {
+      "id": "op_add_catalog_001",
+      "ts": "2025-01-15T10:00:00.000Z",
+      "op": "add_catalog",
+      "target": {},
+      "payload": {
+        "catalogId": "cat_001",
+        "name": "test_catalog"
+      }
+    },
+    {
+      "id": "op_add_schema_001",
+      "ts": "2025-01-15T10:01:00.000Z",
+      "op": "add_schema",
+      "target": {
+        "catalogId": "cat_001"
+      },
+      "payload": {
+        "schemaId": "schema_001",
+        "name": "test_schema"
+      }
+    },
+    {
+      "id": "op_add_table_001",
+      "ts": "2025-01-15T10:02:00.000Z",
+      "op": "add_table",
+      "target": {
+        "schemaId": "schema_001"
+      },
+      "payload": {
+        "tableId": "table_001",
+        "name": "test_table",
+        "format": "delta"
+      }
+    },
+    {
+      "id": "op_add_column_001",
+      "ts": "2025-01-15T10:03:00.000Z",
+      "op": "add_column",
+      "target": {
+        "tableId": "table_001"
+      },
+      "payload": {
+        "colId": "col_001",
+        "name": "id",
+        "type": "BIGINT",
+        "nullable": false,
+        "comment": "Primary key"
+      }
+    },
+    {
+      "id": "op_add_column_002",
+      "ts": "2025-01-15T10:04:00.000Z",
+      "op": "add_column",
+      "target": {
+        "tableId": "table_001"
+      },
+      "payload": {
+        "colId": "col_002",
+        "name": "name",
+        "type": "STRING",
+        "nullable": true,
+        "comment": "User name"
+      }
+    }
+  ],
+  "lastModified": "2025-01-15T10:04:00.000Z"
+}
+
