@@ -39,13 +39,9 @@ def build_catalog_mapping(state: dict, env_config: dict) -> Dict[str, str]:
 
     if len(catalogs) == 1:
         logical_name = catalogs[0]["name"]
-        physical_name = env_config["catalog"]
+        physical_name = env_config["topLevelName"]
 
-        # Check if this is an implicit catalog (single-catalog mode)
-        if logical_name == "__implicit__":
-            console.print(f"[dim]  Implicit catalog mode: __implicit__ → {physical_name}[/dim]")
-        else:
-            console.print(f"[dim]  Catalog mapping: {logical_name} → {physical_name}[/dim]")
+        console.print(f"[dim]  Catalog mapping: {logical_name} → {physical_name}[/dim]")
 
         return {logical_name: physical_name}
 
@@ -95,7 +91,7 @@ def generate_sql_migration(
         if target_env:
             env_config = get_environment_config(project, target_env)
             console.print(f"[blue]Target Environment:[/blue] {target_env}")
-            console.print(f"[blue]Physical Catalog:[/blue] {env_config['catalog']}")
+            console.print(f"[blue]Physical Catalog:[/blue] {env_config['topLevelName']}")
             catalog_mapping = build_catalog_mapping(state, env_config)
 
         # TODO: Handle version ranges

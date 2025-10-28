@@ -188,6 +188,110 @@ body {
   border-radius: 2px;
 }
 
+/* Mapping Indicator */
+.tree-item .mapping-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  margin-right: 6px;
+  padding: 2px 4px;
+  opacity: 0.7;
+  cursor: help;
+  color: var(--vscode-descriptionForeground);
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.tree-item .mapping-indicator:hover {
+  opacity: 1;
+  color: var(--vscode-textLink-foreground);
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Mapping Tooltip - positioned with fixed positioning relative to the indicator icon */
+.mapping-tooltip {
+  position: fixed;
+  /* top and left are set dynamically via inline styles */
+  background-color: var(--vscode-editorHoverWidget-background);
+  border: 1px solid var(--vscode-editorHoverWidget-border);
+  border-radius: 4px;
+  padding: 12px;
+  min-width: 300px;
+  max-width: 400px;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  animation: tooltip-fadein 0.15s ease-in;
+  pointer-events: auto;
+}
+
+@keyframes tooltip-fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mapping-tooltip .tooltip-header {
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-foreground);
+}
+
+.mapping-tooltip .tooltip-section {
+  margin-bottom: 8px;
+}
+
+.mapping-tooltip .tooltip-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mapping-tooltip .tooltip-mapping {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-family: var(--vscode-editor-font-family);
+}
+
+.mapping-tooltip .env-name {
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  min-width: 60px;
+}
+
+.mapping-tooltip .arrow {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.mapping-tooltip .physical-name {
+  font-family: var(--vscode-editor-font-family);
+  color: var(--vscode-textLink-foreground);
+  background-color: var(--vscode-editor-inactiveSelectionBackground);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.mapping-tooltip .tooltip-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-panel-border);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
 /* Table Designer */
 .table-designer {
   flex: 1;
