@@ -82,7 +82,7 @@ echo "--------------------------------------"
 
 if command -v pytest &> /dev/null; then
     if (cd packages/python-sdk && pytest tests/ -q); then
-        echo -e "${GREEN}✓${NC} Python SDK tests passed (136 tests)"
+        echo -e "${GREEN}✓${NC} Python SDK tests passed (138 tests)"
     else
         echo -e "${RED}✗${NC} Python SDK tests failed"
         echo ""
@@ -98,9 +98,32 @@ fi
 echo ""
 
 # ==========================================
-# 4. Smoke Tests
+# 4. VS Code Extension Tests (Jest)
 # ==========================================
-echo "4️⃣  Running smoke tests..."
+echo "4️⃣  Running VS Code Extension tests (Jest)..."
+echo "--------------------------------------"
+
+if command -v npm &> /dev/null; then
+    if (cd packages/vscode-extension && npm test); then
+        echo -e "${GREEN}✓${NC} VS Code Extension tests passed"
+    else
+        echo -e "${RED}✗${NC} VS Code Extension tests failed"
+        echo ""
+        echo "To debug, run:"
+        echo "  cd packages/vscode-extension && npm test -- --verbose"
+        FAILURES=$((FAILURES + 1))
+    fi
+else
+    echo -e "${YELLOW}⚠${NC}  npm not installed, skipping extension tests"
+    echo "Install Node.js and npm from: https://nodejs.org/"
+fi
+
+echo ""
+
+# ==========================================
+# 5. Smoke Tests
+# ==========================================
+echo "5️⃣  Running smoke tests..."
 echo "--------------------------------------"
 
 if [ -f "./scripts/smoke-test.sh" ]; then

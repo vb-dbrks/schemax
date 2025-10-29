@@ -89,6 +89,50 @@ jobs:
           echo "❌ Python SDK tests failed!"
           echo "Run locally with: cd packages/python-sdk && pytest tests/ -v"
 
+  extension-tests:
+    name: VS Code Extension Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install latest npm
+        run: npm install -g npm@latest
+      
+      - name: Install root dependencies
+        run: npm ci
+      
+      - name: Install extension dependencies
+        run: |
+          cd packages/vscode-extension
+          npm ci
+      
+      - name: Run Jest tests with coverage
+        run: |
+          cd packages/vscode-extension
+          npm run test:coverage
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: ./packages/vscode-extension/coverage/coverage-final.json
+          flags: vscode-extension
+          name: vscode-extension-coverage
+        continue-on-error: true
+      
+      - name: Report test results
+        if: failure()
+        run: |
+          echo "❌ VS Code Extension tests failed!"
+          echo "Run locally with: cd packages/vscode-extension && npm test"
+
   smoke-tests:
     name: Smoke Tests
     runs-on: ubuntu-latest
@@ -202,14 +246,15 @@ jobs:
   all-checks:
     name: All Quality Checks
     runs-on: ubuntu-latest
-    needs: [code-formatting, python-tests, smoke-tests, commit-signatures]
+    needs: [code-formatting, python-tests, extension-tests, smoke-tests, commit-signatures]
     
     steps:
       - name: All checks passed
         run: |
           echo "✅ All quality checks passed!"
           echo "  - Code formatting: OK"
-          echo "  - Python SDK tests: OK (136 tests)"
+          echo "  - Python SDK tests: OK (138 tests)"
+          echo "  - VS Code Extension tests: OK"
           echo "  - Smoke tests: OK"
           echo "  - Commit signatures: OK"
 
