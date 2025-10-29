@@ -15,17 +15,17 @@ describe('Storage V4 - Environment Configuration', () => {
         version: '1.0.0',
         environments: {
           dev: {
-            catalog: 'dev_catalog',
+            topLevelName: 'dev_catalog',
             allowDrift: true,
             requireSnapshot: false,
-            autoCreateCatalog: true,
+            autoCreateTopLevel: true,
             autoCreateSchematicSchema: true,
           },
           prod: {
-            catalog: 'prod_catalog',
+            topLevelName: 'prod_catalog',
             allowDrift: false,
             requireSnapshot: true,
-            autoCreateCatalog: false,
+            autoCreateTopLevel: false,
             autoCreateSchematicSchema: true,
           },
         },
@@ -35,18 +35,17 @@ describe('Storage V4 - Environment Configuration', () => {
       settings: {
         autoIncrementVersion: true,
         versionPrefix: 'v',
-        catalogMode: 'single',
       },
       latestSnapshot: null,
     };
 
     const devConfig = getEnvironmentConfig(project, 'dev');
-    expect(devConfig.catalog).toBe('dev_catalog');
+    expect(devConfig.topLevelName).toBe('dev_catalog');
     expect(devConfig.allowDrift).toBe(true);
     expect(devConfig.requireSnapshot).toBe(false);
 
     const prodConfig = getEnvironmentConfig(project, 'prod');
-    expect(prodConfig.catalog).toBe('prod_catalog');
+    expect(prodConfig.topLevelName).toBe('prod_catalog');
     expect(prodConfig.allowDrift).toBe(false);
     expect(prodConfig.requireSnapshot).toBe(true);
   });
@@ -60,10 +59,10 @@ describe('Storage V4 - Environment Configuration', () => {
         version: '1.0.0',
         environments: {
           dev: {
-            catalog: 'dev_catalog',
+            topLevelName: 'dev_catalog',
             allowDrift: true,
             requireSnapshot: false,
-            autoCreateCatalog: true,
+            autoCreateTopLevel: true,
             autoCreateSchematicSchema: true,
           },
         },
@@ -73,7 +72,6 @@ describe('Storage V4 - Environment Configuration', () => {
       settings: {
         autoIncrementVersion: true,
         versionPrefix: 'v',
-        catalogMode: 'single',
       },
       latestSnapshot: null,
     };
@@ -90,24 +88,24 @@ describe('Storage V4 - Environment Configuration', () => {
         version: '1.0.0',
         environments: {
           dev: {
-            catalog: 'dev_catalog',
+            topLevelName: 'dev_catalog',
             allowDrift: true,
             requireSnapshot: false,
-            autoCreateCatalog: true,
+            autoCreateTopLevel: true,
             autoCreateSchematicSchema: true,
           },
           test: {
-            catalog: 'test_catalog',
+            topLevelName: 'test_catalog',
             allowDrift: false,
             requireSnapshot: true,
-            autoCreateCatalog: true,
+            autoCreateTopLevel: true,
             autoCreateSchematicSchema: true,
           },
           prod: {
-            catalog: 'prod_catalog',
+            topLevelName: 'prod_catalog',
             allowDrift: false,
             requireSnapshot: true,
-            autoCreateCatalog: false,
+            autoCreateTopLevel: false,
             autoCreateSchematicSchema: true,
           },
         },
@@ -117,15 +115,14 @@ describe('Storage V4 - Environment Configuration', () => {
       settings: {
         autoIncrementVersion: true,
         versionPrefix: 'v',
-        catalogMode: 'single',
       },
       latestSnapshot: null,
     };
 
     const testConfig = getEnvironmentConfig(project, 'test');
-    expect(testConfig.catalog).toBe('test_catalog');
+    expect(testConfig.topLevelName).toBe('test_catalog');
     expect(testConfig.requireSnapshot).toBe(true);
-    expect(testConfig.autoCreateCatalog).toBe(true);
+    expect(testConfig.autoCreateTopLevel).toBe(true);
   });
 });
 
@@ -139,10 +136,10 @@ describe('Storage V4 - Project Schema', () => {
         version: '1.0.0',
         environments: {
           dev: {
-            catalog: 'dev_catalog',
+            topLevelName: 'dev_catalog',
             allowDrift: true,
             requireSnapshot: false,
-            autoCreateCatalog: true,
+            autoCreateTopLevel: true,
             autoCreateSchematicSchema: true,
           },
         },
@@ -152,7 +149,6 @@ describe('Storage V4 - Project Schema', () => {
       settings: {
         autoIncrementVersion: true,
         versionPrefix: 'v',
-        catalogMode: 'single',
       },
       latestSnapshot: null,
     };
@@ -160,7 +156,6 @@ describe('Storage V4 - Project Schema', () => {
     expect(project.version).toBe(4);
     expect(project.provider.type).toBe('unity');
     expect(project.provider.environments).toHaveProperty('dev');
-    expect(project.settings.catalogMode).toBe('single');
   });
 
   test('should handle empty snapshots and deployments', () => {
@@ -177,7 +172,6 @@ describe('Storage V4 - Project Schema', () => {
       settings: {
         autoIncrementVersion: true,
         versionPrefix: 'v',
-        catalogMode: 'single',
       },
       latestSnapshot: null,
     };

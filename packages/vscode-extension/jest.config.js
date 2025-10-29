@@ -53,9 +53,13 @@ module.exports = {
       transform: {
         '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: 'tsconfig.webview.json' }],
       },
+      transformIgnorePatterns: [
+        'node_modules/(?!(@vscode/webview-ui-toolkit)/)',
+      ],
       moduleNameMapper: {
         '^vscode$': '<rootDir>/tests/__mocks__/vscode.ts',
         '\\.(css|less|scss|sass)$': '<rootDir>/tests/__mocks__/styleMock.js',
+        '^@vscode/webview-ui-toolkit/react$': '<rootDir>/tests/__mocks__/webview-toolkit.ts',
       },
       setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
     },
