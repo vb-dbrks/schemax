@@ -51,7 +51,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return id_map
 
     # _build_fqn() is now inherited from BaseSQLGenerator
-    
+
     def can_generate_sql(self, op: Operation) -> bool:
         """Check if operation can be converted to SQL"""
         return op.op in UNITY_OPERATIONS.values()
@@ -59,12 +59,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
     # ========================================
     # ABSTRACT METHOD IMPLEMENTATIONS (from BaseSQLGenerator)
     # ========================================
-    
+
     def _get_dependency_level(self, op: Operation) -> int:
         """
         Get dependency level for Unity operation ordering.
         0 = catalog, 1 = schema, 2 = table, 3 = table modifications
-        
+
         Implements abstract method from BaseSQLGenerator.
         """
         op_type = op.op
@@ -75,20 +75,20 @@ class UnitySQLGenerator(BaseSQLGenerator):
         if "add_table" in op_type:
             return 2
         return 3  # All other table operations (columns, properties, etc.)
-    
+
     def _get_target_object_id(self, op: Operation) -> Optional[str]:
         """
         Extract target table ID from Unity operation.
-        
+
         Implements abstract method from BaseSQLGenerator.
         Used by batching algorithm to group operations by table.
         """
         op_type = op.op.replace("unity.", "")
-        
+
         # Table-level operations
         if op_type in ["add_table", "rename_table", "drop_table", "set_table_comment"]:
             return op.target
-        
+
         # Column and table property operations
         if op_type in [
             "add_column",
@@ -112,21 +112,21 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "remove_column_mask",
         ]:
             return op.payload.get("tableId")
-        
+
         return None  # Not a table operation (catalog, schema operations)
-    
+
     def _is_create_operation(self, op: Operation) -> bool:
         """
         Check if Unity operation creates a new object.
-        
+
         Implements abstract method from BaseSQLGenerator.
         """
         return op.op in ["unity.add_catalog", "unity.add_schema", "unity.add_table"]
-    
+
     def _generate_batched_create_sql(self, object_id: str, batch_info: BatchInfo) -> str:
         """
         Generate CREATE TABLE with batched columns for Unity.
-        
+
         Implements abstract method from BaseSQLGenerator.
         This is the optimization that creates complete tables instead of empty + ALTERs.
         """
@@ -142,11 +142,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "operation_types": list(batch_info.operation_types),
         }
         return self._generate_create_table_with_columns(object_id, batch_dict)
-    
+
     def _generate_batched_alter_sql(self, object_id: str, batch_info: BatchInfo) -> str:
         """
         Generate ALTER statements for Unity table modifications.
-        
+
         Implements abstract method from BaseSQLGenerator.
         """
         # Delegate to existing _generate_alter_statements_for_table method
@@ -155,13 +155,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
             "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
             "reorder_ops": [op for op in batch_info.modify_ops if "reorder" in op.op],
-            "governance_ops": [op for op in batch_info.modify_ops if "filter" in op.op or "mask" in op.op],
+            "governance_ops": [
+                op for op in batch_info.modify_ops if "filter" in op.op or "mask" in op.op
+            ],
             "other_ops": [],
             "op_ids": batch_info.op_ids,
             "operation_types": list(batch_info.operation_types),
         }
         return self._generate_alter_statements_for_table(object_id, batch_dict)
-    
+
     # ========================================
     # END ABSTRACT METHOD IMPLEMENTATIONS
     # ========================================

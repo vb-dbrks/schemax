@@ -5,11 +5,11 @@ These tests use mocks to avoid requiring actual Databricks credentials.
 Real integration tests against Databricks should be added separately.
 """
 
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
+
 import pytest
 
 from schematic.providers.unity.executor import UnitySQLExecutor
-from schematic.providers.base.executor import ExecutionConfig, ExecutionResult, StatementResult
 
 
 class TestUnitySQLExecutor:
@@ -101,4 +101,3 @@ class TestAuthHelpers:
         result = check_profile_exists("DEV")
 
         assert result is False
-

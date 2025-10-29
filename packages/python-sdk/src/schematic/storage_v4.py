@@ -188,8 +188,7 @@ def read_project(workspace_path: Path) -> Dict[str, Any]:
 
     if not project_path.exists():
         raise FileNotFoundError(
-            f"Project file not found: {project_path}. "
-            "Run 'schematic init' to create a new project."
+            f"Project file not found: {project_path}. Run 'schematic init' to create a new project."
         )
 
     with open(project_path, "r") as f:
@@ -516,8 +515,7 @@ def get_environment_config(project: Dict[str, Any], environment: str) -> Dict[st
     if environment not in environments:
         available = ", ".join(environments.keys())
         raise ValueError(
-            f"Environment '{environment}' not found in project. "
-            f"Available environments: {available}"
+            f"Environment '{environment}' not found in project. Available environments: {available}"
         )
 
     return environments[environment]

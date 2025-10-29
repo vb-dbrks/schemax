@@ -4,12 +4,10 @@ Unit tests for storage_v4 module (v4 project schema with multi-environment suppo
 
 import json
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
 from schematic import storage_v4
-from schematic.providers import ProviderRegistry
 
 
 class TestPathHelpers:
@@ -166,7 +164,11 @@ class TestFileOperations:
                 "provider": "unity",
                 "op": "unity.add_schema",
                 "target": "schema_test",
-                "payload": {"schemaId": "schema_test", "name": "test_schema", "catalogId": "cat_implicit"},
+                "payload": {
+                    "schemaId": "schema_test",
+                    "name": "test_schema",
+                    "catalogId": "cat_implicit",
+                },
             }
         )
         storage_v4.write_changelog(tmp_path, changelog)
@@ -255,7 +257,7 @@ class TestSnapshotCreation:
         # Check snapshot created (version starts with "v")
         snapshot_version = project["latestSnapshot"]
         assert snapshot_version.startswith("v")
-        
+
         snapshot_file = tmp_path / ".schematic" / "snapshots" / f"{snapshot_version}.json"
         assert snapshot_file.exists()
 
@@ -334,4 +336,3 @@ class TestDeploymentTracking:
         project = storage_v4.read_project(tmp_path)
         last_deployment = storage_v4.get_last_deployment(project, "dev")
         assert last_deployment is None
-
