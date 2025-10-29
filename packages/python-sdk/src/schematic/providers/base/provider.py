@@ -5,7 +5,6 @@ Defines the contract that all catalog providers must implement.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -19,14 +18,14 @@ from .sql_generator import SQLGenerator
 class ProviderCapabilities(BaseModel):
     """Provider capabilities - defines what features this provider supports"""
 
-    supported_operations: List[str]  # e.g., ['unity.add_catalog', 'unity.add_schema']
-    supported_object_types: List[str]  # e.g., ['catalog', 'schema', 'table']
+    supported_operations: list[str]  # e.g., ['unity.add_catalog', 'unity.add_schema']
+    supported_object_types: list[str]  # e.g., ['catalog', 'schema', 'table']
     hierarchy: Hierarchy  # Hierarchy definition
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # Feature flags
-    features: Dict[str, bool] = {
+    features: dict[str, bool] = {
         "constraints": False,
         "row_filters": False,
         "column_masks": False,
@@ -48,8 +47,8 @@ class ProviderInfo(BaseModel):
     name: str  # Human-readable name
     version: str  # Provider version (semantic versioning)
     description: str  # Provider description
-    author: Optional[str] = None  # Provider author/maintainer
-    docs_url: Optional[str] = None  # Documentation URL
+    author: str | None = None  # Provider author/maintainer
+    docs_url: str | None = None  # Documentation URL
 
 
 class Provider(ABC):
@@ -68,12 +67,12 @@ class Provider(ABC):
         pass
 
     @abstractmethod
-    def get_operation_metadata(self, operation_type: str) -> Optional[OperationMetadata]:
+    def get_operation_metadata(self, operation_type: str) -> OperationMetadata | None:
         """Get operation metadata for a specific operation type"""
         pass
 
     @abstractmethod
-    def get_all_operations(self) -> List[OperationMetadata]:
+    def get_all_operations(self) -> list[OperationMetadata]:
         """Get all operation metadata"""
         pass
 
@@ -88,7 +87,7 @@ class Provider(ABC):
         pass
 
     @abstractmethod
-    def apply_operations(self, state: ProviderState, ops: List[Operation]) -> ProviderState:
+    def apply_operations(self, state: ProviderState, ops: list[Operation]) -> ProviderState:
         """Apply multiple operations to state"""
         pass
 
@@ -142,15 +141,15 @@ class BaseProvider(Provider):
     """Base implementation of Provider with common functionality"""
 
     def __init__(self) -> None:
-        self.operation_metadata: Dict[str, OperationMetadata] = {}
+        self.operation_metadata: dict[str, OperationMetadata] = {}
 
-    def get_operation_metadata(self, operation_type: str) -> Optional[OperationMetadata]:
+    def get_operation_metadata(self, operation_type: str) -> OperationMetadata | None:
         return self.operation_metadata.get(operation_type)
 
-    def get_all_operations(self) -> List[OperationMetadata]:
+    def get_all_operations(self) -> list[OperationMetadata]:
         return list(self.operation_metadata.values())
 
-    def apply_operations(self, state: ProviderState, ops: List[Operation]) -> ProviderState:
+    def apply_operations(self, state: ProviderState, ops: list[Operation]) -> ProviderState:
         current_state = state
         for op in ops:
             current_state = self.apply_operation(current_state, op)

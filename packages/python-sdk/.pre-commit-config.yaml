@@ -1,0 +1,22 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      # Run formatter
+      - id: ruff-format
+        types_or: [python, pyi]
+      
+      # Run linter with auto-fix
+      - id: ruff
+        types_or: [python, pyi]
+        args: [--fix, --exit-non-zero-on-fix]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [pydantic>=2.0.0, click>=8.0.0, rich>=13.0.0]
+        args: [--config-file=pyproject.toml]
+        pass_filenames: false
+        entry: mypy src/
+

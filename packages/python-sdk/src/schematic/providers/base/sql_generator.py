@@ -5,7 +5,7 @@ Defines the contract for generating SQL DDL statements from operations.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -19,7 +19,7 @@ class SQLGenerationResult(BaseModel):
     """SQL generation result"""
 
     sql: str  # Generated SQL statements
-    warnings: List[str] = []  # Warnings or notes
+    warnings: list[str] = []  # Warnings or notes
     is_idempotent: bool = True  # Whether SQL is idempotent
 
 
@@ -30,7 +30,7 @@ class SQLGenerator(ABC):
         self.state = state
 
     @abstractmethod
-    def generate_sql(self, ops: List[Operation]) -> str:
+    def generate_sql(self, ops: list[Operation]) -> str:
         """
         Generate SQL for a list of operations
 
@@ -80,7 +80,7 @@ class BaseSQLGenerator(SQLGenerator):
     - Template pattern for provider-specific SQL generation
     """
 
-    def __init__(self, state: Any, name_mapping: Optional[Dict[str, str]] = None):
+    def __init__(self, state: Any, name_mapping: dict[str, str] | None = None):
         """
         Initialize base SQL generator with optimization components.
 
@@ -122,7 +122,7 @@ class BaseSQLGenerator(SQLGenerator):
     # ====================
 
     @abstractmethod
-    def _get_target_object_id(self, op: Operation) -> Optional[str]:
+    def _get_target_object_id(self, op: Operation) -> str | None:
         """
         Extract target object ID from operation.
 
@@ -235,7 +235,7 @@ class BaseSQLGenerator(SQLGenerator):
     # DEFAULT IMPLEMENTATION (can be overridden)
     # ====================
 
-    def generate_sql(self, ops: List[Operation]) -> str:
+    def generate_sql(self, ops: list[Operation]) -> str:
         """
         Generate SQL with basic operation-by-operation approach.
 

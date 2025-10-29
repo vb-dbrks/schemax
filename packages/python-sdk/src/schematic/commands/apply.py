@@ -8,7 +8,7 @@ confirmation, and deployment tracking.
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Optional, cast
+from typing import cast
 from uuid import uuid4
 
 from rich.console import Console
@@ -74,7 +74,7 @@ def apply_to_environment(
     warehouse_id: str,
     dry_run: bool = False,
     no_interaction: bool = False,
-    sql_file: Optional[Path] = None,
+    sql_file: Path | None = None,
 ) -> ExecutionResult:
     """Apply changes to target environment
 
@@ -307,7 +307,7 @@ def apply_to_environment(
         raise ApplyError(str(e)) from e
 
 
-def parse_sql_statements(sql: str) -> List[str]:
+def parse_sql_statements(sql: str) -> list[str]:
     """Parse SQL into individual statements
 
     Splits SQL by semicolons, handling comments and multi-line statements.

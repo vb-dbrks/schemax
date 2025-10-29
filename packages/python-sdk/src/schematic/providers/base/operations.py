@@ -8,7 +8,7 @@ import random
 import string
 import time
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -33,7 +33,7 @@ class Operation(BaseModel):
     provider: str  # Provider ID (e.g., 'unity', 'hive')
     op: str  # Operation type with provider prefix
     target: str  # ID of target object
-    payload: Dict[str, Any]  # Operation-specific data
+    payload: dict[str, Any]  # Operation-specific data
 
 
 class OperationMetadata(BaseModel):
@@ -43,8 +43,8 @@ class OperationMetadata(BaseModel):
     display_name: str  # Human-readable name
     description: str  # Description
     category: OperationCategory  # Category
-    required_fields: List[str]  # Required payload fields
-    optional_fields: List[str]  # Optional payload fields
+    required_fields: list[str]  # Required payload fields
+    optional_fields: list[str]  # Optional payload fields
     is_destructive: bool  # Whether operation is destructive
 
 
@@ -52,8 +52,8 @@ def create_operation(
     provider: str,
     op_type: str,
     target: str,
-    payload: Dict[str, Any],
-    op_id: Optional[str] = None,
+    payload: dict[str, Any],
+    op_id: str | None = None,
 ) -> Operation:
     """
     Helper to create a new operation with defaults

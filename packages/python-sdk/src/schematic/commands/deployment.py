@@ -7,7 +7,7 @@ For automated deployment with execution, use the apply command instead.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from uuid import uuid4
 
 from rich.console import Console
@@ -26,7 +26,7 @@ class DeploymentRecordingError(Exception):
 def record_deployment_to_environment(
     workspace: Path,
     environment: str,
-    version: Optional[str] = None,
+    version: str | None = None,
     mark_deployed: bool = False,
 ) -> dict:
     """Record a deployment to an environment (manual tracking)

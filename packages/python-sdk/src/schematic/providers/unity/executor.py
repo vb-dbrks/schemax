@@ -6,7 +6,6 @@ the Databricks SQL Statement Execution API.
 """
 
 import time
-from typing import List
 from uuid import uuid4
 
 from databricks.sdk import WorkspaceClient
@@ -42,7 +41,7 @@ class UnitySQLExecutor:
         """
         self.client = client
 
-    def execute_statements(self, statements: List[str], config: ExecutionConfig) -> ExecutionResult:
+    def execute_statements(self, statements: list[str], config: ExecutionConfig) -> ExecutionResult:
         """Execute SQL statements sequentially with fail-fast behavior
 
         Executes each statement in order. If any statement fails, execution stops
@@ -60,7 +59,7 @@ class UnitySQLExecutor:
             ExecutionError: If execution fails critically
         """
         deployment_id = f"deploy_{uuid4().hex[:8]}"
-        results: List[StatementResult] = []
+        results: list[StatementResult] = []
         start_time = time.time()
 
         console.print(f"\n[bold cyan]Executing {len(statements)} statements...[/bold cyan]\n")

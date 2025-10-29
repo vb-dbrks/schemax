@@ -5,7 +5,6 @@ Central registry for all available catalog providers.
 Providers must register themselves here to be available in the system.
 """
 
-from typing import Dict, List, Optional
 
 from .base.provider import Provider
 
@@ -14,7 +13,7 @@ class ProviderRegistryClass:
     """Registry for managing catalog providers"""
 
     def __init__(self) -> None:
-        self.providers: Dict[str, Provider] = {}
+        self.providers: dict[str, Provider] = {}
 
     def register(self, provider: Provider) -> None:
         """
@@ -32,7 +31,7 @@ class ProviderRegistryClass:
         self.providers[provider.info.id] = provider
         print(f"[Schematic] Registered provider: {provider.info.name} ({provider.info.id})")
 
-    def get(self, provider_id: str) -> Optional[Provider]:
+    def get(self, provider_id: str) -> Provider | None:
         """
         Get a provider by ID
 
@@ -44,7 +43,7 @@ class ProviderRegistryClass:
         """
         return self.providers.get(provider_id)
 
-    def get_all(self) -> List[Provider]:
+    def get_all(self) -> list[Provider]:
         """
         Get all registered providers
 
@@ -53,7 +52,7 @@ class ProviderRegistryClass:
         """
         return list(self.providers.values())
 
-    def get_all_ids(self) -> List[str]:
+    def get_all_ids(self) -> list[str]:
         """
         Get all provider IDs
 
@@ -91,7 +90,7 @@ class ProviderRegistryClass:
 
         return operation in provider.capabilities.supported_operations
 
-    def get_provider_for_operation(self, operation: str) -> Optional[Provider]:
+    def get_provider_for_operation(self, operation: str) -> Provider | None:
         """
         Get provider that supports a specific operation
 

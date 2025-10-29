@@ -5,7 +5,7 @@ Generates Databricks SQL DDL statements from operations.
 Migrated from TypeScript sql-generator.ts
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..base.batching import BatchInfo
 from ..base.operations import Operation
@@ -17,14 +17,14 @@ from .operations import UNITY_OPERATIONS
 class UnitySQLGenerator(BaseSQLGenerator):
     """Unity Catalog SQL Generator"""
 
-    def __init__(self, state: UnityState, catalog_name_mapping: Optional[Dict[str, str]] = None):
+    def __init__(self, state: UnityState, catalog_name_mapping: dict[str, str] | None = None):
         # Pass catalog_name_mapping to base as name_mapping
         super().__init__(state, catalog_name_mapping)
         self.catalog_name_mapping = catalog_name_mapping or {}  # logical → physical
         # Base now provides self.batcher and self.optimizer
         self.id_name_map = self._build_id_name_map()
 
-    def _build_id_name_map(self) -> Dict[str, str]:
+    def _build_id_name_map(self) -> dict[str, str]:
         """
         Build a mapping from IDs to fully-qualified names.
 
@@ -97,7 +97,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return 2
         return 3  # All other table operations (columns, properties, etc.)
 
-    def _get_target_object_id(self, op: Operation) -> Optional[str]:
+    def _get_target_object_id(self, op: Operation) -> str | None:
         """
         Extract target table ID from Unity operation.
 
@@ -189,7 +189,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
     # END ABSTRACT METHOD IMPLEMENTATIONS
     # ========================================
 
-    def generate_sql(self, ops: List[Operation]) -> str:
+    def generate_sql(self, ops: list[Operation]) -> str:
         """
         Generate SQL statements with comprehensive batch optimizations.
 
@@ -522,7 +522,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Databricks doesn't support direct column reordering
         return "-- Column reordering not directly supported in Databricks SQL"
 
-    def _batch_reorder_operations(self, ops: List[Operation]) -> Dict:
+    def _batch_reorder_operations(self, ops: list[Operation]) -> dict:
         """
         Batch reorder_columns operations by table to generate minimal SQL.
 
@@ -557,7 +557,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return reorder_batches
 
-    def _get_table_column_order(self, table_id: str) -> List[str]:
+    def _get_table_column_order(self, table_id: str) -> list[str]:
         """Get current column order for a table from state"""
         for catalog in self.state["catalogs"]:
             for schema in catalog.get("schemas", []):
@@ -567,7 +567,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return []
 
     def _generate_optimized_reorder_sql(
-        self, table_id: str, original_order: List[str], final_order: List[str], op_ids: List[str]
+        self, table_id: str, original_order: list[str], final_order: list[str], op_ids: list[str]
     ) -> str:
         """Generate minimal SQL to reorder columns from original to final order"""
 
@@ -641,7 +641,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return ";\n".join(statements)
 
-    def _batch_table_operations(self, ops: List[Operation]) -> Dict:
+    def _batch_table_operations(self, ops: list[Operation]) -> dict:
         """
         Batch operations by table to generate optimal DDL.
 
@@ -651,7 +651,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Returns dict mapping table_id to batch info.
         """
-        table_batches: Dict[str, Any] = {}
+        table_batches: dict[str, Any] = {}
 
         for op in ops:
             op_type = op.op.replace("unity.", "")
@@ -733,7 +733,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return table_batches
 
-    def _generate_optimized_table_sql(self, table_id: str, batch_info: Dict) -> str:
+    def _generate_optimized_table_sql(self, table_id: str, batch_info: dict) -> str:
         """Generate optimal SQL for table operations"""
 
         if batch_info["is_new_table"]:
@@ -743,7 +743,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             # Generate optimized ALTER statements for existing table
             return self._generate_alter_statements_for_table(table_id, batch_info)
 
-    def _generate_create_table_with_columns(self, table_id: str, batch_info: Dict) -> str:
+    def _generate_create_table_with_columns(self, table_id: str, batch_info: dict) -> str:
         """Generate complete CREATE TABLE statement with all columns included"""
         table_op = batch_info["table_op"]
         column_ops = batch_info["column_ops"]
@@ -825,7 +825,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 f"USING {table_format}{table_comment}{properties_sql}"
             )
 
-    def _generate_alter_statements_for_table(self, table_id: str, batch_info: Dict) -> str:
+    def _generate_alter_statements_for_table(self, table_id: str, batch_info: dict) -> str:
         """Generate optimized ALTER statements for existing table modifications"""
         statements = []
 

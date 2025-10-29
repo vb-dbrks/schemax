@@ -5,8 +5,8 @@ Provides reusable batching logic to group operations by target object,
 enabling optimized SQL generation (complete CREATE statements vs empty CREATE + ALTERs).
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Set
 
 from .operations import Operation
 
@@ -16,10 +16,10 @@ class BatchInfo:
     """Information about a batch of operations for a single object"""
 
     is_new: bool = False
-    create_op: Optional[Operation] = None
-    modify_ops: List[Operation] = field(default_factory=list)
-    op_ids: List[str] = field(default_factory=list)
-    operation_types: Set[str] = field(default_factory=set)
+    create_op: Operation | None = None
+    modify_ops: list[Operation] = field(default_factory=list)
+    op_ids: list[str] = field(default_factory=list)
+    operation_types: set[str] = field(default_factory=set)
 
 
 class OperationBatcher:
@@ -36,10 +36,10 @@ class OperationBatcher:
 
     def batch_operations(
         self,
-        ops: List[Operation],
-        get_target_func: Callable[[Operation], Optional[str]],
+        ops: list[Operation],
+        get_target_func: Callable[[Operation], str | None],
         is_create_func: Callable[[Operation], bool],
-    ) -> Dict[str, BatchInfo]:
+    ) -> dict[str, BatchInfo]:
         """
         Batch operations by target object.
 
@@ -78,7 +78,7 @@ class OperationBatcher:
             >>> batcher = OperationBatcher()
             >>> batches = batcher.batch_operations(ops, get_table_id, is_create)
         """
-        batches: Dict[str, BatchInfo] = {}
+        batches: dict[str, BatchInfo] = {}
 
         for op in ops:
             target_id = get_target_func(op)
@@ -110,10 +110,10 @@ class OperationBatcher:
 
     def batch_operations_by_type(
         self,
-        ops: List[Operation],
-        get_target_func: Callable[[Operation], Optional[str]],
+        ops: list[Operation],
+        get_target_func: Callable[[Operation], str | None],
         categorize_func: Callable[[Operation], str],
-    ) -> Dict[str, Dict[str, List[Operation]]]:
+    ) -> dict[str, dict[str, list[Operation]]]:
         """
         Batch operations by target AND operation type.
 
@@ -135,7 +135,7 @@ class OperationBatcher:
                 }
             }
         """
-        batches: Dict[str, Dict[str, List[Operation]]] = {}
+        batches: dict[str, dict[str, list[Operation]]] = {}
 
         for op in ops:
             target_id = get_target_func(op)
@@ -154,7 +154,7 @@ class OperationBatcher:
         return batches
 
     @staticmethod
-    def get_batch_statistics(batches: Dict[str, BatchInfo]) -> Dict:
+    def get_batch_statistics(batches: dict[str, BatchInfo]) -> dict:
         """
         Get statistics about batched operations.
 

@@ -5,7 +5,7 @@ Provides a clean, fluent API for creating operations in tests without verbose bo
 All methods use the create_operation() helper with provider="unity" pre-configured.
 """
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from schematic.providers.base.operations import Operation, create_operation
 
@@ -26,7 +26,7 @@ class OperationBuilder:
         self.provider = provider
 
     # Catalog Operations
-    def add_catalog(self, catalog_id: str, name: str, op_id: Optional[str] = None) -> Operation:
+    def add_catalog(self, catalog_id: str, name: str, op_id: str | None = None) -> Operation:
         """Create an add_catalog operation"""
         return create_operation(
             provider=self.provider,
@@ -37,7 +37,7 @@ class OperationBuilder:
         )
 
     def rename_catalog(
-        self, catalog_id: str, new_name: str, op_id: Optional[str] = None
+        self, catalog_id: str, new_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_catalog operation"""
         return create_operation(
@@ -48,7 +48,7 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def drop_catalog(self, catalog_id: str, op_id: Optional[str] = None) -> Operation:
+    def drop_catalog(self, catalog_id: str, op_id: str | None = None) -> Operation:
         """Create a drop_catalog operation"""
         return create_operation(
             provider=self.provider,
@@ -60,7 +60,7 @@ class OperationBuilder:
 
     # Schema Operations
     def add_schema(
-        self, schema_id: str, name: str, catalog_id: str, op_id: Optional[str] = None
+        self, schema_id: str, name: str, catalog_id: str, op_id: str | None = None
     ) -> Operation:
         """Create an add_schema operation"""
         return create_operation(
@@ -72,7 +72,7 @@ class OperationBuilder:
         )
 
     def rename_schema(
-        self, schema_id: str, new_name: str, op_id: Optional[str] = None
+        self, schema_id: str, new_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_schema operation"""
         return create_operation(
@@ -83,7 +83,7 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def drop_schema(self, schema_id: str, op_id: Optional[str] = None) -> Operation:
+    def drop_schema(self, schema_id: str, op_id: str | None = None) -> Operation:
         """Create a drop_schema operation"""
         return create_operation(
             provider=self.provider,
@@ -100,7 +100,7 @@ class OperationBuilder:
         name: str,
         schema_id: str,
         format: Literal["delta", "iceberg"] = "delta",
-        op_id: Optional[str] = None,
+        op_id: str | None = None,
     ) -> Operation:
         """Create an add_table operation"""
         return create_operation(
@@ -111,7 +111,7 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def rename_table(self, table_id: str, new_name: str, op_id: Optional[str] = None) -> Operation:
+    def rename_table(self, table_id: str, new_name: str, op_id: str | None = None) -> Operation:
         """Create a rename_table operation"""
         return create_operation(
             provider=self.provider,
@@ -121,7 +121,7 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def drop_table(self, table_id: str, op_id: Optional[str] = None) -> Operation:
+    def drop_table(self, table_id: str, op_id: str | None = None) -> Operation:
         """Create a drop_table operation"""
         return create_operation(
             provider=self.provider,
@@ -132,7 +132,7 @@ class OperationBuilder:
         )
 
     def set_table_comment(
-        self, table_id: str, comment: str, op_id: Optional[str] = None
+        self, table_id: str, comment: str, op_id: str | None = None
     ) -> Operation:
         """Create a set_table_comment operation"""
         return create_operation(
@@ -144,7 +144,7 @@ class OperationBuilder:
         )
 
     def set_table_property(
-        self, table_id: str, key: str, value: str, op_id: Optional[str] = None
+        self, table_id: str, key: str, value: str, op_id: str | None = None
     ) -> Operation:
         """Create a set_table_property operation"""
         return create_operation(
@@ -156,7 +156,7 @@ class OperationBuilder:
         )
 
     def unset_table_property(
-        self, table_id: str, key: str, op_id: Optional[str] = None
+        self, table_id: str, key: str, op_id: str | None = None
     ) -> Operation:
         """Create an unset_table_property operation"""
         return create_operation(
@@ -175,8 +175,8 @@ class OperationBuilder:
         name: str,
         type: str,
         nullable: bool = True,
-        comment: Optional[str] = None,
-        op_id: Optional[str] = None,
+        comment: str | None = None,
+        op_id: str | None = None,
     ) -> Operation:
         """Create an add_column operation"""
         payload = {
@@ -197,7 +197,7 @@ class OperationBuilder:
         )
 
     def rename_column(
-        self, col_id: str, table_id: str, new_name: str, op_id: Optional[str] = None
+        self, col_id: str, table_id: str, new_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_column operation"""
         return create_operation(
@@ -208,7 +208,7 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def drop_column(self, col_id: str, table_id: str, op_id: Optional[str] = None) -> Operation:
+    def drop_column(self, col_id: str, table_id: str, op_id: str | None = None) -> Operation:
         """Create a drop_column operation"""
         return create_operation(
             provider=self.provider,
@@ -219,7 +219,7 @@ class OperationBuilder:
         )
 
     def reorder_columns(
-        self, table_id: str, order: List[str], op_id: Optional[str] = None
+        self, table_id: str, order: list[str], op_id: str | None = None
     ) -> Operation:
         """Create a reorder_columns operation"""
         return create_operation(
@@ -231,7 +231,7 @@ class OperationBuilder:
         )
 
     def change_column_type(
-        self, col_id: str, table_id: str, new_type: str, op_id: Optional[str] = None
+        self, col_id: str, table_id: str, new_type: str, op_id: str | None = None
     ) -> Operation:
         """Create a change_column_type operation"""
         return create_operation(
@@ -243,7 +243,7 @@ class OperationBuilder:
         )
 
     def set_nullable(
-        self, col_id: str, table_id: str, nullable: bool, op_id: Optional[str] = None
+        self, col_id: str, table_id: str, nullable: bool, op_id: str | None = None
     ) -> Operation:
         """Create a set_nullable operation"""
         return create_operation(
@@ -255,7 +255,7 @@ class OperationBuilder:
         )
 
     def set_column_comment(
-        self, col_id: str, table_id: str, comment: str, op_id: Optional[str] = None
+        self, col_id: str, table_id: str, comment: str, op_id: str | None = None
     ) -> Operation:
         """Create a set_column_comment operation"""
         return create_operation(
@@ -268,7 +268,7 @@ class OperationBuilder:
 
     # Column Tag Operations
     def set_column_tag(
-        self, col_id: str, table_id: str, tag_name: str, tag_value: str, op_id: Optional[str] = None
+        self, col_id: str, table_id: str, tag_name: str, tag_value: str, op_id: str | None = None
     ) -> Operation:
         """Create a set_column_tag operation"""
         return create_operation(
@@ -280,7 +280,7 @@ class OperationBuilder:
         )
 
     def unset_column_tag(
-        self, col_id: str, table_id: str, tag_name: str, op_id: Optional[str] = None
+        self, col_id: str, table_id: str, tag_name: str, op_id: str | None = None
     ) -> Operation:
         """Create an unset_column_tag operation"""
         return create_operation(
@@ -297,9 +297,9 @@ class OperationBuilder:
         constraint_id: str,
         table_id: str,
         type: Literal["primary_key", "foreign_key", "check"],
-        columns: List[str],
-        name: Optional[str] = None,
-        op_id: Optional[str] = None,
+        columns: list[str],
+        name: str | None = None,
+        op_id: str | None = None,
         **kwargs,
     ) -> Operation:
         """
@@ -329,7 +329,7 @@ class OperationBuilder:
         )
 
     def drop_constraint(
-        self, constraint_id: str, table_id: str, op_id: Optional[str] = None, **kwargs
+        self, constraint_id: str, table_id: str, op_id: str | None = None, **kwargs
     ) -> Operation:
         """Create a drop_constraint operation"""
         payload = {"tableId": table_id}
@@ -350,8 +350,8 @@ class OperationBuilder:
         name: str,
         udf_expression: str,
         enabled: bool = True,
-        description: Optional[str] = None,
-        op_id: Optional[str] = None,
+        description: str | None = None,
+        op_id: str | None = None,
     ) -> Operation:
         """Create an add_row_filter operation"""
         payload = {
@@ -372,7 +372,7 @@ class OperationBuilder:
         )
 
     def update_row_filter(
-        self, filter_id: str, table_id: str, op_id: Optional[str] = None, **kwargs
+        self, filter_id: str, table_id: str, op_id: str | None = None, **kwargs
     ) -> Operation:
         """Create an update_row_filter operation"""
         payload = {"tableId": table_id}
@@ -386,7 +386,7 @@ class OperationBuilder:
         )
 
     def remove_row_filter(
-        self, filter_id: str, table_id: str, op_id: Optional[str] = None
+        self, filter_id: str, table_id: str, op_id: str | None = None
     ) -> Operation:
         """Create a remove_row_filter operation"""
         return create_operation(
@@ -406,8 +406,8 @@ class OperationBuilder:
         name: str,
         mask_function: str,
         enabled: bool = True,
-        description: Optional[str] = None,
-        op_id: Optional[str] = None,
+        description: str | None = None,
+        op_id: str | None = None,
     ) -> Operation:
         """Create an add_column_mask operation"""
         payload = {
@@ -429,7 +429,7 @@ class OperationBuilder:
         )
 
     def update_column_mask(
-        self, mask_id: str, table_id: str, op_id: Optional[str] = None, **kwargs
+        self, mask_id: str, table_id: str, op_id: str | None = None, **kwargs
     ) -> Operation:
         """Create an update_column_mask operation"""
         payload = {"tableId": table_id}
@@ -443,7 +443,7 @@ class OperationBuilder:
         )
 
     def remove_column_mask(
-        self, mask_id: str, table_id: str, op_id: Optional[str] = None
+        self, mask_id: str, table_id: str, op_id: str | None = None
     ) -> Operation:
         """Create a remove_column_mask operation"""
         return create_operation(
@@ -456,8 +456,8 @@ class OperationBuilder:
 
 
 def make_operation_sequence(
-    specs: List[Dict[str, Any]], provider: str = "unity"
-) -> List[Operation]:
+    specs: list[dict[str, Any]], provider: str = "unity"
+) -> list[Operation]:
     """
     Create a sequence of operations from specifications.
 

@@ -6,7 +6,6 @@ Migrated from TypeScript state-reducer.ts
 """
 
 from copy import deepcopy
-from typing import List, Optional
 
 from ..base.operations import Operation
 from .models import (
@@ -320,7 +319,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
     return new_state
 
 
-def apply_operations(state: UnityState, ops: List[Operation]) -> UnityState:
+def apply_operations(state: UnityState, ops: list[Operation]) -> UnityState:
     """
     Apply multiple operations to state
 
@@ -337,7 +336,7 @@ def apply_operations(state: UnityState, ops: List[Operation]) -> UnityState:
     return current_state
 
 
-def _find_table(state: UnityState, table_id: str) -> Optional[UnityTable]:
+def _find_table(state: UnityState, table_id: str) -> UnityTable | None:
     """
     Find a table by ID across all catalogs and schemas
 

@@ -5,7 +5,7 @@ Generates SQL migration scripts from schema changes in the changelog.
 """
 
 from pathlib import Path
-from typing import Dict, Optional, cast
+from typing import cast
 
 from rich.console import Console
 from rich.syntax import Syntax
@@ -23,7 +23,7 @@ class SQLGenerationError(Exception):
     pass
 
 
-def build_catalog_mapping(state: dict, env_config: dict) -> Dict[str, str]:
+def build_catalog_mapping(state: dict, env_config: dict) -> dict[str, str]:
     """
     Build catalog name mapping (logical → physical) for environment-specific SQL generation.
 
@@ -56,10 +56,10 @@ def build_catalog_mapping(state: dict, env_config: dict) -> Dict[str, str]:
 
 def generate_sql_migration(
     workspace: Path,
-    output: Optional[Path] = None,
-    from_version: Optional[str] = None,
-    to_version: Optional[str] = None,
-    target_env: Optional[str] = None,
+    output: Path | None = None,
+    from_version: str | None = None,
+    to_version: str | None = None,
+    target_env: str | None = None,
 ) -> str:
     """Generate SQL migration script from schema changes
 

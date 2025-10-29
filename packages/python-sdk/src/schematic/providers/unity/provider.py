@@ -5,7 +5,6 @@ Main provider implementation for Databricks Unity Catalog.
 Implements the Provider interface to enable Unity Catalog support in Schematic.
 """
 
-from typing import Dict, List, Optional
 
 from ..base.executor import ExecutionConfig, SQLExecutor
 from ..base.models import ProviderState, ValidationError, ValidationResult
@@ -68,7 +67,7 @@ class UnityProvider(BaseProvider):
 
     def validate_operation(self, op: Operation) -> ValidationResult:
         """Validate an operation"""
-        errors: List[ValidationError] = []
+        errors: list[ValidationError] = []
 
         # Check if operation is supported
         if not self.is_operation_supported(op.op):
@@ -114,14 +113,14 @@ class UnityProvider(BaseProvider):
         result_state = apply_operation(unity_state, op)
         return result_state.model_dump(by_alias=True)
 
-    def apply_operations(self, state: ProviderState, ops: List[Operation]) -> ProviderState:
+    def apply_operations(self, state: ProviderState, ops: list[Operation]) -> ProviderState:
         """Apply multiple operations to state"""
         unity_state = UnityState(**state) if not isinstance(state, UnityState) else state
         result_state = apply_operations(unity_state, ops)
         return result_state.model_dump(by_alias=True)
 
     def get_sql_generator(
-        self, state: ProviderState, catalog_name_mapping: Optional[Dict[str, str]] = None
+        self, state: ProviderState, catalog_name_mapping: dict[str, str] | None = None
     ) -> SQLGenerator:
         """Get SQL generator for Unity Catalog with optional catalog name mapping"""
         unity_state = UnityState(**state) if not isinstance(state, UnityState) else state
@@ -133,7 +132,7 @@ class UnityProvider(BaseProvider):
 
     def validate_state(self, state: ProviderState) -> ValidationResult:
         """Validate the entire state structure"""
-        errors: List[ValidationError] = []
+        errors: list[ValidationError] = []
 
         # Validate state structure
         if "catalogs" not in state or not isinstance(state["catalogs"], list):
@@ -224,7 +223,7 @@ class UnityProvider(BaseProvider):
         Returns:
             ValidationResult with any configuration errors
         """
-        errors: List[ValidationError] = []
+        errors: list[ValidationError] = []
 
         # Validate warehouse ID
         if not config.warehouse_id:

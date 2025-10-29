@@ -9,7 +9,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, cast
 from uuid import uuid4
 
 from .providers import Operation, Provider, ProviderRegistry, ProviderState
@@ -66,8 +66,8 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
 
     if project_path.exists():
         # Project exists - check version
-        with open(project_path, "r") as f:
-            project = cast(Dict[str, Any], json.load(f))
+        with open(project_path) as f:
+            project = cast(dict[str, Any], json.load(f))
 
         if project.get("version") == 4:
             return  # Already v4
@@ -135,7 +135,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
     # Initialize changelog with implicit catalog for single-catalog mode
     initial_ops = []
 
-    settings = cast(Dict[str, Any], new_project.get("settings", {}))
+    settings = cast(dict[str, Any], new_project.get("settings", {}))
     if settings.get("catalogMode") == "single":
         # Auto-create implicit catalog
         catalog_id = "cat_implicit"
@@ -173,7 +173,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
     print("[Schematic] Environments: dev, test, prod")
 
 
-def read_project(workspace_path: Path) -> Dict[str, Any]:
+def read_project(workspace_path: Path) -> dict[str, Any]:
     """Read project file (v4 only)
 
     Args:
@@ -192,8 +192,8 @@ def read_project(workspace_path: Path) -> Dict[str, Any]:
             f"Project file not found: {project_path}. Run 'schematic init' to create a new project."
         )
 
-    with open(project_path, "r") as f:
-        project = cast(Dict[str, Any], json.load(f))
+    with open(project_path) as f:
+        project = cast(dict[str, Any], json.load(f))
 
     # Enforce v4
     if project.get("version") != 4:
@@ -206,7 +206,7 @@ def read_project(workspace_path: Path) -> Dict[str, Any]:
     return project
 
 
-def write_project(workspace_path: Path, project: Dict[str, Any]) -> None:
+def write_project(workspace_path: Path, project: dict[str, Any]) -> None:
     """Write project file"""
     project_path = get_project_file_path(workspace_path)
 
@@ -214,7 +214,7 @@ def write_project(workspace_path: Path, project: Dict[str, Any]) -> None:
         json.dump(project, f, indent=2)
 
 
-def read_changelog(workspace_path: Path) -> Dict[str, Any]:
+def read_changelog(workspace_path: Path) -> dict[str, Any]:
     """Read changelog file
 
     Args:
@@ -226,11 +226,11 @@ def read_changelog(workspace_path: Path) -> Dict[str, Any]:
     changelog_path = get_changelog_file_path(workspace_path)
 
     try:
-        with open(changelog_path, "r") as f:
-            return cast(Dict[str, Any], json.load(f))
+        with open(changelog_path) as f:
+            return cast(dict[str, Any], json.load(f))
     except FileNotFoundError:
         # Changelog doesn't exist, create empty one
-        changelog: Dict[str, Any] = {
+        changelog: dict[str, Any] = {
             "version": 1,
             "sinceSnapshot": None,
             "ops": [],
@@ -243,7 +243,7 @@ def read_changelog(workspace_path: Path) -> Dict[str, Any]:
         return changelog
 
 
-def write_changelog(workspace_path: Path, changelog: Dict[str, Any]) -> None:
+def write_changelog(workspace_path: Path, changelog: dict[str, Any]) -> None:
     """Write changelog file"""
     changelog_path = get_changelog_file_path(workspace_path)
     changelog["lastModified"] = datetime.now(UTC).isoformat()
@@ -252,15 +252,15 @@ def write_changelog(workspace_path: Path, changelog: Dict[str, Any]) -> None:
         json.dump(changelog, f, indent=2)
 
 
-def read_snapshot(workspace_path: Path, version: str) -> Dict[str, Any]:
+def read_snapshot(workspace_path: Path, version: str) -> dict[str, Any]:
     """Read a snapshot file"""
     snapshot_path = get_snapshot_file_path(workspace_path, version)
 
-    with open(snapshot_path, "r") as f:
-        return cast(Dict[str, Any], json.load(f))
+    with open(snapshot_path) as f:
+        return cast(dict[str, Any], json.load(f))
 
 
-def write_snapshot(workspace_path: Path, snapshot: Dict[str, Any]) -> None:
+def write_snapshot(workspace_path: Path, snapshot: dict[str, Any]) -> None:
     """Write a snapshot file"""
     ensure_schematic_dir(workspace_path)
     snapshot_path = get_snapshot_file_path(workspace_path, snapshot["version"])
@@ -271,7 +271,7 @@ def write_snapshot(workspace_path: Path, snapshot: Dict[str, Any]) -> None:
 
 def load_current_state(
     workspace_path: Path,
-) -> tuple[ProviderState, Dict[str, Any], Provider]:
+) -> tuple[ProviderState, dict[str, Any], Provider]:
     """Load current state using provider
 
     Args:
@@ -307,7 +307,7 @@ def load_current_state(
     return state, changelog, provider
 
 
-def append_ops(workspace_path: Path, ops: List[Operation]) -> None:
+def append_ops(workspace_path: Path, ops: list[Operation]) -> None:
     """Append operations to changelog
 
     Args:
@@ -338,10 +338,10 @@ def append_ops(workspace_path: Path, ops: List[Operation]) -> None:
 def create_snapshot(
     workspace_path: Path,
     name: str,
-    version: Optional[str] = None,
-    comment: Optional[str] = None,
-    tags: Optional[List[str]] = None,
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    version: str | None = None,
+    comment: str | None = None,
+    tags: list[str] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Create a snapshot
 
     Args:
@@ -440,13 +440,13 @@ def get_uncommitted_ops_count(workspace_path: Path) -> int:
     return len(changelog["ops"])
 
 
-def _calculate_state_hash(state: Any, ops_included: List[str]) -> str:
+def _calculate_state_hash(state: Any, ops_included: list[str]) -> str:
     """Calculate hash of state for integrity checking"""
     content = json.dumps({"state": state, "opsIncluded": ops_included}, sort_keys=True)
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def _get_next_version(current_version: Optional[str], settings: Dict[str, Any]) -> str:
+def _get_next_version(current_version: str | None, settings: dict[str, Any]) -> str:
     """Get next version number"""
     version_prefix = str(settings.get("versionPrefix", "v"))
     if not current_version:
@@ -465,7 +465,7 @@ def _get_next_version(current_version: Optional[str], settings: Dict[str, Any]) 
     return f"{version_prefix}{major}.{next_minor}.0"
 
 
-def write_deployment(workspace_path: Path, deployment: Dict[str, Any]) -> None:
+def write_deployment(workspace_path: Path, deployment: dict[str, Any]) -> None:
     """Add a deployment record to project file
 
     Args:
@@ -481,7 +481,7 @@ def write_deployment(workspace_path: Path, deployment: Dict[str, Any]) -> None:
     write_project(workspace_path, project)
 
 
-def get_last_deployment(project: Dict[str, Any], environment: str) -> Optional[Dict[str, Any]]:
+def get_last_deployment(project: dict[str, Any], environment: str) -> dict[str, Any] | None:
     """Get the last deployment for a specific environment
 
     Args:
@@ -497,10 +497,10 @@ def get_last_deployment(project: Dict[str, Any], environment: str) -> Optional[D
 
     # Sort by timestamp, return most recent
     sorted_deployments = sorted(deployments, key=lambda d: d.get("ts", ""), reverse=True)
-    return cast(Dict[str, Any], sorted_deployments[0])
+    return cast(dict[str, Any], sorted_deployments[0])
 
 
-def get_environment_config(project: Dict[str, Any], environment: str) -> Dict[str, Any]:
+def get_environment_config(project: dict[str, Any], environment: str) -> dict[str, Any]:
     """Get environment configuration from project
 
     Args:
@@ -521,4 +521,4 @@ def get_environment_config(project: Dict[str, Any], environment: str) -> Dict[st
             f"Environment '{environment}' not found in project. Available environments: {available}"
         )
 
-    return cast(Dict[str, Any], environments[environment])
+    return cast(dict[str, Any], environments[environment])
