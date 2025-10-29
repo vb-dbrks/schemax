@@ -1,9 +1,11 @@
 """Base provider abstractions"""
 
+from .batching import BatchInfo, OperationBatcher
 from .executor import ExecutionConfig, ExecutionResult, SQLExecutor, StatementResult
 from .hierarchy import Hierarchy, HierarchyLevel
 from .models import ProviderState, ValidationError, ValidationResult
 from .operations import Operation, OperationCategory, OperationMetadata, create_operation
+from .optimization import ColumnReorderOptimizer
 from .provider import (
     BaseProvider,
     Provider,
@@ -33,4 +35,7 @@ __all__ = [
     "ExecutionResult",
     "SQLExecutor",
     "StatementResult",
+    "OperationBatcher",
+    "BatchInfo",
+    "ColumnReorderOptimizer",
 ]

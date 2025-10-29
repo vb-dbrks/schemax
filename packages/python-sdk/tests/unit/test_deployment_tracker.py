@@ -2,11 +2,12 @@
 Unit tests for DeploymentTracker (mock-based)
 """
 
-from unittest.mock import Mock, call
+from unittest.mock import Mock
+
 import pytest
 
 from schematic.deployment_tracker import DeploymentTracker
-from schematic.providers.base.executor import ExecutionResult, StatementResult
+from schematic.providers.base.executor import StatementResult
 
 
 class TestDeploymentTracker:
@@ -43,6 +44,4 @@ class TestDeploymentTracker:
     # Real integration tests should be run against actual Databricks workspace.
     # These smoke tests just verify basic initialization.
 
-
     # Note: Full integration tests should run against actual Databricks workspace
-

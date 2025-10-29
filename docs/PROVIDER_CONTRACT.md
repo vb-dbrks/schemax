@@ -227,7 +227,141 @@ def validate_sql(sql: str, dialect: str = "databricks") -> bool:
 assert validate_sql(generated_sql, "databricks")
 ```
 
-### 7. Implement Provider Class
+### 7. Leverage Base Optimization Algorithms
+
+**NEW**: Providers should extend the enhanced `BaseSQLGenerator` to inherit generic optimization algorithms.
+
+#### Using Base Components
+
+```python
+from schematic.providers.base import BaseSQLGenerator, BatchInfo, Operation
+
+class MyProviderSQLGenerator(BaseSQLGenerator):
+    """Provider using base optimizations"""
+    
+    def __init__(self, state, name_mapping=None):
+        # Initialize base with state and name mapping
+        super().__init__(state, name_mapping)
+        # self.batcher and self.optimizer now available
+        # self.name_mapping contains logical → physical name mappings
+        
+        # Build provider-specific ID → name mapping
+        self.id_name_map = self._build_id_name_map()
+    
+    # REQUIRED: Implement abstract methods
+    
+    def _get_target_object_id(self, op: Operation) -> Optional[str]:
+        """Extract target object ID from operation"""
+        if op.op == "myprovider.create_table":
+            return op.target
+        elif op.op == "myprovider.add_column":
+            return op.payload.get("table_id")
+        return None
+    
+    def _is_create_operation(self, op: Operation) -> bool:
+        """Check if operation creates new object"""
+        return op.op in [
+            "myprovider.create_database",
+            "myprovider.create_schema",
+            "myprovider.create_table"
+        ]
+    
+    def _get_dependency_level(self, op: Operation) -> int:
+        """Get dependency level for ordering (0 = highest priority)"""
+        if "database" in op.op:
+            return 0
+        elif "schema" in op.op:
+            return 1
+        elif "create_table" in op.op:
+            return 2
+        else:
+            return 3
+    
+    def _generate_batched_create_sql(
+        self,
+        object_id: str,
+        batch_info: BatchInfo
+    ) -> str:
+        """Generate CREATE statement with batched operations"""
+        # Use batch_info.create_op for CREATE operation
+        # Use batch_info.modify_ops for columns, properties, etc.
+        # Generate complete CREATE with all columns (not empty + ALTERs)
+        
+        table_name = self._get_table_name(object_id)
+        columns = self._extract_columns_from_batch(batch_info)
+        
+        return f"CREATE TABLE {table_name} ({columns})"
+    
+    def _generate_batched_alter_sql(
+        self,
+        object_id: str,
+        batch_info: BatchInfo
+    ) -> str:
+        """Generate ALTER statements for batched operations"""
+        statements = []
+        for op in batch_info.modify_ops:
+            statements.append(self._generate_alter_for_op(op))
+        return ";\n".join(statements)
+```
+
+#### Benefits of Using Base
+
+1. **Operation Batching** - Automatic via `self.batcher`
+   - Groups operations by target object
+   - Enables complete CREATE statements vs empty + ALTERs
+   
+2. **Column Reorder Optimization** - Automatic via `self.optimizer`
+   - Detects single-column moves
+   - Generates 1 statement instead of N statements
+   
+3. **Generic Utilities** - Available methods
+   - `self._build_fqn(*parts)` - Build fully-qualified names
+   - `self.escape_identifier(id)` - Escape SQL identifiers
+   - `self.escape_string(s)` - Escape string literals
+
+4. **Automatic Ordering** - Dependency-based execution order
+   - Catalogs/databases first (level 0)
+   - Schemas second (level 1)
+   - Tables third (level 2)
+   - Modifications last (level 3+)
+
+#### Example: Column Reorder with Base Optimizer
+
+```python
+def _handle_column_reorder(self, table_id, original_order, final_order):
+    """Use base optimizer for column reordering"""
+    
+    # Base optimizer detects single-column moves
+    single_move = self.optimizer.detect_single_column_move(
+        original_order,
+        final_order
+    )
+    
+    if single_move:
+        # Only one column moved - generate 1 SQL statement
+        col_id, orig_pos, new_pos = single_move
+        return self._generate_single_column_move_sql(col_id, new_pos)
+    else:
+        # Multiple columns moved - use general algorithm
+        return self._generate_multi_column_reorder_sql(original_order, final_order)
+```
+
+#### What to Implement vs What's Inherited
+
+**Implement (Provider-Specific):**
+- SQL syntax for CREATE, ALTER, DROP statements
+- Provider-specific keywords (USING DELTA, CLUSTER BY, etc.)
+- ID → name mapping for your hierarchy
+- Operation type checking
+
+**Inherited (Generic):**
+- Operation batching algorithm
+- Column reorder optimization
+- FQN building with escaping
+- Dependency-level ordering
+- String/identifier escaping
+
+### 8. Implement Provider Class
 
 Tie everything together:
 
