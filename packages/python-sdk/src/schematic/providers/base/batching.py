@@ -5,30 +5,21 @@ Provides reusable batching logic to group operations by target object,
 enabling optimized SQL generation (complete CREATE statements vs empty CREATE + ALTERs).
 """
 
+from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Set
 
 from .operations import Operation
 
 
+@dataclass
 class BatchInfo:
     """Information about a batch of operations for a single object"""
 
-    def __init__(self) -> None:
-        self.is_new = False
-        self.create_op: Optional[Operation] = None
-        self.modify_ops: List[Operation] = []
-        self.op_ids: List[str] = []
-        self.operation_types: Set[str] = set()
-
-    def to_dict(self) -> Dict:
-        """Convert to dictionary for backward compatibility"""
-        return {
-            "is_new": self.is_new,
-            "create_op": self.create_op,
-            "modify_ops": self.modify_ops,
-            "op_ids": self.op_ids,
-            "operation_types": self.operation_types,
-        }
+    is_new: bool = False
+    create_op: Optional[Operation] = None
+    modify_ops: List[Operation] = field(default_factory=list)
+    op_ids: List[str] = field(default_factory=list)
+    operation_types: Set[str] = field(default_factory=set)
 
 
 class OperationBatcher:

@@ -301,19 +301,6 @@ class TestBatchInfo:
         assert batch.op_ids == []
         assert batch.operation_types == set()
 
-    def test_batch_info_to_dict(self):
-        """Test BatchInfo converts to dict correctly"""
-        batch = BatchInfo()
-        batch.is_new = True
-        batch.op_ids = ["op_001", "op_002"]
-        batch.operation_types = {"test.add_table", "test.add_column"}
-
-        result = batch.to_dict()
-
-        assert result["is_new"] is True
-        assert result["op_ids"] == ["op_001", "op_002"]
-        assert result["operation_types"] == {"test.add_table", "test.add_column"}
-
 
 class TestBatchStatistics:
     """Test batch statistics calculation"""
