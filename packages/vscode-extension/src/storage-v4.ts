@@ -241,6 +241,7 @@ export async function ensureProjectFile(
     settings: {
       autoIncrementVersion: true,
       versionPrefix: 'v',
+      catalogMode: 'single',
     },
     latestSnapshot: null,
   };
