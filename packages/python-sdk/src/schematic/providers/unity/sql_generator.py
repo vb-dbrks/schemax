@@ -5,8 +5,9 @@ Generates Databricks SQL DDL statements from operations.
 Migrated from TypeScript sql-generator.ts
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
+from ..base.batching import BatchInfo
 from ..base.operations import Operation
 from ..base.sql_generator import BaseSQLGenerator, SQLGenerationResult
 from .models import UnityState
@@ -17,8 +18,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
     """Unity Catalog SQL Generator"""
 
     def __init__(self, state: UnityState, catalog_name_mapping: Dict[str, str] = None):
-        super().__init__(state)
+        # Pass catalog_name_mapping to base as name_mapping
+        super().__init__(state, catalog_name_mapping)
         self.catalog_name_mapping = catalog_name_mapping or {}  # logical → physical
+        # Base now provides self.batcher and self.optimizer
         self.id_name_map = self._build_id_name_map()
 
     def _build_id_name_map(self) -> Dict[str, str]:
@@ -47,33 +50,24 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return id_map
 
-    def _build_fqn(self, *parts: str) -> str:
-        """
-        Build a fully-qualified name with each part escaped separately.
-
-        This ensures consistent identifier formatting: `catalog`.`schema`.`table`
-
-        Args:
-            *parts: Catalog, schema, table, etc. (in order)
-
-        Returns:
-            Escaped FQN like `catalog`.`schema`.`table`
-
-        Example:
-            >>> self._build_fqn("bronze", "raw", "users")
-            '`bronze`.`raw`.`users`'
-        """
-        return ".".join(self.escape_identifier(part) for part in parts if part)
-
+    # _build_fqn() is now inherited from BaseSQLGenerator
+    
     def can_generate_sql(self, op: Operation) -> bool:
         """Check if operation can be converted to SQL"""
         return op.op in UNITY_OPERATIONS.values()
 
-    def _get_operation_level(self, op_type: str) -> int:
+    # ========================================
+    # ABSTRACT METHOD IMPLEMENTATIONS (from BaseSQLGenerator)
+    # ========================================
+    
+    def _get_dependency_level(self, op: Operation) -> int:
         """
-        Get dependency level for operation type (for ordering)
+        Get dependency level for Unity operation ordering.
         0 = catalog, 1 = schema, 2 = table, 3 = table modifications
+        
+        Implements abstract method from BaseSQLGenerator.
         """
+        op_type = op.op
         if "catalog" in op_type:
             return 0
         if "schema" in op_type:
@@ -81,6 +75,96 @@ class UnitySQLGenerator(BaseSQLGenerator):
         if "add_table" in op_type:
             return 2
         return 3  # All other table operations (columns, properties, etc.)
+    
+    def _get_target_object_id(self, op: Operation) -> Optional[str]:
+        """
+        Extract target table ID from Unity operation.
+        
+        Implements abstract method from BaseSQLGenerator.
+        Used by batching algorithm to group operations by table.
+        """
+        op_type = op.op.replace("unity.", "")
+        
+        # Table-level operations
+        if op_type in ["add_table", "rename_table", "drop_table", "set_table_comment"]:
+            return op.target
+        
+        # Column and table property operations
+        if op_type in [
+            "add_column",
+            "rename_column",
+            "drop_column",
+            "reorder_columns",
+            "change_column_type",
+            "set_nullable",
+            "set_column_comment",
+            "set_column_tag",
+            "unset_column_tag",
+            "set_table_property",
+            "unset_table_property",
+            "add_constraint",
+            "drop_constraint",
+            "add_row_filter",
+            "update_row_filter",
+            "remove_row_filter",
+            "add_column_mask",
+            "update_column_mask",
+            "remove_column_mask",
+        ]:
+            return op.payload.get("tableId")
+        
+        return None  # Not a table operation (catalog, schema operations)
+    
+    def _is_create_operation(self, op: Operation) -> bool:
+        """
+        Check if Unity operation creates a new object.
+        
+        Implements abstract method from BaseSQLGenerator.
+        """
+        return op.op in ["unity.add_catalog", "unity.add_schema", "unity.add_table"]
+    
+    def _generate_batched_create_sql(self, object_id: str, batch_info: BatchInfo) -> str:
+        """
+        Generate CREATE TABLE with batched columns for Unity.
+        
+        Implements abstract method from BaseSQLGenerator.
+        This is the optimization that creates complete tables instead of empty + ALTERs.
+        """
+        # Delegate to existing _generate_create_table_with_columns method
+        # Convert BatchInfo back to dict format for compatibility
+        batch_dict = {
+            "is_new_table": batch_info.is_new,
+            "table_op": batch_info.create_op,
+            "column_ops": [op for op in batch_info.modify_ops if op.op == "unity.add_column"],
+            "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
+            "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
+            "op_ids": batch_info.op_ids,
+            "operation_types": list(batch_info.operation_types),
+        }
+        return self._generate_create_table_with_columns(object_id, batch_dict)
+    
+    def _generate_batched_alter_sql(self, object_id: str, batch_info: BatchInfo) -> str:
+        """
+        Generate ALTER statements for Unity table modifications.
+        
+        Implements abstract method from BaseSQLGenerator.
+        """
+        # Delegate to existing _generate_alter_statements_for_table method
+        batch_dict = {
+            "column_ops": [op for op in batch_info.modify_ops if "column" in op.op],
+            "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
+            "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
+            "reorder_ops": [op for op in batch_info.modify_ops if "reorder" in op.op],
+            "governance_ops": [op for op in batch_info.modify_ops if "filter" in op.op or "mask" in op.op],
+            "other_ops": [],
+            "op_ids": batch_info.op_ids,
+            "operation_types": list(batch_info.operation_types),
+        }
+        return self._generate_alter_statements_for_table(object_id, batch_dict)
+    
+    # ========================================
+    # END ABSTRACT METHOD IMPLEMENTATIONS
+    # ========================================
 
     def generate_sql(self, ops: List[Operation]) -> str:
         """
@@ -93,7 +177,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         - Table property consolidation
         """
         # Sort operations by dependency level first
-        sorted_ops = sorted(ops, key=lambda op: self._get_operation_level(op.op))
+        sorted_ops = sorted(ops, key=lambda op: self._get_dependency_level(op))
 
         # Pre-process: batch operations by table and type
         table_batches = self._batch_table_operations(sorted_ops)
@@ -138,7 +222,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 print(f"Warning: Cannot generate SQL for operation: {op.op}")
                 continue
 
-            level = self._get_operation_level(op.op)
+            level = self._get_dependency_level(op)
             if level == 0:
                 catalog_ops.append(op)
             elif level == 1:
@@ -474,23 +558,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_fqn = self.id_name_map.get(table_id, "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
 
-        # OPTIMIZATION: Detect single-column drag for cleaner SQL
-        # A single drag means one column moved, and all others maintained relative order
-        # Find the column that was dragged by checking which column broke the sequence
-        single_move = None
-        for i, col_id in enumerate(final_order):
-            # Check if removing this column from both orders leaves them identical
-            orig_without = [c for c in original_order if c != col_id]
-            final_without = [c for c in final_order if c != col_id]
-            if orig_without == final_without:
-                # This column was the one that moved
-                original_pos = original_order.index(col_id)
-                new_pos = i
-                if original_pos != new_pos:
-                    single_move = (col_id, original_pos, new_pos)
-                    break
+        # OPTIMIZATION: Use base optimizer to detect single-column drag
+        # Novel algorithm from base.optimization.ColumnReorderOptimizer
+        single_move = self.optimizer.detect_single_column_move(original_order, final_order)
 
-        # If we detected a single column drag, generate optimal SQL
+        # If we detected a single column drag, generate optimal SQL (1 statement)
         if single_move:
             col_id, orig_pos, new_pos = single_move
             col_name = self.id_name_map.get(col_id, col_id)
