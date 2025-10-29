@@ -92,9 +92,9 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                         properties={},
                         constraints=[],
                         grants=[],
-                        column_mapping=None,
-                        row_filters=[],
-                        column_masks=[],
+                        columnMapping=None,
+                        rowFilters=[],
+                        columnMasks=[],
                     )
                     schema.tables.append(table)
                     return new_state
@@ -135,7 +135,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 nullable=op.payload["nullable"],
                 comment=op.payload.get("comment"),
                 tags={},
-                mask_id=None,
+                maskId=None,
             )
             table_opt.columns.append(column)
 
