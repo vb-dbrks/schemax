@@ -13,7 +13,7 @@ from .base.provider import Provider
 class ProviderRegistryClass:
     """Registry for managing catalog providers"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.providers: Dict[str, Provider] = {}
 
     def register(self, provider: Provider) -> None:

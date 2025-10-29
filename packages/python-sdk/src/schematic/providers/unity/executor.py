@@ -168,9 +168,12 @@ class UnitySQLExecutor:
             statement_id = response.statement_id
 
             # Poll for completion
-            elapsed = 0
+            elapsed = 0.0
             while elapsed < config.timeout_seconds:
-                status_response = self.client.statement_execution.get_statement(statement_id)
+                status_response = self.client.statement_execution.get_statement(statement_id or "")
+
+                if not status_response or not status_response.status:
+                    raise ExecutionError("Failed to get statement status")
 
                 state = status_response.status.state
 
@@ -179,11 +182,12 @@ class UnitySQLExecutor:
                     exec_time_ms = int((time.time() - exec_start) * 1000)
 
                     return StatementResult(
-                        statement_id=statement_id,
+                        statement_id=statement_id or "",
                         sql=sql,
                         status="success",
                         execution_time_ms=exec_time_ms,
                         rows_affected=None,  # Could extract from result if needed
+                        error_message=None,
                     )
 
                 elif state == StatementState.FAILED:
@@ -191,7 +195,7 @@ class UnitySQLExecutor:
                     error_msg = error.message if error else "Unknown error"
 
                     return StatementResult(
-                        statement_id=statement_id,
+                        statement_id=statement_id or "",
                         sql=sql,
                         status="failed",
                         execution_time_ms=int((time.time() - exec_start) * 1000),
@@ -201,7 +205,7 @@ class UnitySQLExecutor:
 
                 elif state == StatementState.CANCELED:
                     return StatementResult(
-                        statement_id=statement_id,
+                        statement_id=statement_id or "",
                         sql=sql,
                         status="failed",
                         execution_time_ms=int((time.time() - exec_start) * 1000),
@@ -211,11 +215,11 @@ class UnitySQLExecutor:
 
                 # Still running, wait and poll again
                 time.sleep(2)
-                elapsed = time.time() - exec_start
+                elapsed = float(time.time() - exec_start)
 
             # Timeout reached
             return StatementResult(
-                statement_id=statement_id,
+                statement_id=statement_id or "",
                 sql=sql,
                 status="failed",
                 execution_time_ms=int((time.time() - exec_start) * 1000),

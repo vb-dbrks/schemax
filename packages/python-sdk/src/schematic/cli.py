@@ -60,6 +60,10 @@ def init(provider: str, workspace: str) -> None:
 
         provider_obj = ProviderRegistry.get(provider)
 
+        if not provider_obj:
+            console.print(f"[red]✗[/red] Provider '{provider}' not found")
+            sys.exit(1)
+
         # Initialize project
         ensure_project_file(workspace_path, provider_id=provider)
 

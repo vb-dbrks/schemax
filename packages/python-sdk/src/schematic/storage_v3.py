@@ -9,7 +9,7 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import uuid4
 
 from .providers import Operation, Provider, ProviderRegistry, ProviderState
@@ -105,7 +105,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         "latestSnapshot": None,
     }
 
-    new_changelog = {
+    new_changelog: Dict[str, Any] = {
         "version": 1,
         "sinceSnapshot": None,
         "ops": [],
@@ -221,7 +221,7 @@ def read_project(workspace_path: Path) -> Dict[str, Any]:
     if project.get("version") != 3:
         raise ValueError(f"Unsupported project version: {project.get('version')}")
 
-    return project
+    return cast(Dict[str, Any], project)
 
 
 def write_project(workspace_path: Path, project: Dict[str, Any]) -> None:
@@ -246,10 +246,10 @@ def read_changelog(workspace_path: Path) -> Dict[str, Any]:
 
     try:
         with open(changelog_path, "r") as f:
-            return json.load(f)
+            return cast(Dict[str, Any], json.load(f))
     except FileNotFoundError:
         # Changelog doesn't exist, create empty one
-        changelog = {
+        changelog: Dict[str, Any] = {
             "version": 1,
             "sinceSnapshot": None,
             "ops": [],
@@ -276,7 +276,7 @@ def read_snapshot(workspace_path: Path, version: str) -> Dict[str, Any]:
     snapshot_path = get_snapshot_file_path(workspace_path, version)
 
     with open(snapshot_path, "r") as f:
-        return json.load(f)
+        return cast(Dict[str, Any], json.load(f))
 
 
 def write_snapshot(workspace_path: Path, snapshot: Dict[str, Any]) -> None:
@@ -361,7 +361,7 @@ def create_snapshot(
     name: str,
     version: Optional[str] = None,
     comment: Optional[str] = None,
-    tags: List[str] = None,
+    tags: Optional[List[str]] = None,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Create a snapshot
@@ -470,20 +470,21 @@ def _calculate_state_hash(state: Any, ops_included: List[str]) -> str:
 
 def _get_next_version(current_version: Optional[str], settings: Dict[str, Any]) -> str:
     """Get next version number"""
+    version_prefix = str(settings.get("versionPrefix", "v"))
     if not current_version:
-        return settings["versionPrefix"] + "0.1.0"
+        return version_prefix + "0.1.0"
 
     # Parse version (e.g., "v0.1.0" or "0.1.0")
     import re
 
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", current_version)
     if not match:
-        return settings["versionPrefix"] + "0.1.0"
+        return version_prefix + "0.1.0"
 
     major, minor, patch = match.groups()
     next_minor = int(minor) + 1
 
-    return f"{settings['versionPrefix']}{major}.{next_minor}.0"
+    return f"{version_prefix}{major}.{next_minor}.0"
 
 
 def write_deployment(workspace_path: Path, deployment: Dict[str, Any]) -> None:
@@ -519,4 +520,5 @@ def get_last_deployment(project: Dict[str, Any], environment: str) -> Optional[D
         return None
 
     # Sort by timestamp, return most recent
-    return sorted(deployments, key=lambda d: d.get("ts", ""), reverse=True)[0]
+    sorted_deployments = sorted(deployments, key=lambda d: d.get("ts", ""), reverse=True)
+    return cast(Dict[str, Any], sorted_deployments[0])

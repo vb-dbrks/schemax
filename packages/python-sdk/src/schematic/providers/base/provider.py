@@ -141,7 +141,7 @@ class Provider(ABC):
 class BaseProvider(Provider):
     """Base implementation of Provider with common functionality"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.operation_metadata: Dict[str, OperationMetadata] = {}
 
     def get_operation_metadata(self, operation_type: str) -> Optional[OperationMetadata]:

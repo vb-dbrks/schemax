@@ -135,7 +135,8 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
     # Initialize changelog with implicit catalog for single-catalog mode
     initial_ops = []
 
-    if new_project["settings"]["catalogMode"] == "single":
+    settings = cast(Dict[str, Any], new_project.get("settings", {}))
+    if settings.get("catalogMode") == "single":
         # Auto-create implicit catalog
         catalog_id = "cat_implicit"
         initial_ops.append(
@@ -447,20 +448,21 @@ def _calculate_state_hash(state: Any, ops_included: List[str]) -> str:
 
 def _get_next_version(current_version: Optional[str], settings: Dict[str, Any]) -> str:
     """Get next version number"""
+    version_prefix = str(settings.get("versionPrefix", "v"))
     if not current_version:
-        return settings["versionPrefix"] + "0.1.0"
+        return version_prefix + "0.1.0"
 
     # Parse version (e.g., "v0.1.0" or "0.1.0")
     import re
 
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", current_version)
     if not match:
-        return settings["versionPrefix"] + "0.1.0"
+        return version_prefix + "0.1.0"
 
     major, minor, patch = match.groups()
     next_minor = int(minor) + 1
 
-    return f"{settings['versionPrefix']}{major}.{next_minor}.0"
+    return f"{version_prefix}{major}.{next_minor}.0"
 
 
 def write_deployment(workspace_path: Path, deployment: Dict[str, Any]) -> None:
@@ -494,7 +496,8 @@ def get_last_deployment(project: Dict[str, Any], environment: str) -> Optional[D
         return None
 
     # Sort by timestamp, return most recent
-    return sorted(deployments, key=lambda d: d.get("ts", ""), reverse=True)[0]
+    sorted_deployments = sorted(deployments, key=lambda d: d.get("ts", ""), reverse=True)
+    return cast(Dict[str, Any], sorted_deployments[0])
 
 
 def get_environment_config(project: Dict[str, Any], environment: str) -> Dict[str, Any]:
@@ -518,4 +521,4 @@ def get_environment_config(project: Dict[str, Any], environment: str) -> Dict[st
             f"Environment '{environment}' not found in project. Available environments: {available}"
         )
 
-    return environments[environment]
+    return cast(Dict[str, Any], environments[environment])

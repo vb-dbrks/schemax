@@ -189,7 +189,10 @@ class DeploymentTracker:
             max_wait = 60  # Maximum 60 seconds
             elapsed = 0
             while elapsed < max_wait:
-                status = self.client.statement_execution.get_statement(response.statement_id)
+                status = self.client.statement_execution.get_statement(response.statement_id or "")
+
+                if not status or not status.status:
+                    raise RuntimeError("Failed to get statement status")
 
                 if status.status.state == StatementState.SUCCEEDED:
                     return

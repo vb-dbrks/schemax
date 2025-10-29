@@ -2,7 +2,7 @@
 Base Model Types for Provider System
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -14,7 +14,7 @@ class ValidationError(BaseModel):
 
     field: str
     message: str
-    code: str = None
+    code: Optional[str] = None
 
 
 class ValidationResult(BaseModel):

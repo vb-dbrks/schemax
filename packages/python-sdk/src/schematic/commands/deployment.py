@@ -7,7 +7,7 @@ For automated deployment with execution, use the apply command instead.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 from rich.console import Console
@@ -93,7 +93,9 @@ def record_deployment_to_environment(
         console.print(f"  Deployment ID: {deployment['id']}")
         console.print(f"  Environment: {deployment['environment']}")
         console.print(f"  Version: {deployment['schemaVersion']}")
-        console.print(f"  Operations: {len(deployment['opsApplied'])}")
+        ops_for_display: Any = deployment.get("opsApplied", [])
+        ops_count = len(ops_for_display) if isinstance(ops_for_display, list) else 0
+        console.print(f"  Operations: {ops_count}")
         console.print(f"  Status: {deployment['status']}")
 
         return deployment
