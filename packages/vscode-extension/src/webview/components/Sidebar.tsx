@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
 
 // Environment config type for tooltip
@@ -7,6 +8,24 @@ interface EnvironmentConfig {
   description?: string;
   [key: string]: any;
 }
+
+const IconPlus: React.FC = () => (
+  <svg slot="start" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M8.75 3.25a.75.75 0 0 0-1.5 0V7H3.5a.75.75 0 0 0 0 1.5h3.75V12.75a.75.75 0 0 0 1.5 0V8.5h3.75a.75.75 0 0 0 0-1.5H8.75z" clipRule="evenodd" />
+  </svg>
+);
+
+const IconEdit: React.FC = () => (
+  <svg slot="start" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M11.414 1.586a2 2 0 0 1 2.828 2.828l-.793.793-2.828-2.828zm-2.121 2.121-7 7A2 2 0 0 0 2 12.414V14a1 1 0 0 0 1 1h1.586a2 2 0 0 0 1.414-.586l7-7z" clipRule="evenodd" />
+  </svg>
+);
+
+const IconTrash: React.FC = () => (
+  <svg slot="start" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M6.5 1A1.5 1.5 0 0 0 5 2.5V3H2.75a.75.75 0 0 0 0 1.5h.427l.561 8.414A2 2 0 0 0 5.73 15h4.54a2 2 0 0 0 1.992-2.086l.561-8.414h.427a.75.75 0 0 0 0-1.5H11V2.5A1.5 1.5 0 0 0 9.5 1zm0 1.5h3V3h-3zm-1.771 3h6.542l-.545 8.171a.5.5 0 0 1-.498.462H5.73a.5.5 0 0 1-.498-.462z" clipRule="evenodd" />
+  </svg>
+);
 
 // Tooltip component for showing logical → physical catalog name mappings
 const TopLevelMappingTooltip: React.FC<{
@@ -105,6 +124,11 @@ export const Sidebar: React.FC = () => {
   const [addDialog, setAddDialog] = useState<{type: 'catalog'|'schema'|'table', catalogId?: string, schemaId?: string} | null>(null);
   const [hoveredCatalogId, setHoveredCatalogId] = useState<string | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<HTMLElement | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [addNameInput, setAddNameInput] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addFormatInput, setAddFormatInput] = useState<'delta' | 'iceberg'>('delta');
 
   const toggleCatalog = (catalogId: string) => {
     const newExpanded = new Set(expandedCatalogs);
@@ -128,6 +152,21 @@ export const Sidebar: React.FC = () => {
 
   const [renameDialog, setRenameDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
   const [dropDialog, setDropDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
+
+  useEffect(() => {
+    if (renameDialog) {
+      setRenameValue(renameDialog.name);
+      setRenameError(null);
+    }
+  }, [renameDialog]);
+
+  useEffect(() => {
+    if (addDialog) {
+      setAddNameInput('');
+      setAddError(null);
+      setAddFormatInput('delta');
+    }
+  }, [addDialog]);
 
   const handleRenameCatalog = (catalogId: string, currentName: string) => {
     setRenameDialog({type: 'catalog', id: catalogId, name: currentName});
@@ -153,20 +192,43 @@ export const Sidebar: React.FC = () => {
     setDropDialog({type: 'table', id: tableId, name});
   };
 
+  const closeRenameDialog = () => {
+    setRenameDialog(null);
+    setRenameError(null);
+  };
+
+  const closeAddDialog = () => {
+    setAddDialog(null);
+    setAddError(null);
+    setAddNameInput('');
+    setAddFormatInput('delta');
+  };
+
   const handleRenameConfirm = (newName: string) => {
-    if (!renameDialog || !newName || newName === renameDialog.name) {
-      setRenameDialog(null);
+    if (!renameDialog) {
+      return;
+    }
+
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+      setRenameError('Name is required.');
+      return;
+    }
+
+    if (trimmedName === renameDialog.name) {
+      closeRenameDialog();
       return;
     }
     
     if (renameDialog.type === 'catalog') {
-      renameCatalog(renameDialog.id, newName);
+      renameCatalog(renameDialog.id, trimmedName);
     } else if (renameDialog.type === 'schema') {
-      renameSchema(renameDialog.id, newName);
+      renameSchema(renameDialog.id, trimmedName);
     } else if (renameDialog.type === 'table') {
-      renameTable(renameDialog.id, newName);
+      renameTable(renameDialog.id, trimmedName);
     }
-    setRenameDialog(null);
+    setRenameError(null);
+    closeRenameDialog();
   };
 
   const handleDropConfirm = () => {
@@ -183,35 +245,32 @@ export const Sidebar: React.FC = () => {
   };
 
   const handleAddConfirm = (name: string, format?: 'delta' | 'iceberg') => {
-    if (!addDialog || !name) {
-      setAddDialog(null);
+    if (!addDialog) {
       return;
     }
-    
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setAddError('Name is required.');
+      return;
+    }
+
     if (addDialog.type === 'catalog') {
-      addCatalog(name);
+      addCatalog(trimmedName);
     } else if (addDialog.type === 'schema' && addDialog.catalogId) {
-      addSchema(addDialog.catalogId, name);
+      addSchema(addDialog.catalogId, trimmedName);
       setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
     } else if (addDialog.type === 'table' && addDialog.schemaId) {
-      addTable(addDialog.schemaId, name, format || 'delta');
+      addTable(addDialog.schemaId, trimmedName, format || 'delta');
       setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
     }
-    setAddDialog(null);
+    setAddError(null);
+    closeAddDialog();
   };
 
   if (!project) {
     return <div className="sidebar">Loading...</div>;
   }
-
-  // Debug logging
-  console.log('[Sidebar] Project loaded:', {
-    hasState: !!project.state,
-    hasCatalogs: !!project.state?.catalogs,
-    catalogCount: project.state?.catalogs?.length || 0,
-    hasProvider: !!provider,
-    hasEnvironments: !!project.provider?.environments,
-  });
 
   // Safety checks
   if (!project.state || !project.state.catalogs) {
@@ -229,23 +288,27 @@ export const Sidebar: React.FC = () => {
   const getAddButton = () => {
     if (selectedSchemaId) {
       return (
-        <button 
-          className="add-btn-inline" 
+        <VSCodeButton
+          appearance="secondary"
+          className="add-btn-inline"
+          type="button"
           onClick={() => setAddDialog({type: 'table', schemaId: selectedSchemaId})}
           title={`Add ${thirdLevelName}`}
         >
           + {thirdLevelName}
-        </button>
+        </VSCodeButton>
       );
     } else if (selectedCatalogId) {
       return (
-        <button 
-          className="add-btn-inline" 
+        <VSCodeButton
+          appearance="secondary"
+          className="add-btn-inline"
+          type="button"
           onClick={() => setAddDialog({type: 'schema', catalogId: selectedCatalogId})}
           title={`Add ${secondLevelName}`}
         >
           + {secondLevelName}
-        </button>
+        </VSCodeButton>
       );
     } else {
       // Block multi-catalog: Hide "+ Catalog" button if one already exists
@@ -255,13 +318,15 @@ export const Sidebar: React.FC = () => {
       }
       
       return (
-        <button 
-          className="add-btn-inline" 
+        <VSCodeButton
+          appearance="secondary"
+          className="add-btn-inline"
+          type="button"
           onClick={() => setAddDialog({type: 'catalog'})}
           title={`Add ${topLevelName}`}
         >
           + {topLevelName}
-        </button>
+        </VSCodeButton>
       );
     }
   };
@@ -311,9 +376,36 @@ export const Sidebar: React.FC = () => {
                 </svg>
               </span>
               <span className="actions">
-                <button onClick={(e) => { e.stopPropagation(); setAddDialog({type: 'schema', catalogId: catalog.id}); }} title={`Add ${secondLevelName}`}>+</button>
-                <button onClick={(e) => { e.stopPropagation(); handleRenameCatalog(catalog.id, catalog.name); }}>✏️</button>
-                <button onClick={(e) => { e.stopPropagation(); handleDropCatalog(catalog.id, catalog.name); }}>🗑️</button>
+                <VSCodeButton
+                  appearance="icon"
+                  aria-label={`Add ${secondLevelName}`}
+                  onClick={(event: React.MouseEvent) => {
+                    event.stopPropagation();
+                    setAddDialog({type: 'schema', catalogId: catalog.id});
+                  }}
+                >
+                  <IconPlus />
+                </VSCodeButton>
+                <VSCodeButton
+                  appearance="icon"
+                  aria-label={`Rename ${topLevelName}`}
+                  onClick={(event: React.MouseEvent) => {
+                    event.stopPropagation();
+                    handleRenameCatalog(catalog.id, catalog.name);
+                  }}
+                >
+                  <IconEdit />
+                </VSCodeButton>
+                <VSCodeButton
+                  appearance="icon"
+                  aria-label={`Drop ${topLevelName}`}
+                  onClick={(event: React.MouseEvent) => {
+                    event.stopPropagation();
+                    handleDropCatalog(catalog.id, catalog.name);
+                  }}
+                >
+                  <IconTrash />
+                </VSCodeButton>
               </span>
             </div>
             {expandedCatalogs.has(catalog.id) && (
@@ -338,9 +430,36 @@ export const Sidebar: React.FC = () => {
                     </span>
                     <span className="name">{schema.name}</span>
                     <span className="actions">
-                      <button onClick={(e) => { e.stopPropagation(); setAddDialog({type: 'table', schemaId: schema.id}); }} title={`Add ${thirdLevelName}`}>+</button>
-                      <button onClick={(e) => { e.stopPropagation(); handleRenameSchema(schema.id, schema.name); }}>✏️</button>
-                      <button onClick={(e) => { e.stopPropagation(); handleDropSchema(schema.id, schema.name); }}>🗑️</button>
+                      <VSCodeButton
+                        appearance="icon"
+                        aria-label={`Add ${thirdLevelName}`}
+                        onClick={(event: React.MouseEvent) => {
+                          event.stopPropagation();
+                          setAddDialog({type: 'table', schemaId: schema.id});
+                        }}
+                      >
+                        <IconPlus />
+                      </VSCodeButton>
+                      <VSCodeButton
+                        appearance="icon"
+                        aria-label={`Rename ${secondLevelName}`}
+                        onClick={(event: React.MouseEvent) => {
+                          event.stopPropagation();
+                          handleRenameSchema(schema.id, schema.name);
+                        }}
+                      >
+                        <IconEdit />
+                      </VSCodeButton>
+                      <VSCodeButton
+                        appearance="icon"
+                        aria-label={`Drop ${secondLevelName}`}
+                        onClick={(event: React.MouseEvent) => {
+                          event.stopPropagation();
+                          handleDropSchema(schema.id, schema.name);
+                        }}
+                      >
+                        <IconTrash />
+                      </VSCodeButton>
                     </span>
                   </div>
                   {expandedSchemas.has(schema.id) && (
@@ -363,8 +482,26 @@ export const Sidebar: React.FC = () => {
                           <span className="name">{table.name}</span>
                           <span className="badge">{table.format}</span>
                           <span className="actions">
-                            <button onClick={(e) => { e.stopPropagation(); handleRenameTable(table.id, table.name); }}>✏️</button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDropTable(table.id, table.name); }}>🗑️</button>
+                            <VSCodeButton
+                              appearance="icon"
+                              aria-label="Rename table"
+                              onClick={(event: React.MouseEvent) => {
+                                event.stopPropagation();
+                                handleRenameTable(table.id, table.name);
+                              }}
+                            >
+                              <IconEdit />
+                            </VSCodeButton>
+                            <VSCodeButton
+                              appearance="icon"
+                              aria-label="Drop table"
+                              onClick={(event: React.MouseEvent) => {
+                                event.stopPropagation();
+                                handleDropTable(table.id, table.name);
+                              }}
+                            >
+                              <IconTrash />
+                            </VSCodeButton>
                           </span>
                         </div>
                       ))}
@@ -406,95 +543,117 @@ export const Sidebar: React.FC = () => {
       )}
 
       {renameDialog && (
-        <div className="modal" onClick={() => setRenameDialog(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" role="dialog" aria-modal="true" onClick={closeRenameDialog}>
+          <form
+            className="modal-content modal-surface"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleRenameConfirm(renameValue);
+            }}
+          >
             <h3>Rename {renameDialog.type}</h3>
-            <input
-              type="text"
-              defaultValue={renameDialog.name}
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleRenameConfirm((e.target as HTMLInputElement).value);
-                } else if (e.key === 'Escape') {
-                  setRenameDialog(null);
-                }
+            <VSCodeTextField
+              value={renameValue}
+              onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                setRenameValue((event.target as HTMLInputElement).value);
+                setRenameError(null);
               }}
-              id="rename-input"
+              autoFocus
             />
+            {renameError && <p className="form-error">{renameError}</p>}
             <div className="modal-buttons">
-              <button onClick={() => {
-                const input = document.getElementById('rename-input') as HTMLInputElement;
-                handleRenameConfirm(input.value);
-              }}>Rename</button>
-              <button onClick={() => setRenameDialog(null)}>Cancel</button>
+              <VSCodeButton type="submit">Save</VSCodeButton>
+              <VSCodeButton type="button" appearance="secondary" onClick={closeRenameDialog}>
+                Cancel
+              </VSCodeButton>
             </div>
-          </div>
+          </form>
         </div>
       )}
 
       {dropDialog && (
-        <div className="modal" onClick={() => setDropDialog(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" role="alertdialog" aria-modal="true" onClick={() => setDropDialog(null)}>
+          <form
+            className="modal-content modal-surface"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleDropConfirm();
+            }}
+          >
             <h3>Confirm Drop</h3>
             <p>Are you sure you want to drop {dropDialog.type} "{dropDialog.name}"?</p>
-            {dropDialog.type === 'catalog' && <p className="warning">⚠️ This will also drop all schemas and tables.</p>}
-            {dropDialog.type === 'schema' && <p className="warning">⚠️ This will also drop all tables.</p>}
+            {dropDialog.type === 'catalog' && (
+              <p className="warning-banner">
+                <span className="warning-banner__icon" aria-hidden="true" />
+                This will also drop every schema and table underneath this catalog.
+              </p>
+            )}
+            {dropDialog.type === 'schema' && (
+              <p className="warning-banner">
+                <span className="warning-banner__icon" aria-hidden="true" />
+                This will also drop all tables inside this schema.
+              </p>
+            )}
             <div className="modal-buttons">
-              <button onClick={handleDropConfirm} style={{backgroundColor: 'var(--vscode-errorForeground)'}}>Drop</button>
-              <button onClick={() => setDropDialog(null)}>Cancel</button>
+              <VSCodeButton type="button" appearance="secondary" onClick={() => setDropDialog(null)}>
+                Cancel
+              </VSCodeButton>
+              <VSCodeButton type="submit" className="danger-button">
+                Drop
+              </VSCodeButton>
             </div>
-          </div>
+          </form>
         </div>
       )}
 
       {addDialog && (
-        <div className="modal" onClick={() => setAddDialog(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal" role="dialog" aria-modal="true" onClick={closeAddDialog}>
+          <form
+            className="modal-content modal-surface"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleAddConfirm(
+                addNameInput,
+                addDialog.type === 'table' ? addFormatInput : undefined
+              );
+            }}
+          >
             <h3>Add {addDialog.type}</h3>
-            <label>Name:</label>
-            <input
-              type="text"
+            <VSCodeTextField
+              value={addNameInput}
               placeholder={`Enter ${addDialog.type} name`}
               autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  const name = (e.target as HTMLInputElement).value;
-                  if (addDialog.type === 'table') {
-                    const format = (document.getElementById('table-format') as HTMLSelectElement)?.value as 'delta' | 'iceberg';
-                    handleAddConfirm(name, format);
-                  } else {
-                    handleAddConfirm(name);
-                  }
-                } else if (e.key === 'Escape') {
-                  setAddDialog(null);
-                }
+              onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                setAddNameInput((event.target as HTMLInputElement).value);
+                setAddError(null);
               }}
-              id="add-name-input"
             />
             {addDialog.type === 'table' && (
-              <>
-                <label style={{marginTop: '12px'}}>Format:</label>
-                <select id="table-format" defaultValue="delta">
-                  <option value="delta">Delta</option>
-                  <option value="iceberg">Iceberg</option>
-                </select>
-              </>
+              <div className="modal-field-group">
+                <label htmlFor="table-format-select">Format</label>
+                <VSCodeDropdown
+                  id="table-format-select"
+                  value={addFormatInput}
+                  onInput={(event: React.FormEvent<HTMLSelectElement>) => {
+                    setAddFormatInput((event.target as HTMLSelectElement).value as 'delta' | 'iceberg');
+                  }}
+                >
+                  <VSCodeOption value="delta">Delta</VSCodeOption>
+                  <VSCodeOption value="iceberg">Iceberg</VSCodeOption>
+                </VSCodeDropdown>
+              </div>
             )}
+            {addError && <p className="form-error">{addError}</p>}
             <div className="modal-buttons">
-              <button onClick={() => {
-                const nameInput = document.getElementById('add-name-input') as HTMLInputElement;
-                const name = nameInput.value;
-                if (addDialog.type === 'table') {
-                  const format = (document.getElementById('table-format') as HTMLSelectElement)?.value as 'delta' | 'iceberg';
-                  handleAddConfirm(name, format);
-                } else {
-                  handleAddConfirm(name);
-                }
-              }}>Add</button>
-              <button onClick={() => setAddDialog(null)}>Cancel</button>
+              <VSCodeButton type="submit">Add</VSCodeButton>
+              <VSCodeButton type="button" appearance="secondary" onClick={closeAddDialog}>
+                Cancel
+              </VSCodeButton>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>

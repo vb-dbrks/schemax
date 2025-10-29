@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { Column } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
 
@@ -6,6 +7,12 @@ interface ColumnGridProps {
   tableId: string;
   columns: Column[];
 }
+
+const IconPlusSmall: React.FC = () => (
+  <svg slot="start" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <path fillRule="evenodd" d="M8.75 2.75a.75.75 0 0 0-1.5 0V7H3.25a.75.75 0 0 0 0 1.5H7.25v4.25a.75.75 0 0 0 1.5 0V8.5h4.25a.75.75 0 0 0 0-1.5H8.75z" clipRule="evenodd" />
+  </svg>
+);
 
 export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
   const {
@@ -113,8 +120,19 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
         <tbody>
           {columns.length === 0 ? (
             <tr>
-              <td colSpan={7} className="empty-state">
-                No columns yet. Click "+ Add Column" to create one.
+              <td colSpan={7}>
+                <div className="column-grid__empty">
+                  <div className="column-grid__empty-copy">
+                    <span className="column-grid__empty-title">No columns defined yet</span>
+                    <span className="column-grid__empty-hint">
+                      Start by adding your first column. You can always reorder or refine it later.
+                    </span>
+                  </div>
+                  <VSCodeButton appearance="primary" type="button" onClick={() => setAddDialog(true)}>
+                    <IconPlusSmall />
+                    Add column
+                  </VSCodeButton>
+                </div>
               </td>
             </tr>
           ) : (
@@ -244,13 +262,12 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
         </tbody>
       </table>
 
-      <button 
-        className="add-property-btn"
-        onClick={() => setAddDialog(true)}
-        style={{marginTop: '12px'}}
-      >
-        + Add Column
-      </button>
+      {columns.length > 0 && (
+        <VSCodeButton appearance="secondary" type="button" onClick={() => setAddDialog(true)} className="add-column-button">
+          <IconPlusSmall />
+          Add column
+        </VSCodeButton>
+      )}
 
       {dropDialog && (
         <div className="modal" onClick={() => setDropDialog(null)}>

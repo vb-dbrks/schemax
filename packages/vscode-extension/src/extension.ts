@@ -550,6 +550,38 @@ async function openDesigner(context: vscode.ExtensionContext) {
           vscode.window.showErrorMessage(errorMessage, { modal: false, detail });
           break;
         }
+        case 'open-docs': {
+          try {
+            const docPath = message.payload?.path as string | undefined;
+            const fragment = message.payload?.fragment as string | undefined;
+
+            if (!docPath) {
+              vscode.window.showWarningMessage('Schematic: Documentation path was not provided.');
+              break;
+            }
+
+            const targetUri = vscode.Uri.joinPath(workspaceFolder.uri, docPath);
+            const document = await vscode.workspace.openTextDocument(targetUri);
+            const editor = await vscode.window.showTextDocument(document, { preview: true });
+
+            if (fragment) {
+              const lowerFragment = fragment.toLowerCase();
+              const text = document.getText().toLowerCase();
+              const index = text.indexOf(lowerFragment);
+
+              if (index >= 0) {
+                const position = document.positionAt(index);
+                editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.AtTop);
+              }
+            }
+
+            trackEvent('docs_opened', { path: docPath });
+          } catch (error) {
+            outputChannel.appendLine(`[Schematic] ERROR: Failed to open docs: ${error}`);
+            vscode.window.showErrorMessage('Schematic: Unable to open documentation.');
+          }
+          break;
+        }
         case 'append-ops': {
           try {
             const ops: Operation[] = message.payload;
