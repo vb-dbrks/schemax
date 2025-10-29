@@ -5,7 +5,7 @@ Main provider implementation for Databricks Unity Catalog.
 Implements the Provider interface to enable Unity Catalog support in Schematic.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ..base.executor import ExecutionConfig, SQLExecutor
 from ..base.models import ProviderState, ValidationError, ValidationResult
@@ -60,7 +60,7 @@ class UnityProvider(BaseProvider):
             },
         )
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         # Register all operation metadata
         for metadata in unity_operation_metadata:
@@ -121,11 +121,11 @@ class UnityProvider(BaseProvider):
         return result_state.model_dump(by_alias=True)
 
     def get_sql_generator(
-        self, state: ProviderState, catalog_name_mapping: Dict[str, str] = None
+        self, state: ProviderState, catalog_name_mapping: Optional[Dict[str, str]] = None
     ) -> SQLGenerator:
         """Get SQL generator for Unity Catalog with optional catalog name mapping"""
         unity_state = UnityState(**state) if not isinstance(state, UnityState) else state
-        return UnitySQLGenerator(unity_state.model_dump(by_alias=True), catalog_name_mapping)
+        return UnitySQLGenerator(unity_state, catalog_name_mapping)
 
     def create_initial_state(self) -> ProviderState:
         """Create an empty initial state"""

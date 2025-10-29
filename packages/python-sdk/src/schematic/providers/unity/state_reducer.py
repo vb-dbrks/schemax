@@ -92,17 +92,17 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                         properties={},
                         constraints=[],
                         grants=[],
-                        column_mapping=None,
-                        row_filters=[],
-                        column_masks=[],
+                        columnMapping=None,
+                        rowFilters=[],
+                        columnMasks=[],
                     )
                     schema.tables.append(table)
                     return new_state
 
     elif op_type == "rename_table":
-        table = _find_table(new_state, op.target)
-        if table:
-            table.name = op.payload["newName"]
+        table_opt = _find_table(new_state, op.target)
+        if table_opt:
+            table_opt.name = op.payload["newName"]
 
     elif op_type == "drop_table":
         for catalog in new_state.catalogs:
@@ -110,24 +110,24 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 schema.tables = [t for t in schema.tables if t.id != op.target]
 
     elif op_type == "set_table_comment":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            table.comment = op.payload["comment"]
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            table_opt.comment = op.payload["comment"]
 
     elif op_type == "set_table_property":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            table.properties[op.payload["key"]] = op.payload["value"]
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            table_opt.properties[op.payload["key"]] = op.payload["value"]
 
     elif op_type == "unset_table_property":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table and op.payload["key"] in table.properties:
-            del table.properties[op.payload["key"]]
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt and op.payload["key"] in table_opt.properties:
+            del table_opt.properties[op.payload["key"]]
 
     # Column operations
     elif op_type == "add_column":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
             column = UnityColumn(
                 id=op.payload["colId"],
                 name=op.payload["name"],
@@ -135,59 +135,59 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 nullable=op.payload["nullable"],
                 comment=op.payload.get("comment"),
                 tags={},
-                mask_id=None,
+                maskId=None,
             )
-            table.columns.append(column)
+            table_opt.columns.append(column)
 
     elif op_type == "rename_column":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            for column in table.columns:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            for column in table_opt.columns:
                 if column.id == op.target:
                     column.name = op.payload["newName"]
                     break
 
     elif op_type == "drop_column":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            table.columns = [c for c in table.columns if c.id != op.target]
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            table_opt.columns = [c for c in table_opt.columns if c.id != op.target]
 
     elif op_type == "reorder_columns":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
             order = op.payload["order"]
             # Sort columns by their position in the order list
-            table.columns.sort(key=lambda c: order.index(c.id) if c.id in order else len(order))
+            table_opt.columns.sort(key=lambda c: order.index(c.id) if c.id in order else len(order))
 
     elif op_type == "change_column_type":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            for column in table.columns:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            for column in table_opt.columns:
                 if column.id == op.target:
                     column.type = op.payload["newType"]
                     break
 
     elif op_type == "set_nullable":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            for column in table.columns:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            for column in table_opt.columns:
                 if column.id == op.target:
                     column.nullable = op.payload["nullable"]
                     break
 
     elif op_type == "set_column_comment":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            for column in table.columns:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            for column in table_opt.columns:
                 if column.id == op.target:
                     column.comment = op.payload["comment"]
                     break
 
     # Column tag operations
     elif op_type == "set_column_tag":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            for column in table.columns:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            for column in table_opt.columns:
                 if column.id == op.target:
                     if column.tags is None:
                         column.tags = {}
@@ -195,9 +195,9 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     break
 
     elif op_type == "unset_column_tag":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            for column in table.columns:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            for column in table_opt.columns:
                 if column.id == op.target and column.tags:
                     if op.payload["tagName"] in column.tags:
                         del column.tags[op.payload["tagName"]]
@@ -205,8 +205,8 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
 
     # Constraint operations
     elif op_type == "add_constraint":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
             constraint = UnityConstraint(
                 id=op.payload["constraintId"],
                 type=op.payload["type"],
@@ -224,32 +224,32 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 initiallyDeferred=op.payload.get("initiallyDeferred"),
                 rely=op.payload.get("rely"),
             )
-            table.constraints.append(constraint)
+            table_opt.constraints.append(constraint)
 
     elif op_type == "drop_constraint":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            table.constraints = [c for c in table.constraints if c.id != op.target]
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            table_opt.constraints = [c for c in table_opt.constraints if c.id != op.target]
 
     # Row filter operations
     elif op_type == "add_row_filter":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            if table.row_filters is None:
-                table.row_filters = []
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            if table_opt.row_filters is None:
+                table_opt.row_filters = []
             filter_obj = UnityRowFilter(
                 id=op.payload["filterId"],
                 name=op.payload["name"],
                 enabled=op.payload.get("enabled", True),
-                udf_expression=op.payload["udfExpression"],
+                udfExpression=op.payload["udfExpression"],
                 description=op.payload.get("description"),
             )
-            table.row_filters.append(filter_obj)
+            table_opt.row_filters.append(filter_obj)
 
     elif op_type == "update_row_filter":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table and table.row_filters:
-            for filter_obj in table.row_filters:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt and table_opt.row_filters:
+            for filter_obj in table_opt.row_filters:
                 if filter_obj.id == op.target:
                     if "name" in op.payload:
                         filter_obj.name = op.payload["name"]
@@ -262,36 +262,36 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     break
 
     elif op_type == "remove_row_filter":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table and table.row_filters:
-            table.row_filters = [f for f in table.row_filters if f.id != op.target]
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt and table_opt.row_filters:
+            table_opt.row_filters = [f for f in table_opt.row_filters if f.id != op.target]
 
     # Column mask operations
     elif op_type == "add_column_mask":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table:
-            if table.column_masks is None:
-                table.column_masks = []
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            if table_opt.column_masks is None:
+                table_opt.column_masks = []
             mask = UnityColumnMask(
                 id=op.payload["maskId"],
-                column_id=op.payload["columnId"],
+                columnId=op.payload["columnId"],
                 name=op.payload["name"],
                 enabled=op.payload.get("enabled", True),
-                mask_function=op.payload["maskFunction"],
+                maskFunction=op.payload["maskFunction"],
                 description=op.payload.get("description"),
             )
-            table.column_masks.append(mask)
+            table_opt.column_masks.append(mask)
 
             # Link mask to column
-            for column in table.columns:
+            for column in table_opt.columns:
                 if column.id == op.payload["columnId"]:
                     column.mask_id = op.payload["maskId"]
                     break
 
     elif op_type == "update_column_mask":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table and table.column_masks:
-            for mask in table.column_masks:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt and table_opt.column_masks:
+            for mask in table_opt.column_masks:
                 if mask.id == op.target:
                     if "name" in op.payload:
                         mask.name = op.payload["name"]
@@ -304,18 +304,18 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     break
 
     elif op_type == "remove_column_mask":
-        table = _find_table(new_state, op.payload["tableId"])
-        if table and table.column_masks:
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt and table_opt.column_masks:
             # Find the mask to get column ID
-            mask = next((m for m in table.column_masks if m.id == op.target), None)
-            if mask:
+            mask_opt = next((m for m in table_opt.column_masks if m.id == op.target), None)
+            if mask_opt:
                 # Unlink mask from column
-                for column in table.columns:
-                    if column.id == mask.column_id:
+                for column in table_opt.columns:
+                    if column.id == mask_opt.column_id:
                         column.mask_id = None
                         break
                 # Remove mask
-                table.column_masks = [m for m in table.column_masks if m.id != op.target]
+                table_opt.column_masks = [m for m in table_opt.column_masks if m.id != op.target]
 
     return new_state
 

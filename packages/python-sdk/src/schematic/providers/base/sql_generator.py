@@ -5,7 +5,7 @@ Defines the contract for generating SQL DDL statements from operations.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -80,12 +80,12 @@ class BaseSQLGenerator(SQLGenerator):
     - Template pattern for provider-specific SQL generation
     """
 
-    def __init__(self, state: ProviderState, name_mapping: Optional[Dict[str, str]] = None):
+    def __init__(self, state: Any, name_mapping: Optional[Dict[str, str]] = None):
         """
         Initialize base SQL generator with optimization components.
 
         Args:
-            state: Provider state (catalogs, schemas, tables, etc.)
+            state: Provider state (catalogs, schemas, tables, etc.) - can be Dict or BaseModel
             name_mapping: Optional name mapping (e.g., logical → physical catalog names)
         """
         super().__init__(state)

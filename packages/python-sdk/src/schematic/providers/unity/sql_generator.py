@@ -33,20 +33,41 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """
         id_map = {}
 
-        for catalog in self.state["catalogs"]:
+        # Handle both dict and Pydantic model state
+        catalogs = (
+            self.state.catalogs
+            if hasattr(self.state, "catalogs")
+            else self.state.get("catalogs", [])
+        )
+
+        for catalog in catalogs:
+            # Handle both dict and Pydantic model
+            cat_name = catalog.name if hasattr(catalog, "name") else catalog["name"]
+            cat_id = catalog.id if hasattr(catalog, "id") else catalog["id"]
             # Apply catalog name mapping if present (for environment-specific SQL)
-            catalog_name = self.catalog_name_mapping.get(catalog["name"], catalog["name"])
-            id_map[catalog["id"]] = catalog_name
+            catalog_name = self.catalog_name_mapping.get(cat_name, cat_name)
+            id_map[cat_id] = catalog_name
 
-            for schema in catalog.get("schemas", []):
-                id_map[schema["id"]] = f"{catalog_name}.{schema['name']}"
+            schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
+            for schema in schemas:
+                schema_name = schema.name if hasattr(schema, "name") else schema["name"]
+                schema_id = schema.id if hasattr(schema, "id") else schema["id"]
+                id_map[schema_id] = f"{catalog_name}.{schema_name}"
 
-                for table in schema.get("tables", []):
-                    table_fqn = f"{catalog_name}.{schema['name']}.{table['name']}"
-                    id_map[table["id"]] = table_fqn
+                tables = schema.tables if hasattr(schema, "tables") else schema.get("tables", [])
+                for table in tables:
+                    table_name = table.name if hasattr(table, "name") else table["name"]
+                    table_id = table.id if hasattr(table, "id") else table["id"]
+                    table_fqn = f"{catalog_name}.{schema_name}.{table_name}"
+                    id_map[table_id] = table_fqn
 
-                    for column in table.get("columns", []):
-                        id_map[column["id"]] = column["name"]
+                    columns = (
+                        table.columns if hasattr(table, "columns") else table.get("columns", [])
+                    )
+                    for column in columns:
+                        col_name = column.name if hasattr(column, "name") else column["name"]
+                        col_id = column.id if hasattr(column, "id") else column["id"]
+                        id_map[col_id] = col_name
 
         return id_map
 
