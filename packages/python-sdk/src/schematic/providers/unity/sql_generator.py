@@ -5,7 +5,7 @@ Generates Databricks SQL DDL statements from operations.
 Migrated from TypeScript sql-generator.ts
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ..base.batching import BatchInfo
 from ..base.operations import Operation
@@ -17,7 +17,7 @@ from .operations import UNITY_OPERATIONS
 class UnitySQLGenerator(BaseSQLGenerator):
     """Unity Catalog SQL Generator"""
 
-    def __init__(self, state: UnityState, catalog_name_mapping: Dict[str, str] = None):
+    def __init__(self, state: UnityState, catalog_name_mapping: Optional[Dict[str, str]] = None):
         # Pass catalog_name_mapping to base as name_mapping
         super().__init__(state, catalog_name_mapping)
         self.catalog_name_mapping = catalog_name_mapping or {}  # logical → physical
@@ -630,7 +630,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Returns dict mapping table_id to batch info.
         """
-        table_batches = {}
+        table_batches: Dict[str, Any] = {}
 
         for op in ops:
             op_type = op.op.replace("unity.", "")

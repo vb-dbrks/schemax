@@ -92,6 +92,9 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                         properties={},
                         constraints=[],
                         grants=[],
+                        column_mapping=None,
+                        row_filters=[],
+                        column_masks=[],
                     )
                     schema.tables.append(table)
                     return new_state
@@ -131,6 +134,8 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 type=op.payload["type"],
                 nullable=op.payload["nullable"],
                 comment=op.payload.get("comment"),
+                tags={},
+                mask_id=None,
             )
             table.columns.append(column)
 
@@ -208,15 +213,15 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 name=op.payload.get("name"),
                 columns=op.payload["columns"],
                 timeseries=op.payload.get("timeseries"),
-                parent_table=op.payload.get("parentTable"),
-                parent_columns=op.payload.get("parentColumns"),
-                match_full=op.payload.get("matchFull"),
-                on_update=op.payload.get("onUpdate"),
-                on_delete=op.payload.get("onDelete"),
+                parentTable=op.payload.get("parentTable"),
+                parentColumns=op.payload.get("parentColumns"),
+                matchFull=op.payload.get("matchFull"),
+                onUpdate=op.payload.get("onUpdate"),
+                onDelete=op.payload.get("onDelete"),
                 expression=op.payload.get("expression"),
-                not_enforced=op.payload.get("notEnforced"),
+                notEnforced=op.payload.get("notEnforced"),
                 deferrable=op.payload.get("deferrable"),
-                initially_deferred=op.payload.get("initiallyDeferred"),
+                initiallyDeferred=op.payload.get("initiallyDeferred"),
                 rely=op.payload.get("rely"),
             )
             table.constraints.append(constraint)

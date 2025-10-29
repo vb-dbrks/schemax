@@ -9,7 +9,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import uuid4
 
 from .providers import Operation, Provider, ProviderRegistry, ProviderState
@@ -67,7 +67,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
     if project_path.exists():
         # Project exists - check version
         with open(project_path, "r") as f:
-            project = json.load(f)
+            project = cast(Dict[str, Any], json.load(f))
 
         if project.get("version") == 4:
             return  # Already v4
@@ -192,7 +192,7 @@ def read_project(workspace_path: Path) -> Dict[str, Any]:
         )
 
     with open(project_path, "r") as f:
-        project = json.load(f)
+        project = cast(Dict[str, Any], json.load(f))
 
     # Enforce v4
     if project.get("version") != 4:
@@ -226,10 +226,10 @@ def read_changelog(workspace_path: Path) -> Dict[str, Any]:
 
     try:
         with open(changelog_path, "r") as f:
-            return json.load(f)
+            return cast(Dict[str, Any], json.load(f))
     except FileNotFoundError:
         # Changelog doesn't exist, create empty one
-        changelog = {
+        changelog: Dict[str, Any] = {
             "version": 1,
             "sinceSnapshot": None,
             "ops": [],
@@ -256,7 +256,7 @@ def read_snapshot(workspace_path: Path, version: str) -> Dict[str, Any]:
     snapshot_path = get_snapshot_file_path(workspace_path, version)
 
     with open(snapshot_path, "r") as f:
-        return json.load(f)
+        return cast(Dict[str, Any], json.load(f))
 
 
 def write_snapshot(workspace_path: Path, snapshot: Dict[str, Any]) -> None:
@@ -339,7 +339,7 @@ def create_snapshot(
     name: str,
     version: Optional[str] = None,
     comment: Optional[str] = None,
-    tags: List[str] = None,
+    tags: Optional[List[str]] = None,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     """Create a snapshot
 

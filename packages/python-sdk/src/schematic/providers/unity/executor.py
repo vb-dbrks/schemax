@@ -105,6 +105,7 @@ class UnitySQLExecutor:
                         status="failed",
                         execution_time_ms=0,
                         error_message=str(e),
+                        rows_affected=None,
                     )
                 )
 
@@ -132,6 +133,7 @@ class UnitySQLExecutor:
             statement_results=results,
             total_execution_time_ms=total_time_ms,
             status="success",
+            error_message=None,
         )
 
     def _execute_single_statement(
@@ -194,6 +196,7 @@ class UnitySQLExecutor:
                         status="failed",
                         execution_time_ms=int((time.time() - exec_start) * 1000),
                         error_message=error_msg,
+                        rows_affected=None,
                     )
 
                 elif state == StatementState.CANCELED:
@@ -203,6 +206,7 @@ class UnitySQLExecutor:
                         status="failed",
                         execution_time_ms=int((time.time() - exec_start) * 1000),
                         error_message="Statement was canceled",
+                        rows_affected=None,
                     )
 
                 # Still running, wait and poll again
@@ -216,6 +220,7 @@ class UnitySQLExecutor:
                 status="failed",
                 execution_time_ms=int((time.time() - exec_start) * 1000),
                 error_message=f"Statement execution timed out after {config.timeout_seconds}s",
+                rows_affected=None,
             )
 
         except Exception as e:
@@ -226,4 +231,5 @@ class UnitySQLExecutor:
                 status="failed",
                 execution_time_ms=int((time.time() - exec_start) * 1000),
                 error_message=f"API error: {e}",
+                rows_affected=None,
             )

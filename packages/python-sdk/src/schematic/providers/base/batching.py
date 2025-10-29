@@ -13,7 +13,7 @@ from .operations import Operation
 class BatchInfo:
     """Information about a batch of operations for a single object"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.is_new = False
         self.create_op: Optional[Operation] = None
         self.modify_ops: List[Operation] = []
