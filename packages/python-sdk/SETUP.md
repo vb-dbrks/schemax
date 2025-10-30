@@ -15,11 +15,11 @@ This guide walks you through setting up the development environment for the Sche
 ```bash
 cd packages/python-sdk
 
+# Using uv (recommended/faster)
+uv pip install -e ".[dev]"
+
 # Using pip
 pip install -e ".[dev]"
-
-# Using uv (faster)
-uv pip install -e ".[dev]"
 ```
 
 This installs:
