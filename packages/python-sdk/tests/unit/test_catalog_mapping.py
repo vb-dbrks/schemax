@@ -13,8 +13,18 @@ class TestCatalogMapping:
 
     def test_build_catalog_mapping_implicit_catalog(self):
         """Should map __implicit__ to environment's physical catalog"""
-        state = {"catalogs": [{"id": "cat_implicit", "name": "__implicit__", "schemas": []}]}
-        env_config = {"catalog": "dev_my_analytics"}
+        state = {
+            "catalogs": [
+                {
+                    "id": "cat_implicit",
+                    "name": "__implicit__",
+                    "schemas": []
+                }
+            ]
+        }
+        env_config = {
+            "topLevelName": "dev_my_analytics"
+        }
 
         mapping = build_catalog_mapping(state, env_config)
 
@@ -22,8 +32,18 @@ class TestCatalogMapping:
 
     def test_build_catalog_mapping_single_explicit_catalog(self):
         """Should map single explicit catalog to environment catalog"""
-        state = {"catalogs": [{"id": "cat_123", "name": "sales_analytics", "schemas": []}]}
-        env_config = {"catalog": "dev_sales"}
+        state = {
+            "catalogs": [
+                {
+                    "id": "cat_123",
+                    "name": "sales_analytics",
+                    "schemas": []
+                }
+            ]
+        }
+        env_config = {
+            "topLevelName": "dev_sales"
+        }
 
         mapping = build_catalog_mapping(state, env_config)
 
@@ -32,7 +52,7 @@ class TestCatalogMapping:
     def test_build_catalog_mapping_no_catalogs(self):
         """Should return empty mapping if no catalogs"""
         state = {"catalogs": []}
-        env_config = {"catalog": "dev_my_analytics"}
+        env_config = {"topLevelName": "dev_my_analytics"}
 
         mapping = build_catalog_mapping(state, env_config)
 
@@ -46,7 +66,7 @@ class TestCatalogMapping:
                 {"id": "cat_2", "name": "analytics", "schemas": []},
             ]
         }
-        env_config = {"catalog": "dev_primary"}
+        env_config = {"topLevelName": "dev_primary"}
 
         with pytest.raises(
             SQLGenerationError, match="Multi-catalog projects are not yet supported"

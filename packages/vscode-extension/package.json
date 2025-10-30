@@ -97,6 +97,7 @@
     "vite": "^7.0.0"
   },
   "dependencies": {
+    "@vscode/webview-ui-toolkit": "^1.4.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "uuid": "^9.0.1",

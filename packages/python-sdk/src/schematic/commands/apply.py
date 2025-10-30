@@ -51,13 +51,9 @@ def _build_catalog_mapping(state: dict, env_config: dict) -> dict:
 
     if len(catalogs) == 1:
         logical_name = catalogs[0]["name"]
-        physical_name = env_config["catalog"]
+        physical_name = env_config["topLevelName"]
 
-        # Check if this is an implicit catalog (single-catalog mode)
-        if logical_name == "__implicit__":
-            console.print(f"[dim]  Implicit catalog mode: __implicit__ → {physical_name}[/dim]")
-        else:
-            console.print(f"[dim]  Catalog mapping: {logical_name} → {physical_name}[/dim]")
+        console.print(f"[dim]  Catalog mapping: {logical_name} → {physical_name}[/dim]")
 
         return {logical_name: physical_name}
 
@@ -115,7 +111,7 @@ def apply_to_environment(
 
         console.print(f"[blue]Provider:[/blue] {provider.info.name} v{provider.info.version}")
         console.print(f"[blue]Environment:[/blue] {target_env}")
-        console.print(f"[blue]Physical Catalog:[/blue] {env_config['catalog']}")
+        console.print(f"[blue]Physical Catalog:[/blue] {env_config['topLevelName']}")
         console.print(f"[blue]Warehouse:[/blue] {warehouse_id}")
         console.print(f"[blue]Profile:[/blue] {profile}")
 
@@ -209,7 +205,7 @@ def apply_to_environment(
         result = executor.execute_statements(statements, config)
 
         # 12. Initialize deployment tracker AFTER catalog exists
-        deployment_catalog = env_config["catalog"]
+        deployment_catalog = env_config["topLevelName"]
         tracker = DeploymentTracker(executor.client, deployment_catalog, warehouse_id)
 
         console.print(

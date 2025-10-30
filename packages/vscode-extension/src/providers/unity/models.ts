@@ -90,3 +90,27 @@ export interface UnityState extends ProviderState {
   catalogs: UnityCatalog[];
 }
 
+// Project file structure (what webview receives)
+export interface ProjectFile {
+  version: number;
+  name: string;
+  provider: {
+    type: string;
+    version: string;
+    environments?: Record<string, {
+      topLevelName: string;
+      description?: string;
+      [key: string]: any;
+    }>;
+  };
+  state: UnityState;
+  ops: any[];
+  snapshots: any[];
+  deployments: any[];
+  settings: {
+    autoIncrementVersion: boolean;
+    versionPrefix: string;
+  };
+  latestSnapshot: string | null;
+}
+

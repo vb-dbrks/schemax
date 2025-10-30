@@ -23,12 +23,12 @@ const SNAPSHOTS_DIR = 'snapshots';
 
 // Environment Configuration Types
 export interface EnvironmentConfig {
-  catalog: string;
+  topLevelName: string;
   description?: string;
   allowDrift: boolean;
   requireSnapshot: boolean;
   requireApproval?: boolean;
-  autoCreateCatalog: boolean;
+  autoCreateTopLevel: boolean;
   autoCreateSchematicSchema: boolean;
 }
 
@@ -42,7 +42,6 @@ interface ProviderConfigV4 {
 interface ProjectSettings {
   autoIncrementVersion: boolean;
   versionPrefix: string;
-  catalogMode: 'single' | 'multi'; // single = implicit catalog (recommended), multi = explicit catalogs
 }
 
 interface SnapshotMetadata {
@@ -210,28 +209,28 @@ export async function ensureProjectFile(
       version: provider.info.version,
       environments: {
         dev: {
-          catalog: `dev_${workspaceName}`,
+          topLevelName: `dev_${workspaceName}`,
           description: 'Development environment',
           allowDrift: true,
           requireSnapshot: false,
-          autoCreateCatalog: true,
+          autoCreateTopLevel: true,
           autoCreateSchematicSchema: true,
         },
         test: {
-          catalog: `test_${workspaceName}`,
+          topLevelName: `test_${workspaceName}`,
           description: 'Test/staging environment',
           allowDrift: false,
           requireSnapshot: true,
-          autoCreateCatalog: true,
+          autoCreateTopLevel: true,
           autoCreateSchematicSchema: true,
         },
         prod: {
-          catalog: `prod_${workspaceName}`,
+          topLevelName: `prod_${workspaceName}`,
           description: 'Production environment',
           allowDrift: false,
           requireSnapshot: true,
           requireApproval: false,
-          autoCreateCatalog: false,
+          autoCreateTopLevel: false,
           autoCreateSchematicSchema: true,
         },
       },
@@ -241,7 +240,6 @@ export async function ensureProjectFile(
     settings: {
       autoIncrementVersion: true,
       versionPrefix: 'v',
-      catalogMode: 'single',
     },
     latestSnapshot: null,
   };

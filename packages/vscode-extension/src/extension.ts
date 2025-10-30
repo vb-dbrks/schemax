@@ -65,7 +65,7 @@ const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
     config: {
       allowDrift: true,
       requireSnapshot: false,
-      autoCreateCatalog: true,
+      autoCreateTopLevel: true,
       autoCreateSchematicSchema: true,
     }
   },
@@ -75,7 +75,7 @@ const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
     config: {
       allowDrift: false,
       requireSnapshot: true,
-      autoCreateCatalog: true,
+      autoCreateTopLevel: true,
       autoCreateSchematicSchema: true,
     }
   },
@@ -85,7 +85,7 @@ const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
     config: {
       allowDrift: false,
       requireSnapshot: true,
-      autoCreateCatalog: false,
+      autoCreateTopLevel: false,
       autoCreateSchematicSchema: true,
     }
   }
@@ -196,10 +196,15 @@ async function configureCustomEnvironments(
     });
     
     // Create environment config
+    const presetConfig = selectedPreset.preset.config;
     customEnvironments[envName] = {
-      catalog: catalogName,
+      topLevelName: catalogName,
       description: description || `${envName.charAt(0).toUpperCase() + envName.slice(1)} environment`,
-      ...selectedPreset.preset.config
+      allowDrift: presetConfig.allowDrift ?? false,
+      requireSnapshot: presetConfig.requireSnapshot ?? false,
+      autoCreateTopLevel: presetConfig.autoCreateTopLevel ?? false,
+      autoCreateSchematicSchema: presetConfig.autoCreateSchematicSchema ?? true,
+      requireApproval: presetConfig.requireApproval,
     };
     
     outputChannel.appendLine(`[Schematic]   ✓ Environment '${envName}' configured`);
@@ -267,36 +272,36 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
   const sanitizedName = projectName.replace(/[^a-zA-Z0-9_]/g, '_');
   environments = {
     dev: {
-      catalog: `dev_${sanitizedName}`,
+      topLevelName: `dev_${sanitizedName}`,
       description: 'Development environment',
       allowDrift: true,
       requireSnapshot: false,
-      autoCreateCatalog: true,
+      autoCreateTopLevel: true,
       autoCreateSchematicSchema: true,
     },
     test: {
-      catalog: `test_${sanitizedName}`,
+      topLevelName: `test_${sanitizedName}`,
       description: 'Test/staging environment',
       allowDrift: false,
       requireSnapshot: true,
-      autoCreateCatalog: true,
+      autoCreateTopLevel: true,
       autoCreateSchematicSchema: true,
     },
     prod: {
-      catalog: `prod_${sanitizedName}`,
+      topLevelName: `prod_${sanitizedName}`,
       description: 'Production environment',
       allowDrift: false,
       requireSnapshot: true,
       requireApproval: false,
-      autoCreateCatalog: false,
+      autoCreateTopLevel: false,
       autoCreateSchematicSchema: true,
     },
   };
   
   outputChannel.appendLine('[Schematic] Default environments created:');
-  outputChannel.appendLine(`  - dev → ${environments.dev.catalog}`);
-  outputChannel.appendLine(`  - test → ${environments.test.catalog}`);
-  outputChannel.appendLine(`  - prod → ${environments.prod.catalog}`);
+  outputChannel.appendLine(`  - dev → ${environments.dev.topLevelName}`);
+  outputChannel.appendLine(`  - test → ${environments.test.topLevelName}`);
+  outputChannel.appendLine(`  - prod → ${environments.prod.topLevelName}`);
   
   // If custom configuration requested, allow adding more environments
   if (!useDefaultEnvs.value) {
@@ -309,7 +314,34 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
     Object.assign(environments, customEnvs);
   }
   
-  // Step 4: Create the project
+  // Step 4: Prompt for logical catalog name
+  const logicalCatalogName = await vscode.window.showInputBox({
+    prompt: 'Enter logical catalog name (used in design, maps to physical names per environment)',
+    value: sanitizedName,
+    placeHolder: 'analytics_platform',
+    validateInput: (value) => {
+      if (!value) {
+        return 'Catalog name is required';
+      }
+      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(value)) {
+        return 'Catalog name must start with a letter and contain only alphanumeric characters and underscores';
+      }
+      return null;
+    },
+    ignoreFocusOut: true
+  });
+  
+  if (!logicalCatalogName) {
+    return false; // User cancelled
+  }
+  
+  outputChannel.appendLine(`[Schematic] Logical catalog name: ${logicalCatalogName}`);
+  outputChannel.appendLine('[Schematic] Physical catalog mappings:');
+  Object.entries(environments).forEach(([env, config]) => {
+    outputChannel.appendLine(`  - ${logicalCatalogName} → ${config.topLevelName} (${env})`);
+  });
+  
+  // Step 5: Create the project
   try {
     await storageV4.ensureSchematicDir(workspaceUri);
     
@@ -332,31 +364,26 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
       settings: {
         autoIncrementVersion: true,
         versionPrefix: 'v',
-        catalogMode: 'single', // Use implicit catalog (simpler UX)
       },
       latestSnapshot: null,
     };
     
-    // Initialize changelog with implicit catalog for single-catalog mode
+    // Initialize changelog with the logical catalog
     const initialOps: Operation[] = [];
+    const catalogId = `cat_${logicalCatalogName}`;
+    initialOps.push({
+      id: `op_init_catalog`,
+      ts: new Date().toISOString(),
+      provider: selectedProvider.id,
+      op: `${selectedProvider.id}.add_catalog`,
+      target: catalogId,
+      payload: {
+        catalogId,
+        name: logicalCatalogName
+      }
+    });
     
-    if (newProject.settings.catalogMode === 'single') {
-      // Auto-create implicit catalog
-      const catalogId = `cat_implicit`;
-      initialOps.push({
-        id: `op_init_catalog`,
-        ts: new Date().toISOString(),
-        provider: selectedProvider.id,
-        op: `${selectedProvider.id}.add_catalog`,
-        target: catalogId,
-        payload: {
-          catalogId,
-          name: '__implicit__'
-        }
-      });
-      
-      outputChannel.appendLine('[Schematic] Auto-created implicit catalog for single-catalog mode');
-    }
+    outputChannel.appendLine(`[Schematic] Created logical catalog: ${logicalCatalogName}`);
     
     const newChangelog: storageV4.ChangelogFile = {
       version: 1,
@@ -378,7 +405,7 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
       .map(([name, config]) => {
         const isDefault = ['dev', 'test', 'prod'].includes(name);
         const badge = isDefault ? '' : ' [custom]';
-        return `  • ${name}${badge} → ${config.catalog}`;
+        return `  • ${name}${badge} → ${config.topLevelName}`;
       })
       .join('\n');
     
@@ -495,6 +522,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
               state,
               ops: changelog.ops,
               provider: {
+                ...project.provider, // Keep environments and other project provider config
                 id: provider.info.id,
                 name: provider.info.name,
                 version: provider.info.version,
@@ -514,6 +542,43 @@ async function openDesigner(context: vscode.ExtensionContext) {
           } catch (error) {
             outputChannel.appendLine(`[Schematic] ERROR: Failed to load project: ${error}`);
             vscode.window.showErrorMessage(`Failed to load project: ${error}`);
+          }
+          break;
+        }
+        case 'show-error': {
+          const { message: errorMessage, detail } = message.payload;
+          vscode.window.showErrorMessage(errorMessage, { modal: false, detail });
+          break;
+        }
+        case 'open-docs': {
+          try {
+            const docPath = message.payload?.path as string | undefined;
+            const fragment = message.payload?.fragment as string | undefined;
+
+            if (!docPath) {
+              vscode.window.showWarningMessage('Schematic: Documentation path was not provided.');
+              break;
+            }
+
+            const targetUri = vscode.Uri.joinPath(workspaceFolder.uri, docPath);
+            const document = await vscode.workspace.openTextDocument(targetUri);
+            const editor = await vscode.window.showTextDocument(document, { preview: true });
+
+            if (fragment) {
+              const lowerFragment = fragment.toLowerCase();
+              const text = document.getText().toLowerCase();
+              const index = text.indexOf(lowerFragment);
+
+              if (index >= 0) {
+                const position = document.positionAt(index);
+                editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.AtTop);
+              }
+            }
+
+            trackEvent('docs_opened', { path: docPath });
+          } catch (error) {
+            outputChannel.appendLine(`[Schematic] ERROR: Failed to open docs: ${error}`);
+            vscode.window.showErrorMessage('Schematic: Unable to open documentation.');
           }
           break;
         }
@@ -539,6 +604,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
               state,
               ops: changelog.ops,
               provider: {
+                ...project.provider, // Keep environments and other project provider config
                 id: provider.info.id,
                 name: provider.info.name,
                 version: provider.info.version,
@@ -733,6 +799,7 @@ async function createSnapshotCommand_impl() {
           state,
           ops: changelog.ops,
           provider: {
+            ...updatedProject.provider, // Keep environments and other project provider config
             id: provider.info.id,
             name: provider.info.name,
             version: provider.info.version,
@@ -797,14 +864,9 @@ function buildCatalogMapping(state: any, envConfig: storageV4.EnvironmentConfig)
   
   if (catalogs.length === 1) {
     const logicalName = catalogs[0].name;
-    const physicalName = envConfig.catalog;
+    const physicalName = envConfig.topLevelName;
     
-    // Check if this is an implicit catalog (single-catalog mode)
-    if (logicalName === '__implicit__') {
-      outputChannel.appendLine(`[Schematic] Implicit catalog mode: __implicit__ → ${physicalName}`);
-    } else {
-      outputChannel.appendLine(`[Schematic] Single-catalog mapping: ${logicalName} → ${physicalName}`);
-    }
+    outputChannel.appendLine(`[Schematic] Catalog mapping: ${logicalName} → ${physicalName}`);
     
     return {
       [logicalName]: physicalName
@@ -870,14 +932,15 @@ async function generateSQLMigration() {
 
     const envConfig = storageV4.getEnvironmentConfig(project, targetEnv);
     outputChannel.appendLine(`[Schematic] Target environment: ${targetEnv}`);
-    outputChannel.appendLine(`[Schematic] Physical catalog: ${envConfig.catalog}`);
+    outputChannel.appendLine(`[Schematic] Physical catalog: ${envConfig.topLevelName}`);
 
     // Build catalog name mapping (logical → physical)
     const catalogMapping = buildCatalogMapping(state, envConfig);
     outputChannel.appendLine(`[Schematic] Catalog mapping: ${JSON.stringify(catalogMapping)}`);
 
-    // Generate SQL using provider's SQL generator with catalog mapping
-    const generator = provider.getSQLGenerator(state, catalogMapping);
+    // Generate SQL using provider's SQL generator
+    // Note: Catalog mapping is applied during SQL generation via the generator's internal mapping
+    const generator = provider.getSQLGenerator(state);
     const sql = generator.generateSQL(changelog.ops);
     
     outputChannel.appendLine(`[Schematic] Generated SQL (${sql.length} characters)`);
