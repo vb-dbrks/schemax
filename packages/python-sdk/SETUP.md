@@ -90,8 +90,14 @@ The workspace settings (`.vscode/settings.json`) are already configured to:
 
 **Before committing:**
 ```bash
-# Run all quality checks
+# Option 1: Run pre-commit checks (faster - skips tests)
+make pre-commit
+
+# Option 2: Run all checks including tests (recommended)
 make all
+
+# Option 3: Simulate exact CI checks (what CI will run)
+make ci
 ```
 
 **When committing:**
@@ -108,18 +114,43 @@ Pre-commit hooks automatically:
 
 If blocked, fix the errors and commit again.
 
+### 🎯 Recommended Workflow
+
+```bash
+# 1. Make your changes
+# 2. Format and check (this auto-fixes issues)
+make pre-commit
+
+# 3. Add files and commit
+git add -A
+git commit -S -m "your commit message"
+
+# 4. Push
+git push origin your-branch
+```
+
+This ensures your code is formatted, linted, and type-checked before CI runs!
+
 ### Quick Commands (Makefile)
 
 ```bash
-make format      # Format code with Ruff
+make format      # Format code with Ruff (auto-fix)
 make lint        # Lint code with Ruff (auto-fix)
 make typecheck   # Type check with mypy
 make test        # Run tests with pytest
-make all         # Run all checks (use before committing!)
+make all         # Run all checks (format, lint, typecheck, test)
+make check       # Run format/lint checks without modifying files (like CI)
+make ci          # Run exact CI checks (format check + lint check + typecheck + test)
+make pre-commit  # Format, lint, typecheck (recommended before git commit)
 make install     # Install package in dev mode
 make clean       # Remove build artifacts
 make help        # Show all available commands
 ```
+
+**🔥 Most Used:**
+- `make pre-commit` - Before committing (formats and checks, no tests)
+- `make all` - Full check before pushing (includes tests)
+- `make ci` - Verify what CI will see
 
 ### Manual Commands (if needed)
 
