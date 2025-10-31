@@ -12,11 +12,13 @@ export const UNITY_OPERATIONS = {
   // Catalog operations
   ADD_CATALOG: 'unity.add_catalog',
   RENAME_CATALOG: 'unity.rename_catalog',
+  UPDATE_CATALOG: 'unity.update_catalog',
   DROP_CATALOG: 'unity.drop_catalog',
   
   // Schema operations
   ADD_SCHEMA: 'unity.add_schema',
   RENAME_SCHEMA: 'unity.rename_schema',
+  UPDATE_SCHEMA: 'unity.update_schema',
   DROP_SCHEMA: 'unity.drop_schema',
   
   // Table operations
@@ -64,7 +66,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     description: 'Create a new catalog',
     category: OperationCategory.Catalog,
     requiredFields: ['catalogId', 'name'],
-    optionalFields: [],
+    optionalFields: ['managedLocationName', 'comment'],
     isDestructive: false,
   },
   {
@@ -74,6 +76,15 @@ export const unityOperationMetadata: OperationMetadata[] = [
     category: OperationCategory.Catalog,
     requiredFields: ['newName'],
     optionalFields: [],
+    isDestructive: false,
+  },
+  {
+    type: UNITY_OPERATIONS.UPDATE_CATALOG,
+    displayName: 'Update Catalog',
+    description: 'Update catalog properties (e.g., managed location)',
+    category: OperationCategory.Catalog,
+    requiredFields: [],
+    optionalFields: ['managedLocationName'],
     isDestructive: false,
   },
   {
@@ -93,7 +104,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     description: 'Create a new schema in a catalog',
     category: OperationCategory.Schema,
     requiredFields: ['schemaId', 'name', 'catalogId'],
-    optionalFields: [],
+    optionalFields: ['managedLocationName', 'comment'],
     isDestructive: false,
   },
   {
@@ -103,6 +114,15 @@ export const unityOperationMetadata: OperationMetadata[] = [
     category: OperationCategory.Schema,
     requiredFields: ['newName'],
     optionalFields: [],
+    isDestructive: false,
+  },
+  {
+    type: UNITY_OPERATIONS.UPDATE_SCHEMA,
+    displayName: 'Update Schema',
+    description: 'Update schema properties (e.g., managed location)',
+    category: OperationCategory.Schema,
+    requiredFields: [],
+    optionalFields: ['managedLocationName'],
     isDestructive: false,
   },
   {
@@ -119,10 +139,10 @@ export const unityOperationMetadata: OperationMetadata[] = [
   {
     type: UNITY_OPERATIONS.ADD_TABLE,
     displayName: 'Add Table',
-    description: 'Create a new table in a schema',
+    description: 'Create a new managed or external table in a schema',
     category: OperationCategory.Table,
     requiredFields: ['tableId', 'name', 'schemaId', 'format'],
-    optionalFields: [],
+    optionalFields: ['external', 'externalLocationName', 'path', 'partitionColumns', 'clusterColumns', 'comment'],
     isDestructive: false,
   },
   {

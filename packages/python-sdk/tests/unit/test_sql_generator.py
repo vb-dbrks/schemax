@@ -123,6 +123,76 @@ class TestSchemaSQL:
         assert "`bronze`.`raw`" in result.sql
 
 
+class TestManagedLocationSQL:
+    """Test SQL generation for managed locations"""
+
+    def test_add_catalog_with_managed_location(self, sample_unity_state):
+        """Test CREATE CATALOG with MANAGED LOCATION"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(
+            sample_unity_state.model_dump(by_alias=True),
+            managed_locations={
+                "default": {
+                    "paths": {
+                        "dev": "s3://data-bucket/catalogs",
+                    },
+                    "description": "Default catalog storage",
+                }
+            },
+            environment_name="dev",
+        )
+
+        op = builder.add_catalog("cat_999", "warehouse", op_id="op_managed_001")
+        op.payload["managedLocationName"] = "default"
+
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE CATALOG IF NOT EXISTS" in result.sql
+        assert "`warehouse`" in result.sql
+        assert "MANAGED LOCATION 's3://data-bucket/catalogs'" in result.sql
+
+    def test_add_schema_with_managed_location(self, sample_unity_state):
+        """Test CREATE SCHEMA with MANAGED LOCATION"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(
+            sample_unity_state.model_dump(by_alias=True),
+            managed_locations={
+                "sales_data": {
+                    "paths": {
+                        "dev": "s3://data-bucket/sales",
+                    },
+                    "description": "Sales data storage",
+                }
+            },
+            environment_name="dev",
+        )
+
+        op = builder.add_schema("schema_999", "sales", "cat_123", op_id="op_managed_002")
+        op.payload["managedLocationName"] = "sales_data"
+
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE SCHEMA IF NOT EXISTS" in result.sql
+        assert "`bronze`.`sales`" in result.sql
+        assert "MANAGED LOCATION 's3://data-bucket/sales'" in result.sql
+
+    def test_managed_location_not_found(self, sample_unity_state):
+        """Test error when managed location not found"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(
+            sample_unity_state.model_dump(by_alias=True),
+            managed_locations={
+                "default": {"paths": {"dev": "s3://data-bucket/catalogs"}, "description": ""}
+            },
+            environment_name="dev",
+        )
+
+        op = builder.add_catalog("cat_999", "warehouse", op_id="op_managed_003")
+        op.payload["managedLocationName"] = "nonexistent"
+
+        result = generator.generate_sql_for_operation(op)
+        # Should generate error comment
+        assert "-- Error generating SQL" in result.sql or "not found" in result.sql.lower()
+
+
 class TestTableSQL:
     """Test SQL generation for table operations"""
 
@@ -217,6 +287,221 @@ class TestTableSQL:
         assert "ALTER TABLE" in result.sql
         assert "UNSET TBLPROPERTIES" in result.sql
         assert "'delta.enableChangeDataFeed'" in result.sql
+
+    def test_add_external_table_basic(self, sample_unity_state):
+        """Test CREATE EXTERNAL TABLE SQL generation with location"""
+        generator = UnitySQLGenerator(
+            sample_unity_state.model_dump(by_alias=True),
+            external_locations={
+                "raw_data": {
+                    "paths": {"dev": "s3://my-bucket/raw"},
+                    "description": "Raw data zone",
+                }
+            },
+            environment_name="dev",
+        )
+
+        op = Operation(
+            id="op_ext_001",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.add_table",
+            target="table_ext_001",
+            payload={
+                "tableId": "table_ext_001",
+                "name": "external_orders",
+                "schemaId": "schema_456",
+                "format": "delta",
+                "external": True,
+                "externalLocationName": "raw_data",
+            },
+        )
+
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE EXTERNAL TABLE IF NOT EXISTS" in result.sql
+        assert "`bronze`.`raw`.`external_orders`" in result.sql
+        assert "USING DELTA" in result.sql
+        assert "LOCATION 's3://my-bucket/raw'" in result.sql
+        assert (
+            "-- WARNING: External tables must reference pre-configured external locations"
+            in result.sql
+        )
+        assert "-- WARNING: Databricks recommends using managed tables" in result.sql
+
+    def test_add_external_table_with_path(self, sample_unity_state):
+        """Test CREATE EXTERNAL TABLE with relative path"""
+        generator = UnitySQLGenerator(
+            sample_unity_state.model_dump(by_alias=True),
+            external_locations={
+                "processed": {
+                    "paths": {"dev": "s3://data-lake/processed"},
+                    "description": "Processed data",
+                }
+            },
+            environment_name="dev",
+        )
+
+        op = Operation(
+            id="op_ext_002",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.add_table",
+            target="table_ext_002",
+            payload={
+                "tableId": "table_ext_002",
+                "name": "customers",
+                "schemaId": "schema_456",
+                "format": "delta",
+                "external": True,
+                "externalLocationName": "processed",
+                "path": "customers/v1",
+            },
+        )
+
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE EXTERNAL TABLE IF NOT EXISTS" in result.sql
+        assert "LOCATION 's3://data-lake/processed/customers/v1'" in result.sql
+        assert "-- Relative Path: customers/v1" in result.sql
+
+    def test_add_table_with_partitioning(self, sample_unity_state):
+        """Test CREATE TABLE with PARTITIONED BY clause"""
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        op = Operation(
+            id="op_part_001",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.add_table",
+            target="table_part_001",
+            payload={
+                "tableId": "table_part_001",
+                "name": "events",
+                "schemaId": "schema_456",
+                "format": "delta",
+                "partitionColumns": ["event_date", "region"],
+            },
+        )
+
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE TABLE IF NOT EXISTS" in result.sql
+        assert "PARTITIONED BY (event_date, region)" in result.sql
+
+    def test_add_table_with_clustering(self, sample_unity_state):
+        """Test CREATE TABLE with CLUSTER BY clause (liquid clustering)"""
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        op = Operation(
+            id="op_cluster_001",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.add_table",
+            target="table_cluster_001",
+            payload={
+                "tableId": "table_cluster_001",
+                "name": "analytics_events",
+                "schemaId": "schema_456",
+                "format": "delta",
+                "clusterColumns": ["user_id", "event_type"],
+            },
+        )
+
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE TABLE IF NOT EXISTS" in result.sql
+        assert "CLUSTER BY (user_id, event_type)" in result.sql
+
+    def test_add_external_table_with_all_features(self, sample_unity_state):
+        """Test CREATE EXTERNAL TABLE with partitioning and clustering"""
+        generator = UnitySQLGenerator(
+            sample_unity_state.model_dump(by_alias=True),
+            external_locations={
+                "analytics": {
+                    "paths": {"dev": "s3://analytics-bucket/data"},
+                    "description": "Analytics",
+                }
+            },
+            environment_name="dev",
+        )
+
+        op = Operation(
+            id="op_full_001",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.add_table",
+            target="table_full_001",
+            payload={
+                "tableId": "table_full_001",
+                "name": "orders",
+                "schemaId": "schema_456",
+                "format": "delta",
+                "external": True,
+                "externalLocationName": "analytics",
+                "path": "orders/partitioned",
+                "partitionColumns": ["order_date"],
+                "clusterColumns": ["customer_id", "status"],
+            },
+        )
+
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE EXTERNAL TABLE IF NOT EXISTS" in result.sql
+        assert "PARTITIONED BY (order_date)" in result.sql
+        assert "CLUSTER BY (customer_id, status)" in result.sql
+        assert "LOCATION 's3://analytics-bucket/data/orders/partitioned'" in result.sql
+
+    def test_add_external_table_location_not_found(self, sample_unity_state):
+        """Test CREATE EXTERNAL TABLE shows error when location not found"""
+        generator = UnitySQLGenerator(
+            sample_unity_state.model_dump(by_alias=True),
+            external_locations={
+                "raw_data": {"paths": {"dev": "s3://bucket/raw"}, "description": ""}
+            },
+            environment_name="dev",
+        )
+
+        op = Operation(
+            id="op_err_001",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.add_table",
+            target="table_err_001",
+            payload={
+                "tableId": "table_err_001",
+                "name": "missing_location",
+                "schemaId": "schema_456",
+                "format": "delta",
+                "external": True,
+                "externalLocationName": "nonexistent",
+            },
+        )
+
+        result = generator.generate_sql_for_operation(op)
+        assert "-- Error generating SQL" in result.sql
+        assert "External location 'nonexistent' not found" in result.sql
+        assert len(result.warnings) > 0
+
+    def test_add_external_table_no_config(self, sample_unity_state):
+        """Test CREATE EXTERNAL TABLE shows error when no external locations configured"""
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        op = Operation(
+            id="op_err_002",
+            provider="unity",
+            ts="2025-01-01T00:00:00Z",
+            op="unity.add_table",
+            target="table_err_002",
+            payload={
+                "tableId": "table_err_002",
+                "name": "no_config",
+                "schemaId": "schema_456",
+                "format": "delta",
+                "external": True,
+                "externalLocationName": "raw_data",
+            },
+        )
+
+        result = generator.generate_sql_for_operation(op)
+        assert "-- Error generating SQL" in result.sql
+        assert "requires project-level externalLocations configuration" in result.sql
+        assert len(result.warnings) > 0
 
 
 class TestColumnSQL:
@@ -720,9 +1005,9 @@ class TestSQLOptimization:
         sql = generator.generate_sql(column_ops)
 
         # Should have only ONE ALTER TABLE statement (batched)
-        assert sql.count("ALTER TABLE") == 1, (
-            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
-        )
+        assert (
+            sql.count("ALTER TABLE") == 1
+        ), f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
 
         # Should use ADD COLUMNS (plural) syntax with parentheses
         assert "ADD COLUMNS (" in sql
@@ -798,9 +1083,9 @@ class TestSQLOptimization:
         sql = generator.generate_sql(column_ops)
 
         # Should have TWO separate ALTER TABLE statements
-        assert sql.count("ALTER TABLE") == 2, (
-            f"Expected 2 ALTER TABLE statements, found {sql.count('ALTER TABLE')}"
-        )
+        assert (
+            sql.count("ALTER TABLE") == 2
+        ), f"Expected 2 ALTER TABLE statements, found {sql.count('ALTER TABLE')}"
 
         # Each should be for different table (with full qualification)
         assert "table1" in sql
@@ -844,9 +1129,9 @@ class TestSQLOptimization:
         sql = generator.generate_sql(mixed_ops)
 
         # Should have batched ADD COLUMNS and separate DROP COLUMN
-        assert sql.count("ALTER TABLE") >= 2, (
-            "Should have separate statements for batched ADD and DROP"
-        )
+        assert (
+            sql.count("ALTER TABLE") >= 2
+        ), "Should have separate statements for batched ADD and DROP"
 
         # Batched ADD COLUMNS should use proper syntax
         assert "ADD COLUMNS (" in sql
@@ -899,12 +1184,12 @@ class TestSQLOptimization:
         sql = generator.generate_sql([reorder_op])
 
         # Should generate only ONE statement (optimal)
-        assert sql.count("ALTER TABLE") == 1, (
-            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
-        )
-        assert sql.count("ALTER COLUMN") == 1, (
-            f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
-        )
+        assert (
+            sql.count("ALTER TABLE") == 1
+        ), f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
+        assert (
+            sql.count("ALTER COLUMN") == 1
+        ), f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
 
         # Should use FIRST keyword
         assert "ALTER COLUMN `type` FIRST" in sql
@@ -951,12 +1236,12 @@ class TestSQLOptimization:
         sql = generator.generate_sql([reorder_op])
 
         # Should generate only ONE statement (optimal)
-        assert sql.count("ALTER TABLE") == 1, (
-            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
-        )
-        assert sql.count("ALTER COLUMN") == 1, (
-            f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
-        )
+        assert (
+            sql.count("ALTER TABLE") == 1
+        ), f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
+        assert (
+            sql.count("ALTER COLUMN") == 1
+        ), f"Expected 1 ALTER COLUMN, found {sql.count('ALTER COLUMN')}"
 
         # Should use AFTER keyword with previous column
         assert "ALTER COLUMN `name` AFTER `id`" in sql
@@ -1004,6 +1289,6 @@ class TestSQLOptimization:
 
         # Should generate MULTIPLE statements (general algorithm)
         # When reversing 3 columns, we need at least 2 moves
-        assert sql.count("ALTER COLUMN") >= 2, (
-            f"Expected >= 2 ALTER COLUMN for multiple moves, found {sql.count('ALTER COLUMN')}"
-        )
+        assert (
+            sql.count("ALTER COLUMN") >= 2
+        ), f"Expected >= 2 ALTER COLUMN for multiple moves, found {sql.count('ALTER COLUMN')}"

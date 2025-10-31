@@ -30,15 +30,29 @@ interface DesignerState {
   selectTable: (tableId: string | null) => void;
   
   // Mutations (all emit ops)
-  addCatalog: (name: string) => void;
+  addCatalog: (name: string, options?: { managedLocationName?: string; comment?: string }) => void;
   renameCatalog: (catalogId: string, newName: string) => void;
+  updateCatalog: (catalogId: string, updates: { managedLocationName?: string }) => void;
   dropCatalog: (catalogId: string) => void;
   
-  addSchema: (catalogId: string, name: string) => void;
+  addSchema: (catalogId: string, name: string, options?: { managedLocationName?: string; comment?: string }) => void;
   renameSchema: (schemaId: string, newName: string) => void;
+  updateSchema: (schemaId: string, updates: { managedLocationName?: string }) => void;
   dropSchema: (schemaId: string) => void;
   
-  addTable: (schemaId: string, name: string, format: 'delta' | 'iceberg') => void;
+  addTable: (
+    schemaId: string, 
+    name: string, 
+    format: 'delta' | 'iceberg',
+    options?: {
+      external?: boolean;
+      externalLocationName?: string;
+      path?: string;
+      partitionColumns?: string[];
+      clusterColumns?: string[];
+      comment?: string;
+    }
+  ) => void;
   renameTable: (tableId: string, newName: string) => void;
   dropTable: (tableId: string) => void;
   setTableComment: (tableId: string, comment: string) => void;
@@ -117,7 +131,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   selectSchema: (schemaId) => set({ selectedSchemaId: schemaId }),
   selectTable: (tableId) => set({ selectedTableId: tableId }),
 
-  addCatalog: (name) => {
+  addCatalog: (name, options) => {
     const state = get();
     const existingCatalogs = state.project?.state?.catalogs || [];
     
@@ -134,7 +148,11 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     }
     
     const catalogId = `cat_${uuidv4()}`;
-    const op = createOperation(get(), 'add_catalog', catalogId, { catalogId, name });
+    const op = createOperation(get(), 'add_catalog', catalogId, { 
+      catalogId, 
+      name,
+      ...options
+    });
     emitOps([op]);
   },
 
@@ -149,14 +167,29 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     emitOps([op]);
   },
 
+  updateCatalog: (catalogId, updates) => {
+    const state = get();
+    const catalog = state.findCatalog(catalogId);
+    if (!catalog) {
+      throw new Error(`Cannot update catalog: catalog ${catalogId} not found`);
+    }
+    const op = createOperation(state, 'update_catalog', catalogId, updates);
+    emitOps([op]);
+  },
+
   dropCatalog: (catalogId) => {
     const op = createOperation(get(), 'drop_catalog', catalogId, {});
     emitOps([op]);
   },
 
-  addSchema: (catalogId, name) => {
+  addSchema: (catalogId, name, options) => {
     const schemaId = `sch_${uuidv4()}`;
-    const op = createOperation(get(), 'add_schema', schemaId, { schemaId, name, catalogId });
+    const op = createOperation(get(), 'add_schema', schemaId, { 
+      schemaId, 
+      name, 
+      catalogId,
+      ...options
+    });
     emitOps([op]);
   },
 
@@ -171,14 +204,30 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     emitOps([op]);
   },
 
+  updateSchema: (schemaId, updates) => {
+    const state = get();
+    const schemaInfo = state.findSchema(schemaId);
+    if (!schemaInfo) {
+      throw new Error(`Cannot update schema: schema ${schemaId} not found`);
+    }
+    const op = createOperation(state, 'update_schema', schemaId, updates);
+    emitOps([op]);
+  },
+
   dropSchema: (schemaId) => {
     const op = createOperation(get(), 'drop_schema', schemaId, {});
     emitOps([op]);
   },
 
-  addTable: (schemaId, name, format) => {
+  addTable: (schemaId, name, format, options) => {
     const tableId = `tbl_${uuidv4()}`;
-    const op = createOperation(get(), 'add_table', tableId, { tableId, name, schemaId, format });
+    const op = createOperation(get(), 'add_table', tableId, { 
+      tableId, 
+      name, 
+      schemaId, 
+      format,
+      ...options
+    });
     emitOps([op]);
   },
 

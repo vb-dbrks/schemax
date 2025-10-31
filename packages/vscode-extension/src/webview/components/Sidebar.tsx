@@ -112,7 +112,9 @@ export const Sidebar: React.FC = () => {
     addSchema,
     addTable,
     renameCatalog,
+    updateCatalog,
     renameSchema,
+    updateSchema,
     renameTable,
     dropCatalog,
     dropSchema,
@@ -129,6 +131,10 @@ export const Sidebar: React.FC = () => {
   const [addNameInput, setAddNameInput] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
   const [addFormatInput, setAddFormatInput] = useState<'delta' | 'iceberg'>('delta');
+  const [addTableType, setAddTableType] = useState<'managed' | 'external'>('managed');
+  const [addExternalLocationName, setAddExternalLocationName] = useState('');
+  const [addTablePath, setAddTablePath] = useState('');
+  const [addManagedLocationName, setAddManagedLocationName] = useState('');
 
   const toggleCatalog = (catalogId: string) => {
     const newExpanded = new Set(expandedCatalogs);
@@ -150,13 +156,15 @@ export const Sidebar: React.FC = () => {
     setExpandedSchemas(newExpanded);
   };
 
-  const [renameDialog, setRenameDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string, managedLocationName?: string} | null>(null);
   const [dropDialog, setDropDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
+  const [editManagedLocationName, setEditManagedLocationName] = useState('');
 
   useEffect(() => {
     if (renameDialog) {
       setRenameValue(renameDialog.name);
       setRenameError(null);
+      setEditManagedLocationName(renameDialog.managedLocationName || '');
     }
   }, [renameDialog]);
 
@@ -165,15 +173,37 @@ export const Sidebar: React.FC = () => {
       setAddNameInput('');
       setAddError(null);
       setAddFormatInput('delta');
+      setAddTableType('managed');
+      setAddExternalLocationName('');
+      setAddTablePath('');
+      setAddManagedLocationName('');
     }
   }, [addDialog]);
 
   const handleRenameCatalog = (catalogId: string, currentName: string) => {
-    setRenameDialog({type: 'catalog', id: catalogId, name: currentName});
+    // Find the catalog to get its current managed location
+    const catalog = project?.state?.catalogs?.find((c: any) => c.id === catalogId);
+    setRenameDialog({
+      type: 'catalog', 
+      id: catalogId, 
+      name: currentName,
+      managedLocationName: catalog?.managedLocationName
+    });
   };
 
   const handleRenameSchema = (schemaId: string, currentName: string) => {
-    setRenameDialog({type: 'schema', id: schemaId, name: currentName});
+    // Find the schema to get its current managed location
+    let schema: any = null;
+    for (const catalog of (project?.state?.catalogs || [])) {
+      schema = catalog.schemas?.find((s: any) => s.id === schemaId);
+      if (schema) break;
+    }
+    setRenameDialog({
+      type: 'schema', 
+      id: schemaId, 
+      name: currentName,
+      managedLocationName: schema?.managedLocationName
+    });
   };
 
   const handleRenameTable = (tableId: string, currentName: string) => {
@@ -215,17 +245,41 @@ export const Sidebar: React.FC = () => {
       return;
     }
 
-    if (trimmedName === renameDialog.name) {
+    const nameChanged = trimmedName !== renameDialog.name;
+    const locationChanged = editManagedLocationName !== (renameDialog.managedLocationName || '');
+
+    if (!nameChanged && !locationChanged) {
       closeRenameDialog();
       return;
     }
     
+    // Handle catalog updates
     if (renameDialog.type === 'catalog') {
-      renameCatalog(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === 'schema') {
-      renameSchema(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === 'table') {
-      renameTable(renameDialog.id, trimmedName);
+      if (nameChanged) {
+        renameCatalog(renameDialog.id, trimmedName);
+      }
+      if (locationChanged) {
+        updateCatalog(renameDialog.id, {
+          managedLocationName: editManagedLocationName || undefined
+        });
+      }
+    } 
+    // Handle schema updates
+    else if (renameDialog.type === 'schema') {
+      if (nameChanged) {
+        renameSchema(renameDialog.id, trimmedName);
+      }
+      if (locationChanged) {
+        updateSchema(renameDialog.id, {
+          managedLocationName: editManagedLocationName || undefined
+        });
+      }
+    } 
+    // Handle table rename (no location for tables)
+    else if (renameDialog.type === 'table') {
+      if (nameChanged) {
+        renameTable(renameDialog.id, trimmedName);
+      }
     }
     setRenameError(null);
     closeRenameDialog();
@@ -256,12 +310,20 @@ export const Sidebar: React.FC = () => {
     }
 
     if (addDialog.type === 'catalog') {
-      addCatalog(trimmedName);
+      const options = addManagedLocationName ? { managedLocationName: addManagedLocationName } : undefined;
+      addCatalog(trimmedName, options);
     } else if (addDialog.type === 'schema' && addDialog.catalogId) {
-      addSchema(addDialog.catalogId, trimmedName);
+      const options = addManagedLocationName ? { managedLocationName: addManagedLocationName } : undefined;
+      addSchema(addDialog.catalogId, trimmedName, options);
       setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
     } else if (addDialog.type === 'table' && addDialog.schemaId) {
-      addTable(addDialog.schemaId, trimmedName, format || 'delta');
+      const options = addTableType === 'external' ? {
+        external: true,
+        externalLocationName: addExternalLocationName,
+        path: addTablePath || undefined
+      } : undefined;
+      
+      addTable(addDialog.schemaId, trimmedName, format || 'delta', options);
       setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
     }
     setAddError(null);
@@ -552,16 +614,67 @@ export const Sidebar: React.FC = () => {
               handleRenameConfirm(renameValue);
             }}
           >
-            <h3>Rename {renameDialog.type}</h3>
-            <VSCodeTextField
-              value={renameValue}
-              onInput={(event: React.FormEvent<HTMLInputElement>) => {
-                setRenameValue((event.target as HTMLInputElement).value);
-                setRenameError(null);
-              }}
-              autoFocus
-            />
-            {renameError && <p className="form-error">{renameError}</p>}
+            <h3>Edit {renameDialog.type}</h3>
+            
+            <div className="modal-field-group">
+              <label htmlFor="rename-name-input">Name</label>
+              <VSCodeTextField
+                id="rename-name-input"
+                value={renameValue}
+                onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                  setRenameValue((event.target as HTMLInputElement).value);
+                  setRenameError(null);
+                }}
+                autoFocus
+              />
+              {renameError && <p className="form-error">{renameError}</p>}
+            </div>
+
+            {/* Managed Location for Catalog and Schema */}
+            {(renameDialog.type === 'catalog' || renameDialog.type === 'schema') && (
+              <div className="modal-field-group">
+                <label htmlFor="edit-managed-location-select">
+                  Managed Location (optional)
+                  <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
+                </label>
+                <VSCodeDropdown
+                  id="edit-managed-location-select"
+                  value={editManagedLocationName}
+                  onInput={(event: React.FormEvent<HTMLSelectElement>) => {
+                    setEditManagedLocationName((event.target as HTMLSelectElement).value);
+                  }}
+                >
+                  <VSCodeOption value="">-- Default --</VSCodeOption>
+                  {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
+                    <VSCodeOption key={name} value={name}>
+                      {name} {location.description && `(${location.description})`}
+                    </VSCodeOption>
+                  ))}
+                </VSCodeDropdown>
+
+                {editManagedLocationName && project?.managedLocations?.[editManagedLocationName] && (
+                  <div className="location-preview">
+                    <strong>Paths:</strong>
+                    <div className="env-paths-list">
+                      {Object.entries(project.managedLocations[editManagedLocationName].paths || {}).map(([env, path]) => (
+                        <div key={env} className="path-row">
+                          <span className="env-label">{env}:</span>
+                          <code className="path-value">{path}</code>
+                        </div>
+                      ))}
+                      {Object.keys(project.managedLocations[editManagedLocationName].paths || {}).length === 0 && (
+                        <div className="path-row muted">No paths configured</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                <p className="field-help">
+                  Specifies where Unity Catalog stores data for managed tables in this {renameDialog.type}.
+                </p>
+              </div>
+            )}
+
             <div className="modal-buttons">
               <VSCodeButton type="submit">Save</VSCodeButton>
               <VSCodeButton type="button" appearance="secondary" onClick={closeRenameDialog}>
@@ -631,20 +744,182 @@ export const Sidebar: React.FC = () => {
                 setAddError(null);
               }}
             />
-            {addDialog.type === 'table' && (
+            
+            {/* Managed Location for Catalog and Schema */}
+            {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
               <div className="modal-field-group">
-                <label htmlFor="table-format-select">Format</label>
+                <label htmlFor="managed-location-select">
+                  Managed Location (optional)
+                  <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
+                </label>
                 <VSCodeDropdown
-                  id="table-format-select"
-                  value={addFormatInput}
+                  id="managed-location-select"
+                  value={addManagedLocationName}
                   onInput={(event: React.FormEvent<HTMLSelectElement>) => {
-                    setAddFormatInput((event.target as HTMLSelectElement).value as 'delta' | 'iceberg');
+                    setAddManagedLocationName((event.target as HTMLSelectElement).value);
                   }}
                 >
-                  <VSCodeOption value="delta">Delta</VSCodeOption>
-                  <VSCodeOption value="iceberg">Iceberg</VSCodeOption>
+                  <VSCodeOption value="">-- Default --</VSCodeOption>
+                  {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
+                    <VSCodeOption key={name} value={name}>
+                      {name} {location.description && `(${location.description})`}
+                    </VSCodeOption>
+                  ))}
                 </VSCodeDropdown>
+
+                {addManagedLocationName && project?.managedLocations?.[addManagedLocationName] && (
+                  <div className="location-preview">
+                    <strong>Paths:</strong>
+                    <div className="env-paths-list">
+                      {Object.entries(project.managedLocations[addManagedLocationName].paths || {}).map(([env, path]) => (
+                        <div key={env} className="path-row">
+                          <span className="env-label">{env}:</span>
+                          <code className="path-value">{path}</code>
+                        </div>
+                      ))}
+                      {Object.keys(project.managedLocations[addManagedLocationName].paths || {}).length === 0 && (
+                        <div className="path-row muted">No paths configured</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                <p className="field-help">
+                  Specifies where Unity Catalog stores data for managed tables in this {addDialog.type}.
+                </p>
               </div>
+            )}
+            
+            {addDialog.type === 'table' && (
+              <>
+                {/* Table Type Selection */}
+                <div className="modal-field-group">
+                  <label>Table Type</label>
+                  <div className="radio-group">
+                    <label>
+                      <input
+                        type="radio"
+                        value="managed"
+                        checked={addTableType === 'managed'}
+                        onChange={() => setAddTableType('managed')}
+                      />
+                      Managed (Recommended)
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        value="external"
+                        checked={addTableType === 'external'}
+                        onChange={() => setAddTableType('external')}
+                      />
+                      External
+                    </label>
+                  </div>
+                </div>
+
+                {/* Format Selection */}
+                <div className="modal-field-group">
+                  <label htmlFor="table-format-select">Format</label>
+                  <VSCodeDropdown
+                    id="table-format-select"
+                    value={addFormatInput}
+                    onInput={(event: React.FormEvent<HTMLSelectElement>) => {
+                      setAddFormatInput((event.target as HTMLSelectElement).value as 'delta' | 'iceberg');
+                    }}
+                  >
+                    <VSCodeOption value="delta">Delta</VSCodeOption>
+                    <VSCodeOption value="iceberg">Iceberg</VSCodeOption>
+                  </VSCodeDropdown>
+                </div>
+
+                {/* External Location Controls */}
+                {addTableType === 'external' && (
+                  <>
+                    <div className="modal-field-group">
+                      <label htmlFor="external-location-select">
+                        External Location
+                        <span className="info-icon" title="Pre-configured external location in Unity Catalog"> ℹ️</span>
+                      </label>
+                      <VSCodeDropdown
+                        id="external-location-select"
+                        value={addExternalLocationName}
+                        onInput={(event: React.FormEvent<HTMLSelectElement>) => {
+                          setAddExternalLocationName((event.target as HTMLSelectElement).value);
+                        }}
+                      >
+                        <VSCodeOption value="">-- Select Location --</VSCodeOption>
+                        {Object.entries(project?.externalLocations || {}).map(([name, location]: [string, any]) => (
+                          <VSCodeOption key={name} value={name}>
+                            {name} {location.description && `(${location.description})`}
+                          </VSCodeOption>
+                        ))}
+                      </VSCodeDropdown>
+
+                      {addExternalLocationName && project?.externalLocations?.[addExternalLocationName] && (
+                        <div className="location-preview">
+                          <strong>Base Paths:</strong>
+                          <div className="env-paths-list">
+                            {Object.entries(project.externalLocations[addExternalLocationName].paths || {}).map(([env, path]) => (
+                              <div key={env} className="path-row">
+                                <span className="env-label">{env}:</span>
+                                <code className="path-value">{path}</code>
+                              </div>
+                            ))}
+                            {Object.keys(project.externalLocations[addExternalLocationName].paths || {}).length === 0 && (
+                              <div className="path-row muted">No paths configured</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="modal-field-group">
+                      <label htmlFor="table-path-input">
+                        Path (optional)
+                        <span className="info-icon" title="Relative path under the external location"> ℹ️</span>
+                      </label>
+                      <VSCodeTextField
+                        id="table-path-input"
+                        value={addTablePath}
+                        placeholder="orders or relative/path/to/table"
+                        disabled={!addExternalLocationName}
+                        onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                          setAddTablePath((event.target as HTMLInputElement).value);
+                        }}
+                      />
+
+                      {addExternalLocationName && addTablePath && project?.externalLocations?.[addExternalLocationName] && (
+                        <div className="location-preview">
+                          <strong>Full Paths:</strong>
+                          <div className="env-paths-list">
+                            {Object.entries(project.externalLocations[addExternalLocationName].paths || {}).map(([env, path]) => (
+                              <div key={env} className="path-row">
+                                <span className="env-label">{env}:</span>
+                                <code className="path-value">{path}/{addTablePath}</code>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="warning-box">
+                      <p>⚠️ <strong>Databricks recommends managed tables</strong></p>
+                      <p className="help-text">
+                        External locations must be pre-configured in Unity Catalog. 
+                        Managed tables offer better performance and automatic maintenance.
+                      </p>
+                      <a 
+                        href="https://learn.microsoft.com/en-gb/azure/databricks/tables/managed" 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Learn more about managed tables →
+                      </a>
+                    </div>
+                  </>
+                )}
+              </>
             )}
             {addError && <p className="form-error">{addError}</p>}
             <div className="modal-buttons">

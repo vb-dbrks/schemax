@@ -91,6 +91,15 @@ class UnityTable(BaseModel):
     id: str
     name: str
     format: Literal["delta", "iceberg"]
+    external: bool | None = None  # Whether this is an external table
+    external_location_name: str | None = Field(
+        None, alias="externalLocationName"
+    )  # Reference to environment external location
+    path: str | None = None  # Relative path under the external location
+    partition_columns: list[str] | None = Field(
+        None, alias="partitionColumns"
+    )  # For PARTITIONED BY
+    cluster_columns: list[str] | None = Field(None, alias="clusterColumns")  # For CLUSTER BY
     column_mapping: Literal["name", "id"] | None = Field(None, alias="columnMapping")
     columns: list[UnityColumn] = []
     properties: dict[str, str] = {}
@@ -108,7 +117,12 @@ class UnitySchema(BaseModel):
 
     id: str
     name: str
+    managed_location_name: str | None = Field(
+        None, alias="managedLocationName"
+    )  # Reference to env managedLocations
     tables: list[UnityTable] = []
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UnityCatalog(BaseModel):
@@ -116,7 +130,12 @@ class UnityCatalog(BaseModel):
 
     id: str
     name: str
+    managed_location_name: str | None = Field(
+        None, alias="managedLocationName"
+    )  # Reference to env managedLocations
     schemas: list[UnitySchema] = []
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UnityState(BaseModel):

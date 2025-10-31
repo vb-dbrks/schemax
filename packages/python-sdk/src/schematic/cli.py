@@ -87,6 +87,11 @@ def init(provider: str, workspace: str) -> None:
     help="Output file path (default: stdout)",
 )
 @click.option(
+    "--snapshot",
+    "-s",
+    help="Generate SQL from a specific snapshot (version or 'latest')",
+)
+@click.option(
     "--from-version",
     help="Generate SQL from this version",
 )
@@ -102,12 +107,20 @@ def init(provider: str, workspace: str) -> None:
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def sql(
     output: str | None,
+    snapshot: str | None,
     from_version: str | None,
     to_version: str | None,
     target: str | None,
     workspace: str,
 ) -> None:
-    """Generate SQL migration script from schema changes"""
+    """Generate SQL migration script from schema changes
+
+    Examples:
+        schematic sql                    # Generate from changelog
+        schematic sql --snapshot latest  # Generate from latest snapshot
+        schematic sql --snapshot v0.1.0  # Generate from specific snapshot
+        schematic sql --target prod      # Environment-specific catalog mapping
+    """
     try:
         workspace_path = Path(workspace).resolve()
         output_path = Path(output).resolve() if output else None
@@ -115,6 +128,7 @@ def sql(
         generate_sql_migration(
             workspace=workspace_path,
             output=output_path,
+            snapshot=snapshot,
             from_version=from_version,
             to_version=to_version,
             target_env=target,

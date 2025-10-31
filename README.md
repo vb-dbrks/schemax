@@ -17,6 +17,8 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 - **Provider-based**: Unity Catalog (now), Hive/PostgreSQL (coming soon)
 - Adapts to provider-specific hierarchy and features
 - Data governance features (constraints, tags, row filters, column masks)
+- External table support with named locations per environment
+- Partitioning and liquid clustering support
 - Snapshot-based versioning with semantic versions
 - Real-time SQL generation from changes
 
@@ -110,6 +112,7 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 | Document | Description |
 |----------|-------------|
 | **[Quickstart Guide](docs/QUICKSTART.md)** | Complete getting started guide |
+| **[External Tables](docs/EXTERNAL_TABLES.md)** | **NEW**: Guide for external tables, partitioning, and clustering |
 | **[Architecture](docs/ARCHITECTURE.md)** | **V4** provider-based technical design with multi-environment support |
 | **[Development](docs/DEVELOPMENT.md)** | Contributing, building, **provider development** |
 | **[Provider Contract](docs/PROVIDER_CONTRACT.md)** | Guide for implementing providers |

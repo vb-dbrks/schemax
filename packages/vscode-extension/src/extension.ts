@@ -623,6 +623,47 @@ async function openDesigner(context: vscode.ExtensionContext) {
           }
           break;
         }
+        case 'update-project-config': {
+          try {
+            const updatedProject = message.payload;
+            outputChannel.appendLine(`[Schematic] Updating project configuration`);
+            
+            // Write updated project to disk
+            await storageV4.writeProject(workspaceFolder.uri, updatedProject);
+            
+            // Reload state and provider
+            const project = await storageV4.readProject(workspaceFolder.uri);
+            const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
+            
+            outputChannel.appendLine(`[Schematic] Project configuration updated successfully`);
+            
+            // Send updated data to webview
+            const payloadForWebview = {
+              ...project,
+              state,
+              ops: changelog.ops,
+              provider: {
+                ...project.provider,
+                id: provider.info.id,
+                name: provider.info.name,
+                version: provider.info.version,
+                capabilities: provider.capabilities,
+              },
+            };
+            
+            currentPanel?.webview.postMessage({
+              type: 'project-updated',
+              payload: payloadForWebview,
+            });
+            
+            vscode.window.showInformationMessage('Schematic: Project settings saved successfully');
+            trackEvent('project_config_updated', { provider: provider.info.id });
+          } catch (error) {
+            outputChannel.appendLine(`[Schematic] ERROR: Failed to update project config: ${error}`);
+            vscode.window.showErrorMessage(`Failed to save project settings: ${error}`);
+          }
+          break;
+        }
       }
     },
     undefined,

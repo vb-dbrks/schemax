@@ -59,10 +59,10 @@ class TestProjectInitialization:
         assert "prod" in envs
 
         # Check environment structure
-        assert envs["dev"]["catalog"].startswith("dev_")
+        assert envs["dev"]["topLevelName"].startswith("dev_")
         assert envs["dev"]["allowDrift"] is True
         assert envs["dev"]["requireSnapshot"] is False
-        assert envs["dev"]["autoCreateCatalog"] is True
+        assert envs["dev"]["autoCreateTopLevel"] is True
 
         # Check catalogMode setting
         assert project["settings"]["catalogMode"] == "single"
@@ -113,8 +113,8 @@ class TestEnvironmentConfig:
 
         dev_config = storage_v4.get_environment_config(project, "dev")
 
-        assert "catalog" in dev_config
-        assert dev_config["catalog"].startswith("dev_")
+        assert "topLevelName" in dev_config
+        assert dev_config["topLevelName"].startswith("dev_")
         assert dev_config["allowDrift"] is True
         assert dev_config["requireSnapshot"] is False
 

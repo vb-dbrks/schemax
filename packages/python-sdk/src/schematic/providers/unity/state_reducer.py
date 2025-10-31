@@ -42,6 +42,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
         catalog = UnityCatalog(
             id=op.payload["catalogId"],
             name=op.payload["name"],
+            managed_location_name=op.payload.get("managedLocationName"),
             schemas=[],
         )
         new_state.catalogs.append(catalog)
@@ -50,6 +51,13 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
         for catalog in new_state.catalogs:
             if catalog.id == op.target:
                 catalog.name = op.payload["newName"]
+                break
+
+    elif op_type == "update_catalog":
+        for catalog in new_state.catalogs:
+            if catalog.id == op.target:
+                if "managedLocationName" in op.payload:
+                    catalog.managed_location_name = op.payload.get("managedLocationName")
                 break
 
     elif op_type == "drop_catalog":
@@ -62,6 +70,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 schema = UnitySchema(
                     id=op.payload["schemaId"],
                     name=op.payload["name"],
+                    managed_location_name=op.payload.get("managedLocationName"),
                     tables=[],
                 )
                 catalog.schemas.append(schema)
@@ -72,6 +81,14 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
             for schema in catalog.schemas:
                 if schema.id == op.target:
                     schema.name = op.payload["newName"]
+                    return new_state
+
+    elif op_type == "update_schema":
+        for catalog in new_state.catalogs:
+            for schema in catalog.schemas:
+                if schema.id == op.target:
+                    if "managedLocationName" in op.payload:
+                        schema.managed_location_name = op.payload.get("managedLocationName")
                     return new_state
 
     elif op_type == "drop_schema":
@@ -87,6 +104,11 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                         id=op.payload["tableId"],
                         name=op.payload["name"],
                         format=op.payload["format"],
+                        external=op.payload.get("external"),
+                        external_location_name=op.payload.get("externalLocationName"),
+                        path=op.payload.get("path"),
+                        partition_columns=op.payload.get("partitionColumns"),
+                        cluster_columns=op.payload.get("clusterColumns"),
                         columns=[],
                         properties={},
                         constraints=[],
