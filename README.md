@@ -230,11 +230,15 @@ schematic deploy --environment prod --version v1.0.0 --mark-deployed
 Schematic supports all major Unity Catalog features:
 
 ### Core Objects
-- ✅ Catalogs (CREATE, ALTER, DROP)
-- ✅ Schemas (CREATE, ALTER, DROP)
+- ✅ Catalogs (CREATE, ALTER, DROP, MANAGED LOCATION)
+- ✅ Schemas (CREATE, ALTER, DROP, MANAGED LOCATION)
 - ✅ Tables (CREATE, ALTER, DROP)
+  - **Managed tables** (recommended) - Unity Catalog manages both metadata and data
+  - **External tables** - Reference data in external locations (S3, ADLS, GCS)
   - Delta and Iceberg formats
   - Column mapping modes
+  - Partitioning (`PARTITIONED BY`)
+  - Liquid Clustering (`CLUSTER BY`)
 - ✅ Columns (ADD, RENAME, ALTER TYPE, DROP)
 
 ### Data Governance
@@ -243,6 +247,12 @@ Schematic supports all major Unity Catalog features:
 - ✅ **Row Filters**: Row-level security with UDF expressions
 - ✅ **Column Masks**: Data masking functions
 - ✅ **Table Properties**: TBLPROPERTIES for Delta Lake configuration
+
+### Multi-Environment Support
+- ✅ **Logical Isolation**: Map logical catalog names to physical names per environment
+- ✅ **Physical Isolation**: Configure managed locations for catalogs/schemas per environment
+- ✅ **External Locations**: Define named external locations with environment-specific paths
+- ✅ **Environment-Specific SQL**: Generate SQL with resolved catalog names and locations
 
 ### Example Schema
 

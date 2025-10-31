@@ -143,14 +143,30 @@ project-root/
     version: string,  // e.g., "1.0.0"
     environments: {
       [envName: string]: {
-        catalog: string,  // Physical catalog name
+        topLevelName: string,  // Physical catalog name (for Unity Catalog)
         description?: string,
         allowDrift: boolean,
         requireSnapshot: boolean,
         requireApproval?: boolean,
-        autoCreateCatalog: boolean,
+        autoCreateTopLevel: boolean,
         autoCreateSchematicSchema: boolean
       }
+    }
+  },
+  managedLocations: {  // Project-level managed locations (for catalog/schema MANAGED LOCATION)
+    [locationName: string]: {
+      paths: {
+        [envName: string]: string  // Environment-specific physical paths
+      },
+      description?: string
+    }
+  },
+  externalLocations: {  // Project-level external locations (for external tables)
+    [locationName: string]: {
+      paths: {
+        [envName: string]: string  // Environment-specific physical paths
+      },
+      description?: string
     }
   },
   snapshots: SnapshotMetadata[], // Just metadata, references to files
@@ -160,7 +176,7 @@ project-root/
 }
 ```
 
-**Note:** v4 replaces v3's simple environments array with rich environment configuration objects.
+**Note:** v4 refactors locations from environment-specific to project-level with per-environment paths, enabling consistent location names across environments while allowing different physical paths.
 
 **Changelog File** (`changelog.json`):
 ```typescript
@@ -189,11 +205,21 @@ project-root/
 }
 ```
 
-**Unity Catalog Model** (Enhanced with Governance Features):
+**Unity Catalog Model** (Enhanced with Governance & Storage Features):
 ```
 Catalog
+├── id, name
+├── managedLocationName?: string                       // Reference to project-level managed location
 ├── Schema[]
+    ├── id, name
+    ├── managedLocationName?: string                   // Reference to project-level managed location
     └── Table[]
+        ├── id, name, format (delta/iceberg)
+        ├── external?: boolean                         // Is external table
+        ├── externalLocationName?: string              // Reference to project-level external location
+        ├── path?: string                              // Relative path within external location
+        ├── partitionColumns?: string[]                // PARTITIONED BY columns
+        ├── clusterColumns?: string[]                  // CLUSTER BY columns (Liquid Clustering)
         ├── columns: Column[]
         │   ├── id, name, type, nullable, comment
         │   ├── tags?: Record<string, string>         // Column-level tags
@@ -451,20 +477,22 @@ line-length = 100
 target-version = ['py39', 'py310', 'py311', 'py312']
 ```
 
-## Operation Types (Complete List - 29 Unity Catalog Operations)
+## Operation Types (Complete List - 31 Unity Catalog Operations)
 
-**Catalog Operations** (3):
-- `add_catalog` - payload: `{catalogId, name}`
+**Catalog Operations** (4):
+- `add_catalog` - payload: `{catalogId, name, managedLocationName?}`
 - `rename_catalog` - payload: `{newName}`
+- `update_catalog` - payload: `{managedLocationName?}` - Update catalog properties (e.g., managed location)
 - `drop_catalog` - payload: `{}`
 
-**Schema Operations** (3):
-- `add_schema` - payload: `{schemaId, name, catalogId}`
+**Schema Operations** (4):
+- `add_schema` - payload: `{schemaId, name, catalogId, managedLocationName?}`
 - `rename_schema` - payload: `{newName}`
+- `update_schema` - payload: `{managedLocationName?}` - Update schema properties (e.g., managed location)
 - `drop_schema` - payload: `{}`
 
 **Table Operations** (6):
-- `add_table` - payload: `{tableId, name, schemaId, format}`
+- `add_table` - payload: `{tableId, name, schemaId, format, external?, externalLocationName?, path?, partitionColumns?, clusterColumns?, managedLocationName?}`
 - `rename_table` - payload: `{newName}`
 - `drop_table` - payload: `{}`
 - `set_table_comment` - payload: `{tableId, comment}`
@@ -514,26 +542,38 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 **Multi-Environment Support (V4)**:
 - ✅ Project schema v4 with rich environment configurations
 - ✅ Environment-specific catalog mapping (logical → physical)
+  - Fixed: Catalog name mapping now correctly applies during SQL generation
+  - `__implicit__` and logical names resolve to physical names per environment
 - ✅ `dev`, `test`, `prod` environment templates
 - ✅ Per-environment settings (allowDrift, requireSnapshot, autoCreateCatalog, etc.)
-- ✅ Environment-specific SQL generation
+- ✅ Environment-specific SQL generation with resolved names
 - ✅ Custom environment wizard with presets
+- ✅ Project-level managed locations (for catalog/schema MANAGED LOCATION)
+- ✅ Project-level external locations (for external tables)
+- ✅ Environment-specific location path resolution
 
-**Data Governance**:
+**Data Governance & Storage**:
 - ✅ Column tags (key-value metadata)
 - ✅ Table constraints (PRIMARY KEY, FOREIGN KEY, CHECK)
 - ✅ Row filters (row-level security)
 - ✅ Column masks (data masking)
 - ✅ Table properties (TBLPROPERTIES)
+- ✅ External tables with named external locations
+- ✅ Managed locations for catalogs and schemas (physical isolation)
+- ✅ Partitioning (PARTITIONED BY)
+- ✅ Liquid Clustering (CLUSTER BY)
 
 **SQL Generation**:
 - ✅ TypeScript implementation (VS Code)
 - ✅ Python implementation (SDK/CLI)
 - ✅ Idempotent DDL statements
-- ✅ All 29 Unity Catalog operations supported
-- ✅ Environment-specific catalog name mapping
+- ✅ All 31 Unity Catalog operations supported (added UPDATE_CATALOG, UPDATE_SCHEMA)
+- ✅ Environment-specific catalog name mapping (fixed: id_name_map rebuild)
 - ✅ SQL dependency ordering (catalog → schema → table → operations)
 - ✅ SQL file export with environment suffix
+- ✅ Unified operation batching (catalogs, schemas, tables)
+- ✅ CREATE + UPDATE squashing optimization (single CREATE statement)
+- ✅ External location path resolution per environment
 
 **Databricks Integration**:
 - ✅ `schematic apply` command for executing SQL
@@ -1088,27 +1128,36 @@ When starting a new conversation about this project:
 4. **UI**: React webview with inline editing, implicit catalog mode, comprehensive governance features
 5. **State**: Snapshot + changelog = current state
 6. **SQL Generation**: ✅ Implemented in both TypeScript and Python with environment-specific catalog mapping
+   - **Fixed**: id_name_map now correctly rebuilds after setting catalog_name_mapping
+   - Unified batching for catalogs, schemas, and tables (uses base class batcher)
+   - CREATE + UPDATE squashing optimization (e.g., single CREATE CATALOG ... MANAGED LOCATION)
 7. **Deployment Tracking**: ✅ Fully implemented
    - Database-backed in `{catalog}.schematic` schema (Unity Catalog)
    - Local tracking in `project.json` → `deployments` array
 8. **Databricks Integration**: ✅ `schematic apply` command with SQL execution, authentication, deployment tracking
-9. **Operations**: Provider-based architecture (Unity Catalog = 29 operations)
+9. **Operations**: Provider-based architecture (Unity Catalog = 31 operations)
+   - Added: `update_catalog`, `update_schema` for managed location changes
 10. **Catalog Mapping**: Logical names (`__implicit__`, explicit) → Physical names per environment
-11. **Logs**: Check "Schematic" output channel in VS Code
-12. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
-13. **Code Formatting**: Ruff/Black for Python (100 char), manual for TypeScript
-14. **Documentation**: Clean structure, no redundant files
-15. **Testing**: 
+11. **External Tables**: ✅ Fully supported
+   - Named external locations with per-environment paths (project-level config)
+   - External location path resolution in SQL generation
+   - Partitioning (PARTITIONED BY) and Liquid Clustering (CLUSTER BY)
+12. **Physical Isolation**: ✅ Managed locations for catalogs/schemas (project-level config)
+13. **Logs**: Check "Schematic" output channel in VS Code
+14. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
+15. **Code Formatting**: Ruff/Black for Python (100 char), manual for TypeScript
+16. **Documentation**: Clean structure, no redundant files
+17. **Testing**: 
     - **Before committing**: Run `./devops/run-checks.sh` (includes all checks)
     - **Python tests**: `pytest tests/ -v` (138 passing, 12 skipped)
     - **Smoke test**: `./scripts/smoke-test.sh`
     - **SQLGlot validation**: Integrated in pytest tests
     - **V4 test coverage**: storage_v4, catalog_mapping, unity_executor, deployment_tracker, integration workflows
     - **Note**: V3 storage tests removed (deprecated)
-16. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
-17. **Project Schema**: V4 with environment-specific catalog configurations (breaking change from v3)
-18. **CLI Commands**: `apply`, `sql`, `validate`, `record-deployment`, `diff` (stub)
-19. **Execution Flow**: Authenticate → Execute SQL → Create tracking schema → Record deployment
+18. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
+19. **Project Schema**: V4 with project-level location configs and per-environment paths
+20. **CLI Commands**: `apply`, `sql`, `validate`, `record-deployment`, `diff` (stub)
+21. **Execution Flow**: Authenticate → Execute SQL → Create tracking schema → Record deployment
 
 **Status**: Production-ready v0.2.0 with complete Unity Catalog governance, multi-environment support, and Databricks integration. Future: Schema import, drift detection, DAB generation, multi-catalog support.
 
