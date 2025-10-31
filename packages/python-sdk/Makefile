@@ -1,4 +1,4 @@
-.PHONY: format lint typecheck test all install clean help
+.PHONY: format lint typecheck test all check ci pre-commit install clean help
 
 help:
 	@echo "Schematic Python SDK - Development Commands"
@@ -6,13 +6,16 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  format     - Format code with Ruff (auto-fix)"
-	@echo "  lint       - Lint code with Ruff (auto-fix)"
-	@echo "  typecheck  - Type check with mypy"
-	@echo "  test       - Run tests with pytest"
-	@echo "  all        - Run all checks (format, lint, typecheck, test)"
-	@echo "  install    - Install package in development mode"
-	@echo "  clean      - Remove build artifacts and cache"
+	@echo "  format      - Format code with Ruff (auto-fix)"
+	@echo "  lint        - Lint code with Ruff (auto-fix)"
+	@echo "  typecheck   - Type check with mypy"
+	@echo "  test        - Run tests with pytest"
+	@echo "  all         - Run all checks (format, lint, typecheck, test)"
+	@echo "  check       - Run format/lint checks without modifying files (like CI)"
+	@echo "  ci          - Run exact CI checks (format check + lint check + typecheck + test)"
+	@echo "  pre-commit  - Format, lint, typecheck (recommended before git commit)"
+	@echo "  install     - Install package in development mode"
+	@echo "  clean       - Remove build artifacts and cache"
 	@echo ""
 
 format:
@@ -34,6 +37,24 @@ test:
 all: format lint typecheck test
 	@echo ""
 	@echo "✅ All checks passed! Ready to commit."
+
+check:
+	@echo "🔍 Running format check (no modifications)..."
+	@uv run ruff format --check src/ tests/
+	@echo "🔍 Running lint check (no modifications)..."
+	@uv run ruff check src/ tests/
+	@echo ""
+	@echo "✅ Format and lint checks passed!"
+
+ci: check typecheck test
+	@echo ""
+	@echo "✅ All CI checks passed!"
+
+pre-commit: format lint typecheck
+	@echo ""
+	@echo "✅ Pre-commit checks complete! Ready to commit."
+	@echo ""
+	@echo "💡 Tip: Run 'git add -A && git commit -S -m \"your message\"'"
 
 install:
 	@echo "📦 Installing package in development mode..."

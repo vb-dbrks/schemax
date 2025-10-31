@@ -46,7 +46,7 @@ class TestCatalogSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.rename_catalog("cat_123", "production", op_id="op_002")
+        op = builder.rename_catalog("cat_123", "production", "bronze", op_id="op_002")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER CATALOG" in result.sql
@@ -93,7 +93,7 @@ class TestSchemaSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.rename_schema("schema_456", "processed", op_id="op_005")
+        op = builder.rename_schema("schema_456", "processed", "raw", op_id="op_005")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER SCHEMA" in result.sql
@@ -153,7 +153,7 @@ class TestTableSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.rename_table("table_789", "customers", op_id="op_008")
+        op = builder.rename_table("table_789", "customers", "users", op_id="op_008")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql
@@ -269,7 +269,7 @@ class TestColumnSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.rename_column("col_001", "table_789", "id", op_id="op_014")
+        op = builder.rename_column("col_001", "table_789", "id", "user_id", op_id="op_014")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql

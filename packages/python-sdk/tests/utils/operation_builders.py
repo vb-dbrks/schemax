@@ -36,13 +36,15 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def rename_catalog(self, catalog_id: str, new_name: str, op_id: str | None = None) -> Operation:
+    def rename_catalog(
+        self, catalog_id: str, new_name: str, old_name: str, op_id: str | None = None
+    ) -> Operation:
         """Create a rename_catalog operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_catalog",
             target=catalog_id,
-            payload={"newName": new_name},
+            payload={"oldName": old_name, "newName": new_name},
             op_id=op_id,
         )
 
@@ -69,13 +71,15 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def rename_schema(self, schema_id: str, new_name: str, op_id: str | None = None) -> Operation:
+    def rename_schema(
+        self, schema_id: str, new_name: str, old_name: str, op_id: str | None = None
+    ) -> Operation:
         """Create a rename_schema operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_schema",
             target=schema_id,
-            payload={"newName": new_name},
+            payload={"oldName": old_name, "newName": new_name},
             op_id=op_id,
         )
 
@@ -107,13 +111,15 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def rename_table(self, table_id: str, new_name: str, op_id: str | None = None) -> Operation:
+    def rename_table(
+        self, table_id: str, new_name: str, old_name: str, op_id: str | None = None
+    ) -> Operation:
         """Create a rename_table operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_table",
             target=table_id,
-            payload={"newName": new_name},
+            payload={"oldName": old_name, "newName": new_name},
             op_id=op_id,
         )
 
@@ -189,14 +195,19 @@ class OperationBuilder:
         )
 
     def rename_column(
-        self, col_id: str, table_id: str, new_name: str, op_id: str | None = None
+        self,
+        col_id: str,
+        table_id: str,
+        new_name: str,
+        old_name: str,
+        op_id: str | None = None,
     ) -> Operation:
         """Create a rename_column operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_column",
             target=col_id,
-            payload={"tableId": table_id, "newName": new_name},
+            payload={"tableId": table_id, "oldName": old_name, "newName": new_name},
             op_id=op_id,
         )
 

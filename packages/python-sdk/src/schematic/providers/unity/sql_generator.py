@@ -384,7 +384,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
 
     def _rename_catalog(self, op: Operation) -> str:
-        old_name = self.id_name_map.get(op.target, op.target)
+        old_name = op.payload["oldName"]
         new_name = op.payload["newName"]
         old_esc = self.escape_identifier(old_name)
         new_esc = self.escape_identifier(new_name)
@@ -403,14 +403,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"CREATE SCHEMA IF NOT EXISTS {catalog_esc}.{schema_esc}"
 
     def _rename_schema(self, op: Operation) -> str:
-        old_fqn = self.id_name_map.get(op.target, "unknown.unknown")
-        parts = old_fqn.split(".")
-        catalog_name = parts[0]
-        schema_name = parts[1] if len(parts) > 1 else "unknown"
+        old_name = op.payload["oldName"]
         new_name = op.payload["newName"]
+        # Get catalog name from idNameMap (catalog doesn't change during schema rename)
+        fqn = self.id_name_map.get(op.target, "unknown.unknown")
+        catalog_name = fqn.split(".")[0]
 
         # Use _build_fqn for consistent formatting
-        old_esc = self._build_fqn(catalog_name, schema_name)
+        old_esc = self._build_fqn(catalog_name, old_name)
         new_esc = self._build_fqn(catalog_name, new_name)
 
         return f"ALTER SCHEMA {old_esc} RENAME TO {new_esc}"
@@ -442,15 +442,16 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"CREATE TABLE IF NOT EXISTS {fqn_esc} () USING {table_format}"
 
     def _rename_table(self, op: Operation) -> str:
-        old_fqn = self.id_name_map.get(op.target, "unknown.unknown.unknown")
-        parts = old_fqn.split(".")
+        old_name = op.payload["oldName"]
+        new_name = op.payload["newName"]
+        # Get catalog and schema names from idNameMap (they don't change during table rename)
+        fqn = self.id_name_map.get(op.target, "unknown.unknown.unknown")
+        parts = fqn.split(".")
         catalog_name = parts[0]
         schema_name = parts[1] if len(parts) > 1 else "unknown"
-        table_name = parts[2] if len(parts) > 2 else "unknown"
-        new_name = op.payload["newName"]
 
         # Use _build_fqn for consistent formatting
-        old_esc = self._build_fqn(catalog_name, schema_name, table_name)
+        old_esc = self._build_fqn(catalog_name, schema_name, old_name)
         new_esc = self._build_fqn(catalog_name, schema_name, new_name)
 
         return f"ALTER TABLE {old_esc} RENAME TO {new_esc}"
@@ -505,7 +506,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _rename_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
-        old_name = self.id_name_map.get(op.target, "unknown")
+        old_name = op.payload["oldName"]
         new_name = op.payload["newName"]
         old_esc = self.escape_identifier(old_name)
         new_esc = self.escape_identifier(new_name)
