@@ -214,7 +214,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
   
   private renameCatalog(op: Operation): string {
-    const oldName = this.idNameMap[op.target] || op.target;
+    const oldName = op.payload.oldName || 'unknown';
     const newName = op.payload.newName;
     return `ALTER CATALOG ${this.escapeIdentifier(oldName)} RENAME TO ${this.escapeIdentifier(newName)}`;
   }
@@ -232,12 +232,12 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
   
   private renameSchema(op: Operation): string {
-    const oldFqn = this.idNameMap[op.target] || 'unknown.unknown';
-    const parts = oldFqn.split('.');
-    const catalogName = parts[0];
-    const oldSchemaName = parts[1] || 'unknown';
+    const oldName = op.payload.oldName || 'unknown';
     const newName = op.payload.newName;
-    return `ALTER SCHEMA ${this.buildFqn(catalogName, oldSchemaName)} RENAME TO ${this.buildFqn(catalogName, newName)}`;
+    // Get catalog name from idNameMap (catalog doesn't change during schema rename)
+    const fqn = this.idNameMap[op.target] || 'unknown.unknown';
+    const catalogName = fqn.split('.')[0];
+    return `ALTER SCHEMA ${this.buildFqn(catalogName, oldName)} RENAME TO ${this.buildFqn(catalogName, newName)}`;
   }
   
   private dropSchema(op: Operation): string {
@@ -260,13 +260,14 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
   
   private renameTable(op: Operation): string {
-    const oldFqn = this.idNameMap[op.target] || 'unknown.unknown.unknown';
-    const parts = oldFqn.split('.');
+    const oldName = op.payload.oldName || 'unknown';
+    const newName = op.payload.newName;
+    // Get catalog and schema names from idNameMap (they don't change during table rename)
+    const fqn = this.idNameMap[op.target] || 'unknown.unknown.unknown';
+    const parts = fqn.split('.');
     const catalogName = parts[0];
     const schemaName = parts[1] || 'unknown';
-    const oldTableName = parts[2] || 'unknown';
-    const newName = op.payload.newName;
-    return `ALTER TABLE ${this.buildFqn(catalogName, schemaName, oldTableName)} RENAME TO ${this.buildFqn(catalogName, schemaName, newName)}`;
+    return `ALTER TABLE ${this.buildFqn(catalogName, schemaName, oldName)} RENAME TO ${this.buildFqn(catalogName, schemaName, newName)}`;
   }
   
   private dropTable(op: Operation): string {
@@ -320,7 +321,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
     const tableParts = tableFqn.split('.');
     const tableEscaped = this.buildFqn(...tableParts);
-    const oldName = this.idNameMap[op.target] || 'unknown';
+    const oldName = op.payload.oldName || 'unknown';
     const newName = op.payload.newName;
     return `ALTER TABLE ${tableEscaped} RENAME COLUMN ${this.escapeIdentifier(oldName)} TO ${this.escapeIdentifier(newName)}`;
   }

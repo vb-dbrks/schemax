@@ -139,7 +139,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   },
 
   renameCatalog: (catalogId, newName) => {
-    const op = createOperation(get(), 'rename_catalog', catalogId, { newName });
+    const state = get();
+    const catalog = state.findCatalog(catalogId);
+    const oldName = catalog?.name || 'unknown';
+    const op = createOperation(state, 'rename_catalog', catalogId, { oldName, newName });
     emitOps([op]);
   },
 
@@ -155,7 +158,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   },
 
   renameSchema: (schemaId, newName) => {
-    const op = createOperation(get(), 'rename_schema', schemaId, { newName });
+    const state = get();
+    const schemaInfo = state.findSchema(schemaId);
+    const oldName = schemaInfo?.schema.name || 'unknown';
+    const op = createOperation(state, 'rename_schema', schemaId, { oldName, newName });
     emitOps([op]);
   },
 
@@ -171,7 +177,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   },
 
   renameTable: (tableId, newName) => {
-    const op = createOperation(get(), 'rename_table', tableId, { newName });
+    const state = get();
+    const tableInfo = state.findTable(tableId);
+    const oldName = tableInfo?.table.name || 'unknown';
+    const op = createOperation(state, 'rename_table', tableId, { oldName, newName });
     emitOps([op]);
   },
 
@@ -192,7 +201,11 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   },
 
   renameColumn: (tableId, colId, newName) => {
-    const op = createOperation(get(), 'rename_column', colId, { tableId, newName });
+    const state = get();
+    const tableInfo = state.findTable(tableId);
+    const column = tableInfo?.table.columns.find(c => c.id === colId);
+    const oldName = column?.name || 'unknown';
+    const op = createOperation(state, 'rename_column', colId, { tableId, oldName, newName });
     emitOps([op]);
   },
 
