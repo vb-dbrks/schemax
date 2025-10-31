@@ -5,7 +5,6 @@ Central registry for all available catalog providers.
 Providers must register themselves here to be available in the system.
 """
 
-
 from .base.provider import Provider
 
 

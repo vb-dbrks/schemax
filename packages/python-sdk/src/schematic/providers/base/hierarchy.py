@@ -4,7 +4,6 @@ Provider Hierarchy Definitions
 Defines the hierarchical structure of objects within a provider.
 """
 
-
 from pydantic import BaseModel
 
 

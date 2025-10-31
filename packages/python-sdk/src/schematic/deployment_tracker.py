@@ -5,7 +5,6 @@ Tracks deployments in the target catalog's schematic schema.
 Provides database-backed deployment history and audit trail.
 """
 
-
 from databricks.sdk import WorkspaceClient
 
 from .providers.base.executor import ExecutionResult, StatementResult

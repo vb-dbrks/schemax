@@ -6,7 +6,6 @@ Includes novel algorithms like single-column drag detection for minimal SQL gene
 """
 
 
-
 class ColumnReorderOptimizer:
     """
     Optimize column reordering SQL generation.

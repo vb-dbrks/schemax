@@ -36,9 +36,7 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def rename_catalog(
-        self, catalog_id: str, new_name: str, op_id: str | None = None
-    ) -> Operation:
+    def rename_catalog(self, catalog_id: str, new_name: str, op_id: str | None = None) -> Operation:
         """Create a rename_catalog operation"""
         return create_operation(
             provider=self.provider,
@@ -71,9 +69,7 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def rename_schema(
-        self, schema_id: str, new_name: str, op_id: str | None = None
-    ) -> Operation:
+    def rename_schema(self, schema_id: str, new_name: str, op_id: str | None = None) -> Operation:
         """Create a rename_schema operation"""
         return create_operation(
             provider=self.provider,
@@ -131,9 +127,7 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def set_table_comment(
-        self, table_id: str, comment: str, op_id: str | None = None
-    ) -> Operation:
+    def set_table_comment(self, table_id: str, comment: str, op_id: str | None = None) -> Operation:
         """Create a set_table_comment operation"""
         return create_operation(
             provider=self.provider,
@@ -155,9 +149,7 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    def unset_table_property(
-        self, table_id: str, key: str, op_id: str | None = None
-    ) -> Operation:
+    def unset_table_property(self, table_id: str, key: str, op_id: str | None = None) -> Operation:
         """Create an unset_table_property operation"""
         return create_operation(
             provider=self.provider,

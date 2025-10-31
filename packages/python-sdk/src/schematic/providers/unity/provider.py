@@ -5,7 +5,6 @@ Main provider implementation for Databricks Unity Catalog.
 Implements the Provider interface to enable Unity Catalog support in Schematic.
 """
 
-
 from ..base.executor import ExecutionConfig, SQLExecutor
 from ..base.models import ProviderState, ValidationError, ValidationResult
 from ..base.operations import Operation
