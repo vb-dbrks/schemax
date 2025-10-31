@@ -105,7 +105,7 @@ def apply_to_environment(
         # 2. Get environment configuration
         env_config = get_environment_config(project, target_env)
 
-        console.print("[bold]SchemaX Apply[/bold]")
+        console.print("[bold]Schematic Apply[/bold]")
         console.print("─" * 60)
 
         # 3. Load current state and provider

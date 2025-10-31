@@ -1,14 +1,38 @@
 # Development Setup
 
-This guide walks you through setting up the development environment for the Schematic Python SDK.
+Complete setup guide for the Schematic Python SDK development environment.
+
+---
+
+## 🚀 Quick Start (2 Minutes)
+
+```bash
+cd packages/python-sdk
+
+# 1. Install dependencies (uv is faster, or use pip)
+uv pip install -e ".[dev]"
+
+# 2. Install pre-commit hooks
+pre-commit install
+
+# 3. Verify setup
+make all
+```
+
+**Done!** ✅ You're ready to develop.
+
+---
 
 ## Prerequisites
 
-- Python 3.11 or higher
-- pip or uv (recommended)
-- VS Code or Cursor (recommended IDE)
+- **Python 3.11+**
+- **pip** or **uv** (recommended - faster)
+- **VS Code/Cursor** (recommended IDE)
+- **Git** with commit signing configured
 
-## Quick Setup
+---
+
+## Detailed Setup
 
 ### 1. Install Dependencies
 
@@ -18,11 +42,11 @@ cd packages/python-sdk
 # Using uv (recommended/faster)
 uv pip install -e ".[dev]"
 
-# Using pip
+# Or using pip
 pip install -e ".[dev]"
 ```
 
-This installs:
+**What gets installed:**
 - Schematic SDK in editable mode
 - pytest, pytest-cov (testing)
 - ruff (formatting & linting)
@@ -36,12 +60,12 @@ This installs:
 pre-commit install
 ```
 
-This installs git hooks that automatically run before every commit:
+**What this does:**
+- Installs git hooks that run before every commit
 - ✅ Ruff format (auto-format code)
 - ✅ Ruff lint (auto-fix issues)
 - ✅ Mypy type check (enforce type annotations)
-
-**Your commits will be blocked** if these checks fail!
+- ❌ **Blocks commits if errors remain**
 
 ### 3. Install VS Code Extensions (Recommended)
 
@@ -57,26 +81,47 @@ The workspace settings (`.vscode/settings.json`) are already configured to:
 
 ## Development Workflow
 
-### Quick Commands (using Makefile)
+### Daily Development
 
+**While coding:**
+- ✅ Format on save is enabled (Ruff)
+- ✅ Type errors show inline (Pylance + Mypy)
+- ✅ Linting issues get auto-fixed
+
+**Before committing:**
 ```bash
-# Format code
-make format
-
-# Lint code
-make lint
-
-# Type check
-make typecheck
-
-# Run tests
-make test
-
-# Run all checks (recommended before committing)
+# Run all quality checks
 make all
 ```
 
-### Manual Commands
+**When committing:**
+```bash
+git add .
+git commit -m "your message"
+```
+
+Pre-commit hooks automatically:
+1. ✅ Format your code (Ruff)
+2. ✅ Fix linting issues (Ruff)
+3. ✅ Check types (mypy)
+4. ❌ **Block commit if errors remain**
+
+If blocked, fix the errors and commit again.
+
+### Quick Commands (Makefile)
+
+```bash
+make format      # Format code with Ruff
+make lint        # Lint code with Ruff (auto-fix)
+make typecheck   # Type check with mypy
+make test        # Run tests with pytest
+make all         # Run all checks (use before committing!)
+make install     # Install package in dev mode
+make clean       # Remove build artifacts
+make help        # Show all available commands
+```
+
+### Manual Commands (if needed)
 
 ```bash
 # Format
@@ -95,16 +140,16 @@ pytest tests/ -v
 pytest tests/ --cov=src --cov-report=term-missing
 ```
 
-### Before Every Commit
+### Pre-Commit Hooks
 
-Pre-commit hooks run automatically, but you can also run them manually:
+Hooks run automatically on commit, but you can run them manually:
 
 ```bash
-# Run pre-commit hooks on all files
+# Run on all files
 pre-commit run --all-files
 
-# Or just run the quality checks
-make all
+# Run only on staged files
+pre-commit run
 ```
 
 ## Configuration Files
@@ -128,31 +173,45 @@ make all
 
 ## Code Quality Standards
 
+### What's Enforced
+
+✅ **Type annotations** on all functions (required)  
+✅ **100 character line length** (auto-formatted)  
+✅ **Double quotes** for strings (auto-formatted)  
+✅ **Proper imports** (auto-organized)  
+✅ **No type errors** (mypy strict mode)  
+✅ **All tests pass** (138 passed, 12 skipped)
+
 ### Type Annotations (REQUIRED)
 
-ALL functions must have complete type annotations:
+**ALL functions must have complete type annotations:**
 
 ```python
-# ✅ Good
+# ✅ Good - Complete type annotations
 def process_data(name: str, count: int, options: Optional[Dict[str, Any]] = None) -> List[str]:
     return []
 
-# ❌ Bad - missing type annotations
+def __init__(self, config: Config) -> None:
+    self.config = config
+
+# ❌ Bad - Missing type annotations
 def process_data(name, count, options=None):
     return []
 ```
 
+See `.cursorrules` for complete type annotation guidelines.
+
 ### Formatting
 
-- Line length: 100 characters
-- Quote style: double quotes
-- Ruff automatically formats on commit
+- **Line length**: 100 characters (enforced by Ruff)
+- **Quote style**: Double quotes (enforced by Ruff)
+- **Auto-formatted**: On save in VS Code, or via `make format`
 
 ### Testing
 
-- Run tests before committing: `pytest tests/ -v`
-- Maintain test coverage: `pytest tests/ --cov=src`
-- Current status: 168 passed, 12 skipped
+- **Run before committing**: `pytest tests/ -v` or `make test`
+- **Coverage**: `pytest tests/ --cov=src --cov-report=term-missing`
+- **Current status**: 138 passed, 12 skipped
 
 ## Troubleshooting
 
@@ -203,18 +262,35 @@ pytest tests/ -x --pdb
 
 ## CI/CD
 
-GitHub Actions automatically run quality checks on every PR:
-1. Ruff format check
-2. Ruff lint check
-3. Mypy type check
-4. Pytest with coverage
+### Pull Requests
 
-PRs are blocked if any check fails.
+GitHub Actions automatically runs on every PR:
+1. ✅ Ruff format check (must pass)
+2. ✅ Ruff lint check (must pass)
+3. ✅ Mypy type check (must pass)
+4. ✅ Pytest with coverage (must pass)
+
+**PRs are blocked if any check fails.**
+
+### Current Status
+
+**All checks passing:**
+- ✅ Mypy: 0 errors in 29 files
+- ✅ Tests: 138 passed, 12 skipped
+- ✅ Ruff: All files formatted
+- ✅ Pre-commit hooks: Configured and active
+
+---
 
 ## Getting Help
 
-- Check `.cursorrules` for coding standards
-- See `docs/DEVELOPMENT.md` for architecture details
-- See `TESTING.md` for testing guide
-- Run `make help` for available commands
+- **Coding standards**: See `.cursorrules`
+- **Architecture**: See `docs/ARCHITECTURE.md`
+- **Testing**: See `TESTING.md` (root)
+- **Commands**: Run `make help`
+- **Provider development**: See `docs/PROVIDER_CONTRACT.md`
+
+---
+
+**You're all set!** 🎉 Run `make all` to verify everything works.
 
