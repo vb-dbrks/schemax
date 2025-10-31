@@ -384,7 +384,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
 
     def _rename_catalog(self, op: Operation) -> str:
-        old_name = op.payload.get("oldName", "unknown")
+        old_name = op.payload["oldName"]
         new_name = op.payload["newName"]
         old_esc = self.escape_identifier(old_name)
         new_esc = self.escape_identifier(new_name)
@@ -403,7 +403,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"CREATE SCHEMA IF NOT EXISTS {catalog_esc}.{schema_esc}"
 
     def _rename_schema(self, op: Operation) -> str:
-        old_name = op.payload.get("oldName", "unknown")
+        old_name = op.payload["oldName"]
         new_name = op.payload["newName"]
         # Get catalog name from idNameMap (catalog doesn't change during schema rename)
         fqn = self.id_name_map.get(op.target, "unknown.unknown")
@@ -442,7 +442,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"CREATE TABLE IF NOT EXISTS {fqn_esc} () USING {table_format}"
 
     def _rename_table(self, op: Operation) -> str:
-        old_name = op.payload.get("oldName", "unknown")
+        old_name = op.payload["oldName"]
         new_name = op.payload["newName"]
         # Get catalog and schema names from idNameMap (they don't change during table rename)
         fqn = self.id_name_map.get(op.target, "unknown.unknown.unknown")
@@ -506,7 +506,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _rename_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
-        old_name = op.payload.get("oldName", "unknown")
+        old_name = op.payload["oldName"]
         new_name = op.payload["newName"]
         old_esc = self.escape_identifier(old_name)
         new_esc = self.escape_identifier(new_name)

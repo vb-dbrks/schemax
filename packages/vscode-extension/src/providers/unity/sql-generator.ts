@@ -214,7 +214,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
   
   private renameCatalog(op: Operation): string {
-    const oldName = op.payload.oldName || 'unknown';
+    const oldName = op.payload.oldName;
     const newName = op.payload.newName;
     return `ALTER CATALOG ${this.escapeIdentifier(oldName)} RENAME TO ${this.escapeIdentifier(newName)}`;
   }
@@ -232,7 +232,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
   
   private renameSchema(op: Operation): string {
-    const oldName = op.payload.oldName || 'unknown';
+    const oldName = op.payload.oldName;
     const newName = op.payload.newName;
     // Get catalog name from idNameMap (catalog doesn't change during schema rename)
     const fqn = this.idNameMap[op.target] || 'unknown.unknown';
@@ -260,7 +260,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
   
   private renameTable(op: Operation): string {
-    const oldName = op.payload.oldName || 'unknown';
+    const oldName = op.payload.oldName;
     const newName = op.payload.newName;
     // Get catalog and schema names from idNameMap (they don't change during table rename)
     const fqn = this.idNameMap[op.target] || 'unknown.unknown.unknown';
@@ -321,7 +321,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
     const tableParts = tableFqn.split('.');
     const tableEscaped = this.buildFqn(...tableParts);
-    const oldName = op.payload.oldName || 'unknown';
+    const oldName = op.payload.oldName;
     const newName = op.payload.newName;
     return `ALTER TABLE ${tableEscaped} RENAME COLUMN ${this.escapeIdentifier(oldName)} TO ${this.escapeIdentifier(newName)}`;
   }

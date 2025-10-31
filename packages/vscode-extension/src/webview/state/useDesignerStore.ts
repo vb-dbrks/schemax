@@ -141,7 +141,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   renameCatalog: (catalogId, newName) => {
     const state = get();
     const catalog = state.findCatalog(catalogId);
-    const oldName = catalog?.name || 'unknown';
+    if (!catalog) {
+      throw new Error(`Cannot rename catalog: catalog ${catalogId} not found`);
+    }
+    const oldName = catalog.name;
     const op = createOperation(state, 'rename_catalog', catalogId, { oldName, newName });
     emitOps([op]);
   },
@@ -160,7 +163,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   renameSchema: (schemaId, newName) => {
     const state = get();
     const schemaInfo = state.findSchema(schemaId);
-    const oldName = schemaInfo?.schema.name || 'unknown';
+    if (!schemaInfo) {
+      throw new Error(`Cannot rename schema: schema ${schemaId} not found`);
+    }
+    const oldName = schemaInfo.schema.name;
     const op = createOperation(state, 'rename_schema', schemaId, { oldName, newName });
     emitOps([op]);
   },
@@ -179,7 +185,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   renameTable: (tableId, newName) => {
     const state = get();
     const tableInfo = state.findTable(tableId);
-    const oldName = tableInfo?.table.name || 'unknown';
+    if (!tableInfo) {
+      throw new Error(`Cannot rename table: table ${tableId} not found`);
+    }
+    const oldName = tableInfo.table.name;
     const op = createOperation(state, 'rename_table', tableId, { oldName, newName });
     emitOps([op]);
   },
@@ -203,8 +212,14 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   renameColumn: (tableId, colId, newName) => {
     const state = get();
     const tableInfo = state.findTable(tableId);
-    const column = tableInfo?.table.columns.find(c => c.id === colId);
-    const oldName = column?.name || 'unknown';
+    if (!tableInfo) {
+      throw new Error(`Cannot rename column: table ${tableId} not found`);
+    }
+    const column = tableInfo.table.columns.find(c => c.id === colId);
+    if (!column) {
+      throw new Error(`Cannot rename column: column ${colId} not found in table ${tableId}`);
+    }
+    const oldName = column.name;
     const op = createOperation(state, 'rename_column', colId, { tableId, oldName, newName });
     emitOps([op]);
   },

@@ -37,7 +37,7 @@ class OperationBuilder:
         )
 
     def rename_catalog(
-        self, catalog_id: str, new_name: str, old_name: str = "bronze", op_id: str | None = None
+        self, catalog_id: str, new_name: str, old_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_catalog operation"""
         return create_operation(
@@ -72,7 +72,7 @@ class OperationBuilder:
         )
 
     def rename_schema(
-        self, schema_id: str, new_name: str, old_name: str = "raw", op_id: str | None = None
+        self, schema_id: str, new_name: str, old_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_schema operation"""
         return create_operation(
@@ -112,7 +112,7 @@ class OperationBuilder:
         )
 
     def rename_table(
-        self, table_id: str, new_name: str, old_name: str = "users", op_id: str | None = None
+        self, table_id: str, new_name: str, old_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_table operation"""
         return create_operation(
@@ -199,7 +199,7 @@ class OperationBuilder:
         col_id: str,
         table_id: str,
         new_name: str,
-        old_name: str = "user_id",
+        old_name: str,
         op_id: str | None = None,
     ) -> Operation:
         """Create a rename_column operation"""

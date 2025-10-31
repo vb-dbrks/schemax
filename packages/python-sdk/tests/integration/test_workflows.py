@@ -324,7 +324,7 @@ class TestCompleteSchemaWorkflow:
         # Modify schema
         modification_ops = [
             # Rename column
-            builder.rename_column("col_old", "table_test", "new_name", op_id="op_mod_001"),
+            builder.rename_column("col_old", "table_test", "new_name", "old_name", op_id="op_mod_001"),
             # Add new column
             builder.add_column(
                 "col_new",

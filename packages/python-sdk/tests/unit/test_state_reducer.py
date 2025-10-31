@@ -35,7 +35,7 @@ class TestCatalogOperations:
     def test_rename_catalog(self, sample_unity_state):
         """Test renaming a catalog"""
         builder = OperationBuilder()
-        op = builder.rename_catalog("cat_123", "silver", op_id="op_002")
+        op = builder.rename_catalog("cat_123", "silver", "bronze", op_id="op_002")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -72,7 +72,7 @@ class TestSchemaOperations:
     def test_rename_schema(self, sample_unity_state):
         """Test renaming a schema"""
         builder = OperationBuilder()
-        op = builder.rename_schema("schema_456", "refined", op_id="op_002")
+        op = builder.rename_schema("schema_456", "refined", "raw", op_id="op_002")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -120,7 +120,7 @@ class TestTableOperations:
     def test_rename_table(self, sample_unity_state):
         """Test renaming a table"""
         builder = OperationBuilder()
-        op = builder.rename_table("table_789", "customers", op_id="op_004")
+        op = builder.rename_table("table_789", "customers", "users", op_id="op_004")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -209,7 +209,7 @@ class TestColumnOperations:
     def test_rename_column(self, sample_unity_state):
         """Test renaming a column"""
         builder = OperationBuilder()
-        op = builder.rename_column("col_001", "table_789", "id", op_id="op_010")
+        op = builder.rename_column("col_001", "table_789", "id", "user_id", op_id="op_010")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -581,7 +581,7 @@ class TestStateImmutability:
         original_catalog_count = len(sample_unity_state.catalogs)
         original_catalog_name = sample_unity_state.catalogs[0].name
 
-        op = builder.rename_catalog("cat_123", "modified", op_id="op_001")
+        op = builder.rename_catalog("cat_123", "modified", "bronze", op_id="op_001")
 
         new_state = apply_operation(sample_unity_state, op)
 
