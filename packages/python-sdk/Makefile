@@ -17,19 +17,19 @@ help:
 
 format:
 	@echo "🎨 Formatting with Ruff..."
-	ruff format src/ tests/
+	uv run ruff format src/ tests/
 
 lint:
 	@echo "🔍 Linting with Ruff..."
-	ruff check src/ tests/ --fix
+	uv run ruff check src/ tests/ --fix
 
 typecheck:
 	@echo "🔬 Type checking with mypy..."
-	mypy src/
+	uv run mypy src/
 
 test:
 	@echo "🧪 Running tests..."
-	pytest tests/ -v
+	uv run pytest tests/ -v
 
 all: format lint typecheck test
 	@echo ""
@@ -37,7 +37,7 @@ all: format lint typecheck test
 
 install:
 	@echo "📦 Installing package in development mode..."
-	pip install -e ".[dev]"
+	uv pip install -e ".[dev]"
 
 clean:
 	@echo "🧹 Cleaning build artifacts..."
