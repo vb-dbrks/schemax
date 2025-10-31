@@ -4,7 +4,6 @@ Click-based CLI for Schematic.
 
 import sys
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -60,6 +59,10 @@ def init(provider: str, workspace: str) -> None:
 
         provider_obj = ProviderRegistry.get(provider)
 
+        if not provider_obj:
+            console.print(f"[red]✗[/red] Provider '{provider}' not found")
+            sys.exit(1)
+
         # Initialize project
         ensure_project_file(workspace_path, provider_id=provider)
 
@@ -98,10 +101,10 @@ def init(provider: str, workspace: str) -> None:
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def sql(
-    output: Optional[str],
-    from_version: Optional[str],
-    to_version: Optional[str],
-    target: Optional[str],
+    output: str | None,
+    from_version: str | None,
+    to_version: str | None,
+    target: str | None,
     workspace: str,
 ) -> None:
     """Generate SQL migration script from schema changes"""
@@ -169,7 +172,7 @@ def diff(version1: str, version2: str) -> None:
     is_flag=True,
     help="Mark the deployment as successful",
 )
-def record_deployment(environment: str, version: Optional[str], mark_deployed: bool) -> None:
+def record_deployment(environment: str, version: str | None, mark_deployed: bool) -> None:
     """Record a deployment to an environment (manual tracking)
 
     This command manually tracks a deployment record in project.json.
@@ -210,7 +213,7 @@ def record_deployment(environment: str, version: Optional[str], mark_deployed: b
     is_flag=True,
     help="Mark the deployment as successful",
 )
-def deploy_alias(environment: str, version: Optional[str], mark_deployed: bool) -> None:
+def deploy_alias(environment: str, version: str | None, mark_deployed: bool) -> None:
     """[DEPRECATED] Use 'record-deployment' instead
 
     This command is deprecated. Use 'schematic record-deployment' for manual
@@ -274,7 +277,7 @@ def apply(
     target: str,
     profile: str,
     warehouse_id: str,
-    sql: Optional[str],
+    sql: str | None,
     dry_run: bool,
     no_interaction: bool,
     workspace: str,

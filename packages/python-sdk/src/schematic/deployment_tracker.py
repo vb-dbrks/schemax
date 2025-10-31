@@ -5,8 +5,6 @@ Tracks deployments in the target catalog's schematic schema.
 Provides database-backed deployment history and audit trail.
 """
 
-from typing import Optional
-
 from databricks.sdk import WorkspaceClient
 
 from .providers.base.executor import ExecutionResult, StatementResult
@@ -144,7 +142,7 @@ class DeploymentTracker:
         self._execute_ddl(sql)
 
     def complete_deployment(
-        self, deployment_id: str, result: ExecutionResult, error_message: Optional[str] = None
+        self, deployment_id: str, result: ExecutionResult, error_message: str | None = None
     ) -> None:
         """Update deployment status (success/failed/partial)
 
@@ -189,7 +187,10 @@ class DeploymentTracker:
             max_wait = 60  # Maximum 60 seconds
             elapsed = 0
             while elapsed < max_wait:
-                status = self.client.statement_execution.get_statement(response.statement_id)
+                status = self.client.statement_execution.get_statement(response.statement_id or "")
+
+                if not status or not status.status:
+                    raise RuntimeError("Failed to get statement status")
 
                 if status.status.state == StatementState.SUCCEEDED:
                     return

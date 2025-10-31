@@ -5,12 +5,13 @@ Generates SQL migration scripts from schema changes in the changelog.
 """
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import cast
 
 from rich.console import Console
 from rich.syntax import Syntax
 
 from ..providers.base.operations import Operation
+from ..providers.unity.sql_generator import UnitySQLGenerator
 from ..storage_v4 import get_environment_config, load_current_state, read_project
 
 console = Console()
@@ -22,7 +23,7 @@ class SQLGenerationError(Exception):
     pass
 
 
-def build_catalog_mapping(state: dict, env_config: dict) -> Dict[str, str]:
+def build_catalog_mapping(state: dict, env_config: dict) -> dict[str, str]:
     """
     Build catalog name mapping (logical → physical) for environment-specific SQL generation.
 
@@ -55,10 +56,10 @@ def build_catalog_mapping(state: dict, env_config: dict) -> Dict[str, str]:
 
 def generate_sql_migration(
     workspace: Path,
-    output: Optional[Path] = None,
-    from_version: Optional[str] = None,
-    to_version: Optional[str] = None,
-    target_env: Optional[str] = None,
+    output: Path | None = None,
+    from_version: str | None = None,
+    to_version: str | None = None,
+    target_env: str | None = None,
 ) -> str:
     """Generate SQL migration script from schema changes
 
@@ -106,8 +107,11 @@ def generate_sql_migration(
         operations = [Operation(**op) for op in ops_to_process]
 
         # Generate SQL using provider's SQL generator with catalog mapping
-        generator = provider.get_sql_generator(state, catalog_mapping)
-        sql_output = generator.generate_sql(operations)
+        generator = provider.get_sql_generator(state)
+        # Cast to UnitySQLGenerator to set catalog_name_mapping
+        unity_generator = cast(UnitySQLGenerator, generator)
+        unity_generator.catalog_name_mapping = catalog_mapping
+        sql_output = unity_generator.generate_sql(operations)
 
         if output:
             # Write to file

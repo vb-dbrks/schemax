@@ -5,7 +5,7 @@ Defines the contract for executing SQL statements against data catalogs.
 Providers implement this protocol to support the `schematic apply` command.
 """
 
-from typing import List, Literal, Optional, Protocol
+from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -46,8 +46,8 @@ class StatementResult(BaseModel):
     sql: str = Field(..., description="SQL statement")
     status: Literal["success", "failed", "skipped"] = Field(..., description="Execution status")
     execution_time_ms: int = Field(default=0, description="Execution time in milliseconds")
-    error_message: Optional[str] = Field(None, description="Error message if failed")
-    rows_affected: Optional[int] = Field(None, description="Rows affected")
+    error_message: str | None = Field(None, description="Error message if failed")
+    rows_affected: int | None = Field(None, description="Rows affected")
 
 
 class ExecutionResult(BaseModel):
@@ -67,13 +67,13 @@ class ExecutionResult(BaseModel):
     deployment_id: str = Field(..., description="Deployment ID")
     total_statements: int = Field(..., description="Total statements")
     successful_statements: int = Field(default=0, description="Successful statements")
-    failed_statement_index: Optional[int] = Field(None, description="First failed statement index")
-    statement_results: List[StatementResult] = Field(
+    failed_statement_index: int | None = Field(None, description="First failed statement index")
+    statement_results: list[StatementResult] = Field(
         default_factory=list, description="Statement results"
     )
     total_execution_time_ms: int = Field(default=0, description="Total execution time (ms)")
     status: Literal["success", "failed", "partial"] = Field(..., description="Overall status")
-    error_message: Optional[str] = Field(None, description="Error summary")
+    error_message: str | None = Field(None, description="Error summary")
 
 
 class SQLExecutor(Protocol):
@@ -83,7 +83,7 @@ class SQLExecutor(Protocol):
     Executors handle authentication, statement submission, polling, and error handling.
     """
 
-    def execute_statements(self, statements: List[str], config: ExecutionConfig) -> ExecutionResult:
+    def execute_statements(self, statements: list[str], config: ExecutionConfig) -> ExecutionResult:
         """Execute SQL statements sequentially
 
         Args:

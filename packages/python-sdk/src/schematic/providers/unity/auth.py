@@ -6,7 +6,6 @@ using profiles from ~/.databrickscfg or environment variables.
 """
 
 import os
-from typing import Optional
 
 from databricks.sdk import WorkspaceClient
 
@@ -17,7 +16,7 @@ class AuthenticationError(Exception):
     pass
 
 
-def create_databricks_client(profile: Optional[str] = None) -> WorkspaceClient:
+def create_databricks_client(profile: str | None = None) -> WorkspaceClient:
     """Create authenticated Databricks client
 
     Authentication priority:
@@ -104,14 +103,14 @@ def check_profile_exists(profile: str) -> bool:
         return False
 
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             content = f.read()
             return f"[{profile}]" in content
     except Exception:
         return False
 
 
-def get_workspace_url(client: WorkspaceClient) -> Optional[str]:
+def get_workspace_url(client: WorkspaceClient) -> str | None:
     """Get workspace URL from client configuration
 
     Args:
@@ -127,7 +126,7 @@ def get_workspace_url(client: WorkspaceClient) -> Optional[str]:
         return None
 
 
-def _format_auth_error(error: Exception, profile: Optional[str]) -> str:
+def _format_auth_error(error: Exception, profile: str | None) -> str:
     """Format authentication error with helpful troubleshooting info
 
     Args:

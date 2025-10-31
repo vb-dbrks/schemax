@@ -1,15 +1,27 @@
 # Schematic Python SDK & CLI
 
-Python toolkit for managing catalog schemas with a provider-based architecture. Supports multiple catalog providers including Unity Catalog, Hive, PostgreSQL, and more.
+**Declarative schema management** for modern data catalogs. Version control your schemas, generate SQL migrations, and deploy with confidence across multiple environments.
 
 ## Features
 
-- **Multi-Provider Support**: Works with Unity Catalog, Hive, PostgreSQL, and more
-- **SQL Generation**: Generate SQL migration scripts from schema changes
-- **Schema Validation**: Validate `.schematic/` project files
-- **Deployment Tracking**: Track what's deployed to each environment
-- **DAB Generation**: Create Databricks Asset Bundles for deployment (coming soon)
+- **Multi-Provider Architecture**: Unity Catalog (Databricks), Hive, PostgreSQL, and more
+- **Version-Controlled Schemas**: Git-based workflow with snapshots and changelogs
+- **SQL Migration Generation**: Generate idempotent SQL DDL from schema changes
+- **Environment Management**: Dev, test, prod with catalog name mapping
+- **Deployment Tracking**: Know what's deployed where with database-backed tracking
+- **Type-Safe**: Full type annotations, validated with mypy
 - **CI/CD Ready**: Designed for GitHub Actions, GitLab CI, and other pipelines
+- **Extensible**: Plugin architecture for custom catalog providers
+
+## Why Schematic?
+
+**Provider-agnostic design**: Write your schema once, deploy to any catalog system. Start with Unity Catalog (Databricks) and easily extend to Hive, PostgreSQL, Snowflake, or custom providers.
+
+**Git-based workflow**: Your schemas are code. Version them, review them, and deploy them with confidence using familiar Git workflows.
+
+**Environment-aware**: Manage dev, test, and prod environments with automatic catalog name mapping. No more hardcoded catalog names in SQL.
+
+**Type-safe and tested**: Built with Python 3.11+ type hints, validated with mypy, and covered by 138+ tests. Production-ready from day one.
 
 ## Installation
 
@@ -27,81 +39,65 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
-### Initialize a New Project
+### 1. Initialize a New Project
 
 ```bash
-# Initialize with Unity Catalog provider (default)
+# Unity Catalog (Databricks) - default
 schematic init
 
-# Initialize with a specific provider
+# PostgreSQL
 schematic init --provider postgres
+
+# Hive Metastore
+schematic init --provider hive
 ```
 
-### Validate Schema Files
+This creates a `.schematic/` directory with your project configuration.
+
+### 2. Validate Your Schema
 
 ```bash
-cd your-project/
 schematic validate
 ```
 
-### Generate SQL Migration
+Validates project structure, provider compatibility, and schema correctness.
+
+### 3. Generate SQL Migration
 
 ```bash
 # Generate SQL from changelog
 schematic sql --output migration.sql
 
-# Generate SQL for specific version range (coming soon)
-schematic sql --from-version v0.1.0 --to-version v0.2.0 --output migration.sql
+# Generate for specific environment (with catalog mapping)
+schematic sql --target dev --output dev-migration.sql
 ```
 
-### Track Deployment
+### 4. Apply Changes (Unity Catalog)
 
 ```bash
-# Record deployment to environment
-schematic deploy --environment prod --version v1.0.0
+# Preview changes
+schematic apply --target dev --profile my-databricks --warehouse-id abc123 --dry-run
 
-# Generate incremental SQL based on what's deployed
-schematic sql --environment prod --output incremental.sql
+# Apply to environment
+schematic apply --target dev --profile my-databricks --warehouse-id abc123
 ```
 
-### Generate Databricks Asset Bundle
+### 5. Track Deployments
 
 ```bash
-schematic bundle --environment prod --version v1.0.0 --output .schematic/dab
-
-# Then deploy with Databricks CLI
-cd .schematic/dab/prod
-databricks bundle deploy
-databricks bundle run schematic_migration
+# Record deployment (works for all providers)
+schematic record-deployment --environment prod --version v1.0.0 --mark-deployed
 ```
 
 ## CLI Commands
 
-### `schematic init`
-
-Initialize a new Schematic project with provider selection.
-
-**Options:**
-- `--provider, -p`: Catalog provider (unity, hive, postgres) - default: unity
-
-**Examples:**
-```bash
-# Initialize with Unity Catalog
-schematic init
-
-# Initialize with PostgreSQL
-schematic init --provider postgres
-```
-
 ### `schematic sql`
 
-Generate SQL migration scripts from operations.
+Generate SQL DDL migration scripts from schema changes.
 
 **Options:**
 - `--output, -o`: Output file path (default: stdout)
-- `--from-version`: Generate from this version
-- `--to-version`: Generate to this version
-- `--environment, -e`: Target environment (generates incremental SQL)
+- `--target, -t`: Target environment (applies catalog name mapping)
 
 **Examples:**
 ```bash
@@ -109,52 +105,67 @@ Generate SQL migration scripts from operations.
 schematic sql
 
 # Save to file
-schematic sql -o migration.sql
+schematic sql --output migration.sql
 
-# Incremental migration for environment
-schematic sql -e prod -o prod-migration.sql
+# Generate for specific environment
+schematic sql --target prod --output prod-migration.sql
+```
+
+### `schematic apply` (Unity Catalog only)
+
+Execute SQL migrations against a Databricks Unity Catalog environment.
+
+**Options:**
+- `--target, -t`: Target environment (required)
+- `--profile, -p`: Databricks CLI profile (required)
+- `--warehouse-id, -w`: SQL Warehouse ID (required)
+- `--sql`: SQL file to execute (optional, generates from changelog if not provided)
+- `--dry-run`: Preview changes without executing
+- `--no-interaction`: Skip confirmation prompts (for CI/CD)
+
+**Examples:**
+```bash
+# Preview changes
+schematic apply --target dev --profile default --warehouse-id abc123 --dry-run
+
+# Apply with confirmation
+schematic apply --target prod --profile prod --warehouse-id xyz789
+
+# Non-interactive (CI/CD)
+schematic apply --target prod --profile prod --warehouse-id xyz789 --no-interaction
 ```
 
 ### `schematic validate`
 
-Validate `.schematic/` project files for correctness.
+Validate `.schematic/` project files for correctness and provider compatibility.
 
 **Examples:**
 ```bash
+# Validate current directory
 schematic validate
+
+# Validate specific directory
+schematic validate /path/to/project
 ```
 
-### `schematic deploy`
+### `schematic record-deployment`
 
-Track deployment metadata.
+Manually record deployment metadata (useful for non-Unity Catalog providers).
 
 **Options:**
 - `--environment, -e`: Environment name (required)
-- `--version, -v`: Version to deploy (default: latest)
+- `--version, -v`: Version deployed (default: latest snapshot)
+- `--mark-deployed`: Mark as successfully deployed
 
 **Examples:**
 ```bash
-# Record deployment
-schematic deploy -e prod -v v1.0.0
+# Record successful deployment
+schematic record-deployment --environment prod --version v1.0.0 --mark-deployed
 ```
 
-### `schematic bundle`
+### `schematic diff` (coming soon)
 
-Generate Databricks Asset Bundle for deployment.
-
-**Options:**
-- `--environment, -e`: Environment name (required)
-- `--version, -v`: Version to bundle (required)
-- `--output, -o`: Output directory (default: .schematic/dab)
-
-**Examples:**
-```bash
-schematic bundle -e prod -v v1.0.0
-```
-
-### `schematic diff`
-
-Compare two schema versions (coming soon).
+Compare two schema versions.
 
 **Examples:**
 ```bash
@@ -167,7 +178,7 @@ schematic diff v0.1.0 v0.2.0
 
 ```python
 from pathlib import Path
-from schematic.storage_v3 import load_current_state
+from schematic.storage_v4 import load_current_state, read_project, get_environment_config
 from schematic.providers.base.operations import Operation
 
 # Load schema with provider
@@ -186,10 +197,40 @@ sql = generator.generate_sql(operations)
 print(sql)
 ```
 
+### Environment-Specific SQL Generation
+
+```python
+from pathlib import Path
+from schematic.storage_v4 import load_current_state, read_project, get_environment_config
+
+workspace = Path.cwd()
+state, changelog, provider = load_current_state(workspace)
+
+# Get environment configuration
+project = read_project(workspace)
+env_config = get_environment_config(project, "prod")
+
+# Build catalog name mapping (logical -> physical)
+catalog_mapping = {}
+for catalog in state.get("catalogs", []):
+    logical_name = catalog.get("name", "__implicit__")
+    physical_name = env_config.get("catalog", logical_name)
+    catalog_mapping[logical_name] = physical_name
+
+# Generate SQL with environment-specific catalog names
+generator = provider.get_sql_generator(state)
+generator.catalog_name_mapping = catalog_mapping  # For Unity provider
+
+operations = [Operation(**op) for op in changelog["ops"]]
+sql = generator.generate_sql(operations)
+
+print(sql)  # Contains prod catalog names
+```
+
 ### Working with Multiple Providers
 
 ```python
-from schematic import ProviderRegistry
+from schematic.providers import ProviderRegistry
 
 # List available providers
 providers = ProviderRegistry.get_all_ids()
@@ -197,21 +238,17 @@ print(f"Available providers: {providers}")
 
 # Get specific provider
 unity_provider = ProviderRegistry.get("unity")
-print(f"Unity Catalog: {unity_provider.info.name}")
-print(f"Supported operations: {unity_provider.info.capabilities.supported_operations}")
-
-# Validate state
-validation = unity_provider.validate_state(state)
-if not validation.valid:
-    for error in validation.errors:
-        print(f"Error: {error.message}")
+if unity_provider:
+    print(f"Name: {unity_provider.info.name}")
+    print(f"Version: {unity_provider.info.version}")
+    print(f"Operations: {len(unity_provider.info.capabilities.supported_operations)}")
 ```
 
 ### Validate Schema
 
 ```python
 from pathlib import Path
-from schematic.storage_v3 import read_project, load_current_state
+from schematic.storage_v4 import read_project, load_current_state
 
 try:
     workspace = Path.cwd()
@@ -232,16 +269,17 @@ except Exception as e:
 
 ## CI/CD Integration
 
-### GitHub Actions
+### GitHub Actions (Generic)
 
 ```yaml
-name: Deploy Schema
+name: Schema Management
 on:
+  pull_request:
   push:
     branches: [main]
 
 jobs:
-  deploy:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -256,14 +294,51 @@ jobs:
       - name: Validate Schema
         run: schematic validate
       
-      - name: Generate SQL
-        run: schematic sql --environment prod --output migration.sql
+      - name: Generate SQL Preview
+        run: schematic sql --target prod --output migration.sql
       
       - name: Upload SQL
         uses: actions/upload-artifact@v3
         with:
           name: migration-sql
           path: migration.sql
+```
+
+### GitHub Actions (Unity Catalog - Automated Deployment)
+
+```yaml
+name: Deploy to Unity Catalog
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Schematic
+        run: pip install schematic-py
+      
+      - name: Validate Schema
+        run: schematic validate
+      
+      - name: Apply to Production
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          schematic apply \
+            --target prod \
+            --profile default \
+            --warehouse-id ${{ secrets.WAREHOUSE_ID }} \
+            --no-interaction
 ```
 
 ### GitLab CI
@@ -275,59 +350,55 @@ validate-schema:
   script:
     - pip install schematic-py
     - schematic validate
-
-deploy-prod:
-  stage: deploy
-  image: python:3.11
-  script:
-    - pip install schematic-py
-    - schematic sql --environment prod --output migration.sql
-    - schematic bundle --environment prod --version $CI_COMMIT_TAG
-  only:
-    - tags
+    - schematic sql --target prod --output migration.sql
+  artifacts:
+    paths:
+      - migration.sql
+    expire_in: 1 week
 ```
+
+## Supported Providers
+
+| Provider | Status | Operations | Apply Command | Notes |
+|----------|--------|------------|---------------|-------|
+| **Unity Catalog** | ✅ Stable | 29 | ✅ `schematic apply` | Full Databricks integration |
+| **Hive Metastore** | 🚧 Planned | TBD | Manual | SQL generation only |
+| **PostgreSQL** | 🚧 Planned | TBD | Manual | SQL generation only |
+
+Want to add a provider? See [PROVIDER_CONTRACT.md](../../docs/PROVIDER_CONTRACT.md).
 
 ## Requirements
 
-- Python 3.11 or higher
+- **Python 3.11+**
 - A Schematic project (`.schematic/` directory)
+- For Unity Catalog: Databricks workspace with SQL Warehouse access
 
 ## Documentation
 
-- [Getting Started](../../docs/GETTING-STARTED.md)
-- [SQL Generation](../../docs/SQL-GENERATION.md)
-- [CI/CD Integration](../../docs/CICD-INTEGRATION.md)
-- [API Reference](./docs/api-reference.md)
+- [Quick Start Guide](../../docs/QUICKSTART.md)
+- [Architecture Overview](../../docs/ARCHITECTURE.md)
+- [Development Guide](./SETUP.md)
+- [Provider Contract](../../docs/PROVIDER_CONTRACT.md)
 
 ## Development
 
-### Setup
+See [SETUP.md](./SETUP.md) for complete development setup instructions.
 
+**Quick setup:**
 ```bash
-# Clone repository
-git clone https://github.com/vb-dbrks/schematic.git
-cd schematic/packages/python-sdk
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install in development mode
-pip install -e ".[dev]"
+cd packages/python-sdk
+uv pip install -e ".[dev]"  # Or use pip
+pre-commit install
+make all  # Run all quality checks
 ```
 
-### Running Tests
-
+**Commands:**
 ```bash
-pytest
-pytest --cov=schematic
-```
-
-### Linting
-
-```bash
-ruff check src/
-mypy src/
+make format      # Format code
+make lint        # Lint code
+make typecheck   # Type check
+make test        # Run tests
+make all         # Run all checks
 ```
 
 ## License
@@ -336,7 +407,8 @@ MIT License - see [LICENSE](../../LICENSE) for details.
 
 ## Links
 
-- **Repository**: https://github.com/vb-dbrks/schematic
-- **Issues**: https://github.com/vb-dbrks/schematic/issues
+- **Repository**: https://github.com/vb-dbrks/Schematic
+- **Issues**: https://github.com/vb-dbrks/Schematic/issues
+- **VS Code Extension**: [schematic-vscode](../vscode-extension/)
 - **PyPI**: https://pypi.org/project/schematic-py/ (coming soon)
 

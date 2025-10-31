@@ -5,8 +5,6 @@ Provides reusable optimization algorithms for SQL generation across all provider
 Includes novel algorithms like single-column drag detection for minimal SQL generation.
 """
 
-from typing import List, Optional, Tuple
-
 
 class ColumnReorderOptimizer:
     """
@@ -21,8 +19,8 @@ class ColumnReorderOptimizer:
 
     @staticmethod
     def detect_single_column_move(
-        original_order: List[str], final_order: List[str]
-    ) -> Optional[Tuple[str, int, int]]:
+        original_order: list[str], final_order: list[str]
+    ) -> tuple[str, int, int] | None:
         """
         Detect if only one column moved position in a reorder operation.
 
@@ -81,7 +79,7 @@ class ColumnReorderOptimizer:
         return None  # Multiple columns moved
 
     @staticmethod
-    def calculate_reorder_distance(original_order: List[str], final_order: List[str]) -> int:
+    def calculate_reorder_distance(original_order: list[str], final_order: list[str]) -> int:
         """
         Calculate the "distance" between two column orderings.
 
@@ -121,7 +119,7 @@ class ColumnReorderOptimizer:
 
     @staticmethod
     def is_simple_reorder(
-        original_order: List[str], final_order: List[str], threshold: int = 2
+        original_order: list[str], final_order: list[str], threshold: int = 2
     ) -> bool:
         """
         Check if reorder is "simple" (few changes).

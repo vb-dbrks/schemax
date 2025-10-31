@@ -8,7 +8,7 @@ confirmation, and deployment tracking.
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import cast
 from uuid import uuid4
 
 from rich.console import Console
@@ -18,6 +18,8 @@ from rich.syntax import Syntax
 from ..deployment_tracker import DeploymentTracker
 from ..providers.base.executor import ExecutionConfig, ExecutionResult
 from ..providers.base.operations import Operation
+from ..providers.unity.executor import UnitySQLExecutor
+from ..providers.unity.sql_generator import UnitySQLGenerator
 from ..storage_v4 import (
     get_environment_config,
     load_current_state,
@@ -72,7 +74,7 @@ def apply_to_environment(
     warehouse_id: str,
     dry_run: bool = False,
     no_interaction: bool = False,
-    sql_file: Optional[Path] = None,
+    sql_file: Path | None = None,
 ) -> ExecutionResult:
     """Apply changes to target environment
 
@@ -103,7 +105,7 @@ def apply_to_environment(
         # 2. Get environment configuration
         env_config = get_environment_config(project, target_env)
 
-        console.print("[bold]SchemaX Apply[/bold]")
+        console.print("[bold]Schematic Apply[/bold]")
         console.print("─" * 60)
 
         # 3. Load current state and provider
@@ -146,8 +148,11 @@ def apply_to_environment(
             # Generate SQL from changelog with catalog name mapping
             operations = [Operation(**op) for op in changelog["ops"]]
             catalog_mapping = _build_catalog_mapping(state, env_config)
-            generator = provider.get_sql_generator(state, catalog_mapping)
-            sql = generator.generate_sql(operations)
+            generator = provider.get_sql_generator(state)
+            # Cast to UnitySQLGenerator to set catalog_name_mapping
+            unity_generator = cast(UnitySQLGenerator, generator)
+            unity_generator.catalog_name_mapping = catalog_mapping
+            sql = unity_generator.generate_sql(operations)
 
         # 4. Parse into statements
         statements = parse_sql_statements(sql)
@@ -206,7 +211,9 @@ def apply_to_environment(
 
         # 12. Initialize deployment tracker AFTER catalog exists
         deployment_catalog = env_config["topLevelName"]
-        tracker = DeploymentTracker(executor.client, deployment_catalog, warehouse_id)
+        # Cast to UnitySQLExecutor to access client attribute
+        unity_executor = cast(UnitySQLExecutor, executor)
+        tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
 
         console.print(
             f"\n[cyan]Setting up deployment tracking in {deployment_catalog}.schematic...[/cyan]"
@@ -281,9 +288,8 @@ def apply_to_environment(
             console.print("  Status: success")
             console.print(f"  Execution time: {exec_time:.2f}s")
         else:
-            console.print(
-                f"[red]✗ Deployment failed at statement {result.failed_statement_index + 1}[/red]"
-            )
+            failed_idx = result.failed_statement_index or 0
+            console.print(f"[red]✗ Deployment failed at statement {failed_idx + 1}[/red]")
             console.print(f"[yellow]✓ {result.successful_statements} statements succeeded[/yellow]")
             if result.error_message:
                 console.print(f"[red]Error: {result.error_message}[/red]")
@@ -301,7 +307,7 @@ def apply_to_environment(
         raise ApplyError(str(e)) from e
 
 
-def parse_sql_statements(sql: str) -> List[str]:
+def parse_sql_statements(sql: str) -> list[str]:
     """Parse SQL into individual statements
 
     Splits SQL by semicolons, handling comments and multi-line statements.
@@ -347,4 +353,5 @@ def _create_empty_result() -> ExecutionResult:
         statement_results=[],
         total_execution_time_ms=0,
         status="success",
+        error_message=None,
     )

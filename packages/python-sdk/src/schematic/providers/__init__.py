@@ -30,7 +30,7 @@ __all__ = [
 ]
 
 
-def initialize_providers():
+def initialize_providers() -> None:
     """Initialize and register all providers"""
     # Register Unity Catalog provider
     ProviderRegistry.register(unity_provider)

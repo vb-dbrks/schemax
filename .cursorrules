@@ -3,6 +3,14 @@
 ## Overview
 Schematic is a comprehensive toolkit for managing Databricks Unity Catalog schemas using a declarative, version-controlled approach. It consists of a VS Code extension for visual schema design and a Python SDK/CLI for automation and CI/CD integration.
 
+## 🔥 Quick Rules (Always Follow)
+
+1. **Type Annotations**: ALL Python functions must have parameter and return types (see Python section)
+2. **Formatting**: Ruff format with 100 char line length (auto on save)
+3. **Testing**: Run pytest before commit (169 passed, 12 skipped)
+4. **Logging**: Use `outputChannel.appendLine()` in extension (never `console.log()`)
+5. **Immutability**: Never mutate state directly, always create new objects
+
 ## Repository Structure (Monorepo)
 
 ```
@@ -677,11 +685,79 @@ export async function createTable(
 ### Python
 
 **Standards**:
-- Use Black formatter (100 char line length)
-- Type hints for all function signatures
+- Use Ruff formatter (100 char line length)
+- Type hints for all function signatures (REQUIRED - see below)
 - Use Pydantic models for data structures
 - Follow PEP 8
 - Docstrings for public APIs
+
+**Type Annotations (REQUIRED)**:
+
+ALL function and method definitions MUST include complete type annotations:
+
+```python
+# ✅ GOOD - Complete type annotations
+def process_data(name: str, count: int, options: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Process data and return results"""
+    return []
+
+def __init__(self, config: Config) -> None:
+    """Initialize with config"""
+    self.config = config
+
+# ❌ BAD - Missing type annotations
+def process_data(name, count, options=None):
+    return []
+
+def __init__(self, config):
+    self.config = config
+```
+
+**Type Annotation Rules**:
+1. ✅ ALL parameters must have type hints (except `self` and `cls`)
+2. ✅ Return type must be specified (use `-> None` for void functions)
+3. ✅ Use `Optional[Type]` for parameters with `None` default
+4. ✅ Use `List`, `Dict`, `Tuple` from `typing` module (or `list`, `dict` for Python 3.9+)
+5. ✅ Use `Any` sparingly - prefer specific types
+6. ✅ Complex types: Use `Union`, `Literal`, `TypeVar` as needed
+
+**More Examples**:
+```python
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+
+# Simple function
+def add(a: int, b: int) -> int:
+    return a + b
+
+# Optional parameters
+def create_user(name: str, email: Optional[str] = None) -> User:
+    return User(name=name, email=email)
+
+# Complex types
+def process_records(
+    data: List[Dict[str, Any]],
+    filters: Optional[Dict[str, Union[str, int]]] = None
+) -> Tuple[List[Record], int]:
+    return [], 0
+
+# Generator functions
+def iter_items(data: List[str]) -> Generator[str, None, None]:
+    for item in data:
+        yield item
+
+# Pydantic models
+def validate_config(config: Dict[str, Any]) -> Config:
+    return Config(**config)
+
+# Protocol/Interface
+def get_executor(config: ExecutionConfig) -> SQLExecutor:
+    return UnitySQLExecutor(config)
+```
+
+**Enforcement**:
+- Pre-commit hooks check with mypy
+- VS Code/Cursor shows errors inline
+- CI/CD blocks PRs with missing type annotations
 
 **Naming**:
 - `snake_case` for variables, functions, and methods

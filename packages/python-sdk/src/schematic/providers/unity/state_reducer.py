@@ -6,7 +6,6 @@ Migrated from TypeScript state-reducer.ts
 """
 
 from copy import deepcopy
-from typing import List, Optional
 
 from ..base.operations import Operation
 from .models import (
@@ -92,9 +91,9 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                         properties={},
                         constraints=[],
                         grants=[],
-                        columnMapping=None,
-                        rowFilters=[],
-                        columnMasks=[],
+                        column_mapping=None,
+                        row_filters=[],
+                        column_masks=[],
                     )
                     schema.tables.append(table)
                     return new_state
@@ -135,7 +134,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 nullable=op.payload["nullable"],
                 comment=op.payload.get("comment"),
                 tags={},
-                maskId=None,
+                mask_id=None,
             )
             table_opt.columns.append(column)
 
@@ -213,15 +212,15 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 name=op.payload.get("name"),
                 columns=op.payload["columns"],
                 timeseries=op.payload.get("timeseries"),
-                parentTable=op.payload.get("parentTable"),
-                parentColumns=op.payload.get("parentColumns"),
-                matchFull=op.payload.get("matchFull"),
-                onUpdate=op.payload.get("onUpdate"),
-                onDelete=op.payload.get("onDelete"),
+                parent_table=op.payload.get("parentTable"),
+                parent_columns=op.payload.get("parentColumns"),
+                match_full=op.payload.get("matchFull"),
+                on_update=op.payload.get("onUpdate"),
+                on_delete=op.payload.get("onDelete"),
                 expression=op.payload.get("expression"),
-                notEnforced=op.payload.get("notEnforced"),
+                not_enforced=op.payload.get("notEnforced"),
                 deferrable=op.payload.get("deferrable"),
-                initiallyDeferred=op.payload.get("initiallyDeferred"),
+                initially_deferred=op.payload.get("initiallyDeferred"),
                 rely=op.payload.get("rely"),
             )
             table_opt.constraints.append(constraint)
@@ -241,7 +240,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 id=op.payload["filterId"],
                 name=op.payload["name"],
                 enabled=op.payload.get("enabled", True),
-                udfExpression=op.payload["udfExpression"],
+                udf_expression=op.payload["udfExpression"],
                 description=op.payload.get("description"),
             )
             table_opt.row_filters.append(filter_obj)
@@ -274,10 +273,10 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 table_opt.column_masks = []
             mask = UnityColumnMask(
                 id=op.payload["maskId"],
-                columnId=op.payload["columnId"],
+                column_id=op.payload["columnId"],
                 name=op.payload["name"],
                 enabled=op.payload.get("enabled", True),
-                maskFunction=op.payload["maskFunction"],
+                mask_function=op.payload["maskFunction"],
                 description=op.payload.get("description"),
             )
             table_opt.column_masks.append(mask)
@@ -320,7 +319,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
     return new_state
 
 
-def apply_operations(state: UnityState, ops: List[Operation]) -> UnityState:
+def apply_operations(state: UnityState, ops: list[Operation]) -> UnityState:
     """
     Apply multiple operations to state
 
@@ -337,7 +336,7 @@ def apply_operations(state: UnityState, ops: List[Operation]) -> UnityState:
     return current_state
 
 
-def _find_table(state: UnityState, table_id: str) -> Optional[UnityTable]:
+def _find_table(state: UnityState, table_id: str) -> UnityTable | None:
     """
     Find a table by ID across all catalogs and schemas
 

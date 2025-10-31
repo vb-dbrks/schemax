@@ -2,7 +2,7 @@
 Base Model Types for Provider System
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -14,18 +14,18 @@ class ValidationError(BaseModel):
 
     field: str
     message: str
-    code: str = None
+    code: str | None = None
 
 
 class ValidationResult(BaseModel):
     """Result of validation"""
 
     valid: bool
-    errors: List[ValidationError] = []
+    errors: list[ValidationError] = []
 
 
 # Provider state is just a dictionary - providers define their own structure
-ProviderState = Dict[str, Any]
+ProviderState = dict[str, Any]
 
 
 __all__ = [

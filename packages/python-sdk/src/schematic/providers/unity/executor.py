@@ -6,7 +6,6 @@ the Databricks SQL Statement Execution API.
 """
 
 import time
-from typing import List
 from uuid import uuid4
 
 from databricks.sdk import WorkspaceClient
@@ -42,7 +41,7 @@ class UnitySQLExecutor:
         """
         self.client = client
 
-    def execute_statements(self, statements: List[str], config: ExecutionConfig) -> ExecutionResult:
+    def execute_statements(self, statements: list[str], config: ExecutionConfig) -> ExecutionResult:
         """Execute SQL statements sequentially with fail-fast behavior
 
         Executes each statement in order. If any statement fails, execution stops
@@ -60,7 +59,7 @@ class UnitySQLExecutor:
             ExecutionError: If execution fails critically
         """
         deployment_id = f"deploy_{uuid4().hex[:8]}"
-        results: List[StatementResult] = []
+        results: list[StatementResult] = []
         start_time = time.time()
 
         console.print(f"\n[bold cyan]Executing {len(statements)} statements...[/bold cyan]\n")
@@ -168,9 +167,12 @@ class UnitySQLExecutor:
             statement_id = response.statement_id
 
             # Poll for completion
-            elapsed = 0
+            elapsed = 0.0
             while elapsed < config.timeout_seconds:
-                status_response = self.client.statement_execution.get_statement(statement_id)
+                status_response = self.client.statement_execution.get_statement(statement_id or "")
+
+                if not status_response or not status_response.status:
+                    raise ExecutionError("Failed to get statement status")
 
                 state = status_response.status.state
 
@@ -179,11 +181,12 @@ class UnitySQLExecutor:
                     exec_time_ms = int((time.time() - exec_start) * 1000)
 
                     return StatementResult(
-                        statement_id=statement_id,
+                        statement_id=statement_id or "",
                         sql=sql,
                         status="success",
                         execution_time_ms=exec_time_ms,
                         rows_affected=None,  # Could extract from result if needed
+                        error_message=None,
                     )
 
                 elif state == StatementState.FAILED:
@@ -191,7 +194,7 @@ class UnitySQLExecutor:
                     error_msg = error.message if error else "Unknown error"
 
                     return StatementResult(
-                        statement_id=statement_id,
+                        statement_id=statement_id or "",
                         sql=sql,
                         status="failed",
                         execution_time_ms=int((time.time() - exec_start) * 1000),
@@ -201,7 +204,7 @@ class UnitySQLExecutor:
 
                 elif state == StatementState.CANCELED:
                     return StatementResult(
-                        statement_id=statement_id,
+                        statement_id=statement_id or "",
                         sql=sql,
                         status="failed",
                         execution_time_ms=int((time.time() - exec_start) * 1000),
@@ -211,11 +214,11 @@ class UnitySQLExecutor:
 
                 # Still running, wait and poll again
                 time.sleep(2)
-                elapsed = time.time() - exec_start
+                elapsed = float(time.time() - exec_start)
 
             # Timeout reached
             return StatementResult(
-                statement_id=statement_id,
+                statement_id=statement_id or "",
                 sql=sql,
                 status="failed",
                 execution_time_ms=int((time.time() - exec_start) * 1000),
