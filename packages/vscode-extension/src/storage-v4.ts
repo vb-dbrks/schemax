@@ -109,7 +109,7 @@ export interface SnapshotFile {
   ts: string;
   createdBy?: string;
   state: ProviderState;
-  opsIncluded: string[];
+  operations: Operation[]; // Full operation objects
   previousSnapshot: string | null;
   hash: string;
   tags: string[];
@@ -484,8 +484,8 @@ export async function createSnapshot(
     return op;
   });
 
-  // Calculate hash
-  const stateHash = calculateStateHash(state, opsWithIds.map(op => op.id));
+  // Calculate hash (includes full operations)
+  const stateHash = calculateStateHash(state, opsWithIds);
 
   // Get username
   const username = os.userInfo().username || 'unknown';
@@ -498,7 +498,7 @@ export async function createSnapshot(
     ts: new Date().toISOString(),
     createdBy: username,
     state,
-    opsIncluded: opsWithIds.map(op => op.id),
+    operations: opsWithIds, // Full operation objects
     previousSnapshot: project.latestSnapshot,
     hash: stateHash,
     tags,
@@ -571,8 +571,8 @@ export function getEnvironmentConfig(
 /**
  * Calculate state hash for integrity checking
  */
-function calculateStateHash(state: ProviderState, opsIncluded: string[]): string {
-  const content = JSON.stringify({ state, opsIncluded }, null, 0);
+function calculateStateHash(state: ProviderState, operations: Operation[]): string {
+  const content = JSON.stringify({ state, operations }, null, 0);
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 

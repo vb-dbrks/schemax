@@ -115,8 +115,8 @@ class TestSnapshotWorkflow:
         snapshot_data = read_snapshot(initialized_workspace, "v0.1.0")
         assert snapshot_data["version"] == "v0.1.0"
         assert "state" in snapshot_data
-        # V4 auto-creates implicit catalog, so opsIncluded = sample_operations + 1
-        assert len(snapshot_data["opsIncluded"]) == len(sample_operations) + 1
+        # V4 auto-creates implicit catalog, so operations = sample_operations + 1
+        assert len(snapshot_data["operations"]) == len(sample_operations) + 1
 
     def test_multiple_snapshots_workflow(self, initialized_workspace, sample_operations):
         """Test creating multiple snapshots with auto-incrementing versions"""
@@ -380,7 +380,7 @@ class TestDeploymentWorkflow:
             "ts": "2025-01-01T10:00:00Z",
             "deployedBy": "test@example.com",
             "snapshotId": snapshot["id"],
-            "opsApplied": snapshot["opsIncluded"],
+            "opsApplied": [op["id"] for op in snapshot["operations"]],
             "schemaVersion": "v1.0.0",
             "status": "success",
             "driftDetected": False,
@@ -394,7 +394,7 @@ class TestDeploymentWorkflow:
             "ts": "2025-01-01T14:00:00Z",
             "deployedBy": "test@example.com",
             "snapshotId": snapshot["id"],
-            "opsApplied": snapshot["opsIncluded"],
+            "opsApplied": [op["id"] for op in snapshot["operations"]],
             "schemaVersion": "v1.0.0",
             "status": "success",
             "driftDetected": False,
