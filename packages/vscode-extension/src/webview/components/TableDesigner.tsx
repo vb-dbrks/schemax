@@ -51,10 +51,50 @@ export const TableDesigner: React.FC = () => {
           {catalog.name}.{schema.name}.{table.name}
         </h2>
         <div className="table-metadata">
-          <span className="badge">{table.format}</span>
-          {table.columnMapping && <span className="badge">columnMapping: {table.columnMapping}</span>}
+          <span className="badge">{table.format.toUpperCase()}</span>
+          <span className="badge">{table.external ? 'External' : 'Managed'}</span>
+          
+          {table.external && table.externalLocationName && (
+            <>
+              <span className="badge-info">📁 Location: {table.externalLocationName}</span>
+              {table.path && (
+                <span className="badge-info">Path: {table.path}</span>
+              )}
+            </>
+          )}
+          
+          {table.partitionColumns && table.partitionColumns.length > 0 && (
+            <span className="badge-info">⚡ Partitioned: {table.partitionColumns.join(', ')}</span>
+          )}
+          
+          {table.clusterColumns && table.clusterColumns.length > 0 && (
+            <span className="badge-info">🔷 Clustered: {table.clusterColumns.join(', ')}</span>
+          )}
+          
+          {table.columnMapping && <span className="badge">Column Mapping: {table.columnMapping}</span>}
         </div>
       </div>
+
+      {/* Show resolved location for external tables */}
+      {table.external && table.externalLocationName && project?.environments?.[project?.activeEnvironment || ''] && (
+        <div className="table-properties">
+          <div className="property-row">
+            <label>Resolved Location ({project.activeEnvironment || 'default'}):</label>
+            <div className="property-value">
+              {(() => {
+                const envConfig = project.environments[project.activeEnvironment || ''];
+                const extLoc = envConfig?.externalLocations?.[table.externalLocationName];
+                if (!extLoc) {
+                  return <code style={{color: 'var(--vscode-errorForeground)'}}>Location "{table.externalLocationName}" not found</code>;
+                }
+                const basePath = extLoc.path;
+                const fullPath = table.path ? `${basePath}/${table.path}` : basePath;
+                return <code>{fullPath}</code>;
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="table-properties">
         <div className="property-row">

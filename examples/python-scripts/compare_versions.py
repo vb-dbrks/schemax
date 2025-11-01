@@ -34,7 +34,9 @@ def main():
         # Count objects (works for Unity Catalog provider)
         if "catalogs" in snapshot["state"]:
             catalogs = len(snapshot["state"]["catalogs"])
-            schemas = sum(len(c.get("schemas", [])) for c in snapshot["state"]["catalogs"])
+            schemas = sum(
+                len(c.get("schemas", [])) for c in snapshot["state"]["catalogs"]
+            )
             tables = sum(
                 len(s.get("tables", []))
                 for c in snapshot["state"]["catalogs"]

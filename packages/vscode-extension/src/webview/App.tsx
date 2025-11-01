@@ -97,20 +97,11 @@ export const App: React.FC = () => {
         <TableDesigner />
       </div>
 
-      {hasProjectSettings && isProjectSettingsOpen && (
-        <div className="modal" role="dialog" aria-modal="true" onClick={() => setIsProjectSettingsOpen(false)}>
-          <div
-            className="modal-content modal-surface environment-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <ProjectSettingsPanel />
-            <div className="modal-buttons">
-              <VSCodeButton appearance="secondary" type="button" onClick={() => setIsProjectSettingsOpen(false)}>
-                Close
-              </VSCodeButton>
-            </div>
-          </div>
-        </div>
+      {hasProjectSettings && isProjectSettingsOpen && project && (
+        <ProjectSettingsPanel 
+          project={project}
+          onClose={() => setIsProjectSettingsOpen(false)}
+        />
       )}
     </div>
   );

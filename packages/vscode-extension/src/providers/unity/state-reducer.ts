@@ -34,6 +34,7 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
       const catalog: UnityCatalog = {
         id: op.payload.catalogId,
         name: op.payload.name,
+        managedLocationName: op.payload.managedLocationName,
         schemas: [],
       };
       newState.catalogs.push(catalog);
@@ -42,6 +43,15 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
     case 'rename_catalog': {
       const catalog = newState.catalogs.find(c => c.id === op.target);
       if (catalog) catalog.name = op.payload.newName;
+      break;
+    }
+    case 'update_catalog': {
+      const catalog = newState.catalogs.find(c => c.id === op.target);
+      if (catalog) {
+        if ('managedLocationName' in op.payload) {
+          catalog.managedLocationName = op.payload.managedLocationName;
+        }
+      }
       break;
     }
     case 'drop_catalog': {
@@ -56,6 +66,7 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         const schema: UnitySchema = {
           id: op.payload.schemaId,
           name: op.payload.name,
+          managedLocationName: op.payload.managedLocationName,
           tables: [],
         };
         catalog.schemas.push(schema);
@@ -67,6 +78,18 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         const schema = catalog.schemas.find(s => s.id === op.target);
         if (schema) {
           schema.name = op.payload.newName;
+          break;
+        }
+      }
+      break;
+    }
+    case 'update_schema': {
+      for (const catalog of newState.catalogs) {
+        const schema = catalog.schemas.find(s => s.id === op.target);
+        if (schema) {
+          if ('managedLocationName' in op.payload) {
+            schema.managedLocationName = op.payload.managedLocationName;
+          }
           break;
         }
       }
@@ -88,6 +111,11 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
             id: op.payload.tableId,
             name: op.payload.name,
             format: op.payload.format,
+            external: op.payload.external,
+            externalLocationName: op.payload.externalLocationName,
+            path: op.payload.path,
+            partitionColumns: op.payload.partitionColumns,
+            clusterColumns: op.payload.clusterColumns,
             columns: [],
             properties: {},
             constraints: [],

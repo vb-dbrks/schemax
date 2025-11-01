@@ -9,14 +9,35 @@ import { Operation } from '../base/operations';
 import { BaseSQLGenerator, SQLGenerationResult } from '../base/sql-generator';
 import { UnityState } from './models';
 import { UNITY_OPERATIONS } from './operations';
+import { LocationDefinition } from '../../storage-v4';
+
+interface LocationResolution {
+  resolved: string;
+  locationName: string;
+  relativePath?: string;
+}
 
 export class UnitySQLGenerator extends BaseSQLGenerator {
   private idNameMap: Record<string, string> = {};
   private catalogNameMapping: Record<string, string> = {}; // logical → physical
+  private managedLocations?: Record<string, LocationDefinition>; // project-level
+  private externalLocations?: Record<string, LocationDefinition>; // project-level
+  private environmentName?: string; // current environment for path resolution
   
-  constructor(protected state: UnityState, catalogNameMapping?: Record<string, string>) {
+  constructor(
+    protected state: UnityState, 
+    catalogNameMapping?: Record<string, string>,
+    options?: {
+      managedLocations?: Record<string, LocationDefinition>;
+      externalLocations?: Record<string, LocationDefinition>;
+      environmentName?: string;
+    }
+  ) {
     super(state);
     this.catalogNameMapping = catalogNameMapping || {};
+    this.managedLocations = options?.managedLocations;
+    this.externalLocations = options?.externalLocations;
+    this.environmentName = options?.environmentName;
     this.idNameMap = this.buildIdNameMap();
   }
   
@@ -68,6 +89,117 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       .join('.');
   }
   
+  /**
+   * Resolve external location name and path to absolute path.
+   * 
+   * @param externalLocationName - Logical location name from project config
+   * @param path - Relative path under the external location (optional)
+   * @returns Location resolution details or null if not an external table
+   */
+  private resolveTableLocation(
+    externalLocationName: string | undefined,
+    path: string | undefined
+  ): LocationResolution | null {
+    if (!externalLocationName) {
+      return null; // Not an external table
+    }
+    
+    if (!this.externalLocations) {
+      throw new Error(
+        `External location '${externalLocationName}' requires project-level externalLocations configuration.`
+      );
+    }
+    
+    const locDef = this.externalLocations[externalLocationName];
+    if (!locDef) {
+      const available = Object.keys(this.externalLocations).join(', ');
+      throw new Error(
+        `External location '${externalLocationName}' not found in project. ` +
+        `Available: ${available || '(none)'}`
+      );
+    }
+    
+    if (!this.environmentName) {
+      throw new Error(
+        `Cannot resolve external location '${externalLocationName}': environment name not provided.`
+      );
+    }
+    
+    const envPath = locDef.paths[this.environmentName];
+    if (!envPath) {
+      const availableEnvs = Object.keys(locDef.paths).join(', ');
+      throw new Error(
+        `External location '${externalLocationName}' does not have a path configured for environment '${this.environmentName}'. ` +
+        `Configured environments: ${availableEnvs || '(none)'}`
+      );
+    }
+    
+    const basePath = envPath.replace(/\/$/, ''); // Remove trailing slash
+    
+    if (path) {
+      const relPath = path.replace(/^\//, ''); // Remove leading slash
+      return {
+        resolved: `${basePath}/${relPath}`,
+        locationName: externalLocationName,
+        relativePath: path
+      };
+    }
+    
+    return {
+      resolved: basePath,
+      locationName: externalLocationName
+    };
+  }
+  
+  /**
+   * Resolve managed location name to absolute path.
+   * 
+   * @param locationName - Logical managed location name from project config
+   * @returns Location resolution details or null if no managed location
+   */
+  private resolveManagedLocation(
+    locationName: string | undefined
+  ): LocationResolution | null {
+    if (!locationName) {
+      return null;
+    }
+    
+    if (!this.managedLocations) {
+      throw new Error(
+        `Managed location '${locationName}' requires project-level managedLocations configuration.`
+      );
+    }
+    
+    const locDef = this.managedLocations[locationName];
+    if (!locDef) {
+      const available = Object.keys(this.managedLocations).join(', ');
+      throw new Error(
+        `Managed location '${locationName}' not found in project. ` +
+        `Available: ${available || '(none)'}`
+      );
+    }
+    
+    if (!this.environmentName) {
+      throw new Error(
+        `Cannot resolve managed location '${locationName}': environment name not provided.`
+      );
+    }
+    
+    const envPath = locDef.paths[this.environmentName];
+    if (!envPath) {
+      const availableEnvs = Object.keys(locDef.paths).join(', ');
+      throw new Error(
+        `Managed location '${locationName}' does not have a path configured for environment '${this.environmentName}'. ` +
+        `Configured environments: ${availableEnvs || '(none)'}`
+      );
+    }
+    
+    return {
+      resolved: envPath.replace(/\/$/, ''),
+      locationName: locationName
+    };
+  }
+  
   canGenerateSQL(op: Operation): boolean {
     const supportedOps = Object.values(UNITY_OPERATIONS);
     return supportedOps.includes(op.op as any);
@@ -101,39 +233,51 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       return levelA - levelB;
     });
 
-    // Pre-process: batch operations by table and type
-    const tableBatches = this.batchTableOperations(sortedOps);
+    // Pre-process: batch operations by object (catalog, schema, table)
+    const batches = this.batchOperations(sortedOps);
     const processedOpIds = new Set<string>();
     const statements: string[] = [];
 
-    // Separate operations by level
-    const catalogOps: Operation[] = [];
-    const schemaOps: Operation[] = [];
-    const tableOps: string[] = [];
+    // Separate batched operations by type
+    const catalogBatches: string[] = [];
+    const schemaBatches: string[] = [];
+    const tableBatches: string[] = [];
     const otherOps: Operation[] = [];
 
-    // Process batched table operations
-    for (const [tableId, batchInfo] of Object.entries(tableBatches)) {
-      const { opIds, operationTypes } = batchInfo;
+    // Process batched operations
+    for (const [objectId, batchInfo] of Object.entries(batches)) {
+      const { objectType, opIds, operationTypes } = batchInfo;
       
       // Mark these operations as processed
       opIds.forEach(id => processedOpIds.add(id));
       
-      // Generate optimized SQL for this table
-      const tableSql = this.generateOptimizedTableSQL(tableId, batchInfo);
+      // Generate optimized SQL based on object type
+      let sql = '';
+      const uniqueTypes = [...new Set(operationTypes.map(op => op.replace('unity.', '')))];
+      const header = `-- Batch ${objectType.charAt(0).toUpperCase() + objectType.slice(1)} Operations: ${opIds.length} operations\n-- Object: ${objectId}\n-- Types: ${uniqueTypes.sort().join(', ')}\n-- Operations: ${opIds.join(', ')}`;
       
-      if (tableSql && !tableSql.startsWith('--')) {
-        // Add batch header comment
-        const uniqueTypes = [...new Set(operationTypes.map(op => op.replace('unity.', '')))];
-        const header = `-- Batch Table Operations: ${opIds.length} operations\n-- Table: ${tableId}\n-- Types: ${uniqueTypes.sort().join(', ')}\n-- Operations: ${opIds.join(', ')}`;
-        tableOps.push(`${header}\n${tableSql};`);
+      if (objectType === 'catalog') {
+        sql = this.generateOptimizedCatalogSQL(objectId, batchInfo);
+        if (sql && !sql.startsWith('--')) {
+          catalogBatches.push(`${header}\n${sql};`);
+        }
+      } else if (objectType === 'schema') {
+        sql = this.generateOptimizedSchemaSQL(objectId, batchInfo);
+        if (sql && !sql.startsWith('--')) {
+          schemaBatches.push(`${header}\n${sql};`);
+        }
+      } else if (objectType === 'table') {
+        sql = this.generateOptimizedTableSQL(objectId, batchInfo);
+        if (sql && !sql.startsWith('--')) {
+          tableBatches.push(`${header}\n${sql};`);
+        }
       }
     }
 
-    // Categorize remaining operations
+    // Collect remaining (non-batched) operations
     for (const op of sortedOps) {
       if (processedOpIds.has(op.id)) {
-        continue; // Skip already processed table operations
+        continue; // Skip already processed operations
       }
       
       if (!this.canGenerateSQL(op)) {
@@ -141,39 +285,15 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         continue;
       }
 
-      const level = this.getOperationLevel(op.op);
-      if (level === 0) {
-        catalogOps.push(op);
-      } else if (level === 1) {
-        schemaOps.push(op);
-      } else {
-        otherOps.push(op);
-      }
+      otherOps.push(op);
     }
 
     // Generate SQL in dependency order: catalogs → schemas → tables → others
-    for (const op of catalogOps) {
-      const result = this.generateSQLForOperation(op);
-      const header = `-- Operation: ${op.id} (${op.ts})\n-- Type: ${op.op}`;
-      const warningsComment = result.warnings.length > 0
-        ? `\n-- Warnings: ${result.warnings.join(', ')}`
-        : '';
-      statements.push(`${header}${warningsComment}\n${result.sql};`);
-    }
+    statements.push(...catalogBatches);
+    statements.push(...schemaBatches);
+    statements.push(...tableBatches);
 
-    for (const op of schemaOps) {
-      const result = this.generateSQLForOperation(op);
-      const header = `-- Operation: ${op.id} (${op.ts})\n-- Type: ${op.op}`;
-      const warningsComment = result.warnings.length > 0
-        ? `\n-- Warnings: ${result.warnings.join(', ')}`
-        : '';
-      statements.push(`${header}${warningsComment}\n${result.sql};`);
-    }
-
-    // Add table operations
-    statements.push(...tableOps);
-
-    // Add other operations
+    // Add other non-batched operations
     for (const op of otherOps) {
       const result = this.generateSQLForOperation(op);
       const header = `-- Operation: ${op.id} (${op.ts})\n-- Type: ${op.op}`;
@@ -210,13 +330,40 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   private addCatalog(op: Operation): string {
     // Use mapped name from idNameMap (handles __implicit__ → physical catalog)
     const name = this.idNameMap[op.target] || op.payload.name;
-    return `CREATE CATALOG IF NOT EXISTS ${this.escapeIdentifier(name)}`;
+    const managedLocationName = op.payload.managedLocationName;
+    
+    let sql = `CREATE CATALOG IF NOT EXISTS ${this.escapeIdentifier(name)}`;
+    
+    if (managedLocationName) {
+      const location = this.resolveManagedLocation(managedLocationName);
+      if (location) {
+        sql += ` MANAGED LOCATION '${this.escapeString(location.resolved)}'`;
+      }
+    }
+    
+    return sql;
   }
   
   private renameCatalog(op: Operation): string {
     const oldName = op.payload.oldName;
     const newName = op.payload.newName;
     return `ALTER CATALOG ${this.escapeIdentifier(oldName)} RENAME TO ${this.escapeIdentifier(newName)}`;
+  }
+  
+  private updateCatalog(op: Operation): string {
+    const name = this.idNameMap[op.target] || op.target;
+    const managedLocationName = op.payload.managedLocationName;
+    
+    if (managedLocationName) {
+      const location = this.resolveManagedLocation(managedLocationName);
+      if (location) {
+        return `ALTER CATALOG ${this.escapeIdentifier(name)} SET MANAGED LOCATION '${this.escapeString(location.resolved)}'`;
+      } else {
+        return `-- Warning: Managed location '${managedLocationName}' not configured`;
+      }
+    } else {
+      return `-- Warning: No managed location specified for catalog update`;
+    }
   }
   
   private dropCatalog(op: Operation): string {
@@ -228,7 +375,18 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   private addSchema(op: Operation): string {
     const catalogName = this.idNameMap[op.payload.catalogId] || 'unknown';
     const schemaName = op.payload.name;
-    return `CREATE SCHEMA IF NOT EXISTS ${this.buildFqn(catalogName, schemaName)}`;
+    const managedLocationName = op.payload.managedLocationName;
+    
+    let sql = `CREATE SCHEMA IF NOT EXISTS ${this.buildFqn(catalogName, schemaName)}`;
+    
+    if (managedLocationName) {
+      const location = this.resolveManagedLocation(managedLocationName);
+      if (location) {
+        sql += ` MANAGED LOCATION '${this.escapeString(location.resolved)}'`;
+      }
+    }
+    
+    return sql;
   }
   
   private renameSchema(op: Operation): string {
@@ -238,6 +396,25 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const fqn = this.idNameMap[op.target] || 'unknown.unknown';
     const catalogName = fqn.split('.')[0];
     return `ALTER SCHEMA ${this.buildFqn(catalogName, oldName)} RENAME TO ${this.buildFqn(catalogName, newName)}`;
+  }
+  
+  private updateSchema(op: Operation): string {
+    const fqn = this.idNameMap[op.target] || 'unknown.unknown';
+    const parts = fqn.split('.');
+    const catalogName = parts[0];
+    const schemaName = parts[1] || 'unknown';
+    const managedLocationName = op.payload.managedLocationName;
+    
+    if (managedLocationName) {
+      const location = this.resolveManagedLocation(managedLocationName);
+      if (location) {
+        return `ALTER SCHEMA ${this.buildFqn(catalogName, schemaName)} SET MANAGED LOCATION '${this.escapeString(location.resolved)}'`;
+      } else {
+        return `-- Warning: Managed location '${managedLocationName}' not configured`;
+      }
+    } else {
+      return `-- Warning: No managed location specified for schema update`;
+    }
   }
   
   private dropSchema(op: Operation): string {
@@ -254,9 +431,51 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const schemaName = parts[1] || 'unknown';
     const tableName = op.payload.name;
     const tableFormat = op.payload.format.toUpperCase();
+    const isExternal = op.payload.external === true;
+    
+    // Resolve location
+    const locationInfo = isExternal 
+      ? this.resolveTableLocation(
+          op.payload.externalLocationName,
+          op.payload.path
+        )
+      : null;
+    
+    const partitionCols = op.payload.partitionColumns;
+    const clusterCols = op.payload.clusterColumns;
+    
+    // Build SQL clauses
+    const externalKeyword = isExternal ? 'EXTERNAL ' : '';
+    const locationClause = locationInfo 
+      ? ` LOCATION '${this.escapeString(locationInfo.resolved)}'` 
+      : '';
+    const partitionClause = (partitionCols && partitionCols.length > 0)
+      ? ` PARTITIONED BY (${partitionCols.join(', ')})`
+      : '';
+    const clusterClause = (clusterCols && clusterCols.length > 0)
+      ? ` CLUSTER BY (${clusterCols.join(', ')})`
+      : '';
+    
+    // Add warnings and metadata as SQL comments
+    let warnings = '';
+    if (isExternal && locationInfo) {
+      warnings = `-- External Table: ${tableName}\n` +
+                 `-- Location Name: ${locationInfo.locationName}\n`;
+      
+      if (locationInfo.relativePath) {
+        warnings += `-- Relative Path: ${locationInfo.relativePath}\n`;
+      }
+      
+      warnings += `-- Resolved Location: ${locationInfo.resolved}\n` +
+                 `-- WARNING: External tables must reference pre-configured external locations\n` +
+                 `-- WARNING: Databricks recommends using managed tables for optimal performance\n` +
+                 `-- Learn more: https://learn.microsoft.com/en-gb/azure/databricks/tables/managed\n`;
+    }
     
     // Create empty table (columns added via add_column ops)
-    return `CREATE TABLE IF NOT EXISTS ${this.buildFqn(catalogName, schemaName, tableName)} () USING ${tableFormat}`;
+    return warnings + 
+      `CREATE ${externalKeyword}TABLE IF NOT EXISTS ${this.buildFqn(catalogName, schemaName, tableName)} () ` +
+      `USING ${tableFormat}${partitionClause}${clusterClause}${locationClause}`;
   }
   
   private renameTable(op: Operation): string {
@@ -502,27 +721,23 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   /**
    * Batch operations by table to generate optimal DDL.
    */
-  private batchTableOperations(ops: Operation[]): Record<string, {
-    isNewTable: boolean;
-    tableOp: Operation | null;
-    columnOps: Operation[];
-    propertyOps: Operation[];
-    reorderOps: Operation[];
-    constraintOps: Operation[];
-    governanceOps: Operation[];
-    otherOps: Operation[];
+  /**
+   * Batch operations by object (catalog, schema, or table).
+   * Returns a map of object_id -> batch info with all related operations.
+   */
+  private batchOperations(ops: Operation[]): Record<string, {
+    objectType: 'catalog' | 'schema' | 'table';
+    isNew: boolean;
+    createOp: Operation | null;
+    modifyOps: Operation[];
     opIds: string[];
     operationTypes: string[];
   }> {
-    const tableBatches: Record<string, {
-      isNewTable: boolean;
-      tableOp: Operation | null;
-      columnOps: Operation[];
-      propertyOps: Operation[];
-      reorderOps: Operation[];
-      constraintOps: Operation[];
-      governanceOps: Operation[];
-      otherOps: Operation[];
+    const batches: Record<string, {
+      objectType: 'catalog' | 'schema' | 'table';
+      isNew: boolean;
+      createOp: Operation | null;
+      modifyOps: Operation[];
       opIds: string[];
       operationTypes: string[];
     }> = {};
@@ -530,92 +745,216 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     for (const op of ops) {
       const opType = op.op.replace('unity.', '');
       
-      // Identify table-related operations
-      let tableId: string | null = null;
-      if (['add_table', 'rename_table', 'drop_table', 'set_table_comment'].includes(opType)) {
-        tableId = op.target;
-      } else if ([
+      // Identify object type and ID
+      let objectId: string | null = null;
+      let objectType: 'catalog' | 'schema' | 'table' | null = null;
+      
+      // Catalog operations
+      if (['add_catalog', 'rename_catalog', 'update_catalog', 'drop_catalog'].includes(opType)) {
+        objectId = `catalog:${op.target}`;
+        objectType = 'catalog';
+      }
+      // Schema operations
+      else if (['add_schema', 'rename_schema', 'update_schema', 'drop_schema'].includes(opType)) {
+        objectId = `schema:${op.target}`;
+        objectType = 'schema';
+      }
+      // Table-level operations
+      else if (['add_table', 'rename_table', 'drop_table', 'set_table_comment'].includes(opType)) {
+        objectId = `table:${op.target}`;
+        objectType = 'table';
+      } 
+      // Column and table property operations
+      else if ([
         'add_column', 'rename_column', 'drop_column', 'reorder_columns',
         'change_column_type', 'set_nullable', 'set_column_comment',
-        'set_column_tag', 'unset_column_tag', 'set_table_property', 'unset_table_property'
-      ].includes(opType)) {
-        tableId = op.payload.tableId;
-      } else if ([
+        'set_column_tag', 'unset_column_tag', 'set_table_property', 'unset_table_property',
         'add_constraint', 'drop_constraint', 'add_row_filter', 'update_row_filter',
         'remove_row_filter', 'add_column_mask', 'update_column_mask', 'remove_column_mask'
       ].includes(opType)) {
-        tableId = op.payload.tableId;
+        const tableId = op.payload.tableId;
+        if (tableId) {
+          objectId = `table:${tableId}`;
+          objectType = 'table';
+        }
       }
       
-      if (!tableId) {
-        continue; // Not a table operation
+      if (!objectId || !objectType) {
+        continue; // Not a batchable operation
       }
       
-      if (!tableBatches[tableId]) {
-        tableBatches[tableId] = {
-          isNewTable: false,
-          tableOp: null,
-          columnOps: [],
-          propertyOps: [],
-          reorderOps: [],
-          constraintOps: [],
-          governanceOps: [],
-          otherOps: [],
+      // Initialize batch if doesn't exist
+      if (!batches[objectId]) {
+        batches[objectId] = {
+          objectType,
+          isNew: false,
+          createOp: null,
+          modifyOps: [],
           opIds: [],
           operationTypes: []
         };
       }
       
-      const batch = tableBatches[tableId];
+      const batch = batches[objectId];
       batch.opIds.push(op.id);
       batch.operationTypes.push(op.op);
       
       // Categorize operation
-      if (opType === 'add_table') {
-        batch.isNewTable = true;
-        batch.tableOp = op;
-      } else if (opType === 'add_column') {
-        batch.columnOps.push(op);
-      } else if (['set_table_property', 'unset_table_property'].includes(opType)) {
-        batch.propertyOps.push(op);
-      } else if (opType === 'reorder_columns') {
-        batch.reorderOps.push(op);
-      } else if (['add_constraint', 'drop_constraint'].includes(opType)) {
-        batch.constraintOps.push(op);
-      } else if ([
-        'add_row_filter', 'update_row_filter', 'remove_row_filter',
-        'add_column_mask', 'update_column_mask', 'remove_column_mask'
-      ].includes(opType)) {
-        batch.governanceOps.push(op);
+      const isCreate = ['add_catalog', 'add_schema', 'add_table'].includes(opType);
+      if (isCreate) {
+        batch.isNew = true;
+        batch.createOp = op;
       } else {
-        batch.otherOps.push(op);
+        batch.modifyOps.push(op);
       }
     }
     
-    return tableBatches;
+    return batches;
+  }
+
+  /**
+   * Generate optimal SQL for catalog operations (squashes CREATE + UPDATE)
+   */
+  private generateOptimizedCatalogSQL(objectId: string, batchInfo: {
+    objectType: 'catalog' | 'schema' | 'table';
+    isNew: boolean;
+    createOp: Operation | null;
+    modifyOps: Operation[];
+    opIds: string[];
+    operationTypes: string[];
+  }): string {
+    if (!batchInfo.createOp) {
+      // No CREATE operation, just generate individual ALTER statements
+      return batchInfo.modifyOps.map(op => this.generateSQLForOperation(op).sql).join(';\n');
+    }
+
+    const createOp = batchInfo.createOp;
+    const catalogId = createOp.target;
+    const name = this.idNameMap[catalogId] || createOp.payload.name;
+
+    // Check for update_catalog operations to squash into CREATE
+    let managedLocationName = createOp.payload.managedLocationName;
+    for (const op of batchInfo.modifyOps) {
+      const opType = op.op.replace('unity.', '');
+      if (opType === 'update_catalog' && 'managedLocationName' in op.payload) {
+        // Squash: Use the updated value
+        managedLocationName = op.payload.managedLocationName;
+      }
+    }
+
+    // Generate optimized CREATE CATALOG statement
+    let sql = `CREATE CATALOG IF NOT EXISTS ${this.escapeIdentifier(name)}`;
+
+    if (managedLocationName) {
+      const location = this.resolveManagedLocation(managedLocationName);
+      if (location) {
+        sql += ` MANAGED LOCATION '${this.escapeString(location.resolved)}'`;
+      }
+    }
+
+    return sql;
+  }
+
+  /**
+   * Generate optimal SQL for schema operations (squashes CREATE + UPDATE)
+   */
+  private generateOptimizedSchemaSQL(objectId: string, batchInfo: {
+    objectType: 'catalog' | 'schema' | 'table';
+    isNew: boolean;
+    createOp: Operation | null;
+    modifyOps: Operation[];
+    opIds: string[];
+    operationTypes: string[];
+  }): string {
+    if (!batchInfo.createOp) {
+      // No CREATE operation, just generate individual ALTER statements
+      return batchInfo.modifyOps.map(op => this.generateSQLForOperation(op).sql).join(';\n');
+    }
+
+    const createOp = batchInfo.createOp;
+    const catalogName = this.idNameMap[createOp.payload.catalogId] || 'unknown';
+    const schemaName = createOp.payload.name;
+
+    // Check for update_schema operations to squash into CREATE
+    let managedLocationName = createOp.payload.managedLocationName;
+    for (const op of batchInfo.modifyOps) {
+      const opType = op.op.replace('unity.', '');
+      if (opType === 'update_schema' && 'managedLocationName' in op.payload) {
+        // Squash: Use the updated value
+        managedLocationName = op.payload.managedLocationName;
+      }
+    }
+
+    // Generate optimized CREATE SCHEMA statement
+    let sql = `CREATE SCHEMA IF NOT EXISTS ${this.buildFqn(catalogName, schemaName)}`;
+
+    if (managedLocationName) {
+      const location = this.resolveManagedLocation(managedLocationName);
+      if (location) {
+        sql += ` MANAGED LOCATION '${this.escapeString(location.resolved)}'`;
+      }
+    }
+
+    return sql;
   }
 
   /**
    * Generate optimal SQL for table operations
    */
-  private generateOptimizedTableSQL(tableId: string, batchInfo: {
-    isNewTable: boolean;
-    tableOp: Operation | null;
-    columnOps: Operation[];
-    propertyOps: Operation[];
-    reorderOps: Operation[];
-    constraintOps: Operation[];
-    governanceOps: Operation[];
-    otherOps: Operation[];
+  private generateOptimizedTableSQL(objectId: string, batchInfo: {
+    objectType: 'catalog' | 'schema' | 'table';
+    isNew: boolean;
+    createOp: Operation | null;
+    modifyOps: Operation[];
     opIds: string[];
     operationTypes: string[];
   }): string {
-    if (batchInfo.isNewTable) {
+    // Categorize modify operations by type
+    const columnOps: Operation[] = [];
+    const propertyOps: Operation[] = [];
+    const reorderOps: Operation[] = [];
+    const constraintOps: Operation[] = [];
+    const governanceOps: Operation[] = [];
+    const otherOps: Operation[] = [];
+
+    for (const op of batchInfo.modifyOps) {
+      const opType = op.op.replace('unity.', '');
+      if (opType === 'add_column') {
+        columnOps.push(op);
+      } else if (['set_table_property', 'unset_table_property'].includes(opType)) {
+        propertyOps.push(op);
+      } else if (opType === 'reorder_columns') {
+        reorderOps.push(op);
+      } else if (['add_constraint', 'drop_constraint'].includes(opType)) {
+        constraintOps.push(op);
+      } else if ([
+        'add_row_filter', 'update_row_filter', 'remove_row_filter',
+        'add_column_mask', 'update_column_mask', 'remove_column_mask'
+      ].includes(opType)) {
+        governanceOps.push(op);
+      } else {
+        otherOps.push(op);
+      }
+    }
+
+    const legacyBatchInfo = {
+      tableOp: batchInfo.createOp,
+      columnOps,
+      propertyOps,
+      reorderOps,
+      constraintOps,
+      governanceOps,
+      otherOps,
+      opIds: batchInfo.opIds,
+      operationTypes: batchInfo.operationTypes
+    };
+
+    if (batchInfo.isNew) {
       // Generate complete CREATE TABLE statement
-      return this.generateCreateTableWithColumns(tableId, batchInfo);
+      return this.generateCreateTableWithColumns(objectId, legacyBatchInfo);
     } else {
       // Generate optimized ALTER statements for existing table
-      return this.generateAlterStatementsForTable(tableId, batchInfo);
+      return this.generateAlterStatementsForTable(objectId, legacyBatchInfo);
     }
   }
 
@@ -680,6 +1019,30 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     
     // Build table format
     const tableFormat = (tableOp.payload.format || 'DELTA').toUpperCase();
+    const isExternal = tableOp.payload.external === true;
+    
+    // Resolve location for external tables
+    const locationInfo = isExternal 
+      ? this.resolveTableLocation(
+          tableOp.payload.externalLocationName,
+          tableOp.payload.path
+        )
+      : null;
+    
+    const partitionCols = tableOp.payload.partitionColumns;
+    const clusterCols = tableOp.payload.clusterColumns;
+    
+    // Build SQL clauses
+    const externalKeyword = isExternal ? 'EXTERNAL ' : '';
+    const locationClause = locationInfo 
+      ? ` LOCATION '${this.escapeString(locationInfo.resolved)}'` 
+      : '';
+    const partitionClause = (partitionCols && partitionCols.length > 0)
+      ? `\nPARTITIONED BY (${partitionCols.join(', ')})`
+      : '';
+    const clusterClause = (clusterCols && clusterCols.length > 0)
+      ? `\nCLUSTER BY (${clusterCols.join(', ')})`
+      : '';
     
     // Build table properties
     const properties: string[] = [];
@@ -694,17 +1057,33 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     // Build table comment
     const tableComment = tableOp.payload.comment ? ` COMMENT '${this.escapeString(tableOp.payload.comment)}'` : '';
     
+    // Add warnings for external tables
+    let warnings = '';
+    if (isExternal && locationInfo) {
+      warnings = `-- External Table: ${tableName}\n` +
+                 `-- Location Name: ${locationInfo.locationName}\n`;
+      
+      if (locationInfo.relativePath) {
+        warnings += `-- Relative Path: ${locationInfo.relativePath}\n`;
+      }
+      
+      warnings += `-- Resolved Location: ${locationInfo.resolved}\n` +
+                 `-- WARNING: External tables must reference pre-configured external locations\n` +
+                 `-- WARNING: Databricks recommends using managed tables for optimal performance\n` +
+                 `-- Learn more: https://learn.microsoft.com/en-gb/azure/databricks/tables/managed\n`;
+    }
+    
     // Assemble CREATE TABLE statement
     const columnsSql = columns.length > 0 ? columns.join(',\n') : '';
     const propertiesSql = properties.length > 0 ? `\nTBLPROPERTIES (${properties.join(', ')})` : '';
     
     if (columnsSql) {
-      return `CREATE TABLE IF NOT EXISTS ${tableEsc} (
+      return warnings + `CREATE ${externalKeyword}TABLE IF NOT EXISTS ${tableEsc} (
 ${columnsSql}
-) USING ${tableFormat}${tableComment}${propertiesSql}`;
+) USING ${tableFormat}${tableComment}${partitionClause}${clusterClause}${propertiesSql}${locationClause}`;
     } else {
       // No columns yet - create empty table (fallback to original behavior)
-      return `CREATE TABLE IF NOT EXISTS ${tableEsc} () USING ${tableFormat}${tableComment}${propertiesSql}`;
+      return warnings + `CREATE ${externalKeyword}TABLE IF NOT EXISTS ${tableEsc} () USING ${tableFormat}${tableComment}${partitionClause}${clusterClause}${propertiesSql}${locationClause}`;
     }
   }
 
@@ -821,6 +1200,8 @@ ${columnsSql}
         return this.addCatalog(op);
       case 'rename_catalog':
         return this.renameCatalog(op);
+      case 'update_catalog':
+        return this.updateCatalog(op);
       case 'drop_catalog':
         return this.dropCatalog(op);
       
@@ -829,6 +1210,8 @@ ${columnsSql}
         return this.addSchema(op);
       case 'rename_schema':
         return this.renameSchema(op);
+      case 'update_schema':
+        return this.updateSchema(op);
       case 'drop_schema':
         return this.dropSchema(op);
       

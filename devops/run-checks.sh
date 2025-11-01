@@ -25,28 +25,26 @@ NC='\033[0m' # No Color
 FAILURES=0
 
 # ==========================================
-# 1. Code Formatting Check (Black)
+# 1. Code Formatting Check (Ruff)
 # ==========================================
-echo "1️⃣  Checking Python code formatting (Black)..."
+echo "1️⃣  Checking Python code formatting (Ruff)..."
 echo "--------------------------------------"
 
-if command -v black &> /dev/null; then
-    if black packages/python-sdk/src/ packages/python-sdk/tests/ --check --line-length 100 && \
-       black examples/python-scripts/ --check --line-length 100; then
+if command -v ruff &> /dev/null; then
+    if (cd packages/python-sdk && ruff format --check src/ tests/) && \
+       (cd examples/python-scripts && ruff format --check .); then
         echo -e "${GREEN}✓${NC} Python code formatting is correct"
     else
         echo -e "${RED}✗${NC} Python code formatting check failed"
         echo ""
         echo "To fix, run:"
-        echo "  cd packages/python-sdk && black src/ tests/ --line-length 100"
-        echo "  cd examples/python-scripts && black . --line-length 100"
-        echo "Or use Ruff format:"
         echo "  cd packages/python-sdk && ruff format src/ tests/"
+        echo "  cd examples/python-scripts && ruff format ."
         FAILURES=$((FAILURES + 1))
     fi
 else
-    echo -e "${YELLOW}⚠${NC}  Black not installed, skipping formatting check"
-    echo "Install with: pip install black"
+    echo -e "${YELLOW}⚠${NC}  Ruff not installed, skipping formatting check"
+    echo "Install with: pip install ruff"
 fi
 
 echo ""

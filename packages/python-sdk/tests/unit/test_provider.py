@@ -206,7 +206,8 @@ class TestOperationMetadata:
         # Verify all Unity operations have metadata
         unity_ops = [op for op in caps.supported_operations if op.startswith("unity.")]
 
-        assert len(unity_ops) == 29  # All 29 Unity operations (3+3+6+7+2+2+3+3)
+        assert len(unity_ops) == 31  # All 31 Unity operations (4+4+6+7+2+2+3+3)
+        # 4 catalog (add, rename, update, drop), 4 schema (add, rename, update, drop)
 
 
 class TestProviderIntegration:

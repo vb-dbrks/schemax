@@ -12,10 +12,12 @@ UNITY_OPERATIONS = {
     # Catalog operations
     "ADD_CATALOG": "unity.add_catalog",
     "RENAME_CATALOG": "unity.rename_catalog",
+    "UPDATE_CATALOG": "unity.update_catalog",
     "DROP_CATALOG": "unity.drop_catalog",
     # Schema operations
     "ADD_SCHEMA": "unity.add_schema",
     "RENAME_SCHEMA": "unity.rename_schema",
+    "UPDATE_SCHEMA": "unity.update_schema",
     "DROP_SCHEMA": "unity.drop_schema",
     # Table operations
     "ADD_TABLE": "unity.add_table",
@@ -57,7 +59,7 @@ unity_operation_metadata = [
         description="Create a new catalog",
         category=OperationCategory.CATALOG,
         required_fields=["catalogId", "name"],
-        optional_fields=[],
+        optional_fields=["managedLocationName", "comment"],
         is_destructive=False,
     ),
     OperationMetadata(
@@ -67,6 +69,15 @@ unity_operation_metadata = [
         category=OperationCategory.CATALOG,
         required_fields=["newName"],
         optional_fields=[],
+        is_destructive=False,
+    ),
+    OperationMetadata(
+        type=UNITY_OPERATIONS["UPDATE_CATALOG"],
+        display_name="Update Catalog",
+        description="Update catalog properties (e.g., managed location)",
+        category=OperationCategory.CATALOG,
+        required_fields=[],
+        optional_fields=["managedLocationName"],
         is_destructive=False,
     ),
     OperationMetadata(
@@ -85,7 +96,7 @@ unity_operation_metadata = [
         description="Create a new schema in a catalog",
         category=OperationCategory.SCHEMA,
         required_fields=["schemaId", "name", "catalogId"],
-        optional_fields=[],
+        optional_fields=["managedLocationName", "comment"],
         is_destructive=False,
     ),
     OperationMetadata(
@@ -95,6 +106,15 @@ unity_operation_metadata = [
         category=OperationCategory.SCHEMA,
         required_fields=["newName"],
         optional_fields=[],
+        is_destructive=False,
+    ),
+    OperationMetadata(
+        type=UNITY_OPERATIONS["UPDATE_SCHEMA"],
+        display_name="Update Schema",
+        description="Update schema properties (e.g., managed location)",
+        category=OperationCategory.SCHEMA,
+        required_fields=[],
+        optional_fields=["managedLocationName"],
         is_destructive=False,
     ),
     OperationMetadata(
@@ -110,10 +130,17 @@ unity_operation_metadata = [
     OperationMetadata(
         type=UNITY_OPERATIONS["ADD_TABLE"],
         display_name="Add Table",
-        description="Create a new table in a schema",
+        description="Create a new managed or external table in a schema",
         category=OperationCategory.TABLE,
         required_fields=["tableId", "name", "schemaId", "format"],
-        optional_fields=[],
+        optional_fields=[
+            "external",
+            "externalLocationName",
+            "path",
+            "partitionColumns",
+            "clusterColumns",
+            "comment",
+        ],
         is_destructive=False,
     ),
     OperationMetadata(

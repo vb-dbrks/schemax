@@ -21,7 +21,12 @@ const PROJECT_FILENAME = 'project.json';
 const CHANGELOG_FILENAME = 'changelog.json';
 const SNAPSHOTS_DIR = 'snapshots';
 
-// Environment Configuration Types
+// Location Configuration Types
+export interface LocationDefinition {
+  description?: string;
+  paths: Record<string, string>; // environmentName -> physical path
+}
+
 export interface EnvironmentConfig {
   topLevelName: string;
   description?: string;
@@ -77,6 +82,13 @@ export interface ProjectFileV4 {
   version: 4;
   name: string;
   provider: ProviderConfigV4;
+  
+  // Physical Isolation (for managed tables) - project-level with per-environment paths
+  managedLocations?: Record<string, LocationDefinition>;
+  
+  // External Locations (for external tables) - project-level with per-environment paths
+  externalLocations?: Record<string, LocationDefinition>;
+  
   snapshots: SnapshotMetadata[];
   deployments: Deployment[];
   settings: ProjectSettings;

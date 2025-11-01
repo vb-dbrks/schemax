@@ -65,6 +65,11 @@ export interface UnityGrant {
 // Table definition
 export interface UnityTable extends BaseObject {
   format: 'delta' | 'iceberg';
+  external?: boolean; // Whether this is an external table
+  externalLocationName?: string; // Reference to environment external location
+  path?: string; // Relative path under the external location
+  partitionColumns?: string[]; // For PARTITIONED BY clause
+  clusterColumns?: string[]; // For CLUSTER BY clause (liquid clustering)
   columnMapping?: 'name' | 'id';
   columns: UnityColumn[];
   properties: Record<string, string>;
@@ -77,11 +82,13 @@ export interface UnityTable extends BaseObject {
 
 // Schema definition
 export interface UnitySchema extends BaseObject {
+  managedLocationName?: string; // Reference to env managedLocations
   tables: UnityTable[];
 }
 
 // Catalog definition
 export interface UnityCatalog extends BaseObject {
+  managedLocationName?: string; // Reference to env managedLocations
   schemas: UnitySchema[];
 }
 

@@ -5,7 +5,7 @@ Generates Databricks SQL DDL statements from operations.
 Migrated from TypeScript sql-generator.ts
 """
 
-from typing import Any
+from typing import Any, TypedDict
 
 from ..base.batching import BatchInfo
 from ..base.operations import Operation
@@ -14,13 +14,38 @@ from .models import UnityState
 from .operations import UNITY_OPERATIONS
 
 
+class LocationResolution(TypedDict):
+    """Location resolution details"""
+
+    resolved: str
+    location_name: str
+    relative_path: str | None
+
+
+class LocationDefinition(TypedDict):
+    """Project-level location definition with per-environment paths"""
+
+    description: str | None
+    paths: dict[str, str]  # environment_name -> physical_path
+
+
 class UnitySQLGenerator(BaseSQLGenerator):
     """Unity Catalog SQL Generator"""
 
-    def __init__(self, state: UnityState, catalog_name_mapping: dict[str, str] | None = None):
+    def __init__(
+        self,
+        state: UnityState,
+        catalog_name_mapping: dict[str, str] | None = None,
+        managed_locations: dict[str, LocationDefinition] | None = None,
+        external_locations: dict[str, LocationDefinition] | None = None,
+        environment_name: str | None = None,
+    ):
         # Pass catalog_name_mapping to base as name_mapping
         super().__init__(state, catalog_name_mapping)
         self.catalog_name_mapping = catalog_name_mapping or {}  # logical → physical
+        self.managed_locations = managed_locations  # project-level
+        self.external_locations = external_locations  # project-level
+        self.environment_name = environment_name  # for path resolution
         # Base now provides self.batcher and self.optimizer
         self.id_name_map = self._build_id_name_map()
 
@@ -71,6 +96,119 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return id_map
 
+    def _resolve_table_location(
+        self, external_location_name: str | None, path: str | None
+    ) -> LocationResolution | None:
+        """
+        Resolve external location name and path to absolute path.
+
+        Args:
+            external_location_name: Logical location name from project config
+            path: Relative path under the external location (optional)
+
+        Returns:
+            Location resolution details or None if not an external table
+
+        Raises:
+            ValueError: If external location is not found or config is missing
+        """
+        if not external_location_name:
+            return None  # Not an external table
+
+        if not self.external_locations:
+            raise ValueError(
+                f"External location '{external_location_name}' requires project-level "
+                "externalLocations configuration."
+            )
+
+        loc_def = self.external_locations.get(external_location_name)
+        if not loc_def:
+            available = ", ".join(self.external_locations.keys()) or "(none)"
+            raise ValueError(
+                f"External location '{external_location_name}' not found in project. "
+                f"Available: {available}"
+            )
+
+        if not self.environment_name:
+            raise ValueError(
+                f"Cannot resolve external location '{external_location_name}': "
+                "environment name not provided."
+            )
+
+        env_path = loc_def["paths"].get(self.environment_name)
+        if not env_path:
+            available_envs = ", ".join(loc_def["paths"].keys()) or "(none)"
+            raise ValueError(
+                f"External location '{external_location_name}' does not have a path "
+                f"configured for environment '{self.environment_name}'. "
+                f"Configured environments: {available_envs}"
+            )
+
+        base_path = env_path.rstrip("/")  # Remove trailing slash
+
+        if path:
+            rel_path = path.lstrip("/")  # Remove leading slash
+            return {
+                "resolved": f"{base_path}/{rel_path}",
+                "location_name": external_location_name,
+                "relative_path": path,
+            }
+
+        return {
+            "resolved": base_path,
+            "location_name": external_location_name,
+            "relative_path": None,
+        }
+
+    def _resolve_managed_location(self, location_name: str | None) -> LocationResolution | None:
+        """
+        Resolve managed location name to absolute path.
+
+        Args:
+            location_name: Logical managed location name from project config
+
+        Returns:
+            Location resolution details or None if no managed location
+
+        Raises:
+            ValueError: If managed location is not found or config is missing
+        """
+        if not location_name:
+            return None
+
+        if not self.managed_locations:
+            raise ValueError(
+                f"Managed location '{location_name}' requires project-level "
+                "managedLocations configuration."
+            )
+
+        loc_def = self.managed_locations.get(location_name)
+        if not loc_def:
+            available = ", ".join(self.managed_locations.keys()) or "(none)"
+            raise ValueError(
+                f"Managed location '{location_name}' not found in project. Available: {available}"
+            )
+
+        if not self.environment_name:
+            raise ValueError(
+                f"Cannot resolve managed location '{location_name}': environment name not provided."
+            )
+
+        env_path = loc_def["paths"].get(self.environment_name)
+        if not env_path:
+            available_envs = ", ".join(loc_def["paths"].keys()) or "(none)"
+            raise ValueError(
+                f"Managed location '{location_name}' does not have a path "
+                f"configured for environment '{self.environment_name}'. "
+                f"Configured environments: {available_envs}"
+            )
+
+        return {
+            "resolved": env_path.rstrip("/"),
+            "location_name": location_name,
+            "relative_path": None,
+        }
+
     # _build_fqn() is now inherited from BaseSQLGenerator
 
     def can_generate_sql(self, op: Operation) -> bool:
@@ -99,16 +237,24 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _get_target_object_id(self, op: Operation) -> str | None:
         """
-        Extract target table ID from Unity operation.
+        Extract target object ID from Unity operation.
 
         Implements abstract method from BaseSQLGenerator.
-        Used by batching algorithm to group operations by table.
+        Used by batching algorithm to group operations by catalog/schema/table.
         """
         op_type = op.op.replace("unity.", "")
 
+        # Catalog-level operations
+        if op_type in ["add_catalog", "rename_catalog", "update_catalog", "drop_catalog"]:
+            return f"catalog:{op.target}"  # Prefix to avoid ID collisions
+
+        # Schema-level operations
+        if op_type in ["add_schema", "rename_schema", "update_schema", "drop_schema"]:
+            return f"schema:{op.target}"  # Prefix to avoid ID collisions
+
         # Table-level operations
         if op_type in ["add_table", "rename_table", "drop_table", "set_table_comment"]:
-            return op.target
+            return f"table:{op.target}"  # Add prefix for consistency
 
         # Column and table property operations
         if op_type in [
@@ -132,9 +278,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "update_column_mask",
             "remove_column_mask",
         ]:
-            return op.payload.get("tableId")
+            table_id = op.payload.get("tableId")
+            return f"table:{table_id}" if table_id else None
 
-        return None  # Not a table operation (catalog, schema operations)
+        return None  # Global operations with no specific target
 
     def _is_create_operation(self, op: Operation) -> bool:
         """
@@ -146,23 +293,36 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _generate_batched_create_sql(self, object_id: str, batch_info: BatchInfo) -> str:
         """
-        Generate CREATE TABLE with batched columns for Unity.
+        Generate CREATE statement with batched modifications for Unity Catalog objects.
 
         Implements abstract method from BaseSQLGenerator.
-        This is the optimization that creates complete tables instead of empty + ALTERs.
+        This is the optimization that creates complete objects instead of CREATE + ALTERs.
+
+        Handles:
+        - Catalogs: CREATE CATALOG with MANAGED LOCATION
+        - Schemas: CREATE SCHEMA with MANAGED LOCATION
+        - Tables: CREATE TABLE with columns, properties, constraints
         """
-        # Delegate to existing _generate_create_table_with_columns method
-        # Convert BatchInfo back to dict format for compatibility
-        batch_dict = {
-            "is_new_table": batch_info.is_new,
-            "table_op": batch_info.create_op,
-            "column_ops": [op for op in batch_info.modify_ops if op.op == "unity.add_column"],
-            "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
-            "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
-            "op_ids": batch_info.op_ids,
-            "operation_types": list(batch_info.operation_types),
-        }
-        return self._generate_create_table_with_columns(object_id, batch_dict)
+        # Determine object type from ID prefix
+        if object_id.startswith("catalog:"):
+            return self._generate_create_catalog_batched(object_id, batch_info)
+        elif object_id.startswith("schema:"):
+            return self._generate_create_schema_batched(object_id, batch_info)
+        elif object_id.startswith("table:"):
+            # Delegate to existing _generate_create_table_with_columns method
+            batch_dict = {
+                "is_new_table": batch_info.is_new,
+                "table_op": batch_info.create_op,
+                "column_ops": [op for op in batch_info.modify_ops if op.op == "unity.add_column"],
+                "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
+                "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
+                "op_ids": batch_info.op_ids,
+                "operation_types": list(batch_info.operation_types),
+            }
+            return self._generate_create_table_with_columns(object_id, batch_dict)
+        else:
+            # Fallback for objects without prefix (shouldn't happen after refactor)
+            return ""
 
     def _generate_batched_alter_sql(self, object_id: str, batch_info: BatchInfo) -> str:
         """
@@ -195,6 +355,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Optimizations include:
         - Dependency-ordered operations (catalog → schema → table)
+        - Batched CREATE + UPDATE operations (squashed into single CREATE)
         - Complete CREATE TABLE statements (no empty tables + ALTERs)
         - Batched column reordering (minimal ALTER statements)
         - Table property consolidation
@@ -202,78 +363,73 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Sort operations by dependency level first
         sorted_ops = sorted(ops, key=lambda op: self._get_dependency_level(op))
 
-        # Pre-process: batch operations by table and type
-        table_batches = self._batch_table_operations(sorted_ops)
+        # Use base class's generic batcher (no duplication!)
+        batches = self.batcher.batch_operations(
+            sorted_ops, self._get_target_object_id, self._is_create_operation
+        )
         processed_op_ids = set()
         statements = []
 
-        # Separate operations by level
-        catalog_ops = []
-        schema_ops = []
+        # Separate batches by object type for proper ordering
+        catalog_stmts = []
+        schema_stmts = []
         table_stmts = []
         other_ops = []
 
-        # Process batched table operations
-        for table_id, batch_info in table_batches.items():
-            op_ids = batch_info["op_ids"]
-
-            # Mark these operations as processed
+        # Process batched operations
+        for object_id, batch_info in batches.items():
+            op_ids = batch_info.op_ids
             processed_op_ids.update(op_ids)
 
-            # Generate optimized SQL for this table
-            table_sql = self._generate_optimized_table_sql(table_id, batch_info)
+            # Determine object type from ID prefix (catalog:, schema:, table:)
+            if object_id.startswith("catalog:"):
+                object_type = "catalog"
+            elif object_id.startswith("schema:"):
+                object_type = "schema"
+            elif object_id.startswith("table:"):
+                object_type = "table"
+            else:
+                # Skip unknown object types
+                continue
 
-            if table_sql and not table_sql.startswith("--"):
-                # Add batch header comment
-                operation_types = set(
-                    op.replace("unity.", "") for op in batch_info["operation_types"]
-                )
-                header = (
-                    f"-- Batch Table Operations: {len(op_ids)} operations\n"
-                    f"-- Table: {table_id}\n"
-                    f"-- Types: {', '.join(sorted(operation_types))}\n"
-                    f"-- Operations: {', '.join(op_ids)}"
-                )
-                table_stmts.append(f"{header}\n{table_sql};")
+            sql = ""
+            operation_types = set(op.replace("unity.", "") for op in batch_info.operation_types)
+            header = (
+                f"-- Batch {object_type.capitalize()} Operations: {len(op_ids)} operations\n"
+                f"-- Object: {object_id}\n"
+                f"-- Types: {', '.join(sorted(operation_types))}\n"
+                f"-- Operations: {', '.join(op_ids)}"
+            )
 
-        # Categorize remaining operations
+            if object_type == "catalog":
+                sql = self._generate_create_catalog_batched(object_id, batch_info)
+                if sql and not sql.startswith("--"):
+                    catalog_stmts.append(f"{header}\n{sql};")
+            elif object_type == "schema":
+                sql = self._generate_create_schema_batched(object_id, batch_info)
+                if sql and not sql.startswith("--"):
+                    schema_stmts.append(f"{header}\n{sql};")
+            elif object_type == "table":
+                sql = self._generate_optimized_table_sql(object_id, batch_info)
+                if sql and not sql.startswith("--"):
+                    table_stmts.append(f"{header}\n{sql};")
+
+        # Process unbatched operations
         for op in sorted_ops:
             if op.id in processed_op_ids:
-                continue  # Skip already processed table operations
+                continue
 
             if not self.can_generate_sql(op):
                 print(f"Warning: Cannot generate SQL for operation: {op.op}")
                 continue
 
-            level = self._get_dependency_level(op)
-            if level == 0:
-                catalog_ops.append(op)
-            elif level == 1:
-                schema_ops.append(op)
-            else:
-                other_ops.append(op)
+            other_ops.append(op)
 
         # Generate SQL in dependency order: catalogs → schemas → tables → others
-        for op in catalog_ops:
-            result = self.generate_sql_for_operation(op)
-            header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
-            warnings_comment = ""
-            if result.warnings:
-                warnings_comment = f"\n-- Warnings: {', '.join(result.warnings)}"
-            statements.append(f"{header}{warnings_comment}\n{result.sql};")
-
-        for op in schema_ops:
-            result = self.generate_sql_for_operation(op)
-            header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
-            warnings_comment = ""
-            if result.warnings:
-                warnings_comment = f"\n-- Warnings: {', '.join(result.warnings)}"
-            statements.append(f"{header}{warnings_comment}\n{result.sql};")
-
-        # Add table operations
+        statements.extend(catalog_stmts)
+        statements.extend(schema_stmts)
         statements.extend(table_stmts)
 
-        # Add other operations
         for op in other_ops:
             result = self.generate_sql_for_operation(op)
             header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
@@ -306,6 +462,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._add_catalog(op)
         elif op_type == "rename_catalog":
             return self._rename_catalog(op)
+        elif op_type == "update_catalog":
+            return self._update_catalog(op)
         elif op_type == "drop_catalog":
             return self._drop_catalog(op)
 
@@ -314,6 +472,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._add_schema(op)
         elif op_type == "rename_schema":
             return self._rename_schema(op)
+        elif op_type == "update_schema":
+            return self._update_schema(op)
         elif op_type == "drop_schema":
             return self._drop_schema(op)
 
@@ -381,7 +541,16 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _add_catalog(self, op: Operation) -> str:
         # Use mapped name from id_name_map (handles __implicit__ → physical catalog)
         name = self.id_name_map.get(op.target, op.payload["name"])
-        return f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
+        managed_location_name = op.payload.get("managedLocationName")
+
+        sql = f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
+
+        if managed_location_name:
+            location = self._resolve_managed_location(managed_location_name)
+            if location:
+                sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
+
+        return sql
 
     def _rename_catalog(self, op: Operation) -> str:
         old_name = op.payload["oldName"]
@@ -389,6 +558,23 @@ class UnitySQLGenerator(BaseSQLGenerator):
         old_esc = self.escape_identifier(old_name)
         new_esc = self.escape_identifier(new_name)
         return f"ALTER CATALOG {old_esc} RENAME TO {new_esc}"
+
+    def _update_catalog(self, op: Operation) -> str:
+        """Update catalog properties (e.g., managed location)"""
+        name = self.id_name_map.get(op.target, op.target)
+        managed_location_name = op.payload.get("managedLocationName")
+
+        if managed_location_name:
+            location = self._resolve_managed_location(managed_location_name)
+            if location:
+                return (
+                    f"ALTER CATALOG {self.escape_identifier(name)} "
+                    f"SET MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
+                )
+            else:
+                return f"-- Warning: Managed location '{managed_location_name}' not configured"
+        else:
+            return "-- Warning: No managed location specified for catalog update"
 
     def _drop_catalog(self, op: Operation) -> str:
         name = self.id_name_map.get(op.target, op.target)
@@ -398,9 +584,79 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _add_schema(self, op: Operation) -> str:
         catalog_name = self.id_name_map.get(op.payload["catalogId"], "unknown")
         schema_name = op.payload["name"]
+        managed_location_name = op.payload.get("managedLocationName")
+
         catalog_esc = self.escape_identifier(catalog_name)
         schema_esc = self.escape_identifier(schema_name)
-        return f"CREATE SCHEMA IF NOT EXISTS {catalog_esc}.{schema_esc}"
+        sql = f"CREATE SCHEMA IF NOT EXISTS {catalog_esc}.{schema_esc}"
+
+        if managed_location_name:
+            location = self._resolve_managed_location(managed_location_name)
+            if location:
+                sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
+
+        return sql
+
+    def _generate_create_catalog_batched(self, object_id: str, batch_info: BatchInfo) -> str:
+        """
+        Generate CREATE CATALOG with batched updates (e.g., managed location from update_catalog).
+
+        Squashes CREATE CATALOG + UPDATE_CATALOG into single CREATE statement.
+        """
+        if not batch_info.create_op:
+            return ""
+
+        create_op = batch_info.create_op
+        name = self.id_name_map.get(create_op.target, create_op.payload["name"])
+
+        # Check for update_catalog operations in modify_ops
+        managed_location_name = create_op.payload.get("managedLocationName")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_catalog" and "managedLocationName" in op.payload:
+                # Squash: Use the updated value instead
+                managed_location_name = op.payload.get("managedLocationName")
+                break
+
+        sql = f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
+
+        if managed_location_name:
+            location = self._resolve_managed_location(managed_location_name)
+            if location:
+                sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
+
+        return sql
+
+    def _generate_create_schema_batched(self, object_id: str, batch_info: BatchInfo) -> str:
+        """
+        Generate CREATE SCHEMA with batched updates (e.g., managed location from update_schema).
+
+        Squashes CREATE SCHEMA + UPDATE_SCHEMA into single CREATE statement.
+        """
+        if not batch_info.create_op:
+            return ""
+
+        create_op = batch_info.create_op
+        catalog_name = self.id_name_map.get(create_op.payload["catalogId"], "unknown")
+        schema_name = create_op.payload["name"]
+
+        # Check for update_schema operations in modify_ops
+        managed_location_name = create_op.payload.get("managedLocationName")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_schema" and "managedLocationName" in op.payload:
+                # Squash: Use the updated value instead
+                managed_location_name = op.payload.get("managedLocationName")
+                break
+
+        catalog_esc = self.escape_identifier(catalog_name)
+        schema_esc = self.escape_identifier(schema_name)
+        sql = f"CREATE SCHEMA IF NOT EXISTS {catalog_esc}.{schema_esc}"
+
+        if managed_location_name:
+            location = self._resolve_managed_location(managed_location_name)
+            if location:
+                sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
+
+        return sql
 
     def _rename_schema(self, op: Operation) -> str:
         old_name = op.payload["oldName"]
@@ -414,6 +670,28 @@ class UnitySQLGenerator(BaseSQLGenerator):
         new_esc = self._build_fqn(catalog_name, new_name)
 
         return f"ALTER SCHEMA {old_esc} RENAME TO {new_esc}"
+
+    def _update_schema(self, op: Operation) -> str:
+        """Update schema properties (e.g., managed location)"""
+        fqn = self.id_name_map.get(op.target, "unknown.unknown")
+        parts = fqn.split(".")
+        catalog_name = parts[0]
+        schema_name = parts[1] if len(parts) > 1 else "unknown"
+
+        managed_location_name = op.payload.get("managedLocationName")
+
+        if managed_location_name:
+            location = self._resolve_managed_location(managed_location_name)
+            if location:
+                fqn_esc = self._build_fqn(catalog_name, schema_name)
+                return (
+                    f"ALTER SCHEMA {fqn_esc} "
+                    f"SET MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
+                )
+            else:
+                return f"-- Warning: Managed location '{managed_location_name}' not configured"
+        else:
+            return "-- Warning: No managed location specified for schema update"
 
     def _drop_schema(self, op: Operation) -> str:
         fqn = self.id_name_map.get(op.target, "unknown.unknown")
@@ -434,12 +712,57 @@ class UnitySQLGenerator(BaseSQLGenerator):
         schema_name = parts[1] if len(parts) > 1 else "unknown"
         table_name = op.payload["name"]
         table_format = op.payload["format"].upper()
+        is_external = op.payload.get("external", False)
+
+        # Resolve location
+        location_info = (
+            self._resolve_table_location(
+                op.payload.get("externalLocationName"), op.payload.get("path")
+            )
+            if is_external
+            else None
+        )
+
+        partition_cols = op.payload.get("partitionColumns", [])
+        cluster_cols = op.payload.get("clusterColumns", [])
+
+        # Build SQL clauses
+        external_keyword = "EXTERNAL " if is_external else ""
+        location_clause = (
+            f" LOCATION '{self.escape_string(location_info['resolved'])}'" if location_info else ""
+        )
+        partition_clause = (
+            f" PARTITIONED BY ({', '.join(partition_cols)})" if partition_cols else ""
+        )
+        cluster_clause = f" CLUSTER BY ({', '.join(cluster_cols)})" if cluster_cols else ""
+
+        # Add warnings and metadata as SQL comments
+        warnings = ""
+        if is_external and location_info:
+            warnings = (
+                f"-- External Table: {table_name}\n"
+                f"-- Location Name: {location_info['location_name']}\n"
+            )
+
+            if location_info["relative_path"]:
+                warnings += f"-- Relative Path: {location_info['relative_path']}\n"
+
+            warnings += (
+                f"-- Resolved Location: {location_info['resolved']}\n"
+                "-- WARNING: External tables must reference pre-configured external locations\n"
+                "-- WARNING: Databricks recommends using managed tables for optimal performance\n"
+                "-- Learn more: https://learn.microsoft.com/en-gb/azure/databricks/tables/managed\n"
+            )
 
         # Use _build_fqn for consistent formatting
         fqn_esc = self._build_fqn(catalog_name, schema_name, table_name)
 
         # Create empty table (columns added via add_column ops)
-        return f"CREATE TABLE IF NOT EXISTS {fqn_esc} () USING {table_format}"
+        return (
+            f"{warnings}"
+            f"CREATE {external_keyword}TABLE IF NOT EXISTS {fqn_esc} () "
+            f"USING {table_format}{partition_clause}{cluster_clause}{location_clause}"
+        )
 
     def _rename_table(self, op: Operation) -> str:
         old_name = op.payload["oldName"]
@@ -734,15 +1057,54 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return table_batches
 
-    def _generate_optimized_table_sql(self, table_id: str, batch_info: dict) -> str:
+    def _generate_optimized_table_sql(self, table_id: str, batch_info: dict | BatchInfo) -> str:
         """Generate optimal SQL for table operations"""
 
-        if batch_info["is_new_table"]:
+        # Handle both dict (old table batching) and BatchInfo (new unified batching)
+        if isinstance(batch_info, BatchInfo):
+            # Convert BatchInfo to dict format expected by table methods
+            # Categorize all modify operations
+            column_ops = []
+            other_ops = []
+            for op in batch_info.modify_ops:
+                op_type = op.op.replace("unity.", "")
+                if op_type in [
+                    "add_column",
+                    "rename_column",
+                    "drop_column",
+                    "change_column_type",
+                    "set_nullable",
+                    "set_column_comment",
+                    "set_column_tag",
+                    "unset_column_tag",
+                ]:
+                    column_ops.append(op)
+                elif op_type not in ["property", "constraint", "reorder", "filter", "mask"]:
+                    other_ops.append(op)
+
+            batch_dict = {
+                "is_new_table": batch_info.is_new,
+                "table_op": batch_info.create_op,
+                "column_ops": column_ops,
+                "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
+                "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
+                "reorder_ops": [op for op in batch_info.modify_ops if "reorder" in op.op],
+                "governance_ops": [
+                    op for op in batch_info.modify_ops if "filter" in op.op or "mask" in op.op
+                ],
+                "other_ops": other_ops,
+                "op_ids": batch_info.op_ids,
+                "operation_types": list(batch_info.operation_types),
+            }
+        else:
+            batch_dict = batch_info
+
+        if batch_dict["is_new_table"]:
             # Generate complete CREATE TABLE statement
-            return self._generate_create_table_with_columns(table_id, batch_info)
+            return self._generate_create_table_with_columns(table_id, batch_dict)
         else:
             # Generate optimized ALTER statements for existing table
-            return self._generate_alter_statements_for_table(table_id, batch_info)
+            return self._generate_alter_statements_for_table(table_id, batch_dict)
 
     def _generate_create_table_with_columns(self, table_id: str, batch_info: dict) -> str:
         """Generate complete CREATE TABLE statement with all columns included"""
@@ -797,6 +1159,29 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         # Build table format
         table_format = table_op.payload.get("format", "DELTA").upper()
+        is_external = table_op.payload.get("external", False)
+
+        # Resolve location for external tables
+        location_info = (
+            self._resolve_table_location(
+                table_op.payload.get("externalLocationName"), table_op.payload.get("path")
+            )
+            if is_external
+            else None
+        )
+
+        partition_cols = table_op.payload.get("partitionColumns", [])
+        cluster_cols = table_op.payload.get("clusterColumns", [])
+
+        # Build SQL clauses
+        external_keyword = "EXTERNAL " if is_external else ""
+        location_clause = (
+            f" LOCATION '{self.escape_string(location_info['resolved'])}'" if location_info else ""
+        )
+        partition_clause = (
+            f"\nPARTITIONED BY ({', '.join(partition_cols)})" if partition_cols else ""
+        )
+        cluster_clause = f"\nCLUSTER BY ({', '.join(cluster_cols)})" if cluster_cols else ""
 
         # Build table properties
         properties = []
@@ -811,19 +1196,38 @@ class UnitySQLGenerator(BaseSQLGenerator):
         if table_op.payload.get("comment"):
             table_comment = f" COMMENT '{self.escape_string(table_op.payload['comment'])}'"
 
+        # Add warnings for external tables
+        warnings = ""
+        if is_external and location_info:
+            warnings = (
+                f"-- External Table: {table_name}\n"
+                f"-- Location Name: {location_info['location_name']}\n"
+            )
+
+            if location_info["relative_path"]:
+                warnings += f"-- Relative Path: {location_info['relative_path']}\n"
+
+            warnings += (
+                f"-- Resolved Location: {location_info['resolved']}\n"
+                "-- WARNING: External tables must reference pre-configured external locations\n"
+                "-- WARNING: Databricks recommends using managed tables for optimal performance\n"
+                "-- Learn more: https://learn.microsoft.com/en-gb/azure/databricks/tables/managed\n"
+            )
+
         # Assemble CREATE TABLE statement
         columns_sql = ",\n".join(columns) if columns else ""
         properties_sql = f"\nTBLPROPERTIES ({', '.join(properties)})" if properties else ""
 
         if columns_sql:
-            return f"""CREATE TABLE IF NOT EXISTS {table_esc} (
+            return f"""{warnings}CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} (
 {columns_sql}
-) USING {table_format}{table_comment}{properties_sql}"""
+) USING {table_format}{table_comment}{partition_clause}{cluster_clause}{properties_sql}{location_clause}"""
         else:
             # No columns yet - create empty table (fallback to original behavior)
             return (
-                f"CREATE TABLE IF NOT EXISTS {table_esc} () "
-                f"USING {table_format}{table_comment}{properties_sql}"
+                f"{warnings}"
+                f"CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} () "
+                f"USING {table_format}{table_comment}{partition_clause}{cluster_clause}{properties_sql}{location_clause}"
             )
 
     def _generate_alter_statements_for_table(self, table_id: str, batch_info: dict) -> str:
