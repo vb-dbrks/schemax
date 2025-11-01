@@ -503,3 +503,228 @@ class TestComplexWorkflows:
         assert snap_1_0_0["previousSnapshot"] is None
         assert snap_1_1_0["previousSnapshot"] == "v1.0.0"
         assert snap_1_2_0["previousSnapshot"] == "v1.1.0"
+
+
+@pytest.mark.integration
+class TestDiffWorkflow:
+    """Test diff generation workflow"""
+
+    def test_diff_between_snapshots(self, initialized_workspace, sample_operations):
+        """Test generating diff between two actual snapshots"""
+        builder = OperationBuilder()
+
+        # Create v0.1.0 with basic schema
+        append_ops(initialized_workspace, sample_operations)
+        create_snapshot(initialized_workspace, "Initial schema", version="v0.1.0")
+
+        # Add more columns for v0.2.0
+        additional_ops = [
+            builder.add_column(
+                "col_new_1",
+                "table_789",
+                "email",
+                "STRING",
+                nullable=True,
+                comment="User email",
+                op_id="op_add_col_1",
+            ),
+            builder.add_column(
+                "col_new_2",
+                "table_789",
+                "phone",
+                "STRING",
+                nullable=True,
+                comment="User phone",
+                op_id="op_add_col_2",
+            ),
+        ]
+        append_ops(initialized_workspace, additional_ops)
+        create_snapshot(initialized_workspace, "Added contact fields", version="v0.2.0")
+
+        # Load snapshots
+        snap_v1 = read_snapshot(initialized_workspace, "v0.1.0")
+        snap_v2 = read_snapshot(initialized_workspace, "v0.2.0")
+
+        # Get provider and generate diff
+        project = read_project(initialized_workspace)
+        from schematic.providers import ProviderRegistry
+
+        provider = ProviderRegistry.get(project["provider"]["type"])
+        assert provider is not None
+
+        differ = provider.get_state_differ(
+            snap_v1["state"],
+            snap_v2["state"],
+            snap_v1.get("operations", []),
+            snap_v2.get("operations", []),
+        )
+
+        ops = differ.generate_diff_operations()
+
+        # Verify diff operations
+        assert len(ops) == 2
+        assert all(op.op == "unity.add_column" for op in ops)
+        column_names = {op.payload["name"] for op in ops}
+        assert "email" in column_names
+        assert "phone" in column_names
+
+    def test_diff_with_renames(self, initialized_workspace, sample_operations):
+        """Test diff generation with rename detection"""
+        builder = OperationBuilder()
+
+        # Create v0.1.0 with catalog "bronze"
+        append_ops(initialized_workspace, sample_operations)
+        create_snapshot(initialized_workspace, "Bronze catalog", version="v0.1.0")
+
+        # Rename catalog to "silver" for v0.2.0
+        rename_op = builder.rename_catalog("cat_123", "silver", "bronze", op_id="op_rename_cat")
+        append_ops(initialized_workspace, [rename_op])
+        create_snapshot(initialized_workspace, "Renamed to silver", version="v0.2.0")
+
+        # Load snapshots
+        snap_v1 = read_snapshot(initialized_workspace, "v0.1.0")
+        snap_v2 = read_snapshot(initialized_workspace, "v0.2.0")
+
+        # Generate diff
+        from schematic.providers import ProviderRegistry
+
+        project = read_project(initialized_workspace)
+        provider = ProviderRegistry.get(project["provider"]["type"])
+        assert provider is not None
+
+        differ = provider.get_state_differ(
+            snap_v1["state"],
+            snap_v2["state"],
+            snap_v1.get("operations", []),
+            snap_v2.get("operations", []),
+        )
+
+        ops = differ.generate_diff_operations()
+
+        # Should detect rename, not add + drop
+        assert len(ops) == 1
+        assert ops[0].op == "unity.rename_catalog"
+        assert ops[0].payload["oldName"] == "bronze"
+        assert ops[0].payload["newName"] == "silver"
+
+    def test_diff_with_complex_changes(self, initialized_workspace, sample_operations):
+        """Test diff with multiple types of changes"""
+        builder = OperationBuilder()
+
+        # Create v0.1.0
+        append_ops(initialized_workspace, sample_operations)
+        create_snapshot(initialized_workspace, "Base schema", version="v0.1.0")
+
+        # Make complex changes for v0.2.0
+        complex_ops = [
+            # Add a new schema
+            builder.add_schema("schema_new", "reporting", "cat_123", op_id="op_add_schema"),
+            # Add a new table
+            builder.add_table("table_new", "metrics", "schema_new", "delta", op_id="op_add_table"),
+            # Add columns to existing table
+            builder.add_column(
+                "col_status",
+                "table_789",
+                "status",
+                "STRING",
+                nullable=False,
+                comment="Record status",
+                op_id="op_add_col_status",
+            ),
+            # Rename a column
+            builder.rename_column(
+                "col_status", "table_789", "record_state", "status", op_id="op_rename_col"
+            ),
+        ]
+        append_ops(initialized_workspace, complex_ops)
+        create_snapshot(initialized_workspace, "Complex changes", version="v0.2.0")
+
+        # Generate diff
+        snap_v1 = read_snapshot(initialized_workspace, "v0.1.0")
+        snap_v2 = read_snapshot(initialized_workspace, "v0.2.0")
+
+        from schematic.providers import ProviderRegistry
+
+        project = read_project(initialized_workspace)
+        provider = ProviderRegistry.get(project["provider"]["type"])
+        assert provider is not None
+
+        differ = provider.get_state_differ(
+            snap_v1["state"],
+            snap_v2["state"],
+            snap_v1.get("operations", []),
+            snap_v2.get("operations", []),
+        )
+
+        ops = differ.generate_diff_operations()
+
+        # Should detect: 1 schema + 1 table + 1 column
+        # Note: The rename happened in the same snapshot as the add, so diff
+        # only shows add_column with the final name (record_state)
+        assert len(ops) == 3
+        op_types = [op.op for op in ops]
+        assert "unity.add_schema" in op_types
+        assert "unity.add_table" in op_types
+        assert "unity.add_column" in op_types
+
+        # Verify the column has the final name
+        col_ops = [op for op in ops if op.op == "unity.add_column"]
+        assert len(col_ops) == 1
+        assert col_ops[0].payload["name"] == "record_state"
+
+    def test_generate_diff_operations_api(self, initialized_workspace, sample_operations):
+        """Test the public API generate_diff_operations function"""
+        builder = OperationBuilder()
+
+        # Create two snapshots
+        append_ops(initialized_workspace, sample_operations)
+        create_snapshot(initialized_workspace, "v1", version="v0.1.0")
+
+        append_ops(
+            initialized_workspace,
+            [
+                builder.add_column(
+                    "col_extra",
+                    "table_789",
+                    "extra_field",
+                    "STRING",
+                    nullable=True,
+                    comment="Extra field",
+                    op_id="op_extra",
+                )
+            ],
+        )
+        create_snapshot(initialized_workspace, "v2", version="v0.2.0")
+
+        # Use public API
+        from schematic import generate_diff_operations
+
+        ops = generate_diff_operations(
+            workspace_path=initialized_workspace,
+            from_version="v0.1.0",
+            to_version="v0.2.0",
+        )
+
+        # Verify diff was generated
+        assert len(ops) == 1
+        assert ops[0].op == "unity.add_column"
+        assert ops[0].payload["name"] == "extra_field"
+
+    def test_diff_no_changes(self, initialized_workspace, sample_operations):
+        """Test diff between identical snapshots"""
+        # Create two snapshots with same content
+        append_ops(initialized_workspace, sample_operations)
+        create_snapshot(initialized_workspace, "v1", version="v0.1.0")
+        create_snapshot(initialized_workspace, "v1 copy", version="v0.2.0")
+
+        # Generate diff
+        from schematic import generate_diff_operations
+
+        ops = generate_diff_operations(
+            workspace_path=initialized_workspace,
+            from_version="v0.1.0",
+            to_version="v0.2.0",
+        )
+
+        # Should have no operations
+        assert len(ops) == 0

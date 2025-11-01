@@ -5,13 +5,11 @@ Generates SQL migration scripts from schema changes in the changelog.
 """
 
 from pathlib import Path
-from typing import cast
 
 from rich.console import Console
 from rich.syntax import Syntax
 
 from ..providers.base.operations import Operation
-from ..providers.unity.sql_generator import UnitySQLGenerator
 from ..storage_v4 import get_environment_config, load_current_state, read_project, read_snapshot
 
 console = Console()
@@ -178,7 +176,7 @@ def generate_sql_migration(
         # Convert to Operation objects
         operations = [Operation(**op) for op in ops_to_process]
 
-        # Log external table operations
+        # Log external table operations (if target environment specified)
         external_table_ops = [
             op
             for op in ops_to_process
@@ -209,16 +207,15 @@ def generate_sql_migration(
                     console.print(f"  • {table_name}: [red]Location '{loc_name}' not found[/red]")
 
         # Generate SQL using provider's SQL generator with catalog mapping and locations
-        generator = provider.get_sql_generator(state)
-        # Cast to UnitySQLGenerator to set catalog_name_mapping, locations, and environment
-        unity_generator = cast(UnitySQLGenerator, generator)
-        unity_generator.catalog_name_mapping = catalog_mapping
-        unity_generator.managed_locations = project.get("managedLocations")
-        unity_generator.external_locations = project.get("externalLocations")
-        unity_generator.environment_name = target_env
-        # IMPORTANT: Rebuild id_name_map after setting catalog_name_mapping
-        unity_generator.id_name_map = unity_generator._build_id_name_map()
-        sql_output = unity_generator.generate_sql(operations)
+        # Use clean provider API (no type casting, proper dependency injection)
+        generator = provider.get_sql_generator(
+            state=state,
+            name_mapping=catalog_mapping,
+            managed_locations=project.get("managedLocations"),
+            external_locations=project.get("externalLocations"),
+            environment_name=target_env,
+        )
+        sql_output = generator.generate_sql(operations)
 
         if output:
             # Write to file

@@ -23,6 +23,7 @@ from .commands import (
 from .commands import (
     ValidationError as CommandValidationError,
 )
+from .commands.diff import diff_command
 from .providers import ProviderRegistry
 from .storage_v4 import ensure_project_file
 
@@ -158,15 +159,8 @@ def validate(workspace: str) -> None:
         sys.exit(1)
 
 
-@cli.command()
-@click.argument("version1")
-@click.argument("version2")
-def diff(version1: str, version2: str) -> None:
-    """Show differences between two schema versions"""
-
-    console.print(f"Comparing {version1} to {version2}...")
-    console.print("[yellow]Diff functionality not yet implemented[/yellow]")
-    # TODO: Implement version comparison
+# Add diff command to CLI
+cli.add_command(diff_command, name="diff")
 
 
 @cli.command(name="record-deployment")
@@ -283,7 +277,6 @@ def bundle(environment: str, version: str, output: str) -> None:
 @click.option("--target", "-t", required=True, help="Target environment (dev/test/prod)")
 @click.option("--profile", "-p", required=True, help="Databricks profile name")
 @click.option("--warehouse-id", "-w", required=True, help="SQL warehouse ID")
-@click.option("--sql", type=click.Path(exists=True), help="SQL file to execute (optional)")
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-interaction", is_flag=True, help="Skip confirmation prompt (for CI/CD)")
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
@@ -291,7 +284,6 @@ def apply(
     target: str,
     profile: str,
     warehouse_id: str,
-    sql: str | None,
     dry_run: bool,
     no_interaction: bool,
     workspace: str,
@@ -310,15 +302,11 @@ def apply(
         # Apply to dev environment
         schematic apply --target dev --profile DEV --warehouse-id abc123
 
-        # Apply specific SQL file
-        schematic apply --target prod --profile PROD --warehouse-id xyz789 --sql migration.sql
-
         # CI/CD mode (non-interactive)
         schematic apply --target dev --profile DEV --warehouse-id $WAREHOUSE_ID --no-interaction
     """
     try:
         workspace_path = Path(workspace).resolve()
-        sql_file = Path(sql).resolve() if sql else None
 
         result = apply_to_environment(
             workspace=workspace_path,
@@ -327,7 +315,6 @@ def apply(
             warehouse_id=warehouse_id,
             dry_run=dry_run,
             no_interaction=no_interaction,
-            sql_file=sql_file,
         )
 
         # Exit with appropriate code

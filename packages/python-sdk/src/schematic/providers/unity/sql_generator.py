@@ -541,15 +541,22 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _add_catalog(self, op: Operation) -> str:
         # Use mapped name from id_name_map (handles __implicit__ → physical catalog)
         name = self.id_name_map.get(op.target, op.payload["name"])
-        managed_location_name = op.payload.get("managedLocationName")
-
+        
+        # Fallback: If the catalog doesn't exist in id_name_map yet (e.g., from diff operations),
+        # apply catalog_name_mapping to convert logical → physical name
+        if op.target not in self.id_name_map and op.payload["name"] in self.catalog_name_mapping:
+            name = self.catalog_name_mapping[op.payload["name"]]
+        
+        # Build CREATE CATALOG statement
         sql = f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
-
+        
+        # Add managed location if specified
+        managed_location_name = op.payload.get("managedLocationName")
         if managed_location_name:
             location = self._resolve_managed_location(managed_location_name)
             if location:
                 sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
-
+        
         return sql
 
     def _rename_catalog(self, op: Operation) -> str:
