@@ -5,6 +5,8 @@ Main provider implementation for Databricks Unity Catalog.
 Implements the Provider interface to enable Unity Catalog support in Schematic.
 """
 
+from typing import Any
+
 from ..base.executor import ExecutionConfig, SQLExecutor
 from ..base.models import ProviderState, ValidationError, ValidationResult
 from ..base.operations import Operation
@@ -124,8 +126,8 @@ class UnityProvider(BaseProvider):
         self,
         state: ProviderState,
         name_mapping: dict[str, str] | None = None,
-        managed_locations: dict[str, dict] | None = None,
-        external_locations: dict[str, dict] | None = None,
+        managed_locations: dict[str, Any] | None = None,
+        external_locations: dict[str, Any] | None = None,
         environment_name: str | None = None,
     ) -> SQLGenerator:
         """Get SQL generator for Unity Catalog with optional environment-specific configuration

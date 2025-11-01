@@ -5,6 +5,7 @@ Defines the contract that all catalog providers must implement.
 """
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -97,8 +98,8 @@ class Provider(ABC):
         self,
         state: ProviderState,
         name_mapping: dict[str, str] | None = None,
-        managed_locations: dict[str, dict] | None = None,
-        external_locations: dict[str, dict] | None = None,
+        managed_locations: dict[str, Any] | None = None,
+        external_locations: dict[str, Any] | None = None,
         environment_name: str | None = None,
     ) -> SQLGenerator:
         """Get SQL generator for this provider
