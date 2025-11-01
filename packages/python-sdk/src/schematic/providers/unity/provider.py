@@ -129,14 +129,14 @@ class UnityProvider(BaseProvider):
         environment_name: str | None = None,
     ) -> SQLGenerator:
         """Get SQL generator for Unity Catalog with optional environment-specific configuration
-        
+
         Args:
             state: Provider state to generate SQL for
             name_mapping: Optional catalog name mapping (logical → physical)
             managed_locations: Optional project-level managed locations config
             external_locations: Optional project-level external locations config
             environment_name: Optional target environment name for path resolution
-            
+
         Returns:
             UnitySQLGenerator instance configured for the target environment
         """
