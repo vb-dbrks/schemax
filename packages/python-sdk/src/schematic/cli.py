@@ -14,8 +14,10 @@ import schematic.providers  # noqa: F401
 from .commands import (
     ApplyError,
     DeploymentRecordingError,
+    DiffError,
     SQLGenerationError,
     apply_to_environment,
+    generate_diff,
     generate_sql_migration,
     record_deployment_to_environment,
     validate_project,
@@ -23,7 +25,6 @@ from .commands import (
 from .commands import (
     ValidationError as CommandValidationError,
 )
-from .commands.diff import diff_command
 from .providers import ProviderRegistry
 from .storage_v4 import ensure_project_file
 
@@ -159,8 +160,77 @@ def validate(workspace: str) -> None:
         sys.exit(1)
 
 
-# Add diff command to CLI
-cli.add_command(diff_command, name="diff")
+@cli.command()
+@click.option(
+    "--from",
+    "from_version",
+    required=True,
+    help="Source snapshot version (e.g., v0.1.0)",
+)
+@click.option(
+    "--to",
+    "to_version",
+    required=True,
+    help="Target snapshot version (e.g., v0.10.0)",
+)
+@click.option(
+    "--show-sql",
+    is_flag=True,
+    help="Show generated SQL for the diff",
+)
+@click.option(
+    "--show-details",
+    is_flag=True,
+    help="Show detailed operation payloads",
+)
+@click.option(
+    "--target",
+    "-t",
+    help="Target environment (for catalog name mapping)",
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def diff(
+    from_version: str,
+    to_version: str,
+    show_sql: bool,
+    show_details: bool,
+    target: str | None,
+    workspace: str,
+) -> None:
+    """Generate diff operations between two snapshot versions
+
+    Examples:
+
+        # Basic diff
+        schematic diff --from v0.1.0 --to v0.10.0
+
+        # Show SQL with logical catalog names
+        schematic diff --from v0.1.0 --to v0.10.0 --show-sql
+
+        # Show SQL with environment-specific catalog names
+        schematic diff --from v0.1.0 --to v0.10.0 --show-sql --target dev
+
+        # Show detailed operation payloads
+        schematic diff --from v0.1.0 --to v0.10.0 --show-details
+    """
+    try:
+        workspace_path = Path(workspace).resolve()
+
+        generate_diff(
+            workspace=workspace_path,
+            from_version=from_version,
+            to_version=to_version,
+            show_sql=show_sql,
+            show_details=show_details,
+            target_env=target,
+        )
+
+    except DiffError as e:
+        console.print(f"[red]✗ Diff generation failed:[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Unexpected error:[/red] {e}")
+        sys.exit(1)
 
 
 @cli.command(name="record-deployment")

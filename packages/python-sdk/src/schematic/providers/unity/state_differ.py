@@ -407,5 +407,5 @@ class UnityStateDiffer(StateDiffer):
             provider="unity",
             op="unity.drop_column",
             target=column["id"],
-            payload={"tableId": table_id},
+            payload={"tableId": table_id, "name": column["name"]},
         )

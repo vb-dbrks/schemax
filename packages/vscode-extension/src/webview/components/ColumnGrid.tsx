@@ -276,8 +276,14 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
             <p>Are you sure you want to drop column "{dropDialog.name}"?</p>
             <div className="modal-buttons">
               <button onClick={() => {
-                dropColumn(tableId, dropDialog.colId);
-                setDropDialog(null);
+                try {
+                  dropColumn(tableId, dropDialog.colId);
+                  setDropDialog(null);
+                } catch (error) {
+                  console.error('Failed to drop column:', error);
+                  alert(`Failed to drop column: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                  setDropDialog(null);
+                }
               }} style={{backgroundColor: 'var(--vscode-errorForeground)'}}>Drop</button>
               <button onClick={() => setDropDialog(null)}>Cancel</button>
             </div>

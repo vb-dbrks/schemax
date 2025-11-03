@@ -8,51 +8,68 @@ planning environment deployments.
 
 from pathlib import Path
 
-import click
 from rich.console import Console
+from rich.syntax import Syntax
 from rich.table import Table
 
+from ..providers.base.operations import Operation
 from ..providers.registry import ProviderRegistry
-from ..storage_v4 import read_project, read_snapshot
+from ..storage_v4 import get_environment_config, read_project, read_snapshot
 
 console = Console()
 
 
-@click.command()
-@click.argument("from_version")
-@click.argument("to_version")
-@click.option(
-    "--workspace",
-    type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default=Path.cwd(),
-    help="Workspace directory (default: current directory)",
-)
-@click.option(
-    "--show-sql",
-    is_flag=True,
-    help="Show generated SQL for the diff",
-)
-@click.option(
-    "--show-details",
-    is_flag=True,
-    help="Show detailed operation payloads",
-)
-def diff_command(
-    from_version: str, to_version: str, workspace: Path, show_sql: bool, show_details: bool
-) -> None:
+class DiffError(Exception):
+    """Raised when diff command fails"""
+
+    pass
+
+
+def generate_diff(
+    workspace: Path,
+    from_version: str,
+    to_version: str,
+    show_sql: bool = False,
+    show_details: bool = False,
+    target_env: str | None = None,
+) -> list[Operation]:
     """Generate diff operations between two snapshot versions
 
-    \b
-    Examples:
-        schematic diff v0.1.0 v0.10.0
-        schematic diff v0.1.0 v0.10.0 --show-sql
-        schematic diff v0.1.0 v0.10.0 --show-details
+    Args:
+        workspace: Workspace directory
+        from_version: Source snapshot version
+        to_version: Target snapshot version
+        show_sql: Whether to display generated SQL
+        show_details: Whether to display detailed operation payloads
+        target_env: Target environment for catalog name mapping (optional)
+
+    Returns:
+        List of operations representing the diff
+
+    Raises:
+        DiffError: If diff generation fails
     """
     try:
+        # Validate input versions
+        if from_version == to_version:
+            raise DiffError(
+                f"Cannot diff the same version with itself: {from_version}\n"
+                "Please provide different snapshot versions."
+            )
+
         # Load snapshots
         console.print("[bold]Loading snapshots...[/bold]")
         old_snap = read_snapshot(workspace, from_version)
         new_snap = read_snapshot(workspace, to_version)
+
+        # Validate snapshot structure
+        if "state" not in old_snap:
+            raise DiffError(f"Invalid snapshot structure: {from_version} is missing 'state' field")
+        if "state" not in new_snap:
+            raise DiffError(f"Invalid snapshot structure: {to_version} is missing 'state' field")
+
+        console.print(f"  [green]✓[/green] {from_version}")
+        console.print(f"  [green]✓[/green] {to_version}")
 
         # Get provider
         project = read_project(workspace)
@@ -60,11 +77,15 @@ def diff_command(
         provider = ProviderRegistry.get(provider_id)
 
         if not provider:
-            console.print(
-                f"[bold red]Error:[/bold red] Provider '{provider_id}' not found",
-                style="red",
-            )
-            raise click.Abort()
+            raise DiffError(f"Provider '{provider_id}' not found in registry")
+
+        # Build catalog mapping if target environment specified
+        catalog_mapping = None
+        if target_env:
+            env_config = get_environment_config(project, target_env)
+            catalog_mapping = _build_catalog_mapping(new_snap["state"], env_config)
+            console.print(f"  [blue]Environment:[/blue] {target_env}")
+            console.print(f"  [blue]Catalog mapping:[/blue] {catalog_mapping}")
 
         # Generate diff
         console.print(f"[bold]Generating diff: {from_version} → {to_version}[/bold]")
@@ -85,7 +106,7 @@ def diff_command(
 
         if not operations:
             console.print("[yellow]No changes detected between versions[/yellow]")
-            return
+            return operations
 
         # Create operations table
         table = Table(title="Diff Operations", show_header=True, header_style="bold magenta")
@@ -116,18 +137,70 @@ def diff_command(
             console.print("[bold]Generated SQL:[/bold]")
             console.print()
 
-            sql_gen = provider.get_sql_generator(new_snap["state"])
+            sql_gen = provider.get_sql_generator(new_snap["state"], catalog_mapping)
             sql = sql_gen.generate_sql(operations)
 
             # Display SQL with syntax highlighting
-            from rich.syntax import Syntax
-
             syntax = Syntax(sql, "sql", theme="monokai", line_numbers=True)
             console.print(syntax)
 
+        return operations
+
+    except DiffError:
+        # Re-raise DiffError as-is (already has good error message)
+        raise
     except FileNotFoundError as e:
-        console.print(f"[bold red]Error:[/bold red] {e}", style="red")
-        raise click.Abort()
+        # Provide helpful message about missing snapshot files
+        error_msg = str(e)
+        if from_version in error_msg:
+            raise DiffError(
+                f"Source snapshot not found: {from_version}\n"
+                f"Check that the snapshot exists in .schematic/snapshots/{from_version}.json"
+            ) from e
+        elif to_version in error_msg:
+            raise DiffError(
+                f"Target snapshot not found: {to_version}\n"
+                f"Check that the snapshot exists in .schematic/snapshots/{to_version}.json"
+            ) from e
+        else:
+            raise DiffError(f"Snapshot file not found: {e}") from e
     except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {e}", style="red")
-        raise click.Abort()
+        raise DiffError(f"Failed to generate diff: {e}") from e
+
+
+def _build_catalog_mapping(state: dict, env_config: dict) -> dict[str, str]:
+    """
+    Build catalog name mapping (logical → physical) for environment-specific SQL generation.
+
+    Supports two modes:
+    1. Single-catalog (implicit): Catalog stored as __implicit__ in state, mapped to env catalog
+    2. Single-catalog (explicit): One named catalog, mapped to env catalog
+    3. Multi-catalog: Not yet supported
+
+    Args:
+        state: Provider state dictionary
+        env_config: Environment configuration dictionary
+
+    Returns:
+        Dictionary mapping logical catalog names to physical names
+    """
+    catalogs = state.get("catalogs", [])
+
+    if len(catalogs) == 0:
+        # No catalogs yet - no mapping needed
+        return {}
+
+    # Get physical catalog name from environment config
+    physical_catalog = env_config["topLevelName"]
+
+    if len(catalogs) == 1:
+        # Single catalog mode - map logical catalog to physical name
+        catalog = catalogs[0]
+        logical_name = catalog.get("name", "__implicit__")
+        return {logical_name: physical_catalog}
+
+    # Multi-catalog mode - not yet supported
+    raise DiffError(
+        "Multi-catalog environments are not yet supported.\n"
+        f"Found {len(catalogs)} catalogs in state, but only single-catalog mode is currently supported."
+    )

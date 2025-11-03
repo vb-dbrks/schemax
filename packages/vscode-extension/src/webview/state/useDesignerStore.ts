@@ -274,7 +274,17 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   },
 
   dropColumn: (tableId, colId) => {
-    const op = createOperation(get(), 'drop_column', colId, { tableId });
+    const state = get();
+    const tableInfo = state.findTable(tableId);
+    if (!tableInfo) {
+      throw new Error(`Cannot drop column: table ${tableId} not found`);
+    }
+    const column = tableInfo.table.columns.find(c => c.id === colId);
+    if (!column) {
+      throw new Error(`Cannot drop column: column ${colId} not found`);
+    }
+    const name = column.name;
+    const op = createOperation(state, 'drop_column', colId, { tableId, name });
     emitOps([op]);
   },
 

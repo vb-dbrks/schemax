@@ -845,7 +845,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _drop_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
-        col_name = self.id_name_map.get(op.target, "unknown")
+        # Get column name from payload (for dropped columns not in current state)
+        col_name = op.payload.get("name", self.id_name_map.get(op.target, "unknown"))
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} DROP COLUMN {col_esc}"
 
@@ -1297,9 +1298,37 @@ class UnitySQLGenerator(BaseSQLGenerator):
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {add_column_ops[0].id}: {e}")
 
-        # Handle other column operations (non-ADD COLUMN)
+        # Batch DROP COLUMN operations if multiple exist
+        drop_column_ops = [op for op in batch_info["column_ops"] if op.op.endswith("drop_column")]
+
+        if len(drop_column_ops) > 1:
+            # Multiple DROP COLUMN operations - batch them into single ALTER TABLE DROP COLUMNS
+            table_fqn = self.id_name_map.get(drop_column_ops[0].payload["tableId"], "unknown")
+            table_esc = self._build_fqn(*table_fqn.split("."))
+
+            column_names = []
+            for op in drop_column_ops:
+                # Get column name from payload (for dropped columns not in current state)
+                col_name = op.payload.get("name", self.id_name_map.get(op.target, "unknown"))
+                col_esc = self.escape_identifier(col_name)
+                column_names.append(col_esc)
+
+            batched_sql = f"ALTER TABLE {table_esc}\nDROP COLUMNS (" + ", ".join(column_names) + ")"
+            statements.append(batched_sql)
+        elif len(drop_column_ops) == 1:
+            # Single DROP COLUMN - use existing method
+            try:
+                sql = self._drop_column(drop_column_ops[0])
+                if sql and not sql.startswith("--"):
+                    statements.append(sql)
+            except Exception as e:
+                statements.append(f"-- Error generating SQL for {drop_column_ops[0].id}: {e}")
+
+        # Handle other column operations (non-ADD/DROP COLUMN)
         other_column_ops = [
-            op for op in batch_info["column_ops"] if not op.op.endswith("add_column")
+            op
+            for op in batch_info["column_ops"]
+            if not op.op.endswith("add_column") and not op.op.endswith("drop_column")
         ]
 
         # Handle all other operations normally
