@@ -13,17 +13,18 @@ from uuid import uuid4
 
 from rich.console import Console
 from rich.prompt import Confirm
-from rich.syntax import Syntax
 
 from ..deployment_tracker import DeploymentTracker
 from ..providers.base.executor import ExecutionConfig, ExecutionResult
-from ..providers.base.operations import Operation
 from ..providers.unity.executor import UnitySQLExecutor
-from ..providers.unity.sql_generator import UnitySQLGenerator
 from ..storage_v4 import (
+    create_snapshot,
     get_environment_config,
+    get_last_deployment,
     load_current_state,
+    read_changelog,
     read_project,
+    read_snapshot,
     write_deployment,
 )
 
@@ -74,13 +75,12 @@ def apply_to_environment(
     warehouse_id: str,
     dry_run: bool = False,
     no_interaction: bool = False,
-    sql_file: Path | None = None,
 ) -> ExecutionResult:
     """Apply changes to target environment
 
-    Main entry point for the apply command. Loads project configuration,
-    generates or loads SQL, shows preview, confirms with user, and executes
-    statements with deployment tracking.
+    Main entry point for the apply command. Auto-creates snapshot if needed,
+    diffs from deployed version to latest snapshot, generates SQL, shows preview,
+    confirms with user, and executes statements with deployment tracking.
 
     Args:
         workspace: Path to Schematic workspace
@@ -89,7 +89,6 @@ def apply_to_environment(
         warehouse_id: SQL warehouse ID
         dry_run: If True, preview without executing
         no_interaction: If True, skip confirmation prompt
-        sql_file: Optional SQL file to execute (instead of generating)
 
     Returns:
         ExecutionResult with deployment details
@@ -98,17 +97,51 @@ def apply_to_environment(
         ApplyError: If apply fails
     """
     try:
-        # 1. Load project (v4 with environment config)
+        # 1. Auto-create snapshot if changelog has uncommitted changes
+        changelog = read_changelog(workspace)
+        if changelog["ops"]:
+            console.print(
+                f"[yellow]⚠ {len(changelog['ops'])} uncommitted operations found[/yellow]"
+            )
+
+            # Generate next version
+            project = read_project(workspace)
+            settings = project.get("settings", {})
+            version_prefix = str(settings.get("versionPrefix", "v"))
+            current = project.get("latestSnapshot")
+
+            # Simple version increment
+            if current:
+                match = re.search(r"(\d+)\.(\d+)\.(\d+)", current)
+                if match:
+                    major, minor, patch = match.groups()
+                    next_version = f"{version_prefix}{major}.{int(minor) + 1}.0"
+                else:
+                    next_version = f"{version_prefix}0.1.0"
+            else:
+                next_version = f"{version_prefix}0.1.0"
+
+            console.print(f"[blue]Creating snapshot:[/blue] {next_version}")
+            create_snapshot(
+                workspace,
+                name=f"Auto-snapshot for {target_env}",
+                version=next_version,
+                comment=f"Automatic snapshot created before deploying to {target_env}",
+            )
+            console.print("[green]✓[/green] Snapshot created")
+
+        # 2. Load project (v4 with environment config)
         project = read_project(workspace)
         project_name = project.get("name", "unknown")
 
-        # 2. Get environment configuration
+        # 3. Get environment configuration
         env_config = get_environment_config(project, target_env)
 
+        console.print()
         console.print("[bold]Schematic Apply[/bold]")
         console.print("─" * 60)
 
-        # 3. Load current state and provider
+        # 4. Load current state and provider
         state, changelog, provider = load_current_state(workspace)
 
         console.print(f"[blue]Provider:[/blue] {provider.info.name} v{provider.info.version}")
@@ -117,75 +150,99 @@ def apply_to_environment(
         console.print(f"[blue]Warehouse:[/blue] {warehouse_id}")
         console.print(f"[blue]Profile:[/blue] {profile}")
 
-        # 4. Validate environment-specific policies
-        if env_config.get("requireSnapshot", False) and not sql_file:
-            if not project.get("latestSnapshot"):
-                raise ApplyError(
-                    f"Environment '{target_env}' requires a snapshot for deployment, "
-                    f"but no snapshots exist. Create a snapshot first with 'schematic snapshot'."
-                )
-            # Check if there are uncommitted changes
-            if changelog["ops"]:
-                raise ApplyError(
-                    f"Environment '{target_env}' requires a snapshot for deployment, "
-                    f"but there are {len(changelog['ops'])} uncommitted operations in changelog. "
-                    f"Create a snapshot first or use --sql flag with a specific migration file."
-                )
+        # 5. Get latest snapshot version
+        latest_snapshot_version = project.get("latestSnapshot")
 
-        # 5. Generate or load SQL
-        if sql_file:
-            console.print(f"[blue]SQL Source:[/blue] {sql_file}")
-            sql = sql_file.read_text()
+        if not latest_snapshot_version:
+            raise ApplyError("No snapshots found. Please create a snapshot first.")
+
+        console.print(f"[blue]Latest snapshot:[/blue] {latest_snapshot_version}")
+
+        # 6. Get last deployment for target environment
+        last_deployment = get_last_deployment(project, target_env)
+
+        if last_deployment:
+            deployed_version = last_deployment.get("version")
+            console.print(f"[blue]Deployed to {target_env}:[/blue] {deployed_version}")
         else:
-            console.print(
-                f"[blue]SQL Source:[/blue] changelog ({len(changelog['ops'])} operations)"
-            )
+            deployed_version = None
+            console.print(f"[blue]First deployment to {target_env}[/blue]")
 
-            if not changelog["ops"]:
-                console.print("\n[yellow]No operations in changelog. Nothing to apply.[/yellow]")
-                return _create_empty_result()
+        # 7. Load snapshot states
+        latest_snap = read_snapshot(workspace, latest_snapshot_version)
+        latest_state = latest_snap["state"]
+        latest_ops = latest_snap.get("operations", [])
 
-            # Generate SQL from changelog with catalog name mapping
-            operations = [Operation(**op) for op in changelog["ops"]]
-            catalog_mapping = _build_catalog_mapping(state, env_config)
-            generator = provider.get_sql_generator(state)
-            # Cast to UnitySQLGenerator to set catalog_name_mapping
-            unity_generator = cast(UnitySQLGenerator, generator)
-            unity_generator.catalog_name_mapping = catalog_mapping
-            sql = unity_generator.generate_sql(operations)
+        if deployed_version:
+            # Incremental deployment
+            deployed_snap = read_snapshot(workspace, deployed_version)
+            deployed_state = deployed_snap["state"]
+            deployed_ops = deployed_snap.get("operations", [])
+            console.print(f"[blue]Diff:[/blue] {deployed_version} → {latest_snapshot_version}")
+        else:
+            # First deployment - diff from empty
+            deployed_state = provider.create_initial_state()
+            deployed_ops = []
+            console.print(f"[blue]Diff:[/blue] empty → {latest_snapshot_version}")
 
-        # 4. Parse into statements
+        # 8. Generate diff operations
+        differ = provider.get_state_differ(deployed_state, latest_state, deployed_ops, latest_ops)
+        diff_operations = differ.generate_diff_operations()
+
+        console.print(f"[blue]Changes:[/blue] {len(diff_operations)} operations")
+
+        if not diff_operations:
+            console.print("[green]✓[/green] No changes to deploy")
+            return _create_empty_result(target_env, latest_snapshot_version)
+
+        # 9. Generate SQL in-memory from diff operations
+        console.print("[blue]Generating SQL...[/blue]")
+
+        catalog_mapping = _build_catalog_mapping(latest_state, env_config)
+        generator = provider.get_sql_generator(latest_state, catalog_mapping)
+        sql = generator.generate_sql(diff_operations)
+
+        if not sql or not sql.strip():
+            console.print("[green]✓[/green] No SQL to execute")
+            return _create_empty_result(target_env, latest_snapshot_version)
+
+        # 10. Parse into statements
         statements = parse_sql_statements(sql)
 
         if not statements:
             console.print("\n[yellow]No SQL statements to execute.[/yellow]")
-            return _create_empty_result()
+            return _create_empty_result(target_env, latest_snapshot_version)
 
-        # 5. Show preview
-        console.print("\n[bold]Preview of changes:[/bold]")
+        # 11. Show preview
+        console.print("\n[bold]SQL Preview:[/bold]")
         console.print("─" * 60)
 
-        # Show SQL with syntax highlighting
-        syntax = Syntax(sql, "sql", theme="monokai", line_numbers=True)
-        console.print(syntax)
+        # Show SQL with syntax highlighting (first 10 lines)
+        sql_lines = sql.strip().split("\n")
+        preview_lines = sql_lines[:10]
+        for line in preview_lines:
+            console.print(f"  {line}")
+        if len(sql_lines) > 10:
+            remaining = len(sql_lines) - 10
+            console.print(f"  ... ({remaining} more lines)")
 
         console.print()
-        console.print(f"[bold]{len(statements)} statements will be executed.[/bold]")
+        console.print(f"[bold]Execute {len(statements)} statements?[/bold]")
 
-        # 6. Dry-run mode - stop here
+        # 12. Dry-run mode - stop here
         if dry_run:
             console.print("\n[yellow]✓ Dry-run complete (no changes made)[/yellow]")
-            return _create_empty_result()
+            return _create_empty_result(target_env, latest_snapshot_version)
 
-        # 7. Confirm with user (unless --no-interaction)
+        # 13. Confirm with user (unless --no-interaction)
         if not no_interaction:
             console.print()
-            confirm = Confirm.ask("[bold]Apply changes?[/bold]", default=False)
+            confirm = Confirm.ask("[bold]Proceed?[/bold]", default=False)
             if not confirm:
                 console.print("[yellow]Apply cancelled[/yellow]")
-                return _create_empty_result()
+                return _create_empty_result(target_env, latest_snapshot_version)
 
-        # 8. Create execution config
+        # 14. Create execution config
         config = ExecutionConfig(
             target_env=target_env,
             profile=profile,
@@ -194,22 +251,22 @@ def apply_to_environment(
             no_interaction=no_interaction,
         )
 
-        # 9. Validate execution config
+        # 15. Validate execution config
         validation = provider.validate_execution_config(config)
         if not validation.valid:
             errors = "\n".join([f"  - {e.field}: {e.message}" for e in validation.errors])
             raise ApplyError(f"Invalid execution configuration:\n{errors}")
 
-        # 10. Get executor and authenticate
+        # 16. Get executor and authenticate
         console.print("\n[cyan]Authenticating with Databricks...[/cyan]")
         executor = provider.get_sql_executor(config)
         console.print("[green]✓[/green] Authenticated successfully")
 
-        # 11. Execute statements FIRST (this creates catalog if autoCreateCatalog: true)
+        # 17. Execute statements FIRST (this creates catalog if autoCreateCatalog: true)
         console.print("\n[cyan]Executing SQL statements...[/cyan]")
         result = executor.execute_statements(statements, config)
 
-        # 12. Initialize deployment tracker AFTER catalog exists
+        # 18. Initialize deployment tracker AFTER catalog exists
         deployment_catalog = env_config["topLevelName"]
         # Cast to UnitySQLExecutor to access client attribute
         unity_executor = cast(UnitySQLExecutor, executor)
@@ -223,70 +280,60 @@ def apply_to_environment(
         )
         console.print("[green]✓[/green] Tracking schema ready")
 
-        # 13. Start deployment tracking
+        # 19. Start deployment tracking
         deployment_id = f"deploy_{uuid4().hex[:8]}"
         tracker.start_deployment(
             deployment_id=deployment_id,
             environment=target_env,
-            snapshot_version="changelog",  # TODO: Support snapshots
+            snapshot_version=latest_snapshot_version,
             project_name=project_name,
             provider_type=provider.info.id,
             provider_version=provider.info.version,
             schematic_version="0.2.0",
         )
 
-        # 14. Track individual operations (if we have them)
-        if not sql_file and changelog["ops"]:
-            operations = [Operation(**op) for op in changelog["ops"]]
-            for i, (op, stmt_result) in enumerate(zip(operations, result.statement_results)):
-                tracker.record_operation(
-                    deployment_id=deployment_id,
-                    op=op,
-                    sql_stmt=stmt_result.sql,
-                    result=stmt_result,
-                    execution_order=i + 1,
-                )
+        # 20. Track individual operations from diff
+        for i, (op, stmt_result) in enumerate(zip(diff_operations, result.statement_results)):
+            tracker.record_operation(
+                deployment_id=deployment_id,
+                op=op,
+                sql_stmt=stmt_result.sql,
+                result=stmt_result,
+                execution_order=i + 1,
+            )
 
-        # 15. Complete deployment tracking in database
+        # 21. Complete deployment tracking in database
         tracker.complete_deployment(deployment_id, result, result.error_message)
 
-        # 16. Write deployment record to local project.json
-        snapshot_version = project.get("latestSnapshot") or "changelog"
+        # 22. Write deployment record to local project.json
         deployment_record = {
             "id": deployment_id,
             "environment": target_env,
-            "version": snapshot_version,
+            "version": latest_snapshot_version,
+            "fromVersion": deployed_version,
             "ts": datetime.now(UTC).isoformat(),
             "status": result.status,
             "executionTimeMs": result.total_execution_time_ms,
             "statementCount": result.total_statements,
             "successfulStatements": result.successful_statements,
             "failedStatementIndex": result.failed_statement_index,
+            "opsApplied": [op.id for op in diff_operations],
         }
-
-        if sql_file:
-            deployment_record["sqlFile"] = str(sql_file.name)
 
         write_deployment(workspace, deployment_record)
 
-        # 17. Show results
+        # 23. Show results
         console.print()
         console.print("─" * 60)
 
         if result.status == "success":
             exec_time = result.total_execution_time_ms / 1000
             console.print(
-                f"[green]✓ Successfully applied {result.successful_statements} statements "
-                f"({exec_time:.2f}s)[/green]"
+                f"[green]✓ Deployed {latest_snapshot_version} to {target_env} "
+                f"({result.successful_statements} statements, {exec_time:.2f}s)[/green]"
             )
             console.print(f"[green]✓ Deployment recorded: {deployment_id}[/green]")
             console.print("[green]✓ Local record saved to project.json[/green]")
-            console.print()
-            console.print("[blue]Deployment Details:[/blue]")
-            console.print(f"  Environment: {target_env}")
-            console.print(f"  Version: {snapshot_version}")
-            console.print("  Status: success")
-            console.print(f"  Execution time: {exec_time:.2f}s")
         else:
             failed_idx = result.failed_statement_index or 0
             console.print(f"[red]✗ Deployment failed at statement {failed_idx + 1}[/red]")
@@ -296,7 +343,7 @@ def apply_to_environment(
             console.print()
             console.print(f"[blue]Deployment ID:[/blue] {deployment_id}")
             console.print(f"[blue]Environment:[/blue] {target_env}")
-            console.print(f"[blue]Version:[/blue] {snapshot_version}")
+            console.print(f"[blue]Version:[/blue] {latest_snapshot_version}")
             console.print(f"[blue]Status:[/blue] {result.status}")
             console.print("[yellow]Local record saved to project.json[/yellow]")
 
@@ -339,8 +386,12 @@ def parse_sql_statements(sql: str) -> list[str]:
     return statements
 
 
-def _create_empty_result() -> ExecutionResult:
-    """Create empty execution result for dry-run or cancelled operations
+def _create_empty_result(environment: str, version: str) -> ExecutionResult:
+    """Create empty execution result when no changes to deploy
+
+    Args:
+        environment: Target environment name
+        version: Snapshot version
 
     Returns:
         Empty ExecutionResult

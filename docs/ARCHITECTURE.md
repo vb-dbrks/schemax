@@ -734,7 +734,17 @@ workspace-root/
       }
     ]
   },
-  "opsIncluded": ["op_1", "op_2", ...],
+  "operations": [
+    {
+      "id": "op_1",
+      "ts": "2025-01-01T10:00:00Z",
+      "provider": "unity",
+      "op": "unity.add_schema",
+      "target": "sch_uuid",
+      "payload": {...}
+    },
+    ...
+  ],
   "previousSnapshot": null,
   "hash": "sha256...",
   "tags": ["production"],
@@ -1298,7 +1308,7 @@ Snapshots include SHA-256 hash for integrity verification:
 
 ```typescript
 const expectedHash = snapshot.hash;
-const actualHash = calculateHash(snapshot.state, snapshot.opsIncluded);
+const actualHash = calculateHash(snapshot.state, snapshot.operations);
 if (expectedHash !== actualHash) {
   throw new Error('Snapshot integrity check failed');
 }

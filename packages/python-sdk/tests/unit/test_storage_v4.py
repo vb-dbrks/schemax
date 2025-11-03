@@ -274,6 +274,78 @@ class TestSnapshotCreation:
         assert len(changelog["ops"]) == 0
         assert changelog["sinceSnapshot"] == snapshot_version
 
+    def test_snapshot_preserves_full_operations(self, tmp_path):
+        """Should preserve full operation objects in snapshot"""
+        storage_v4.ensure_project_file(tmp_path, "unity")
+
+        # Add operations with full metadata
+        from schematic.providers.base.operations import Operation
+
+        ops = [
+            Operation(
+                id="op_001",
+                ts="2025-10-31T10:00:00Z",
+                provider="unity",
+                op="unity.add_schema",
+                target="schema_1",
+                payload={
+                    "schemaId": "schema_1",
+                    "name": "analytics",
+                    "catalogId": "cat_implicit",
+                },
+            ),
+            Operation(
+                id="op_002",
+                ts="2025-10-31T10:01:00Z",
+                provider="unity",
+                op="unity.add_table",
+                target="table_1",
+                payload={
+                    "tableId": "table_1",
+                    "name": "events",
+                    "schemaId": "schema_1",
+                    "format": "delta",
+                },
+            ),
+        ]
+        storage_v4.append_ops(tmp_path, ops)
+
+        # Create snapshot
+        project, snapshot = storage_v4.create_snapshot(
+            tmp_path, name="Test Snapshot", comment="With operations"
+        )
+
+        # Read snapshot from file
+        snapshot_version = project["latestSnapshot"]
+        saved_snapshot = storage_v4.read_snapshot(tmp_path, snapshot_version)
+
+        # Verify operations field exists and contains full operation objects
+        assert "operations" in saved_snapshot
+        assert len(saved_snapshot["operations"]) >= 2  # At least our 2 ops (may include init ops)
+
+        # Find our operations in the snapshot (skip any auto-generated init ops)
+        user_ops = [op for op in saved_snapshot["operations"] if op["id"] in ["op_001", "op_002"]]
+        assert len(user_ops) == 2
+
+        # Verify first operation has all metadata
+        op1 = user_ops[0]
+        assert op1["id"] == "op_001"
+        assert op1["ts"] == "2025-10-31T10:00:00Z"
+        assert op1["provider"] == "unity"
+        assert op1["op"] == "unity.add_schema"
+        assert op1["target"] == "schema_1"
+        assert op1["payload"]["name"] == "analytics"
+
+        # Verify second operation has all metadata
+        op2 = user_ops[1]
+        assert op2["id"] == "op_002"
+        assert op2["ts"] == "2025-10-31T10:01:00Z"
+        assert op2["op"] == "unity.add_table"
+        assert op2["payload"]["name"] == "events"
+
+        # Verify hash includes operations (hash should be different if we change ops)
+        assert len(saved_snapshot["hash"]) == 64  # SHA-256 hex string
+
 
 class TestDeploymentTracking:
     """Test deployment tracking in v4 project"""

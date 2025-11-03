@@ -5,6 +5,8 @@ Main provider implementation for Databricks Unity Catalog.
 Implements the Provider interface to enable Unity Catalog support in Schematic.
 """
 
+from typing import Any
+
 from ..base.executor import ExecutionConfig, SQLExecutor
 from ..base.models import ProviderState, ValidationError, ValidationResult
 from ..base.operations import Operation
@@ -14,12 +16,14 @@ from ..base.provider import (
     ProviderInfo,
 )
 from ..base.sql_generator import SQLGenerator
+from ..base.state_differ import StateDiffer
 from .auth import check_profile_exists, create_databricks_client
 from .executor import UnitySQLExecutor
 from .hierarchy import unity_hierarchy
 from .models import UnityState
 from .operations import UNITY_OPERATIONS, unity_operation_metadata
 from .sql_generator import UnitySQLGenerator
+from .state_differ import UnityStateDiffer
 from .state_reducer import apply_operation, apply_operations
 
 
@@ -119,11 +123,33 @@ class UnityProvider(BaseProvider):
         return result_state.model_dump(by_alias=True)
 
     def get_sql_generator(
-        self, state: ProviderState, catalog_name_mapping: dict[str, str] | None = None
+        self,
+        state: ProviderState,
+        name_mapping: dict[str, str] | None = None,
+        managed_locations: dict[str, Any] | None = None,
+        external_locations: dict[str, Any] | None = None,
+        environment_name: str | None = None,
     ) -> SQLGenerator:
-        """Get SQL generator for Unity Catalog with optional catalog name mapping"""
+        """Get SQL generator for Unity Catalog with optional environment-specific configuration
+
+        Args:
+            state: Provider state to generate SQL for
+            name_mapping: Optional catalog name mapping (logical → physical)
+            managed_locations: Optional project-level managed locations config
+            external_locations: Optional project-level external locations config
+            environment_name: Optional target environment name for path resolution
+
+        Returns:
+            UnitySQLGenerator instance configured for the target environment
+        """
         unity_state = UnityState(**state) if not isinstance(state, UnityState) else state
-        return UnitySQLGenerator(unity_state, catalog_name_mapping)
+        return UnitySQLGenerator(
+            unity_state,
+            catalog_name_mapping=name_mapping,
+            managed_locations=managed_locations,
+            external_locations=external_locations,
+            environment_name=environment_name,
+        )
 
     def create_initial_state(self) -> ProviderState:
         """Create an empty initial state"""
@@ -255,6 +281,26 @@ class UnityProvider(BaseProvider):
             )
 
         return ValidationResult(valid=len(errors) == 0, errors=errors)
+
+    def get_state_differ(
+        self,
+        old_state: ProviderState,
+        new_state: ProviderState,
+        old_operations: list[Operation],
+        new_operations: list[Operation],
+    ) -> StateDiffer:
+        """Get state differ for Unity Catalog
+
+        Args:
+            old_state: Previous state (source)
+            new_state: Current state (target)
+            old_operations: Operations that created old_state
+            new_operations: Operations that created new_state
+
+        Returns:
+            UnityStateDiffer instance for generating diff operations
+        """
+        return UnityStateDiffer(old_state, new_state, old_operations, new_operations)
 
 
 # Export singleton instance

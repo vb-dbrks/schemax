@@ -5,6 +5,7 @@ Defines the contract that all catalog providers must implement.
 """
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,6 +14,7 @@ from .hierarchy import Hierarchy
 from .models import ProviderState, ValidationResult
 from .operations import Operation, OperationMetadata
 from .sql_generator import SQLGenerator
+from .state_differ import StateDiffer
 
 
 class ProviderCapabilities(BaseModel):
@@ -92,8 +94,29 @@ class Provider(ABC):
         pass
 
     @abstractmethod
-    def get_sql_generator(self, state: ProviderState) -> SQLGenerator:
-        """Get SQL generator for this provider"""
+    def get_sql_generator(
+        self,
+        state: ProviderState,
+        name_mapping: dict[str, str] | None = None,
+        managed_locations: dict[str, Any] | None = None,
+        external_locations: dict[str, Any] | None = None,
+        environment_name: str | None = None,
+    ) -> SQLGenerator:
+        """Get SQL generator for this provider
+
+        Args:
+            state: Provider state to generate SQL for
+            name_mapping: Optional mapping for environment-specific names
+                         (e.g., logical catalog → physical catalog)
+            managed_locations: Optional project-level managed locations config
+                              (for catalog/schema MANAGED LOCATION clauses)
+            external_locations: Optional project-level external locations config
+                               (for external table LOCATION clauses)
+            environment_name: Optional target environment name for path resolution
+
+        Returns:
+            SQLGenerator instance
+        """
         pass
 
     @abstractmethod
@@ -133,6 +156,27 @@ class Provider(ABC):
 
         Returns:
             ValidationResult with any configuration errors
+        """
+        pass
+
+    @abstractmethod
+    def get_state_differ(
+        self,
+        old_state: ProviderState,
+        new_state: ProviderState,
+        old_operations: list[Operation],
+        new_operations: list[Operation],
+    ) -> StateDiffer:
+        """Get state differ for this provider
+
+        Args:
+            old_state: Previous state (source)
+            new_state: Current state (target)
+            old_operations: Operations that created old_state
+            new_operations: Operations that created new_state
+
+        Returns:
+            StateDiffer instance for generating diff operations
         """
         pass
 

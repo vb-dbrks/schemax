@@ -549,7 +549,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
     const tableParts = tableFqn.split('.');
     const tableEscaped = this.buildFqn(...tableParts);
-    const colName = this.idNameMap[op.target] || 'unknown';
+    // Get column name from payload (for dropped columns not in current state)
+    const colName = op.payload.name || this.idNameMap[op.target] || 'unknown';
     return `ALTER TABLE ${tableEscaped} DROP COLUMN ${this.escapeIdentifier(colName)}`;
   }
   
@@ -1156,8 +1157,40 @@ ${columnsSql}
       }
     }
     
-    // Handle other column operations (non-ADD COLUMN)
-    const otherColumnOps = batchInfo.columnOps.filter(op => !op.op.endsWith('add_column'));
+    // Batch DROP COLUMN operations if multiple exist
+    const dropColumnOps = batchInfo.columnOps.filter(op => op.op.endsWith('drop_column'));
+    
+    if (dropColumnOps.length > 1) {
+      // Multiple DROP COLUMN operations - batch them into single ALTER TABLE DROP COLUMNS
+      const tableFqn = this.idNameMap[dropColumnOps[0].payload.tableId] || 'unknown';
+      const tableParts = tableFqn.split('.');
+      const tableEscaped = this.buildFqn(...tableParts);
+      
+      const columnNames: string[] = [];
+      for (const op of dropColumnOps) {
+        // Get column name from payload (for dropped columns not in current state)
+        const colName = op.payload.name || this.idNameMap[op.target] || 'unknown';
+        columnNames.push(this.escapeIdentifier(colName));
+      }
+      
+      const batchedSql = `ALTER TABLE ${tableEscaped}\nDROP COLUMNS (${columnNames.join(', ')})`;
+      statements.push(batchedSql);
+    } else if (dropColumnOps.length === 1) {
+      // Single DROP COLUMN - use existing method
+      try {
+        const sql = this.dropColumn(dropColumnOps[0]);
+        if (sql && !sql.startsWith('--')) {
+          statements.push(sql);
+        }
+      } catch (e) {
+        statements.push(`-- Error generating SQL for ${dropColumnOps[0].id}: ${e}`);
+      }
+    }
+    
+    // Handle other column operations (non-ADD/DROP COLUMN)
+    const otherColumnOps = batchInfo.columnOps.filter(
+      op => !op.op.endsWith('add_column') && !op.op.endsWith('drop_column')
+    );
     
     // Handle all other operations normally
     const allOtherOps = [

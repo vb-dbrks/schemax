@@ -377,8 +377,8 @@ def create_snapshot(
             op["id"] = f"op_{i}_{op['ts']}_{op['target']}"
         ops_with_ids.append(op)
 
-    # Calculate hash
-    state_hash = _calculate_state_hash(state, [op["id"] for op in ops_with_ids])
+    # Calculate hash (includes full operations)
+    state_hash = _calculate_state_hash(state, ops_with_ids)
 
     import os
 
@@ -390,7 +390,7 @@ def create_snapshot(
         "ts": datetime.now(UTC).isoformat(),
         "createdBy": os.environ.get("USER") or os.environ.get("USERNAME") or "unknown",
         "state": state,
-        "opsIncluded": [op["id"] for op in ops_with_ids],
+        "operations": ops_with_ids,  # Full operation objects
         "previousSnapshot": project.get("latestSnapshot"),
         "hash": state_hash,
         "tags": tags,
@@ -442,9 +442,9 @@ def get_uncommitted_ops_count(workspace_path: Path) -> int:
     return len(changelog["ops"])
 
 
-def _calculate_state_hash(state: Any, ops_included: list[str]) -> str:
-    """Calculate hash of state for integrity checking"""
-    content = json.dumps({"state": state, "opsIncluded": ops_included}, sort_keys=True)
+def _calculate_state_hash(state: Any, operations: list[dict[str, Any]]) -> str:
+    """Calculate hash of state and operations for integrity checking"""
+    content = json.dumps({"state": state, "operations": operations}, sort_keys=True)
     return hashlib.sha256(content.encode()).hexdigest()
 
 

@@ -14,8 +14,10 @@ import schematic.providers  # noqa: F401
 from .commands import (
     ApplyError,
     DeploymentRecordingError,
+    DiffError,
     SQLGenerationError,
     apply_to_environment,
+    generate_diff,
     generate_sql_migration,
     record_deployment_to_environment,
     validate_project,
@@ -159,14 +161,76 @@ def validate(workspace: str) -> None:
 
 
 @cli.command()
-@click.argument("version1")
-@click.argument("version2")
-def diff(version1: str, version2: str) -> None:
-    """Show differences between two schema versions"""
+@click.option(
+    "--from",
+    "from_version",
+    required=True,
+    help="Source snapshot version (e.g., v0.1.0)",
+)
+@click.option(
+    "--to",
+    "to_version",
+    required=True,
+    help="Target snapshot version (e.g., v0.10.0)",
+)
+@click.option(
+    "--show-sql",
+    is_flag=True,
+    help="Show generated SQL for the diff",
+)
+@click.option(
+    "--show-details",
+    is_flag=True,
+    help="Show detailed operation payloads",
+)
+@click.option(
+    "--target",
+    "-t",
+    help="Target environment (for catalog name mapping)",
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def diff(
+    from_version: str,
+    to_version: str,
+    show_sql: bool,
+    show_details: bool,
+    target: str | None,
+    workspace: str,
+) -> None:
+    """Generate diff operations between two snapshot versions
 
-    console.print(f"Comparing {version1} to {version2}...")
-    console.print("[yellow]Diff functionality not yet implemented[/yellow]")
-    # TODO: Implement version comparison
+    Examples:
+
+        # Basic diff
+        schematic diff --from v0.1.0 --to v0.10.0
+
+        # Show SQL with logical catalog names
+        schematic diff --from v0.1.0 --to v0.10.0 --show-sql
+
+        # Show SQL with environment-specific catalog names
+        schematic diff --from v0.1.0 --to v0.10.0 --show-sql --target dev
+
+        # Show detailed operation payloads
+        schematic diff --from v0.1.0 --to v0.10.0 --show-details
+    """
+    try:
+        workspace_path = Path(workspace).resolve()
+
+        generate_diff(
+            workspace=workspace_path,
+            from_version=from_version,
+            to_version=to_version,
+            show_sql=show_sql,
+            show_details=show_details,
+            target_env=target,
+        )
+
+    except DiffError as e:
+        console.print(f"[red]✗ Diff generation failed:[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Unexpected error:[/red] {e}")
+        sys.exit(1)
 
 
 @cli.command(name="record-deployment")
@@ -283,7 +347,6 @@ def bundle(environment: str, version: str, output: str) -> None:
 @click.option("--target", "-t", required=True, help="Target environment (dev/test/prod)")
 @click.option("--profile", "-p", required=True, help="Databricks profile name")
 @click.option("--warehouse-id", "-w", required=True, help="SQL warehouse ID")
-@click.option("--sql", type=click.Path(exists=True), help="SQL file to execute (optional)")
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-interaction", is_flag=True, help="Skip confirmation prompt (for CI/CD)")
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
@@ -291,7 +354,6 @@ def apply(
     target: str,
     profile: str,
     warehouse_id: str,
-    sql: str | None,
     dry_run: bool,
     no_interaction: bool,
     workspace: str,
@@ -310,15 +372,11 @@ def apply(
         # Apply to dev environment
         schematic apply --target dev --profile DEV --warehouse-id abc123
 
-        # Apply specific SQL file
-        schematic apply --target prod --profile PROD --warehouse-id xyz789 --sql migration.sql
-
         # CI/CD mode (non-interactive)
         schematic apply --target dev --profile DEV --warehouse-id $WAREHOUSE_ID --no-interaction
     """
     try:
         workspace_path = Path(workspace).resolve()
-        sql_file = Path(sql).resolve() if sql else None
 
         result = apply_to_environment(
             workspace=workspace_path,
@@ -327,7 +385,6 @@ def apply(
             warehouse_id=warehouse_id,
             dry_run=dry_run,
             no_interaction=no_interaction,
-            sql_file=sql_file,
         )
 
         # Exit with appropriate code

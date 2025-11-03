@@ -163,13 +163,23 @@ Manually record deployment metadata (useful for non-Unity Catalog providers).
 schematic record-deployment --environment prod --version v1.0.0 --mark-deployed
 ```
 
-### `schematic diff` (coming soon)
+### `schematic diff`
 
-Compare two schema versions.
+Compare two schema versions and show the operations needed to transform one into the other.
 
 **Examples:**
 ```bash
-schematic diff v0.1.0 v0.2.0
+# Basic diff
+schematic diff --from v0.1.0 --to v0.2.0
+
+# Show generated SQL with logical catalog names
+schematic diff --from v0.1.0 --to v0.2.0 --show-sql
+
+# Show SQL with environment-specific catalog names
+schematic diff --from v0.1.0 --to v0.2.0 --show-sql --target dev
+
+# Show detailed operation payloads
+schematic diff --from v0.1.0 --to v0.2.0 --show-details
 ```
 
 ## Python API

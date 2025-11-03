@@ -823,7 +823,7 @@ async function createSnapshotCommand_impl() {
       outputChannel.appendLine(`[Schematic] - ID: ${snapshot.id}`);
       outputChannel.appendLine(`[Schematic] - Version: ${snapshot.version}`);
       outputChannel.appendLine(`[Schematic] - Name: ${snapshot.name}`);
-      outputChannel.appendLine(`[Schematic] - Operations included: ${snapshot.opsIncluded.length}`);
+      outputChannel.appendLine(`[Schematic] - Operations included: ${snapshot.operations.length}`);
       outputChannel.appendLine(`[Schematic] - Total snapshots: ${updatedProject.snapshots.length}`);
       outputChannel.appendLine(`[Schematic] - Snapshot file: ${updatedProject.snapshots[updatedProject.snapshots.length - 1].file}`);
       

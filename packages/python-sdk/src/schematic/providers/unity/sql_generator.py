@@ -541,10 +541,17 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _add_catalog(self, op: Operation) -> str:
         # Use mapped name from id_name_map (handles __implicit__ → physical catalog)
         name = self.id_name_map.get(op.target, op.payload["name"])
-        managed_location_name = op.payload.get("managedLocationName")
 
+        # Fallback: If the catalog doesn't exist in id_name_map yet (e.g., from diff operations),
+        # apply catalog_name_mapping to convert logical → physical name
+        if op.target not in self.id_name_map and op.payload["name"] in self.catalog_name_mapping:
+            name = self.catalog_name_mapping[op.payload["name"]]
+
+        # Build CREATE CATALOG statement
         sql = f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
 
+        # Add managed location if specified
+        managed_location_name = op.payload.get("managedLocationName")
         if managed_location_name:
             location = self._resolve_managed_location(managed_location_name)
             if location:
@@ -838,7 +845,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _drop_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
-        col_name = self.id_name_map.get(op.target, "unknown")
+        # Get column name from payload (for dropped columns not in current state)
+        col_name = op.payload.get("name", self.id_name_map.get(op.target, "unknown"))
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} DROP COLUMN {col_esc}"
 
@@ -846,7 +854,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Databricks doesn't support direct column reordering
         return "-- Column reordering not directly supported in Databricks SQL"
 
-    def _batch_reorder_operations(self, ops: list[Operation]) -> dict:
+    def _batch_reorder_operations(self, ops: list[Operation]) -> dict[str, Any]:
         """
         Batch reorder_columns operations by table to generate minimal SQL.
 
@@ -857,7 +865,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "op_ids": [...]          # List of operation IDs involved
         }
         """
-        reorder_batches = {}
+        reorder_batches: dict[str, Any] = {}
 
         for op in ops:
             op_type = op.op.replace("unity.", "")
@@ -965,7 +973,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return ";\n".join(statements)
 
-    def _batch_table_operations(self, ops: list[Operation]) -> dict:
+    def _batch_table_operations(self, ops: list[Operation]) -> dict[str, Any]:
         """
         Batch operations by table to generate optimal DDL.
 
@@ -1057,7 +1065,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return table_batches
 
-    def _generate_optimized_table_sql(self, table_id: str, batch_info: dict | BatchInfo) -> str:
+    def _generate_optimized_table_sql(
+        self, table_id: str, batch_info: dict[str, Any] | BatchInfo
+    ) -> str:
         """Generate optimal SQL for table operations"""
 
         # Handle both dict (old table batching) and BatchInfo (new unified batching)
@@ -1106,7 +1116,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             # Generate optimized ALTER statements for existing table
             return self._generate_alter_statements_for_table(table_id, batch_dict)
 
-    def _generate_create_table_with_columns(self, table_id: str, batch_info: dict) -> str:
+    def _generate_create_table_with_columns(self, table_id: str, batch_info: dict[str, Any]) -> str:
         """Generate complete CREATE TABLE statement with all columns included"""
         table_op = batch_info["table_op"]
         column_ops = batch_info["column_ops"]
@@ -1230,7 +1240,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 f"USING {table_format}{table_comment}{partition_clause}{cluster_clause}{properties_sql}{location_clause}"
             )
 
-    def _generate_alter_statements_for_table(self, table_id: str, batch_info: dict) -> str:
+    def _generate_alter_statements_for_table(
+        self, table_id: str, batch_info: dict[str, Any]
+    ) -> str:
         """Generate optimized ALTER statements for existing table modifications"""
         statements = []
 
@@ -1286,9 +1298,37 @@ class UnitySQLGenerator(BaseSQLGenerator):
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {add_column_ops[0].id}: {e}")
 
-        # Handle other column operations (non-ADD COLUMN)
+        # Batch DROP COLUMN operations if multiple exist
+        drop_column_ops = [op for op in batch_info["column_ops"] if op.op.endswith("drop_column")]
+
+        if len(drop_column_ops) > 1:
+            # Multiple DROP COLUMN operations - batch them into single ALTER TABLE DROP COLUMNS
+            table_fqn = self.id_name_map.get(drop_column_ops[0].payload["tableId"], "unknown")
+            table_esc = self._build_fqn(*table_fqn.split("."))
+
+            column_names = []
+            for op in drop_column_ops:
+                # Get column name from payload (for dropped columns not in current state)
+                col_name = op.payload.get("name", self.id_name_map.get(op.target, "unknown"))
+                col_esc = self.escape_identifier(col_name)
+                column_names.append(col_esc)
+
+            batched_sql = f"ALTER TABLE {table_esc}\nDROP COLUMNS (" + ", ".join(column_names) + ")"
+            statements.append(batched_sql)
+        elif len(drop_column_ops) == 1:
+            # Single DROP COLUMN - use existing method
+            try:
+                sql = self._drop_column(drop_column_ops[0])
+                if sql and not sql.startswith("--"):
+                    statements.append(sql)
+            except Exception as e:
+                statements.append(f"-- Error generating SQL for {drop_column_ops[0].id}: {e}")
+
+        # Handle other column operations (non-ADD/DROP COLUMN)
         other_column_ops = [
-            op for op in batch_info["column_ops"] if not op.op.endswith("add_column")
+            op
+            for op in batch_info["column_ops"]
+            if not op.op.endswith("add_column") and not op.op.endswith("drop_column")
         ]
 
         # Handle all other operations normally
