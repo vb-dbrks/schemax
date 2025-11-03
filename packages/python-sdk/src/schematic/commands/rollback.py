@@ -3,6 +3,9 @@ Rollback Command Implementation
 
 Provides partial and complete rollback functionality for failed deployments
 with automatic safety validation and data loss prevention.
+
+Uses state_differ (like diff command) to generate rollback operations - much
+simpler and more robust than manual reverse operation generation.
 """
 
 from dataclasses import dataclass
@@ -13,12 +16,17 @@ from rich.prompt import Confirm
 
 from ..providers.base.executor import SQLExecutor
 from ..providers.base.operations import Operation
-from ..providers.base.reverse_generator import ReverseOperationGenerator, SafetyLevel
-from ..providers.unity.reverse_generator import UnityReverseGenerator
-from ..providers.unity.safety_validator import RollbackError, SafetyValidator
+from ..providers.base.reverse_generator import SafetyLevel
+from ..providers.unity.safety_validator import SafetyValidator
 from ..storage_v4 import load_current_state
 
 console = Console()
+
+
+class RollbackError(Exception):
+    """Raised when rollback cannot proceed safely"""
+
+    pass
 
 
 @dataclass
@@ -71,28 +79,38 @@ def rollback_partial(
         console.print("   No operations to rollback")
         return RollbackResult(success=True, operations_rolled_back=0)
 
-    # 1. Load current state
-    state, _, provider = load_current_state(workspace)
+    # 1. Load project and provider
+    pre_deployment_state, _, provider = load_current_state(workspace)
 
-    # 2. Generate reverse operations (in REVERSE order!)
-    reverse_generator = UnityReverseGenerator()
-    reverse_ops = []
+    # 2. Calculate post-deployment state (after successful operations)
+    # Apply successful operations to pre-deployment state to get current state
+    state_reducer = provider.get_state_reducer()
+    post_deployment_state = state_reducer.apply_operations(
+        pre_deployment_state.copy(), successful_ops
+    )
 
-    for op in reversed(successful_ops):
-        if not reverse_generator.can_reverse(op):
-            error = f"Cannot automatically reverse operation: {op.op}"
-            console.print(f"[red]✗ {error}[/red]")
-            return RollbackResult(success=False, operations_rolled_back=0, error_message=error)
+    # 3. Generate rollback operations using state_differ
+    # This is the same approach as diff.py - battle-tested and robust!
+    console.print("   Generating rollback operations...")
+    differ = provider.get_state_differ(
+        post_deployment_state,  # Current state (after successful ops)
+        pre_deployment_state,  # Target state (before deployment)
+        successful_ops,  # Operations that were applied
+        [],  # Target has no operations
+    )
 
-        try:
-            reverse_op = reverse_generator.generate_reverse(op, state)
-            reverse_ops.append(reverse_op)
-        except Exception as e:
-            error = f"Failed to generate reverse operation for {op.op}: {e}"
-            console.print(f"[red]✗ {error}[/red]")
-            return RollbackResult(success=False, operations_rolled_back=0, error_message=error)
+    try:
+        rollback_ops = differ.generate_diff_operations()
+    except Exception as e:
+        error = f"Failed to generate rollback operations: {e}"
+        console.print(f"[red]✗ {error}[/red]")
+        return RollbackResult(success=False, operations_rolled_back=0, error_message=error)
 
-    # 3. Validate safety
+    if not rollback_ops:
+        console.print("   No rollback operations needed (state unchanged)")
+        return RollbackResult(success=True, operations_rolled_back=0)
+
+    # 4. Validate safety of rollback operations
     safety_validator = SafetyValidator(executor)
 
     console.print("   Analyzing safety...", end=" ")
@@ -100,9 +118,9 @@ def rollback_partial(
     all_safe = True
     blocking_reason = None
 
-    for reverse_op in reverse_ops:
+    for rollback_op in rollback_ops:
         try:
-            safety = safety_validator.validate(reverse_op, catalog_mapping)
+            safety = safety_validator.validate(rollback_op, catalog_mapping)
 
             if safety.level == SafetyLevel.RISKY or safety.level == SafetyLevel.DESTRUCTIVE:
                 all_safe = False
@@ -110,7 +128,7 @@ def rollback_partial(
                 if auto_triggered:
                     # Auto-rollback BLOCKS on risky/destructive operations
                     blocking_reason = (
-                        f"{safety.level.value} operation detected: {reverse_op.op}\n"
+                        f"{safety.level.value} operation detected: {rollback_op.op}\n"
                         f"   {safety.reason}"
                     )
                     break
@@ -125,7 +143,7 @@ def rollback_partial(
         except Exception as e:
             console.print()
             console.print(
-                f"   [yellow]⚠️  Could not validate safety for {reverse_op.op}: {e}[/yellow]"
+                f"   [yellow]⚠️  Could not validate safety for {rollback_op.op}: {e}[/yellow]"
             )
 
     if blocking_reason and auto_triggered:
@@ -141,12 +159,12 @@ def rollback_partial(
     else:
         console.print()
 
-    # 4. Show operations and confirm (if not auto-triggered)
+    # 5. Show operations and confirm (if not auto-triggered)
     if not auto_triggered:
         console.print()
-        console.print("[bold]Reverse operations to execute:[/bold]")
-        for i, op in enumerate(reverse_ops, 1):
-            console.print(f"  [{i}/{len(reverse_ops)}] {op.op} {op.target}")
+        console.print("[bold]Rollback operations to execute:[/bold]")
+        for i, op in enumerate(rollback_ops, 1):
+            console.print(f"  [{i}/{len(rollback_ops)}] {op.op} {op.target}")
         console.print()
 
         if not Confirm.ask("Execute rollback?", default=False):
@@ -155,22 +173,22 @@ def rollback_partial(
                 success=False, operations_rolled_back=0, error_message="Cancelled by user"
             )
 
-    # 5. Generate and execute SQL
-    sql_generator = provider.get_sql_generator(state, catalog_mapping)
-    sql_generator.generate_sql(reverse_ops)
+    # 6. Generate and execute SQL
+    sql_generator = provider.get_sql_generator(pre_deployment_state, catalog_mapping)
+    sql = sql_generator.generate_sql(rollback_ops)
 
     console.print()
-    for i, reverse_op in enumerate(reverse_ops, 1):
-        console.print(f"✓ [{i}/{len(reverse_ops)}] {reverse_op.op} {reverse_op.target}")
+    for i, rollback_op in enumerate(rollback_ops, 1):
+        console.print(f"✓ [{i}/{len(rollback_ops)}] {rollback_op.op} {rollback_op.target}")
 
-    # TODO: Execute SQL statements
+    # TODO: Execute SQL statements via executor
     # For now, just simulate success
-    # result = executor.execute_statements(sql_statements)
+    # result = executor.execute_statements(parse_sql_statements(sql))
 
     console.print()
-    console.print(f"✓ Rolled back {len(reverse_ops)} operations")
+    console.print(f"✓ Rolled back {len(rollback_ops)} operations")
 
-    return RollbackResult(success=True, operations_rolled_back=len(reverse_ops))
+    return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
 
 
 def rollback_complete(

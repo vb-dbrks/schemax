@@ -13,12 +13,6 @@ from ..base.reverse_generator import SafetyLevel, SafetyReport
 from .operations import UNITY_OPERATIONS
 
 
-class RollbackError(Exception):
-    """Raised when rollback cannot proceed safely"""
-
-    pass
-
-
 class SafetyValidator:
     """Validates safety of rollback operations by querying actual data
 

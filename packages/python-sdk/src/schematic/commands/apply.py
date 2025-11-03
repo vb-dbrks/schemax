@@ -18,7 +18,6 @@ from rich.prompt import Confirm, Prompt
 from ..deployment_tracker import DeploymentTracker
 from ..providers.base.executor import ExecutionConfig, ExecutionResult
 from ..providers.unity.executor import UnitySQLExecutor
-from ..providers.unity.safety_validator import RollbackError
 from ..storage_v4 import (
     create_snapshot,
     get_environment_config,
@@ -301,8 +300,8 @@ def apply_to_environment(
             console.print()
 
             try:
-                # Import rollback function here to avoid circular imports
-                from .rollback import rollback_partial
+                # Import rollback function and error here to avoid circular imports
+                from .rollback import RollbackError, rollback_partial
 
                 # Get successful operations (those that executed before failure)
                 failed_idx = result.failed_statement_index or 0
