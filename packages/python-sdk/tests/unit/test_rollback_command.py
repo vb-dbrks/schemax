@@ -7,12 +7,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from schematic.commands.rollback import (
-    RollbackError,
-    RollbackResult,
-    _parse_sql_statements,
-    rollback_partial,
-)
+from schematic.commands.apply import parse_sql_statements
+from schematic.commands.rollback import RollbackError, RollbackResult, rollback_partial
 from schematic.providers.base.executor import ExecutionConfig, ExecutionResult
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
@@ -24,7 +20,7 @@ class TestParseSQLStatements:
     def test_parse_simple_statements(self):
         """Test parsing simple SQL statements"""
         sql = "CREATE TABLE t1; DROP TABLE t2; ALTER TABLE t3;"
-        statements = _parse_sql_statements(sql)
+        statements = parse_sql_statements(sql)
 
         assert len(statements) == 3
         assert statements[0] == "CREATE TABLE t1"
@@ -39,7 +35,7 @@ class TestParseSQLStatements:
         -- Drop table
         DROP TABLE t2;
         """
-        statements = _parse_sql_statements(sql)
+        statements = parse_sql_statements(sql)
 
         assert len(statements) == 2
         assert "CREATE TABLE t1" in statements[0]
@@ -53,16 +49,16 @@ class TestParseSQLStatements:
             name STRING
         );
         """
-        statements = _parse_sql_statements(sql)
+        statements = parse_sql_statements(sql)
 
         assert len(statements) == 1
         assert "CREATE TABLE users" in statements[0]
 
     def test_parse_empty_sql(self):
         """Test parsing empty SQL"""
-        assert _parse_sql_statements("") == []
-        assert _parse_sql_statements("   ") == []
-        assert _parse_sql_statements(";;") == []
+        assert parse_sql_statements("") == []
+        assert parse_sql_statements("   ") == []
+        assert parse_sql_statements(";;") == []
 
 
 class TestRollbackPartial:

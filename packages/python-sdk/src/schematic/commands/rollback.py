@@ -8,7 +8,6 @@ Uses state_differ (like diff command) to generate rollback operations - much
 simpler and more robust than manual reverse operation generation.
 """
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +19,7 @@ from ..providers.base.operations import Operation
 from ..providers.base.reverse_generator import SafetyLevel
 from ..providers.unity.safety_validator import SafetyValidator
 from ..storage_v4 import load_current_state
+from .apply import parse_sql_statements
 
 console = Console()
 
@@ -28,38 +28,6 @@ class RollbackError(Exception):
     """Raised when rollback cannot proceed safely"""
 
     pass
-
-
-def _parse_sql_statements(sql: str) -> list[str]:
-    """Parse SQL into individual statements
-
-    Splits SQL by semicolons, handling comments and multi-line statements.
-
-    Args:
-        sql: SQL text to parse
-
-    Returns:
-        List of individual SQL statements
-    """
-    statements = []
-
-    # Remove comments
-    sql_no_comments = re.sub(r"--[^\n]*", "", sql)
-
-    # Split by semicolon
-    raw_statements = sql_no_comments.split(";")
-
-    for stmt in raw_statements:
-        # Clean up whitespace
-        stmt = stmt.strip()
-
-        # Skip empty statements
-        if not stmt:
-            continue
-
-        statements.append(stmt)
-
-    return statements
 
 
 @dataclass
@@ -211,7 +179,7 @@ def rollback_partial(
     sql = sql_generator.generate_sql(rollback_ops)
 
     # 7. Parse SQL into individual statements
-    statements = _parse_sql_statements(sql)
+    statements = parse_sql_statements(sql)
 
     if not statements:
         console.print("[yellow]No SQL statements generated[/yellow]")
