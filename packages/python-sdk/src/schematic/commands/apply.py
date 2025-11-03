@@ -6,13 +6,14 @@ confirmation, and deployment tracking.
 """
 
 import re
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
 from rich.console import Console
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 
 from ..deployment_tracker import DeploymentTracker
 from ..providers.base.executor import ExecutionConfig, ExecutionResult
@@ -97,38 +98,56 @@ def apply_to_environment(
         ApplyError: If apply fails
     """
     try:
-        # 1. Auto-create snapshot if changelog has uncommitted changes
+        # 1. Check for uncommitted changes and prompt user
         changelog = read_changelog(workspace)
         if changelog["ops"]:
             console.print(
                 f"[yellow]⚠ {len(changelog['ops'])} uncommitted operations found[/yellow]"
             )
 
-            # Generate next version
-            project = read_project(workspace)
-            settings = project.get("settings", {})
-            version_prefix = str(settings.get("versionPrefix", "v"))
-            current = project.get("latestSnapshot")
+            # In non-interactive mode, auto-create snapshot
+            if no_interaction:
+                console.print("[blue]Non-interactive mode: Auto-creating snapshot[/blue]")
+                choice = "create"
+            else:
+                console.print()
+                # Prompt user for action
+                choice = Prompt.ask(
+                    "[bold]What would you like to do?[/bold]",
+                    choices=["create", "continue", "abort"],
+                    default="create",
+                )
 
-            # Simple version increment
-            if current:
-                match = re.search(r"(\d+)\.(\d+)\.(\d+)", current)
-                if match:
-                    major, minor, patch = match.groups()
-                    next_version = f"{version_prefix}{major}.{int(minor) + 1}.0"
+            if choice == "abort":
+                console.print("[yellow]Apply cancelled[/yellow]")
+                sys.exit(0)
+            elif choice == "create":
+                # Generate next version
+                project = read_project(workspace)
+                settings = project.get("settings", {})
+                version_prefix = str(settings.get("versionPrefix", "v"))
+                current = project.get("latestSnapshot")
+
+                # Simple version increment
+                if current:
+                    match = re.search(r"(\d+)\.(\d+)\.(\d+)", current)
+                    if match:
+                        major, minor, patch = match.groups()
+                        next_version = f"{version_prefix}{major}.{int(minor) + 1}.0"
+                    else:
+                        next_version = f"{version_prefix}0.1.0"
                 else:
                     next_version = f"{version_prefix}0.1.0"
-            else:
-                next_version = f"{version_prefix}0.1.0"
 
-            console.print(f"[blue]Creating snapshot:[/blue] {next_version}")
-            create_snapshot(
-                workspace,
-                name=f"Auto-snapshot for {target_env}",
-                version=next_version,
-                comment=f"Automatic snapshot created before deploying to {target_env}",
-            )
-            console.print("[green]✓[/green] Snapshot created")
+                console.print(f"[blue]Creating snapshot:[/blue] {next_version}")
+                create_snapshot(
+                    workspace,
+                    name=f"Auto-snapshot for {target_env}",
+                    version=next_version,
+                    comment=f"Automatic snapshot created before deploying to {target_env}",
+                )
+                console.print("[green]✓[/green] Snapshot created")
+            # else: "continue" - proceed without creating snapshot
 
         # 2. Load project (v4 with environment config)
         project = read_project(workspace)
