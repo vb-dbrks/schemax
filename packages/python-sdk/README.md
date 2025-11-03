@@ -9,6 +9,8 @@
 - **SQL Migration Generation**: Generate idempotent SQL DDL from schema changes
 - **Environment Management**: Dev, test, prod with catalog name mapping
 - **Deployment Tracking**: Know what's deployed where with database-backed tracking
+- **Auto-Rollback**: Automatically rollback failed deployments with data loss detection (NEW!)
+- **Safety Validation**: Analyze data impact before rollback operations
 - **Type-Safe**: Full type annotations, validated with mypy
 - **CI/CD Ready**: Designed for GitHub Actions, GitLab CI, and other pipelines
 - **Extensible**: Plugin architecture for custom catalog providers
@@ -77,6 +79,9 @@ schematic sql --target dev --output dev-migration.sql
 ```bash
 # Preview changes
 schematic apply --target dev --profile my-databricks --warehouse-id abc123 --dry-run
+
+# Apply with automatic rollback on failure (MVP feature!)
+schematic apply --target dev --profile my-databricks --warehouse-id abc123 --auto-rollback
 
 # Apply to environment
 schematic apply --target dev --profile my-databricks --warehouse-id abc123

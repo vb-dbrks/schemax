@@ -20,6 +20,7 @@ from .commands import (
     generate_diff,
     generate_sql_migration,
     record_deployment_to_environment,
+    rollback_complete,
     validate_project,
 )
 from .commands import (
@@ -349,6 +350,9 @@ def bundle(environment: str, version: str, output: str) -> None:
 @click.option("--warehouse-id", "-w", required=True, help="SQL warehouse ID")
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-interaction", is_flag=True, help="Skip confirmation prompt (for CI/CD)")
+@click.option(
+    "--auto-rollback", is_flag=True, help="Automatically rollback on failure (MVP feature!)"
+)
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def apply(
     target: str,
@@ -356,6 +360,7 @@ def apply(
     warehouse_id: str,
     dry_run: bool,
     no_interaction: bool,
+    auto_rollback: bool,
     workspace: str,
 ) -> None:
     """Execute SQL against target environment
@@ -372,8 +377,12 @@ def apply(
         # Apply to dev environment
         schematic apply --target dev --profile DEV --warehouse-id abc123
 
-        # CI/CD mode (non-interactive)
-        schematic apply --target dev --profile DEV --warehouse-id $WAREHOUSE_ID --no-interaction
+        # Apply with automatic rollback on failure (MVP feature!)
+        schematic apply --target dev --profile DEV --warehouse-id abc123 --auto-rollback
+
+        # CI/CD mode (non-interactive with auto-rollback)
+        schematic apply --target prod --profile PROD --warehouse-id $WAREHOUSE_ID \\
+            --no-interaction --auto-rollback
     """
     try:
         workspace_path = Path(workspace).resolve()
@@ -385,6 +394,7 @@ def apply(
             warehouse_id=warehouse_id,
             dry_run=dry_run,
             no_interaction=no_interaction,
+            auto_rollback=auto_rollback,
         )
 
         # Exit with appropriate code
@@ -398,6 +408,114 @@ def apply(
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Unexpected error:[/red] {e}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--deployment", "-d", help="Deployment ID to rollback (for partial rollback)")
+@click.option("--partial", is_flag=True, help="Partial rollback of failed deployment")
+@click.option("--environment", "-e", help="Environment name (for complete rollback)")
+@click.option("--to-snapshot", help="Target snapshot version (for complete rollback)")
+@click.option("--profile", "-p", help="Databricks CLI profile")
+@click.option("--warehouse-id", "-w", help="SQL Warehouse ID")
+@click.option("--create-clone", help="Create backup SHALLOW CLONE before rollback")
+@click.option("--safe-only", is_flag=True, help="Only execute safe operations (skip destructive)")
+@click.option("--dry-run", is_flag=True, help="Preview impact without executing")
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def rollback(
+    deployment: str | None,
+    partial: bool,
+    environment: str | None,
+    to_snapshot: str | None,
+    profile: str | None,
+    warehouse_id: str | None,
+    create_clone: str | None,
+    safe_only: bool,
+    dry_run: bool,
+    workspace: str,
+) -> None:
+    """Rollback deployments (partial or complete)
+
+    Two rollback modes:
+
+    1. Partial rollback: Revert a failed deployment by reversing successful operations
+       Usage: schematic rollback --deployment deploy_abc123 --partial
+
+    2. Complete rollback: Revert to a previous snapshot version
+       Usage: schematic rollback --environment prod --to-snapshot v0.5.0
+
+    Examples:
+
+        # Partial rollback of failed deployment
+        schematic rollback --deployment deploy_abc123 --partial \\
+            --profile PROD --warehouse-id abc123
+
+        # Complete rollback to previous version
+        schematic rollback --environment prod --to-snapshot v0.5.0 \\
+            --profile PROD --warehouse-id abc123
+
+        # Complete rollback with backup clone
+        schematic rollback --environment prod --to-snapshot v0.5.0 \\
+            --create-clone prod_backup --profile PROD --warehouse-id abc123
+
+        # Preview rollback impact (dry-run)
+        schematic rollback --environment prod --to-snapshot v0.5.0 --dry-run
+    """
+    try:
+        workspace_path = Path(workspace).resolve()
+
+        if partial:
+            # Partial rollback mode
+            if not deployment:
+                console.print("[red]✗[/red] --deployment required for partial rollback")
+                sys.exit(1)
+            if not profile or not warehouse_id:
+                console.print(
+                    "[red]✗[/red] --profile and --warehouse-id required for partial rollback"
+                )
+                sys.exit(1)
+
+            console.print("[yellow]Partial rollback not yet fully implemented[/yellow]")
+            console.print("Use --auto-rollback flag with apply command instead")
+            sys.exit(1)
+
+        elif to_snapshot:
+            # Complete rollback mode
+            if not environment:
+                console.print("[red]✗[/red] --environment required for complete rollback")
+                sys.exit(1)
+            if not profile or not warehouse_id:
+                console.print("[red]✗[/red] --profile and --warehouse-id required")
+                sys.exit(1)
+
+            result = rollback_complete(
+                workspace=workspace_path,
+                target_env=environment,
+                to_snapshot=to_snapshot,
+                profile=profile,
+                warehouse_id=warehouse_id,
+                create_clone=create_clone,
+                safe_only=safe_only,
+                dry_run=dry_run,
+            )
+
+            if result.success:
+                console.print(
+                    f"[green]✓[/green] Rolled back {result.operations_rolled_back} operations"
+                )
+                sys.exit(0)
+            else:
+                console.print(f"[red]✗[/red] Rollback failed: {result.error_message}")
+                sys.exit(1)
+        else:
+            console.print("[red]✗[/red] Must specify either --partial or --to-snapshot")
+            console.print("\nExamples:")
+            console.print("  Partial:  schematic rollback --deployment deploy_abc123 --partial")
+            console.print("  Complete: schematic rollback --environment prod --to-snapshot v0.5.0")
+            sys.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]✗ Rollback error:[/red] {e}")
         sys.exit(1)
 
 

@@ -18,6 +18,7 @@ from rich.prompt import Confirm, Prompt
 from ..deployment_tracker import DeploymentTracker
 from ..providers.base.executor import ExecutionConfig, ExecutionResult
 from ..providers.unity.executor import UnitySQLExecutor
+from ..providers.unity.safety_validator import RollbackError
 from ..storage_v4 import (
     create_snapshot,
     get_environment_config,
@@ -76,6 +77,7 @@ def apply_to_environment(
     warehouse_id: str,
     dry_run: bool = False,
     no_interaction: bool = False,
+    auto_rollback: bool = False,
 ) -> ExecutionResult:
     """Apply changes to target environment
 
@@ -291,6 +293,70 @@ def apply_to_environment(
         # 17. Execute statements FIRST (this creates catalog if autoCreateCatalog: true)
         console.print("\n[cyan]Executing SQL statements...[/cyan]")
         result = executor.execute_statements(statements, config)
+
+        # NEW: Auto-rollback on failure (MVP feature!)
+        if result.status == "failed" and auto_rollback:
+            console.print()
+            console.print("[yellow]⚠️  Deployment failed! Auto-rollback triggered...[/yellow]")
+            console.print()
+
+            try:
+                # Import rollback function here to avoid circular imports
+                from .rollback import rollback_partial
+
+                # Get successful operations (those that executed before failure)
+                failed_idx = result.failed_statement_index or 0
+                successful_ops = diff_operations[:failed_idx]
+
+                # Trigger partial rollback automatically
+                rollback_result = rollback_partial(
+                    workspace=workspace,
+                    deployment_id=f"rollback_{uuid4().hex[:8]}",
+                    successful_ops=successful_ops,
+                    target_env=target_env,
+                    profile=profile,
+                    warehouse_id=warehouse_id,
+                    executor=executor,  # Reuse existing connection
+                    catalog_mapping=catalog_mapping,
+                    auto_triggered=True,  # Skip confirmation prompts, block on risky operations
+                )
+
+                if rollback_result.success:
+                    console.print()
+                    console.print("[green]✅ Environment restored to pre-deployment state[/green]")
+                    console.print(
+                        f"   Rolled back {rollback_result.operations_rolled_back} operations"
+                    )
+                    console.print("   Status: FAILED + ROLLED BACK")
+                    console.print()
+                    console.print("Fix the issue and redeploy.")
+
+                    # Update result status to indicate rollback
+                    result.status = "failed_rolled_back"
+                else:
+                    console.print()
+                    console.print("[red]❌ Auto-rollback failed[/red]")
+                    if rollback_result.error_message:
+                        console.print(f"   {rollback_result.error_message}")
+                    console.print("   Manual rollback may be required")
+
+            except RollbackError as e:
+                console.print()
+                console.print("[red]❌ Auto-rollback blocked[/red]")
+                console.print(f"   {e}")
+                console.print()
+                console.print(
+                    "[yellow]Manual intervention required - deployment partially applied[/yellow]"
+                )
+            except Exception as e:
+                console.print()
+                console.print(f"[red]❌ Auto-rollback failed unexpectedly: {e}[/red]")
+                console.print("[yellow]Manual rollback may be required[/yellow]")
+
+            # Don't continue with deployment tracking if auto-rollback succeeded
+            # Just exit with failure
+            if result.status == "failed_rolled_back":
+                sys.exit(1)
 
         # 18. Initialize deployment tracker AFTER catalog exists
         deployment_catalog = env_config["topLevelName"]
