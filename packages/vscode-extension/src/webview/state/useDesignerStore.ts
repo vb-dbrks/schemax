@@ -57,7 +57,7 @@ interface DesignerState {
   dropTable: (tableId: string) => void;
   setTableComment: (tableId: string, comment: string) => void;
   
-  addColumn: (tableId: string, name: string, type: string, nullable: boolean, after?: string) => void;
+  addColumn: (tableId: string, name: string, type: string, nullable: boolean, comment?: string, tags?: Record<string, string>) => void;
   renameColumn: (tableId: string, colId: string, newName: string) => void;
   dropColumn: (tableId: string, colId: string) => void;
   reorderColumns: (tableId: string, order: string[]) => void;
@@ -67,6 +67,10 @@ interface DesignerState {
   
   setTableProperty: (tableId: string, key: string, value: string) => void;
   unsetTableProperty: (tableId: string, key: string) => void;
+  
+  // Table tag operations
+  setTableTag: (tableId: string, tagName: string, tagValue: string) => void;
+  unsetTableTag: (tableId: string, tagName: string) => void;
   
   // Column tag operations (NEW)
   setColumnTag: (tableId: string, colId: string, tagName: string, tagValue: string) => void;
@@ -252,10 +256,23 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     emitOps([op]);
   },
 
-  addColumn: (tableId, name, type, nullable, after) => {
+  addColumn: (tableId, name, type, nullable, comment, tags) => {
     const colId = `col_${uuidv4()}`;
-    const op = createOperation(get(), 'add_column', colId, { tableId, colId, name, type, nullable, after });
-    emitOps([op]);
+    const ops = [];
+    
+    // Add column operation
+    const addOp = createOperation(get(), 'add_column', colId, { tableId, colId, name, type, nullable, comment });
+    ops.push(addOp);
+    
+    // Add tag operations if tags provided
+    if (tags && Object.keys(tags).length > 0) {
+      Object.entries(tags).forEach(([tagName, tagValue]) => {
+        const tagOp = createOperation(get(), 'set_column_tag', colId, { tableId, colId, tagName, tagValue });
+        ops.push(tagOp);
+      });
+    }
+    
+    emitOps(ops);
   },
 
   renameColumn: (tableId, colId, newName) => {
@@ -339,14 +356,24 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     emitOps([op]);
   },
 
+  setTableTag: (tableId, tagName, tagValue) => {
+    const op = createOperation(get(), 'set_table_tag', tableId, { tableId, tagName, tagValue });
+    emitOps([op]);
+  },
+
+  unsetTableTag: (tableId, tagName) => {
+    const op = createOperation(get(), 'unset_table_tag', tableId, { tableId, tagName });
+    emitOps([op]);
+  },
+
   // Column tag operations
   setColumnTag: (tableId, colId, tagName, tagValue) => {
-    const op = createOperation(get(), 'set_column_tag', colId, { tableId, tagName, tagValue });
+    const op = createOperation(get(), 'set_column_tag', colId, { tableId, colId, tagName, tagValue });
     emitOps([op]);
   },
 
   unsetColumnTag: (tableId, colId, tagName) => {
-    const op = createOperation(get(), 'unset_column_tag', colId, { tableId, tagName });
+    const op = createOperation(get(), 'unset_column_tag', colId, { tableId, colId, tagName });
     emitOps([op]);
   },
 

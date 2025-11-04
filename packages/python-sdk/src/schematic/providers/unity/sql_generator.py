@@ -269,6 +269,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "unset_column_tag",
             "set_table_property",
             "unset_table_property",
+            "set_table_tag",
+            "unset_table_tag",
             "add_constraint",
             "drop_constraint",
             "add_row_filter",
@@ -490,6 +492,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._set_table_property(op)
         elif op_type == "unset_table_property":
             return self._unset_table_property(op)
+        elif op_type == "set_table_tag":
+            return self._set_table_tag(op)
+        elif op_type == "unset_table_tag":
+            return self._unset_table_tag(op)
 
         # Column operations
         elif op_type == "add_column":
@@ -802,7 +808,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         fqn_esc = self._build_fqn(*fqn.split("."))
         comment = self.escape_string(op.payload["comment"])
-        return f"ALTER TABLE {fqn_esc} SET COMMENT '{comment}'"
+        return f"COMMENT ON TABLE {fqn_esc} IS '{comment}'"
 
     def _set_table_property(self, op: Operation) -> str:
         fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
@@ -816,6 +822,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
         fqn_esc = self._build_fqn(*fqn.split("."))
         key = op.payload["key"]
         return f"ALTER TABLE {fqn_esc} UNSET TBLPROPERTIES ('{key}')"
+
+    def _set_table_tag(self, op: Operation) -> str:
+        fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        fqn_esc = self._build_fqn(*fqn.split("."))
+        tag_name = op.payload["tagName"]
+        tag_value = self.escape_string(op.payload["tagValue"])
+        return f"ALTER TABLE {fqn_esc} SET TAGS ('{tag_name}' = '{tag_value}')"
+
+    def _unset_table_tag(self, op: Operation) -> str:
+        fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        fqn_esc = self._build_fqn(*fqn.split("."))
+        tag_name = op.payload["tagName"]
+        return f"ALTER TABLE {fqn_esc} UNSET TAGS ('{tag_name}')"
 
     # Column operations
     def _add_column(self, op: Operation) -> str:
@@ -1004,6 +1023,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 "unset_column_tag",
                 "set_table_property",
                 "unset_table_property",
+                "set_table_tag",
+                "unset_table_tag",
             ]:
                 table_id = op.payload.get("tableId")
             elif op_type in [
@@ -1047,6 +1068,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 batch["column_ops"].append(op)
             elif op_type in ["set_table_property", "unset_table_property"]:
                 batch["property_ops"].append(op)
+            elif op_type in ["set_table_tag", "unset_table_tag"]:
+                # Table tags must be set AFTER table creation
+                batch["other_ops"].append(op)
+            elif op_type == "set_table_comment":
+                # Table comments can be included in CREATE TABLE
+                batch["other_ops"].append(op)
             elif op_type == "reorder_columns":
                 batch["reorder_ops"].append(op)
             elif op_type in ["add_constraint", "drop_constraint"]:
@@ -1117,11 +1144,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._generate_alter_statements_for_table(table_id, batch_dict)
 
     def _generate_create_table_with_columns(self, table_id: str, batch_info: dict[str, Any]) -> str:
-        """Generate complete CREATE TABLE statement with all columns included"""
+        """Generate complete CREATE TABLE statement with all columns included, plus ALTER statements for column tags"""
         table_op = batch_info["table_op"]
         column_ops = batch_info["column_ops"]
         property_ops = batch_info["property_ops"]
         reorder_ops = batch_info.get("reorder_ops", [])
+        other_ops = batch_info.get("other_ops", [])
 
         if not table_op:
             return "-- Error: No table creation operation found"
@@ -1202,9 +1230,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 properties.append(f"'{key}' = '{self.escape_string(value)}'")
 
         # Build table comment
+        # Check both table_op payload and set_table_comment operations in other_ops
         table_comment = ""
-        if table_op.payload.get("comment"):
-            table_comment = f" COMMENT '{self.escape_string(table_op.payload['comment'])}'"
+        comment_value = table_op.payload.get("comment")
+        
+        # Check if there's a set_table_comment operation
+        for op in other_ops:
+            if op.op.endswith("set_table_comment"):
+                comment_value = op.payload.get("comment")
+                break
+        
+        if comment_value:
+            table_comment = f"\nCOMMENT '{self.escape_string(comment_value)}'"
 
         # Add warnings for external tables
         warnings = ""
@@ -1229,16 +1266,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
         properties_sql = f"\nTBLPROPERTIES ({', '.join(properties)})" if properties else ""
 
         if columns_sql:
-            return f"""{warnings}CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} (
+            create_sql = f"""{warnings}CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} (
 {columns_sql}
 ) USING {table_format}{table_comment}{partition_clause}{cluster_clause}{properties_sql}{location_clause}"""
         else:
             # No columns yet - create empty table (fallback to original behavior)
-            return (
+            create_sql = (
                 f"{warnings}"
                 f"CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} () "
                 f"USING {table_format}{table_comment}{partition_clause}{cluster_clause}{properties_sql}{location_clause}"
             )
+        
+        # Generate ALTER TABLE statements for operations that must happen after table creation
+        # (e.g., table tags, column tags)
+        # Skip set_table_comment since it's already included in CREATE TABLE
+        statements = [create_sql]
+        
+        for op in other_ops:
+            op_type = op.op.replace("unity.", "")
+            # Skip set_table_comment as it's already in CREATE TABLE
+            if op_type == "set_table_comment":
+                continue
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append(sql)
+            except Exception as e:
+                statements.append(f"-- Error generating SQL for {op.id}: {e}")
+        
+        return ";\n".join(statements)
 
     def _generate_alter_statements_for_table(
         self, table_id: str, batch_info: dict[str, Any]

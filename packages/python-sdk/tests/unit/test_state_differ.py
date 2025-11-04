@@ -625,3 +625,561 @@ class TestUnityStateDiffer:
         ops = differ.generate_diff_operations()
 
         assert len(ops) == 0
+
+    def test_diff_table_comment_change(self) -> None:
+        """Should detect table comment change"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "comment": "Old comment",
+                                    "columns": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "comment": "Updated comment",
+                                    "columns": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) == 1
+        assert ops[0].op == "unity.set_table_comment"
+        assert ops[0].target == "tbl_1"
+        assert ops[0].payload["tableId"] == "tbl_1"
+        assert ops[0].payload["comment"] == "Updated comment"
+
+    def test_diff_table_comment_added(self) -> None:
+        """Should detect when table comment is added"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [{"id": "tbl_1", "name": "customers", "columns": []}],
+                        }
+                    ],
+                }
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "comment": "New comment",
+                                    "columns": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) == 1
+        assert ops[0].op == "unity.set_table_comment"
+        assert ops[0].payload["comment"] == "New comment"
+
+    def test_diff_table_property_added(self) -> None:
+        """Should detect when table property is added"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "properties": {},
+                                    "columns": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "properties": {"team": "data-eng", "tier": "gold"},
+                                    "columns": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) == 2
+        set_property_ops = [op for op in ops if op.op == "unity.set_table_property"]
+        assert len(set_property_ops) == 2
+
+        # Check both properties were added
+        keys = {op.payload["key"] for op in set_property_ops}
+        assert keys == {"team", "tier"}
+
+    def test_diff_table_property_updated(self) -> None:
+        """Should detect when table property is updated"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "properties": {"team": "old-team"},
+                                    "columns": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "properties": {"team": "new-team"},
+                                    "columns": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) == 1
+        assert ops[0].op == "unity.set_table_property"
+        assert ops[0].payload["key"] == "team"
+        assert ops[0].payload["value"] == "new-team"
+
+    def test_diff_table_property_removed(self) -> None:
+        """Should detect when table property is removed"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "properties": {"team": "data-eng", "tier": "gold"},
+                                    "columns": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "properties": {"team": "data-eng"},
+                                    "columns": [],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) == 1
+        assert ops[0].op == "unity.unset_table_property"
+        assert ops[0].payload["key"] == "tier"
+
+    def test_diff_column_tag_added(self) -> None:
+        """Should detect when column tag is added"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": False,
+                                            "tags": {},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": False,
+                                            "tags": {"pii": "true", "sensitive": "high"},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) == 2
+        set_tag_ops = [op for op in ops if op.op == "unity.set_column_tag"]
+        assert len(set_tag_ops) == 2
+
+        # Check both tags were added
+        tag_names = {op.payload["tagName"] for op in set_tag_ops}
+        assert tag_names == {"pii", "sensitive"}
+
+    def test_diff_column_tag_updated(self) -> None:
+        """Should detect when column tag value is updated"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": False,
+                                            "tags": {"pii": "false"},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": False,
+                                            "tags": {"pii": "true"},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) == 1
+        assert ops[0].op == "unity.set_column_tag"
+        assert ops[0].payload["tagName"] == "pii"
+        assert ops[0].payload["tagValue"] == "true"
+
+    def test_diff_column_tag_removed(self) -> None:
+        """Should detect when column tag is removed"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": False,
+                                            "tags": {"pii": "true", "sensitive": "high"},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": False,
+                                            "tags": {"pii": "true"},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) == 1
+        assert ops[0].op == "unity.unset_column_tag"
+        assert ops[0].payload["tagName"] == "sensitive"
+
+    def test_diff_multiple_metadata_changes(self) -> None:
+        """Should detect multiple metadata changes at once"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "comment": "Old comment",
+                                    "properties": {"team": "old-team"},
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": False,
+                                            "comment": "Old email comment",
+                                            "tags": {"pii": "false"},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "comment": "New comment",
+                                    "properties": {"team": "new-team", "tier": "gold"},
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": False,
+                                            "comment": "New email comment",
+                                            "tags": {"pii": "true", "sensitive": "high"},
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        # Should have: 1 table comment + 2 table properties + 1 column comment + 2 column tags = 6 ops
+        assert len(ops) == 6
+
+        op_types = [op.op for op in ops]
+        assert "unity.set_table_comment" in op_types
+        assert op_types.count("unity.set_table_property") == 2
+        assert "unity.set_column_comment" in op_types
+        assert op_types.count("unity.set_column_tag") == 2

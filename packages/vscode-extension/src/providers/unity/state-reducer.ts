@@ -118,6 +118,7 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
             clusterColumns: op.payload.clusterColumns,
             columns: [],
             properties: {},
+            tags: {},
             constraints: [],
             grants: [],
           };
@@ -156,6 +157,20 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
       const table = findTable(newState, op.payload.tableId);
       if (table) {
         delete table.properties[op.payload.key];
+      }
+      break;
+    }
+    case 'set_table_tag': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table) {
+        table.tags[op.payload.tagName] = op.payload.tagValue;
+      }
+      break;
+    }
+    case 'unset_table_tag': {
+      const table = findTable(newState, op.payload.tableId);
+      if (table && table.tags) {
+        delete table.tags[op.payload.tagName];
       }
       break;
     }

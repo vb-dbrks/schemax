@@ -102,7 +102,8 @@ class UnityTable(BaseModel):
     cluster_columns: list[str] | None = Field(None, alias="clusterColumns")  # For CLUSTER BY
     column_mapping: Literal["name", "id"] | None = Field(None, alias="columnMapping")
     columns: list[UnityColumn] = []
-    properties: dict[str, str] = {}
+    properties: dict[str, str] = {}  # TBLPROPERTIES (Delta Lake config)
+    tags: dict[str, str] = {}  # TABLE TAGS (Unity Catalog governance)
     constraints: list[UnityConstraint] = []
     grants: list[UnityGrant] = []
     comment: str | None = None

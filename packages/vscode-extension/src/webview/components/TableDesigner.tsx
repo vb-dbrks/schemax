@@ -3,6 +3,7 @@ import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { ColumnGrid } from './ColumnGrid';
 import { TableProperties } from './TableProperties';
+import { TableTags } from './TableTags';
 import { TableConstraints } from './TableConstraints';
 import { SecurityGovernance } from './SecurityGovernance';
 
@@ -123,6 +124,10 @@ export const TableDesigner: React.FC = () => {
 
       <div className="properties-section">
         <TableProperties tableId={table.id} />
+      </div>
+
+      <div className="tags-section">
+        <TableTags tableId={table.id} />
       </div>
 
       <div className="constraints-section">

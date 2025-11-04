@@ -29,6 +29,10 @@ export const UNITY_OPERATIONS = {
   SET_TABLE_PROPERTY: 'unity.set_table_property',
   UNSET_TABLE_PROPERTY: 'unity.unset_table_property',
   
+  // Table tag operations
+  SET_TABLE_TAG: 'unity.set_table_tag',
+  UNSET_TABLE_TAG: 'unity.unset_table_tag',
+  
   // Column operations
   ADD_COLUMN: 'unity.add_column',
   RENAME_COLUMN: 'unity.rename_column',
@@ -187,6 +191,26 @@ export const unityOperationMetadata: OperationMetadata[] = [
     description: 'Remove a table property',
     category: OperationCategory.Metadata,
     requiredFields: ['tableId', 'key'],
+    optionalFields: [],
+    isDestructive: false,
+  },
+  
+  // Table tag operations
+  {
+    type: UNITY_OPERATIONS.SET_TABLE_TAG,
+    displayName: 'Set Table Tag',
+    description: 'Set a Unity Catalog table tag (for governance)',
+    category: OperationCategory.Metadata,
+    requiredFields: ['tableId', 'tagName', 'tagValue'],
+    optionalFields: [],
+    isDestructive: false,
+  },
+  {
+    type: UNITY_OPERATIONS.UNSET_TABLE_TAG,
+    displayName: 'Unset Table Tag',
+    description: 'Remove a Unity Catalog table tag',
+    category: OperationCategory.Metadata,
+    requiredFields: ['tableId', 'tagName'],
     optionalFields: [],
     isDestructive: false,
   },

@@ -249,7 +249,6 @@ class TestTableSQL:
         assert "DROP TABLE" in result.sql
         assert "`bronze`.`raw`.`users`" in result.sql
 
-    @pytest.mark.skip(reason="SQL syntax verification needed - see issue #20")
     def test_set_table_comment(self, sample_unity_state):
         """Test COMMENT ON TABLE SQL generation"""
         builder = OperationBuilder()
