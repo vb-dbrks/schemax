@@ -151,9 +151,7 @@ class UnityStateDiffer(StateDiffer):
 
                 # Check for table tag changes
                 ops.extend(
-                    self._diff_table_tags(
-                        tbl_id, old_tbl.get("tags", {}), tbl.get("tags", {})
-                    )
+                    self._diff_table_tags(tbl_id, old_tbl.get("tags", {}), tbl.get("tags", {}))
                 )
 
                 # Compare columns within table
@@ -184,9 +182,8 @@ class UnityStateDiffer(StateDiffer):
             else:
                 # Column exists in both - check for changes
                 old_col = old_columns[col_id]
-                
-                try:
 
+                try:
                     # Check for rename (only if both have name)
                     if "name" in old_col and "name" in col and old_col["name"] != col["name"]:
                         if self._detect_rename(
@@ -200,7 +197,9 @@ class UnityStateDiffer(StateDiffer):
 
                     # Check for type change
                     if old_col.get("type") != col.get("type") and "type" in col:
-                        ops.append(self._create_change_column_type_op(col_id, table_id, col["type"]))
+                        ops.append(
+                            self._create_change_column_type_op(col_id, table_id, col["type"])
+                        )
 
                     # Check for nullable change
                     if old_col.get("nullable") != col.get("nullable"):
@@ -279,7 +278,7 @@ class UnityStateDiffer(StateDiffer):
         new_tags: dict[str, Any],
     ) -> list[Operation]:
         """Compare column tags
-        
+
         Args:
             column_id: Column ID
             table_id: Table ID
@@ -343,9 +342,9 @@ class UnityStateDiffer(StateDiffer):
             # Safety check - skip columns missing required fields
             if not all(key in column for key in ["id", "name", "type"]):
                 continue
-                
+
             ops.append(self._create_add_column_op(column, table_id))
-            
+
             # Add column tags if present
             if column.get("tags"):
                 column_name = column.get("name")
@@ -358,14 +357,14 @@ class UnityStateDiffer(StateDiffer):
                         )
 
         return ops
-    
+
     def _add_all_tags_for_table(self, table_id: str, table: dict[str, Any]) -> list[Operation]:
         """Add all tags for a newly created table"""
         ops: list[Operation] = []
-        
+
         for tag_name, tag_value in table.get("tags", {}).items():
             ops.append(self._create_set_table_tag_op(table_id, tag_name, str(tag_value)))
-        
+
         return ops
 
     # Operation creation helpers
@@ -441,7 +440,7 @@ class UnityStateDiffer(StateDiffer):
             "schemaId": schema_id,
             "format": table.get("format", "delta"),
         }
-        
+
         # Include optional fields if present
         if "comment" in table and table["comment"]:
             payload["comment"] = table["comment"]
@@ -455,7 +454,7 @@ class UnityStateDiffer(StateDiffer):
             payload["partitionColumns"] = table["partitionColumns"]
         if "clusterColumns" in table:
             payload["clusterColumns"] = table["clusterColumns"]
-        
+
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
@@ -592,9 +591,7 @@ class UnityStateDiffer(StateDiffer):
             payload={"tableId": table_id, "key": key},
         )
 
-    def _create_set_table_tag_op(
-        self, table_id: str, tag_name: str, tag_value: str
-    ) -> Operation:
+    def _create_set_table_tag_op(self, table_id: str, tag_name: str, tag_value: str) -> Operation:
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
@@ -618,7 +615,7 @@ class UnityStateDiffer(StateDiffer):
         self, column_id: str, table_id: str, column_name: str, tag_name: str, tag_value: str
     ) -> Operation:
         """Create set_column_tag operation
-        
+
         Args:
             column_id: Column ID
             table_id: Table ID
@@ -644,7 +641,7 @@ class UnityStateDiffer(StateDiffer):
         self, column_id: str, table_id: str, column_name: str, tag_name: str
     ) -> Operation:
         """Create unset_column_tag operation
-        
+
         Args:
             column_id: Column ID
             table_id: Table ID

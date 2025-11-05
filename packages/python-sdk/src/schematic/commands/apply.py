@@ -221,7 +221,7 @@ def apply_to_environment(
         for i, stmt in enumerate(statements, 1):
             console.print(f"\n[cyan]Statement {i}/{len(statements)}:[/cyan]")
             stmt_lines = stmt.strip().split("\n")
-            
+
             if len(stmt_lines) <= 5:
                 # Short statement - show in full
                 for line in stmt_lines:

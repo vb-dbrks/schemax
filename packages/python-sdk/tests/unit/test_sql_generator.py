@@ -224,12 +224,12 @@ class TestTableSQL:
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
         op = builder.add_table(
-            "table_001", 
-            "events", 
-            "schema_456", 
-            "delta", 
+            "table_001",
+            "events",
+            "schema_456",
+            "delta",
             comment="Table for storing event data",
-            op_id="op_007"
+            op_id="op_007",
         )
 
         result = generator.generate_sql_for_operation(op)
@@ -546,7 +546,8 @@ class TestColumnSQL:
         assert "ADD COLUMN" in result.sql
         assert "`created_at`" in result.sql
         assert "TIMESTAMP" in result.sql
-        assert "NOT NULL" in result.sql
+        # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMN for Delta tables
+        assert "NOT NULL" not in result.sql
         assert "COMMENT 'Creation timestamp'" in result.sql
 
     def test_add_column_nullable(self, sample_unity_state):
@@ -1031,7 +1032,8 @@ class TestSQLOptimization:
         # Should use ADD COLUMNS (plural) syntax with parentheses
         assert "ADD COLUMNS (" in sql
         assert "`col1` STRING," in sql
-        assert "`col2` INT NOT NULL," in sql
+        # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
+        assert "`col2` INT," in sql or "`col2` INT\n" in sql
         assert "`col3` DOUBLE COMMENT 'Test comment'" in sql
 
         # Verify correct format with closing parenthesis and semicolon
@@ -1060,24 +1062,24 @@ class TestSQLOptimization:
         # CREATE TABLE with comment + ADD COLUMNS
         table_ops = [
             builder.add_table(
-                "table_789", 
-                "test", 
-                "schema_456", 
+                "table_789",
+                "test",
+                "schema_456",
                 "delta",
                 comment="Table for test data",
-                op_id="table_001"
+                op_id="table_001",
             ),
             builder.add_column(
                 "col_001", "table_789", "id", "STRING", nullable=False, op_id="col_001"
             ),
             builder.add_column(
-                "col_002", 
-                "table_789", 
-                "name", 
-                "STRING", 
+                "col_002",
+                "table_789",
+                "name",
+                "STRING",
                 nullable=True,
                 comment="User name",
-                op_id="col_002"
+                op_id="col_002",
             ),
         ]
 
@@ -1089,7 +1091,7 @@ class TestSQLOptimization:
         assert "COMMENT 'Table for test data'" in sql
         assert "`id` STRING NOT NULL" in sql
         assert "`name` STRING COMMENT 'User name'" in sql
-        
+
         # Should NOT have separate ALTER TABLE for comment (batched into CREATE)
         assert "ALTER TABLE" not in sql or sql.count("ALTER TABLE") == 0
 
@@ -1107,13 +1109,7 @@ class TestSQLOptimization:
 
         # CREATE TABLE + table tags
         table_ops = [
-            builder.add_table(
-                "table_789", 
-                "test", 
-                "schema_456", 
-                "delta",
-                op_id="table_001"
-            ),
+            builder.add_table("table_789", "test", "schema_456", "delta", op_id="table_001"),
             builder.set_table_tag("table_789", "department", "engineering", op_id="tag_001"),
             builder.set_table_tag("table_789", "owner", "data-team", op_id="tag_002"),
         ]
@@ -1123,7 +1119,7 @@ class TestSQLOptimization:
 
         # Should have CREATE TABLE
         assert sql.count("CREATE TABLE") == 1
-        
+
         # Should have ALTER TABLE SET TAGS statements (table tags must be set after creation)
         assert "ALTER TABLE" in sql
         assert "SET TAGS" in sql
@@ -1144,18 +1140,14 @@ class TestSQLOptimization:
 
         # CREATE TABLE + columns with tags
         table_ops = [
-            builder.add_table(
-                "table_789", 
-                "test", 
-                "schema_456", 
-                "delta",
-                op_id="table_001"
-            ),
+            builder.add_table("table_789", "test", "schema_456", "delta", op_id="table_001"),
             builder.add_column(
                 "col_001", "table_789", "email", "STRING", nullable=False, op_id="col_001"
             ),
             builder.set_column_tag("col_001", "table_789", "pii", "true", op_id="tag_001"),
-            builder.set_column_tag("col_001", "table_789", "classification", "sensitive", op_id="tag_002"),
+            builder.set_column_tag(
+                "col_001", "table_789", "classification", "sensitive", op_id="tag_002"
+            ),
         ]
 
         generator = UnitySQLGenerator(state_with_schema.model_dump(by_alias=True))
@@ -1164,7 +1156,7 @@ class TestSQLOptimization:
         # Should have CREATE TABLE with column
         assert sql.count("CREATE TABLE") == 1
         assert "`email` STRING NOT NULL" in sql
-        
+
         # Should have ALTER TABLE ALTER COLUMN SET TAGS statements
         assert "ALTER TABLE" in sql
         assert "ALTER COLUMN" in sql
@@ -1176,42 +1168,48 @@ class TestSQLOptimization:
         """Test that column tags are detected by state differ and generate correct SQL"""
         from schematic.providers.unity.state_differ import UnityStateDiffer
         from schematic.providers.unity.state_reducer import apply_operations
-        
+
         builder = OperationBuilder()
-        
+
         # Old state: empty
         old_state = empty_unity_state
-        
+
         # New state: catalog with table with columns that have tags
         setup_ops = [
             builder.add_catalog("cat_123", "test", op_id="setup_001"),
             builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
             builder.add_table("table_789", "users", "schema_456", "delta", op_id="table_001"),
-            builder.add_column("col_001", "table_789", "email", "STRING", nullable=False, op_id="col_001"),
+            builder.add_column(
+                "col_001", "table_789", "email", "STRING", nullable=False, op_id="col_001"
+            ),
             builder.set_column_tag("col_001", "table_789", "pii", "true", op_id="tag_001"),
             builder.set_column_tag("col_001", "table_789", "category", "contact", op_id="tag_002"),
         ]
         new_state = apply_operations(empty_unity_state, setup_ops)
-        
+
         # Generate diff
-        differ = UnityStateDiffer(old_state.model_dump(by_alias=True), new_state.model_dump(by_alias=True), [], setup_ops)
+        differ = UnityStateDiffer(
+            old_state.model_dump(by_alias=True), new_state.model_dump(by_alias=True), [], setup_ops
+        )
         diff_ops = differ.generate_diff_operations()
-        
+
         # Verify column tag operations were generated
         column_tag_ops = [op for op in diff_ops if op.op == "unity.set_column_tag"]
-        assert len(column_tag_ops) == 2, f"Expected 2 column tag operations, got {len(column_tag_ops)}"
-        
+        assert len(column_tag_ops) == 2, (
+            f"Expected 2 column tag operations, got {len(column_tag_ops)}"
+        )
+
         # Verify operations have required fields
         for op in column_tag_ops:
             assert "tableId" in op.payload
             assert "name" in op.payload  # Column name for SQL generation
             assert "tagName" in op.payload
             assert "tagValue" in op.payload
-        
+
         # Generate SQL and verify
         generator = UnitySQLGenerator(new_state.model_dump(by_alias=True))
         sql = generator.generate_sql(diff_ops)
-        
+
         # Should generate ALTER COLUMN SET TAGS statements
         assert "ALTER COLUMN `email` SET TAGS ('pii' = 'true')" in sql
         assert "ALTER COLUMN `email` SET TAGS ('category' = 'contact')" in sql
@@ -1326,7 +1324,9 @@ class TestSQLOptimization:
         # Batched ADD COLUMNS should use proper syntax
         assert "ADD COLUMNS (" in sql
         assert "`col1` STRING," in sql
-        assert "`col2` INT NOT NULL" in sql
+        # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
+        assert "`col2` INT" in sql
+        assert "NOT NULL" not in sql  # Explicitly verify NOT NULL is absent
 
         # DROP should be separate
         assert "DROP COLUMN" in sql

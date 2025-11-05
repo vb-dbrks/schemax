@@ -770,11 +770,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Use _build_fqn for consistent formatting
         fqn_esc = self._build_fqn(catalog_name, schema_name, table_name)
 
+        # Add table comment if present
+        comment = op.payload.get("comment", "")
+        comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
+
         # Create empty table (columns added via add_column ops)
         return (
             f"{warnings}"
             f"CREATE {external_keyword}TABLE IF NOT EXISTS {fqn_esc} () "
-            f"USING {table_format}{partition_clause}{cluster_clause}{location_clause}"
+            f"USING {table_format}{comment_clause}{partition_clause}{cluster_clause}{location_clause}"
         )
 
     def _rename_table(self, op: Operation) -> str:
@@ -1118,7 +1122,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     column_ops.append(op)
                 # Exclude operations that will be handled by dedicated lists below
                 # (property_ops, constraint_ops, reorder_ops, governance_ops)
-                elif op_type not in ["set_table_property", "unset_table_property", "add_constraint", "drop_constraint", "reorder_columns", "add_row_filter", "update_row_filter", "remove_row_filter", "add_column_mask", "update_column_mask", "remove_column_mask"]:
+                elif op_type not in [
+                    "set_table_property",
+                    "unset_table_property",
+                    "add_constraint",
+                    "drop_constraint",
+                    "reorder_columns",
+                    "add_row_filter",
+                    "update_row_filter",
+                    "remove_row_filter",
+                    "add_column_mask",
+                    "update_column_mask",
+                    "remove_column_mask",
+                ]:
                     other_ops.append(op)
 
             batch_dict = {
@@ -1168,7 +1184,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Separate add_column operations from other column operations (like tags)
         add_column_ops = [op for op in column_ops if op.op.endswith("add_column")]
         other_column_ops = [op for op in column_ops if not op.op.endswith("add_column")]
-        
+
         # Build column definitions as a dictionary (by column ID - use op.target for add_column)
         columns_dict = {}
         for col_op in add_column_ops:
@@ -1195,10 +1211,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     columns.append(columns_dict[col_id])
         else:
             # No reorder: use the order columns were added
-            columns = [
-                columns_dict[col_id]
-                for col_id in columns_dict.keys()
-            ]
+            columns = [columns_dict[col_id] for col_id in columns_dict.keys()]
 
         # Build table format
         table_format = table_op.payload.get("format", "DELTA").upper()
@@ -1238,13 +1251,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Check both table_op payload and set_table_comment operations in other_ops
         table_comment = ""
         comment_value = table_op.payload.get("comment")
-        
+
         # Check if there's a set_table_comment operation
         for op in other_ops:
             if op.op.endswith("set_table_comment"):
                 comment_value = op.payload.get("comment")
                 break
-        
+
         if comment_value:
             table_comment = f"\nCOMMENT '{self.escape_string(comment_value)}'"
 
@@ -1281,12 +1294,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 f"CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} () "
                 f"USING {table_format}{table_comment}{partition_clause}{cluster_clause}{properties_sql}{location_clause}"
             )
-        
+
         # Generate ALTER TABLE statements for operations that must happen after table creation
         # (e.g., table tags, column tags)
         # Skip set_table_comment since it's already included in CREATE TABLE
         statements = [create_sql]
-        
+
         # Process other column operations (like column tags) after table creation
         for op in other_column_ops:
             op_type = op.op.replace("unity.", "")
@@ -1296,7 +1309,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     statements.append(sql)
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {op.id}: {e}")
-        
+
         # Process other operations (like table tags)
         for op in other_ops:
             op_type = op.op.replace("unity.", "")
@@ -1309,7 +1322,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     statements.append(sql)
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {op.id}: {e}")
-        
+
         return ";\n".join(statements)
 
     def _generate_alter_statements_for_table(
