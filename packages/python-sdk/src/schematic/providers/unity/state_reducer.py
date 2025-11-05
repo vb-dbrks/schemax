@@ -109,8 +109,10 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                         path=op.payload.get("path"),
                         partition_columns=op.payload.get("partitionColumns"),
                         cluster_columns=op.payload.get("clusterColumns"),
+                        comment=op.payload.get("comment"),
                         columns=[],
                         properties={},
+                        tags={},
                         constraints=[],
                         grants=[],
                         column_mapping=None,
@@ -144,6 +146,16 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
         table_opt = _find_table(new_state, op.payload["tableId"])
         if table_opt and op.payload["key"] in table_opt.properties:
             del table_opt.properties[op.payload["key"]]
+
+    elif op_type == "set_table_tag":
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt:
+            table_opt.tags[op.payload["tagName"]] = op.payload["tagValue"]
+
+    elif op_type == "unset_table_tag":
+        table_opt = _find_table(new_state, op.payload["tableId"])
+        if table_opt and op.payload["tagName"] in table_opt.tags:
+            del table_opt.tags[op.payload["tagName"]]
 
     # Column operations
     elif op_type == "add_column":

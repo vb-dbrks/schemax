@@ -72,7 +72,8 @@ export interface UnityTable extends BaseObject {
   clusterColumns?: string[]; // For CLUSTER BY clause (liquid clustering)
   columnMapping?: 'name' | 'id';
   columns: UnityColumn[];
-  properties: Record<string, string>;
+  properties: Record<string, string>; // TBLPROPERTIES (Delta Lake config)
+  tags: Record<string, string>; // TABLE TAGS (Unity Catalog governance)
   constraints: UnityConstraint[];
   grants: UnityGrant[];
   comment?: string;

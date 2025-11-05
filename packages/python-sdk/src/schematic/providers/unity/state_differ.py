@@ -138,6 +138,22 @@ class UnityStateDiffer(StateDiffer):
                             self._create_rename_table_op(tbl_id, old_tbl["name"], tbl["name"])
                         )
 
+                # Check for table comment change
+                if old_tbl.get("comment") != tbl.get("comment"):
+                    ops.append(self._create_set_table_comment_op(tbl_id, tbl.get("comment")))
+
+                # Check for table property changes (TBLPROPERTIES / tags)
+                ops.extend(
+                    self._diff_table_properties(
+                        tbl_id, old_tbl.get("properties", {}), tbl.get("properties", {})
+                    )
+                )
+
+                # Check for table tag changes
+                ops.extend(
+                    self._diff_table_tags(tbl_id, old_tbl.get("tags", {}), tbl.get("tags", {}))
+                )
+
                 # Compare columns within table
                 ops.extend(self._diff_columns(tbl_id, old_tbl, tbl))
 
@@ -160,40 +176,133 @@ class UnityStateDiffer(StateDiffer):
         # Detect added columns
         for col_id, col in new_columns.items():
             if col_id not in old_columns:
-                ops.append(self._create_add_column_op(col, table_id))
+                # Safety check - skip columns missing required fields
+                if all(key in col for key in ["id", "name", "type"]):
+                    ops.append(self._create_add_column_op(col, table_id))
             else:
                 # Column exists in both - check for changes
                 old_col = old_columns[col_id]
 
-                # Check for rename
-                if old_col["name"] != col["name"]:
-                    if self._detect_rename(
-                        col_id, col_id, old_col["name"], col["name"], "rename_column"
-                    ):
-                        ops.append(
-                            self._create_rename_column_op(
-                                col_id, table_id, old_col["name"], col["name"]
+                try:
+                    # Check for rename (only if both have name)
+                    if "name" in old_col and "name" in col and old_col["name"] != col["name"]:
+                        if self._detect_rename(
+                            col_id, col_id, old_col["name"], col["name"], "rename_column"
+                        ):
+                            ops.append(
+                                self._create_rename_column_op(
+                                    col_id, table_id, old_col["name"], col["name"]
+                                )
                             )
+
+                    # Check for type change
+                    if old_col.get("type") != col.get("type") and "type" in col:
+                        ops.append(
+                            self._create_change_column_type_op(col_id, table_id, col["type"])
                         )
 
-                # Check for type change
-                if old_col.get("type") != col.get("type"):
-                    ops.append(self._create_change_column_type_op(col_id, table_id, col["type"]))
+                    # Check for nullable change
+                    if old_col.get("nullable") != col.get("nullable"):
+                        ops.append(self._create_set_nullable_op(col_id, table_id, col["nullable"]))
 
-                # Check for nullable change
-                if old_col.get("nullable") != col.get("nullable"):
-                    ops.append(self._create_set_nullable_op(col_id, table_id, col["nullable"]))
+                    # Check for comment change
+                    if old_col.get("comment") != col.get("comment"):
+                        ops.append(
+                            self._create_set_column_comment_op(col_id, table_id, col.get("comment"))
+                        )
 
-                # Check for comment change
-                if old_col.get("comment") != col.get("comment"):
-                    ops.append(
-                        self._create_set_column_comment_op(col_id, table_id, col.get("comment"))
-                    )
+                    # Check for column tag changes (only if column has name)
+                    if "name" in col:
+                        ops.extend(
+                            self._diff_column_tags(
+                                col_id,
+                                table_id,
+                                col["name"],  # Pass column name for SQL generation
+                                old_col.get("tags", {}),
+                                col.get("tags", {}),
+                            )
+                        )
+                except Exception:
+                    # Re-raise to maintain error handling behavior
+                    raise
 
         # Detect removed columns
         for col_id, col in old_columns.items():
             if col_id not in new_columns:
                 ops.append(self._create_drop_column_op(col, table_id))
+
+        return ops
+
+    def _diff_table_properties(
+        self, table_id: str, old_props: dict[str, Any], new_props: dict[str, Any]
+    ) -> list[Operation]:
+        """Compare table properties (TBLPROPERTIES)"""
+        ops: list[Operation] = []
+
+        # Added or updated properties
+        for key, value in new_props.items():
+            if key not in old_props or old_props[key] != value:
+                ops.append(self._create_set_table_property_op(table_id, key, value))
+
+        # Removed properties
+        for key in old_props:
+            if key not in new_props:
+                ops.append(self._create_unset_table_property_op(table_id, key))
+
+        return ops
+
+    def _diff_table_tags(
+        self, table_id: str, old_tags: dict[str, Any], new_tags: dict[str, Any]
+    ) -> list[Operation]:
+        """Compare table tags (Unity Catalog governance tags)"""
+        ops: list[Operation] = []
+
+        # Added or updated tags
+        for tag_name, tag_value in new_tags.items():
+            if tag_name not in old_tags or old_tags[tag_name] != tag_value:
+                ops.append(self._create_set_table_tag_op(table_id, tag_name, str(tag_value)))
+
+        # Removed tags
+        for tag_name in old_tags:
+            if tag_name not in new_tags:
+                ops.append(self._create_unset_table_tag_op(table_id, tag_name))
+
+        return ops
+
+    def _diff_column_tags(
+        self,
+        column_id: str,
+        table_id: str,
+        column_name: str,
+        old_tags: dict[str, Any],
+        new_tags: dict[str, Any],
+    ) -> list[Operation]:
+        """Compare column tags
+
+        Args:
+            column_id: Column ID
+            table_id: Table ID
+            column_name: Column name (for SQL generation)
+            old_tags: Old tags dict
+            new_tags: New tags dict
+        """
+        ops: list[Operation] = []
+
+        # Added or updated tags
+        for tag_name, tag_value in new_tags.items():
+            if tag_name not in old_tags or old_tags[tag_name] != tag_value:
+                ops.append(
+                    self._create_set_column_tag_op(
+                        column_id, table_id, column_name, tag_name, str(tag_value)
+                    )
+                )
+
+        # Removed tags
+        for tag_name in old_tags:
+            if tag_name not in new_tags:
+                ops.append(
+                    self._create_unset_column_tag_op(column_id, table_id, column_name, tag_name)
+                )
 
         return ops
 
@@ -220,6 +329,8 @@ class UnityStateDiffer(StateDiffer):
             ops.append(self._create_add_table_op(table, schema_id))
             # Add all columns in this new table
             ops.extend(self._add_all_columns_in_table(table["id"], table))
+            # Add all tags for this table
+            ops.extend(self._add_all_tags_for_table(table["id"], table))
 
         return ops
 
@@ -228,7 +339,31 @@ class UnityStateDiffer(StateDiffer):
         ops: list[Operation] = []
 
         for column in table.get("columns", []):
+            # Safety check - skip columns missing required fields
+            if not all(key in column for key in ["id", "name", "type"]):
+                continue
+
             ops.append(self._create_add_column_op(column, table_id))
+
+            # Add column tags if present
+            if column.get("tags"):
+                column_name = column.get("name")
+                if column_name:  # Safety check - column must have name
+                    for tag_name, tag_value in column["tags"].items():
+                        ops.append(
+                            self._create_set_column_tag_op(
+                                column["id"], table_id, column_name, tag_name, str(tag_value)
+                            )
+                        )
+
+        return ops
+
+    def _add_all_tags_for_table(self, table_id: str, table: dict[str, Any]) -> list[Operation]:
+        """Add all tags for a newly created table"""
+        ops: list[Operation] = []
+
+        for tag_name, tag_value in table.get("tags", {}).items():
+            ops.append(self._create_set_table_tag_op(table_id, tag_name, str(tag_value)))
 
         return ops
 
@@ -299,18 +434,34 @@ class UnityStateDiffer(StateDiffer):
         )
 
     def _create_add_table_op(self, table: dict[str, Any], schema_id: str) -> Operation:
+        payload = {
+            "tableId": table["id"],
+            "name": table["name"],
+            "schemaId": schema_id,
+            "format": table.get("format", "delta"),
+        }
+
+        # Include optional fields if present
+        if "comment" in table and table["comment"]:
+            payload["comment"] = table["comment"]
+        if "external" in table:
+            payload["external"] = table["external"]
+        if "externalLocationName" in table:
+            payload["externalLocationName"] = table["externalLocationName"]
+        if "path" in table:
+            payload["path"] = table["path"]
+        if "partitionColumns" in table:
+            payload["partitionColumns"] = table["partitionColumns"]
+        if "clusterColumns" in table:
+            payload["clusterColumns"] = table["clusterColumns"]
+
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.add_table",
             target=table["id"],
-            payload={
-                "tableId": table["id"],
-                "name": table["name"],
-                "schemaId": schema_id,
-                "format": table.get("format", "delta"),
-            },
+            payload=payload,
         )
 
     def _create_rename_table_op(self, table_id: str, old_name: str, new_name: str) -> Operation:
@@ -408,4 +559,104 @@ class UnityStateDiffer(StateDiffer):
             op="unity.drop_column",
             target=column["id"],
             payload={"tableId": table_id, "name": column["name"]},
+        )
+
+    def _create_set_table_comment_op(self, table_id: str, comment: str | None) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.set_table_comment",
+            target=table_id,
+            payload={"tableId": table_id, "comment": comment or ""},
+        )
+
+    def _create_set_table_property_op(self, table_id: str, key: str, value: str) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.set_table_property",
+            target=table_id,
+            payload={"tableId": table_id, "key": key, "value": value},
+        )
+
+    def _create_unset_table_property_op(self, table_id: str, key: str) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.unset_table_property",
+            target=table_id,
+            payload={"tableId": table_id, "key": key},
+        )
+
+    def _create_set_table_tag_op(self, table_id: str, tag_name: str, tag_value: str) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.set_table_tag",
+            target=table_id,
+            payload={"tableId": table_id, "tagName": tag_name, "tagValue": tag_value},
+        )
+
+    def _create_unset_table_tag_op(self, table_id: str, tag_name: str) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.unset_table_tag",
+            target=table_id,
+            payload={"tableId": table_id, "tagName": tag_name},
+        )
+
+    def _create_set_column_tag_op(
+        self, column_id: str, table_id: str, column_name: str, tag_name: str, tag_value: str
+    ) -> Operation:
+        """Create set_column_tag operation
+
+        Args:
+            column_id: Column ID
+            table_id: Table ID
+            column_name: Column name (included as fallback for SQL generation)
+            tag_name: Tag name
+            tag_value: Tag value
+        """
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.set_column_tag",
+            target=column_id,
+            payload={
+                "tableId": table_id,
+                "name": column_name,  # Include for SQL generation fallback
+                "tagName": tag_name,
+                "tagValue": tag_value,
+            },
+        )
+
+    def _create_unset_column_tag_op(
+        self, column_id: str, table_id: str, column_name: str, tag_name: str
+    ) -> Operation:
+        """Create unset_column_tag operation
+
+        Args:
+            column_id: Column ID
+            table_id: Table ID
+            column_name: Column name (included as fallback for SQL generation)
+            tag_name: Tag name
+        """
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.unset_column_tag",
+            target=column_id,
+            payload={
+                "tableId": table_id,
+                "name": column_name,  # Include for SQL generation fallback
+                "tagName": tag_name,
+            },
         )

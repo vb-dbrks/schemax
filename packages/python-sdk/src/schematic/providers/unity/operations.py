@@ -26,6 +26,9 @@ UNITY_OPERATIONS = {
     "SET_TABLE_COMMENT": "unity.set_table_comment",
     "SET_TABLE_PROPERTY": "unity.set_table_property",
     "UNSET_TABLE_PROPERTY": "unity.unset_table_property",
+    # Table tag operations
+    "SET_TABLE_TAG": "unity.set_table_tag",
+    "UNSET_TABLE_TAG": "unity.unset_table_tag",
     # Column operations
     "ADD_COLUMN": "unity.add_column",
     "RENAME_COLUMN": "unity.rename_column",
@@ -185,6 +188,25 @@ unity_operation_metadata = [
         description="Remove a table property",
         category=OperationCategory.METADATA,
         required_fields=["tableId", "key"],
+        optional_fields=[],
+        is_destructive=False,
+    ),
+    # Table tag operations
+    OperationMetadata(
+        type=UNITY_OPERATIONS["SET_TABLE_TAG"],
+        display_name="Set Table Tag",
+        description="Set a Unity Catalog table tag (for governance)",
+        category=OperationCategory.METADATA,
+        required_fields=["tableId", "tagName", "tagValue"],
+        optional_fields=[],
+        is_destructive=False,
+    ),
+    OperationMetadata(
+        type=UNITY_OPERATIONS["UNSET_TABLE_TAG"],
+        display_name="Unset Table Tag",
+        description="Remove a Unity Catalog table tag",
+        category=OperationCategory.METADATA,
+        required_fields=["tableId", "tagName"],
         optional_fields=[],
         is_destructive=False,
     ),

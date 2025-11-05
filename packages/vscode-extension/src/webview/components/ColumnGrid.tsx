@@ -29,9 +29,11 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [editingColId, setEditingColId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{name: string, type: string, comment: string}>({name: '', type: '', comment: ''});
+  const [editValues, setEditValues] = useState<{name: string, type: string, nullable: boolean, comment: string}>({name: '', type: '', nullable: true, comment: ''});
   const [dropDialog, setDropDialog] = useState<{colId: string, name: string} | null>(null);
   const [addDialog, setAddDialog] = useState(false);
+  const [addColumnTags, setAddColumnTags] = useState<Record<string, string>>({});
+  const [addTagInput, setAddTagInput] = useState({tagName: '', tagValue: ''});
   const [tagsDialog, setTagsDialog] = useState<{colId: string, name: string} | null>(null);
   const [tagForm, setTagForm] = useState({tagName: '', tagValue: ''});
 
@@ -65,6 +67,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     setEditValues({
       name: col.name,
       type: col.type,
+      nullable: col.nullable,
       comment: col.comment || ''
     });
   };
@@ -79,6 +82,9 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     }
     if (editValues.type !== col.type) {
       changeColumnType(tableId, colId, editValues.type);
+    }
+    if (editValues.nullable !== col.nullable) {
+      setColumnNullable(tableId, colId, editValues.nullable);
     }
     if (editValues.comment !== (col.comment || '')) {
       setColumnComment(tableId, colId, editValues.comment);
@@ -99,8 +105,27 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     if (!name || !type) {
       return;
     }
-    addColumn(tableId, name, type, nullable, comment || undefined);
+    
+    // Add column with comment and tags
+    addColumn(tableId, name, type, nullable, comment || undefined, addColumnTags);
+    
+    // Reset state
     setAddDialog(false);
+    setAddColumnTags({});
+    setAddTagInput({tagName: '', tagValue: ''});
+  };
+  
+  const handleAddTagToNewColumn = () => {
+    if (addTagInput.tagName && addTagInput.tagValue) {
+      setAddColumnTags({...addColumnTags, [addTagInput.tagName]: addTagInput.tagValue});
+      setAddTagInput({tagName: '', tagValue: ''});
+    }
+  };
+  
+  const handleRemoveTagFromNewColumn = (tagName: string) => {
+    const newTags = {...addColumnTags};
+    delete newTags[tagName];
+    setAddColumnTags(newTags);
   };
 
   return (
@@ -191,26 +216,41 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                   <td style={{textAlign: 'center'}}>
                     <input
                       type="checkbox"
-                      checked={col.nullable}
-                      onChange={() => setColumnNullable(tableId, col.id, !col.nullable)}
-                      disabled={isEditing}
-                      title="Toggle nullable"
+                      checked={isEditing ? editValues.nullable : col.nullable}
+                      onChange={() => {
+                        if (isEditing) {
+                          setEditValues({...editValues, nullable: !editValues.nullable});
+                        }
+                      }}
+                      disabled={!isEditing}
+                      title={isEditing ? "Toggle nullable" : "Click Edit to change nullable"}
                     />
                   </td>
                   
                   <td>
-                    {col.tags && Object.keys(col.tags).length > 0 ? (
-                      <div className="column-tags">
-                        {Object.keys(col.tags).slice(0, 2).map(tagName => (
-                          <span key={tagName} className="tag-badge" title={`${tagName}: ${col.tags![tagName]}`}>
-                            {tagName}
-                          </span>
-                        ))}
-                        {Object.keys(col.tags).length > 2 && <span className="tag-more">+{Object.keys(col.tags).length - 2}</span>}
-                      </div>
-                    ) : (
-                      <span className="no-tags">—</span>
-                    )}
+                    <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                      {col.tags && Object.keys(col.tags).length > 0 ? (
+                        <div className="column-tags">
+                          {Object.keys(col.tags).slice(0, 2).map(tagName => (
+                            <span key={tagName} className="tag-badge" title={`${tagName}: ${col.tags![tagName]}`}>
+                              {tagName}
+                            </span>
+                          ))}
+                          {Object.keys(col.tags).length > 2 && <span className="tag-more">+{Object.keys(col.tags).length - 2}</span>}
+                        </div>
+                      ) : (
+                        <span className="no-tags">—</span>
+                      )}
+                      {isEditing && (
+                        <button 
+                          onClick={() => setTagsDialog({colId: col.id, name: col.name})} 
+                          title="Manage tags"
+                          style={{padding: '2px 6px', fontSize: '11px', whiteSpace: 'nowrap'}}
+                        >
+                          🏷️ Manage
+                        </button>
+                      )}
+                    </div>
                   </td>
                   
                   <td>
@@ -241,9 +281,6 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                       <>
                         <button onClick={() => handleEditColumn(col)} title="Edit column">
                           ✏️ Edit
-                        </button>
-                        <button onClick={() => setTagsDialog({colId: col.id, name: col.name})} title="Manage tags">
-                          🏷️ Tags
                         </button>
                         <button 
                           onClick={() => handleDropColumn(col.id, col.name)} 
@@ -317,15 +354,71 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
               <option value="MAP">MAP</option>
               <option value="STRUCT">STRUCT</option>
             </select>
-            <label style={{marginTop: '12px'}}>
+            <label style={{marginTop: '12px', display: 'block'}}>
               <input type="checkbox" id="add-col-nullable" defaultChecked /> Nullable
             </label>
-            <label style={{marginTop: '12px'}}>Comment (optional):</label>
+            <label style={{marginTop: '12px', display: 'block'}}>Comment (optional):</label>
             <input
               type="text"
               placeholder="Column description"
               id="add-col-comment"
             />
+            
+            {/* Tags Section */}
+            <div style={{marginTop: '16px', borderTop: '1px solid var(--vscode-panel-border)', paddingTop: '12px'}}>
+              <label style={{fontWeight: 600}}>Tags (optional):</label>
+              {Object.keys(addColumnTags).length > 0 && (
+                <div style={{marginTop: '8px', marginBottom: '8px'}}>
+                  {Object.entries(addColumnTags).map(([tagName, tagValue]) => (
+                    <div key={tagName} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '4px 8px',
+                      backgroundColor: 'var(--vscode-editor-background)',
+                      borderRadius: '3px',
+                      marginBottom: '4px'
+                    }}>
+                      <code style={{flex: 1}}>{tagName}: {tagValue}</code>
+                      <button
+                        onClick={() => handleRemoveTagFromNewColumn(tagName)}
+                        style={{
+                          padding: '2px 6px',
+                          fontSize: '11px',
+                          color: 'var(--vscode-errorForeground)'
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
+                <input
+                  type="text"
+                  placeholder="Tag name (e.g., PII)"
+                  value={addTagInput.tagName}
+                  onChange={(e) => setAddTagInput({...addTagInput, tagName: e.target.value})}
+                  style={{flex: 1, marginBottom: 0}}
+                />
+                <input
+                  type="text"
+                  placeholder="Tag value (e.g., true)"
+                  value={addTagInput.tagValue}
+                  onChange={(e) => setAddTagInput({...addTagInput, tagValue: e.target.value})}
+                  style={{flex: 1, marginBottom: 0}}
+                />
+                <button
+                  onClick={handleAddTagToNewColumn}
+                  disabled={!addTagInput.tagName || !addTagInput.tagValue}
+                  style={{padding: '8px 12px', whiteSpace: 'nowrap'}}
+                >
+                  + Add Tag
+                </button>
+              </div>
+            </div>
+            
             <div className="modal-buttons">
               <button onClick={() => {
                 const name = (document.getElementById('add-col-name') as HTMLInputElement).value;
@@ -334,7 +427,11 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                 const comment = (document.getElementById('add-col-comment') as HTMLInputElement).value;
                 handleAddColumn(name, type, nullable, comment);
               }}>Add</button>
-              <button onClick={() => setAddDialog(false)}>Cancel</button>
+              <button onClick={() => {
+                setAddDialog(false);
+                setAddColumnTags({});
+                setAddTagInput({tagName: '', tagValue: ''});
+              }}>Cancel</button>
             </div>
           </div>
         </div>

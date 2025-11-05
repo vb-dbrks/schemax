@@ -500,7 +500,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const tableParts = fqn.split('.');
     const tableEscaped = this.buildFqn(...tableParts);
     const comment = this.escapeString(op.payload.comment);
-    return `ALTER TABLE ${tableEscaped} SET COMMENT '${comment}'`;
+    return `COMMENT ON TABLE ${tableEscaped} IS '${comment}'`;
   }
   
   private setTableProperty(op: Operation): string {
@@ -520,6 +520,23 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     return `ALTER TABLE ${tableEscaped} UNSET TBLPROPERTIES ('${key}')`;
   }
   
+  private setTableTag(op: Operation): string {
+    const fqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = fqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
+    const tagName = op.payload.tagName;
+    const tagValue = this.escapeString(op.payload.tagValue);
+    return `ALTER TABLE ${tableEscaped} SET TAGS ('${tagName}' = '${tagValue}')`;
+  }
+  
+  private unsetTableTag(op: Operation): string {
+    const fqn = this.idNameMap[op.payload.tableId] || 'unknown';
+    const tableParts = fqn.split('.');
+    const tableEscaped = this.buildFqn(...tableParts);
+    const tagName = op.payload.tagName;
+    return `ALTER TABLE ${tableEscaped} UNSET TAGS ('${tagName}')`;
+  }
+  
   // Column operations
   private addColumn(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
@@ -527,13 +544,13 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const tableEscaped = this.buildFqn(...tableParts);
     const colName = op.payload.name;
     const colType = op.payload.type;
-    const nullable = op.payload.nullable;
     const comment = op.payload.comment || '';
     
-    const nullClause = nullable ? '' : ' NOT NULL';
+    // Note: NOT NULL is not supported in ALTER TABLE ADD COLUMN for Delta tables
+    // New columns added to existing tables must be nullable
     const commentClause = comment ? ` COMMENT '${this.escapeString(comment)}'` : '';
     
-    return `ALTER TABLE ${tableEscaped} ADD COLUMN ${this.escapeIdentifier(colName)} ${colType}${nullClause}${commentClause}`;
+    return `ALTER TABLE ${tableEscaped} ADD COLUMN ${this.escapeIdentifier(colName)} ${colType}${commentClause}`;
   }
   
   private renameColumn(op: Operation): string {
@@ -770,6 +787,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         'add_column', 'rename_column', 'drop_column', 'reorder_columns',
         'change_column_type', 'set_nullable', 'set_column_comment',
         'set_column_tag', 'unset_column_tag', 'set_table_property', 'unset_table_property',
+        'set_table_tag', 'unset_table_tag',
         'add_constraint', 'drop_constraint', 'add_row_filter', 'update_row_filter',
         'remove_row_filter', 'add_column_mask', 'update_column_mask', 'remove_column_mask'
       ].includes(opType)) {
@@ -967,11 +985,13 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     columnOps: Operation[];
     propertyOps: Operation[];
     reorderOps: Operation[];
+    otherOps: Operation[];
   }): string {
     const tableOp = batchInfo.tableOp;
     const columnOps = batchInfo.columnOps;
     const propertyOps = batchInfo.propertyOps;
     const reorderOps = batchInfo.reorderOps;
+    const otherOps = batchInfo.otherOps;
     
     if (!tableOp) {
       return '-- Error: No table creation operation found';
@@ -1056,7 +1076,15 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     }
     
     // Build table comment
-    const tableComment = tableOp.payload.comment ? ` COMMENT '${this.escapeString(tableOp.payload.comment)}'` : '';
+    // Check both tableOp payload and set_table_comment operations in otherOps
+    let commentValue = tableOp.payload.comment;
+    for (const op of otherOps) {
+      if (op.op.endsWith('set_table_comment')) {
+        commentValue = op.payload.comment;
+        break;
+      }
+    }
+    const tableComment = commentValue ? `\nCOMMENT '${this.escapeString(commentValue)}'` : '';
     
     // Add warnings for external tables
     let warnings = '';
@@ -1078,14 +1106,38 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const columnsSql = columns.length > 0 ? columns.join(',\n') : '';
     const propertiesSql = properties.length > 0 ? `\nTBLPROPERTIES (${properties.join(', ')})` : '';
     
+    let createSql: string;
     if (columnsSql) {
-      return warnings + `CREATE ${externalKeyword}TABLE IF NOT EXISTS ${tableEsc} (
+      createSql = warnings + `CREATE ${externalKeyword}TABLE IF NOT EXISTS ${tableEsc} (
 ${columnsSql}
 ) USING ${tableFormat}${tableComment}${partitionClause}${clusterClause}${propertiesSql}${locationClause}`;
     } else {
       // No columns yet - create empty table (fallback to original behavior)
-      return warnings + `CREATE ${externalKeyword}TABLE IF NOT EXISTS ${tableEsc} () USING ${tableFormat}${tableComment}${partitionClause}${clusterClause}${propertiesSql}${locationClause}`;
+      createSql = warnings + `CREATE ${externalKeyword}TABLE IF NOT EXISTS ${tableEsc} () USING ${tableFormat}${tableComment}${partitionClause}${clusterClause}${propertiesSql}${locationClause}`;
     }
+    
+    // Generate ALTER TABLE statements for operations that must happen after table creation
+    // (e.g., table tags, column tags)
+    // Skip set_table_comment since it's already included in CREATE TABLE
+    const statements: string[] = [createSql];
+    
+    for (const op of otherOps) {
+      const opType = op.op.replace('unity.', '');
+      // Skip set_table_comment as it's already in CREATE TABLE
+      if (opType === 'set_table_comment') {
+        continue;
+      }
+      try {
+        const sql = this.generateSQLForOpType(opType, op);
+        if (sql && !sql.startsWith('--')) {
+          statements.push(sql);
+        }
+      } catch (e) {
+        statements.push(`-- Error generating SQL for ${op.id}: ${e}`);
+      }
+    }
+    
+    return statements.join(';\n');
   }
 
   /**
@@ -1134,13 +1186,13 @@ ${columnsSql}
       for (const op of addColumnOps) {
         const colName = op.payload.name;
         const colType = op.payload.type;
-        const nullable = op.payload.nullable;
         const comment = op.payload.comment || '';
         
-        const nullClause = nullable ? '' : ' NOT NULL';
+        // Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
+        // New columns added to existing tables must be nullable
         const commentClause = comment ? ` COMMENT '${this.escapeString(comment)}'` : '';
         
-        columnDefs.push(`    ${this.escapeIdentifier(colName)} ${colType}${nullClause}${commentClause}`);
+        columnDefs.push(`    ${this.escapeIdentifier(colName)} ${colType}${commentClause}`);
       }
       
       const batchedSql = `ALTER TABLE ${tableEscaped}\nADD COLUMNS (\n${columnDefs.join(',\n')}\n)`;
@@ -1285,6 +1337,10 @@ ${columnsSql}
         return this.setTableProperty(op);
       case 'unset_table_property':
         return this.unsetTableProperty(op);
+      case 'set_table_tag':
+        return this.setTableTag(op);
+      case 'unset_table_tag':
+        return this.unsetTableTag(op);
       
       // Constraint operations
       case 'add_constraint':
