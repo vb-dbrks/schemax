@@ -797,11 +797,32 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER TABLE {old_esc} RENAME TO {new_esc}"
 
     def _drop_table(self, op: Operation) -> str:
-        fqn = self.id_name_map.get(op.target, "unknown.unknown.unknown")
-        parts = fqn.split(".")
-        catalog_name = parts[0]
-        schema_name = parts[1] if len(parts) > 1 else "unknown"
-        table_name = parts[2] if len(parts) > 2 else "unknown"
+        # Try to get table info from payload first (for dropped tables not in current state)
+        table_name = op.payload.get("name")
+        catalog_id = op.payload.get("catalogId")
+        schema_id = op.payload.get("schemaId")
+
+        if table_name and catalog_id and schema_id:
+            # Best case: we have all IDs from payload
+            catalog_fqn = self.id_name_map.get(catalog_id, "unknown")
+            catalog_name = catalog_fqn if "." not in catalog_fqn else catalog_fqn.split(".")[0]
+
+            schema_fqn = self.id_name_map.get(schema_id, f"{catalog_name}.unknown")
+            parts = schema_fqn.split(".")
+            schema_name = parts[1] if len(parts) > 1 else "unknown"
+        elif table_name and schema_id:
+            # Fallback: only have schema_id (backward compatibility)
+            schema_fqn = self.id_name_map.get(schema_id, "unknown.unknown")
+            parts = schema_fqn.split(".")
+            catalog_name = parts[0]
+            schema_name = parts[1] if len(parts) > 1 else "unknown"
+        else:
+            # Last resort: try id_name_map with table ID (for very old operations)
+            fqn = self.id_name_map.get(op.target, "unknown.unknown.unknown")
+            parts = fqn.split(".")
+            catalog_name = parts[0]
+            schema_name = parts[1] if len(parts) > 1 else "unknown"
+            table_name = parts[2] if len(parts) > 2 else "unknown"
 
         # Use _build_fqn for consistent formatting
         fqn_esc = self._build_fqn(catalog_name, schema_name, table_name)

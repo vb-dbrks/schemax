@@ -490,9 +490,41 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
   
   private dropTable(op: Operation): string {
-    const fqn = this.idNameMap[op.target] || 'unknown.unknown.unknown';
-    const parts = fqn.split('.');
-    return `DROP TABLE IF EXISTS ${this.buildFqn(...parts)}`;
+    // Try to get table info from payload first (for dropped tables not in current state)
+    const tableName = op.payload.name;
+    const catalogId = op.payload.catalogId;
+    const schemaId = op.payload.schemaId;
+    
+    let catalogName: string;
+    let schemaName: string;
+    let resolvedTableName: string;
+    
+    if (tableName && catalogId && schemaId) {
+      // Best case: we have all IDs from payload
+      const catalogFqn = this.idNameMap[catalogId] || 'unknown';
+      catalogName = catalogFqn.includes('.') ? catalogFqn.split('.')[0] : catalogFqn;
+      
+      const schemaFqn = this.idNameMap[schemaId] || `${catalogName}.unknown`;
+      const parts = schemaFqn.split('.');
+      schemaName = parts[1] || 'unknown';
+      resolvedTableName = tableName;
+    } else if (tableName && schemaId) {
+      // Fallback: only have schema_id (backward compatibility)
+      const schemaFqn = this.idNameMap[schemaId] || 'unknown.unknown';
+      const parts = schemaFqn.split('.');
+      catalogName = parts[0];
+      schemaName = parts[1] || 'unknown';
+      resolvedTableName = tableName;
+    } else {
+      // Last resort: try idNameMap with table ID (for very old operations)
+      const fqn = this.idNameMap[op.target] || 'unknown.unknown.unknown';
+      const parts = fqn.split('.');
+      catalogName = parts[0];
+      schemaName = parts[1] || 'unknown';
+      resolvedTableName = parts[2] || 'unknown';
+    }
+    
+    return `DROP TABLE IF EXISTS ${this.buildFqn(catalogName, schemaName, resolvedTableName)}`;
   }
   
   private setTableComment(op: Operation): string {
