@@ -842,15 +842,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_esc = self._build_fqn(*table_fqn.split("."))
         col_name = op.payload["name"]
         col_type = op.payload["type"]
-        nullable = op.payload["nullable"]
         comment = op.payload.get("comment", "")
 
-        null_clause = "" if nullable else " NOT NULL"
+        # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMN for Delta tables
+        # New columns added to existing tables must be nullable
         comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
         col_esc = self.escape_identifier(col_name)
 
         sql = f"ALTER TABLE {table_esc} ADD COLUMN {col_esc} {col_type}"
-        return f"{sql}{null_clause}{comment_clause}"
+        return f"{sql}{comment_clause}"
 
     def _rename_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
@@ -1116,7 +1116,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     "unset_column_tag",
                 ]:
                     column_ops.append(op)
-                elif op_type not in ["property", "constraint", "reorder", "filter", "mask"]:
+                # Exclude operations that will be handled by dedicated lists below
+                # (property_ops, constraint_ops, reorder_ops, governance_ops)
+                elif op_type not in ["set_table_property", "unset_table_property", "add_constraint", "drop_constraint", "reorder_columns", "add_row_filter", "update_row_filter", "remove_row_filter", "add_column_mask", "update_column_mask", "remove_column_mask"]:
                     other_ops.append(op)
 
             batch_dict = {
@@ -1163,10 +1165,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_fqn = f"{schema_fqn}.{table_name}"
         table_esc = self._build_fqn(*table_fqn.split("."))
 
-        # Build column definitions as a dictionary (by column ID)
+        # Separate add_column operations from other column operations (like tags)
+        add_column_ops = [op for op in column_ops if op.op.endswith("add_column")]
+        other_column_ops = [op for op in column_ops if not op.op.endswith("add_column")]
+        
+        # Build column definitions as a dictionary (by column ID - use op.target for add_column)
         columns_dict = {}
-        for col_op in column_ops:
-            col_id = col_op.payload.get("colId")
+        for col_op in add_column_ops:
+            col_id = col_op.target  # Column ID is in op.target for add_column operations
             col_name = self.escape_identifier(col_op.payload["name"])
             col_type = col_op.payload["type"]
             nullable = "" if col_op.payload.get("nullable", True) else " NOT NULL"
@@ -1190,9 +1196,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
         else:
             # No reorder: use the order columns were added
             columns = [
-                columns_dict[col_op.payload.get("colId")]
-                for col_op in column_ops
-                if col_op.payload.get("colId") in columns_dict
+                columns_dict[col_id]
+                for col_id in columns_dict.keys()
             ]
 
         # Build table format
@@ -1282,6 +1287,17 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Skip set_table_comment since it's already included in CREATE TABLE
         statements = [create_sql]
         
+        # Process other column operations (like column tags) after table creation
+        for op in other_column_ops:
+            op_type = op.op.replace("unity.", "")
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append(sql)
+            except Exception as e:
+                statements.append(f"-- Error generating SQL for {op.id}: {e}")
+        
+        # Process other operations (like table tags)
         for op in other_ops:
             op_type = op.op.replace("unity.", "")
             # Skip set_table_comment as it's already in CREATE TABLE
@@ -1332,14 +1348,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
             for op in add_column_ops:
                 col_name = op.payload["name"]
                 col_type = op.payload["type"]
-                nullable = op.payload["nullable"]
                 comment = op.payload.get("comment", "")
 
-                null_clause = "" if nullable else " NOT NULL"
+                # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
+                # New columns added to existing tables must be nullable
                 comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
                 col_esc = self.escape_identifier(col_name)
 
-                column_defs.append(f"    {col_esc} {col_type}{null_clause}{comment_clause}")
+                column_defs.append(f"    {col_esc} {col_type}{comment_clause}")
 
             batched_sql = (
                 f"ALTER TABLE {table_esc}\nADD COLUMNS (\n" + ",\n".join(column_defs) + "\n)"
@@ -1443,7 +1459,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _set_column_tag(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
-        col_name = self.id_name_map.get(op.target, "unknown")
+        # Get column name from payload (fallback for new columns) or id_name_map
+        col_name = op.payload.get("name", self.id_name_map.get(op.target, "unknown"))
         tag_name = op.payload["tagName"]
         tag_value = self.escape_string(op.payload["tagValue"])
         col_esc = self.escape_identifier(col_name)
@@ -1453,7 +1470,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _unset_column_tag(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
-        col_name = self.id_name_map.get(op.target, "unknown")
+        # Get column name from payload (fallback for new columns) or id_name_map
+        col_name = op.payload.get("name", self.id_name_map.get(op.target, "unknown"))
         tag_name = op.payload["tagName"]
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} UNSET TAGS ('{tag_name}')"

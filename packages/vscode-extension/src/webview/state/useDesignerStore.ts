@@ -368,12 +368,12 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   // Column tag operations
   setColumnTag: (tableId, colId, tagName, tagValue) => {
-    const op = createOperation(get(), 'set_column_tag', colId, { tableId, colId, tagName, tagValue });
+    const op = createOperation(get(), 'set_column_tag', colId, { tableId, tagName, tagValue });
     emitOps([op]);
   },
 
   unsetColumnTag: (tableId, colId, tagName) => {
-    const op = createOperation(get(), 'unset_column_tag', colId, { tableId, colId, tagName });
+    const op = createOperation(get(), 'unset_column_tag', colId, { tableId, tagName });
     emitOps([op]);
   },
 

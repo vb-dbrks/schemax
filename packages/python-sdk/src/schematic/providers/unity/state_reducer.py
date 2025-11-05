@@ -109,6 +109,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                         path=op.payload.get("path"),
                         partition_columns=op.payload.get("partitionColumns"),
                         cluster_columns=op.payload.get("clusterColumns"),
+                        comment=op.payload.get("comment"),
                         columns=[],
                         properties={},
                         tags={},

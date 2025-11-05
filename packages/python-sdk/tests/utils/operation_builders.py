@@ -100,14 +100,23 @@ class OperationBuilder:
         name: str,
         schema_id: str,
         format: Literal["delta", "iceberg"] = "delta",
+        comment: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
         """Create an add_table operation"""
+        payload: dict[str, Any] = {
+            "tableId": table_id,
+            "name": name,
+            "schemaId": schema_id,
+            "format": format,
+        }
+        if comment is not None:
+            payload["comment"] = comment
         return create_operation(
             provider=self.provider,
             op_type="add_table",
             target=table_id,
-            payload={"tableId": table_id, "name": name, "schemaId": schema_id, "format": format},
+            payload=payload,
             op_id=op_id,
         )
 
@@ -162,6 +171,28 @@ class OperationBuilder:
             op_type="unset_table_property",
             target=table_id,
             payload={"tableId": table_id, "key": key},
+            op_id=op_id,
+        )
+
+    def set_table_tag(
+        self, table_id: str, tag_name: str, tag_value: str, op_id: str | None = None
+    ) -> Operation:
+        """Create a set_table_tag operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="set_table_tag",
+            target=table_id,
+            payload={"tableId": table_id, "tagName": tag_name, "tagValue": tag_value},
+            op_id=op_id,
+        )
+
+    def unset_table_tag(self, table_id: str, tag_name: str, op_id: str | None = None) -> Operation:
+        """Create an unset_table_tag operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="unset_table_tag",
+            target=table_id,
+            payload={"tableId": table_id, "tagName": tag_name},
             op_id=op_id,
         )
 

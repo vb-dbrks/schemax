@@ -116,6 +116,7 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
             path: op.payload.path,
             partitionColumns: op.payload.partitionColumns,
             clusterColumns: op.payload.clusterColumns,
+            comment: op.payload.comment,
             columns: [],
             properties: {},
             tags: {},

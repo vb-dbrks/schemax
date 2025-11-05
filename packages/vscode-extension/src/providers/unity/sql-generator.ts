@@ -544,13 +544,13 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const tableEscaped = this.buildFqn(...tableParts);
     const colName = op.payload.name;
     const colType = op.payload.type;
-    const nullable = op.payload.nullable;
     const comment = op.payload.comment || '';
     
-    const nullClause = nullable ? '' : ' NOT NULL';
+    // Note: NOT NULL is not supported in ALTER TABLE ADD COLUMN for Delta tables
+    // New columns added to existing tables must be nullable
     const commentClause = comment ? ` COMMENT '${this.escapeString(comment)}'` : '';
     
-    return `ALTER TABLE ${tableEscaped} ADD COLUMN ${this.escapeIdentifier(colName)} ${colType}${nullClause}${commentClause}`;
+    return `ALTER TABLE ${tableEscaped} ADD COLUMN ${this.escapeIdentifier(colName)} ${colType}${commentClause}`;
   }
   
   private renameColumn(op: Operation): string {
@@ -1186,13 +1186,13 @@ ${columnsSql}
       for (const op of addColumnOps) {
         const colName = op.payload.name;
         const colType = op.payload.type;
-        const nullable = op.payload.nullable;
         const comment = op.payload.comment || '';
         
-        const nullClause = nullable ? '' : ' NOT NULL';
+        // Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
+        // New columns added to existing tables must be nullable
         const commentClause = comment ? ` COMMENT '${this.escapeString(comment)}'` : '';
         
-        columnDefs.push(`    ${this.escapeIdentifier(colName)} ${colType}${nullClause}${commentClause}`);
+        columnDefs.push(`    ${this.escapeIdentifier(colName)} ${colType}${commentClause}`);
       }
       
       const batchedSql = `ALTER TABLE ${tableEscaped}\nADD COLUMNS (\n${columnDefs.join(',\n')}\n)`;
