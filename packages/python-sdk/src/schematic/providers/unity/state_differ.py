@@ -101,7 +101,7 @@ class UnityStateDiffer(StateDiffer):
                         )
 
                 # Compare tables within schema
-                ops.extend(self._diff_tables(sch_id, old_sch, sch))
+                ops.extend(self._diff_tables(catalog_id, sch_id, old_sch, sch))
 
         # Detect removed schemas
         for sch_id, sch in old_schemas.items():
@@ -111,7 +111,11 @@ class UnityStateDiffer(StateDiffer):
         return ops
 
     def _diff_tables(
-        self, schema_id: str, old_schema: dict[str, Any], new_schema: dict[str, Any]
+        self,
+        catalog_id: str,
+        schema_id: str,
+        old_schema: dict[str, Any],
+        new_schema: dict[str, Any],
     ) -> list[Operation]:
         """Compare tables within a schema"""
         ops: list[Operation] = []
@@ -160,7 +164,7 @@ class UnityStateDiffer(StateDiffer):
         # Detect removed tables
         for tbl_id, tbl in old_tables.items():
             if tbl_id not in new_tables:
-                ops.append(self._create_drop_table_op(tbl))
+                ops.append(self._create_drop_table_op(tbl, catalog_id, schema_id))
 
         return ops
 
@@ -487,14 +491,27 @@ class UnityStateDiffer(StateDiffer):
             payload={"oldName": old_name, "newName": new_name},
         )
 
-    def _create_drop_table_op(self, table: dict[str, Any]) -> Operation:
+    def _create_drop_table_op(
+        self, table: dict[str, Any], catalog_id: str, schema_id: str
+    ) -> Operation:
+        # Build payload with table metadata (for SQL generation when table no longer in state)
+        payload: dict[str, Any] = {}
+
+        # Add table name (required for SQL generation)
+        if "name" in table:
+            payload["name"] = table["name"]
+
+        # Add catalog and schema IDs from context (tables are nested, these aren't fields)
+        payload["catalogId"] = catalog_id
+        payload["schemaId"] = schema_id
+
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.drop_table",
             target=table["id"],
-            payload={},
+            payload=payload,
         )
 
     def _create_add_column_op(self, column: dict[str, Any], table_id: str) -> Operation:

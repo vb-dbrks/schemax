@@ -161,7 +161,11 @@ unity_operation_metadata = [
         description="Delete a table",
         category=OperationCategory.TABLE,
         required_fields=[],
-        optional_fields=[],
+        optional_fields=[
+            "name",
+            "catalogId",
+            "schemaId",
+        ],  # Added for SQL generation when table no longer in state
         is_destructive=True,
     ),
     OperationMetadata(

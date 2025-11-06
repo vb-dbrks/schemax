@@ -262,7 +262,11 @@ class TestTableSQL:
             ts="2025-01-01T00:00:00Z",
             op="unity.drop_table",
             target="table_789",
-            payload={},
+            payload={
+                "name": "users",
+                "catalogId": "cat_123",
+                "schemaId": "schema_456",
+            },
         )
 
         result = generator.generate_sql_for_operation(op)
@@ -1482,3 +1486,121 @@ class TestSQLOptimization:
         assert sql.count("ALTER COLUMN") >= 2, (
             f"Expected >= 2 ALTER COLUMN for multiple moves, found {sql.count('ALTER COLUMN')}"
         )
+
+
+class TestOperationCancellation:
+    """Test create+drop operation cancellation optimization"""
+
+    def test_table_create_drop_cancellation(self, empty_unity_state):
+        """Test that create+drop table operations cancel out"""
+        builder = OperationBuilder()
+        from schematic.providers.unity.state_reducer import apply_operations
+
+        # Setup: catalog and schema
+        setup_ops = [
+            builder.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+        ]
+        state_with_schema = apply_operations(empty_unity_state, setup_ops)
+
+        # Create table, add columns, then drop table (all cancelled)
+        ops = [
+            builder.add_table("table_789", "temp", "schema_456", "delta", op_id="op_001"),
+            builder.add_column(
+                "col_001", "table_789", "id", "BIGINT", nullable=False, op_id="op_002"
+            ),
+            builder.add_column(
+                "col_002", "table_789", "name", "STRING", nullable=True, op_id="op_003"
+            ),
+            Operation(
+                id="op_004",
+                provider="unity",
+                ts="2025-01-01T00:00:00Z",
+                op="unity.drop_table",
+                target="table_789",
+                payload={
+                    "name": "temp",
+                    "catalogId": "cat_123",
+                    "schemaId": "schema_456",
+                },
+            ),
+        ]
+
+        generator = UnitySQLGenerator(state_with_schema.model_dump(by_alias=True))
+        sql = generator.generate_sql(ops)
+
+        # Should generate NO SQL (operations cancelled)
+        assert not sql.strip() or sql.strip() == "", (
+            f"Expected no SQL for cancelled operations, got:\n{sql}"
+        )
+
+    def test_catalog_create_drop_cancellation(self, empty_unity_state):
+        """Test that create+drop catalog operations cancel out"""
+        builder = OperationBuilder()
+
+        ops = [
+            builder.add_catalog("cat_999", "temp_catalog", op_id="op_001"),
+            Operation(
+                id="op_002",
+                provider="unity",
+                ts="2025-01-01T00:00:00Z",
+                op="unity.drop_catalog",
+                target="cat_999",
+                payload={},
+            ),
+        ]
+
+        generator = UnitySQLGenerator(empty_unity_state.model_dump(by_alias=True))
+        sql = generator.generate_sql(ops)
+
+        # Should generate NO SQL (operations cancelled)
+        assert not sql.strip(), f"Expected no SQL for cancelled operations, got:\n{sql}"
+
+    def test_schema_create_drop_cancellation(self, empty_unity_state):
+        """Test that create+drop schema operations cancel out"""
+        builder = OperationBuilder()
+        from schematic.providers.unity.state_reducer import apply_operations
+
+        # Setup: catalog
+        setup_ops = [builder.add_catalog("cat_123", "test", op_id="setup_001")]
+        state_with_catalog = apply_operations(empty_unity_state, setup_ops)
+
+        ops = [
+            builder.add_schema("schema_999", "temp_schema", "cat_123", op_id="op_001"),
+            Operation(
+                id="op_002",
+                provider="unity",
+                ts="2025-01-01T00:00:00Z",
+                op="unity.drop_schema",
+                target="schema_999",
+                payload={},
+            ),
+        ]
+
+        generator = UnitySQLGenerator(state_with_catalog.model_dump(by_alias=True))
+        sql = generator.generate_sql(ops)
+
+        # Should generate NO SQL (operations cancelled)
+        assert not sql.strip(), f"Expected no SQL for cancelled operations, got:\n{sql}"
+
+    def test_table_create_without_drop_not_cancelled(self, empty_unity_state):
+        """Test that create without drop is NOT cancelled"""
+        builder = OperationBuilder()
+        from schematic.providers.unity.state_reducer import apply_operations
+
+        # Setup: catalog and schema
+        setup_ops = [
+            builder.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+        ]
+        state_with_schema = apply_operations(empty_unity_state, setup_ops)
+
+        # Create table without drop (should generate SQL)
+        ops = [builder.add_table("table_789", "users", "schema_456", "delta", op_id="op_001")]
+
+        generator = UnitySQLGenerator(state_with_schema.model_dump(by_alias=True))
+        sql = generator.generate_sql(ops)
+
+        # Should generate CREATE TABLE SQL
+        assert "CREATE TABLE" in sql, "Expected CREATE TABLE SQL to be generated"
+        assert "`test`.`test`.`users`" in sql
