@@ -217,10 +217,103 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
 
   /**
+   * Filter out create+drop pairs that cancel each other.
+   * 
+   * If an object is created and then dropped in the same changeset,
+   * skip ALL operations for that object (they cancel out).
+   * 
+   * Examples:
+   * - add_table + drop_table → skip both (and any operations in between)
+   * - add_catalog + drop_catalog → skip both
+   * - add_schema + drop_schema → skip both
+   * - add_column + drop_column → skip both
+   * 
+   * This prevents errors when trying to drop objects that were never
+   * created in the database (e.g., table in non-existent schema).
+   */
+  private filterCancelledOperations(ops: Operation[]): Operation[] {
+    // Group operations by target object
+    const byTarget: Record<string, Operation[]> = {};
+    for (const op of ops) {
+      const targetId = this.getTargetObjectId(op);
+      if (targetId) {
+        if (!byTarget[targetId]) {
+          byTarget[targetId] = [];
+        }
+        byTarget[targetId].push(op);
+      } else {
+        // Keep operations without specific target (global operations)
+        if (!byTarget['__global__']) {
+          byTarget['__global__'] = [];
+        }
+        byTarget['__global__'].push(op);
+      }
+    }
+
+    // Filter each group
+    const filtered: Operation[] = [];
+    for (const [targetId, targetOps] of Object.entries(byTarget)) {
+      // Skip empty groups
+      if (!targetOps || targetOps.length === 0) {
+        continue;
+      }
+
+      // Check if first op is CREATE and last op is DROP
+      if (targetOps.length >= 2) {
+        const firstOpType = targetOps[0].op;
+        const lastOpType = targetOps[targetOps.length - 1].op;
+
+        // Define create/drop pairs
+        const cancelPairs: Array<[string, string]> = [
+          ['unity.add_catalog', 'unity.drop_catalog'],
+          ['unity.add_schema', 'unity.drop_schema'],
+          ['unity.add_table', 'unity.drop_table'],
+        ];
+
+        // Check if this is a cancellation pair
+        let cancelled = false;
+        for (const [createOp, dropOp] of cancelPairs) {
+          if (firstOpType === createOp && lastOpType === dropOp) {
+            // Cancel out: skip ALL operations for this object
+            // (including any modifications in between)
+            cancelled = true;
+            break;
+          }
+        }
+
+        // Special handling for columns: only cancel if adding and dropping THE SAME column
+        if (
+          !cancelled &&
+          firstOpType === 'unity.add_column' &&
+          lastOpType === 'unity.drop_column'
+        ) {
+          // For columns, we need to check if we're adding and dropping the same column
+          // (not just any columns on the same table)
+          if (targetOps.length === 2 && targetOps[0].target === targetOps[1].target) {
+            // Same column ID - cancel it
+            cancelled = true;
+          }
+        }
+
+        if (!cancelled) {
+          // Not cancelled - keep all operations
+          filtered.push(...targetOps);
+        }
+      } else {
+        // Single operation or global - keep it
+        filtered.push(...targetOps);
+      }
+    }
+
+    return filtered;
+  }
+
+  /**
    * Generate SQL statements with comprehensive batch optimizations.
    * 
    * Optimizations include:
    * - Dependency-ordered operations (catalog → schema → table)
+   * - CREATE + DROP cancellation (skip objects created then dropped)
    * - Complete CREATE TABLE statements (no empty tables + ALTERs)
    * - Batched column reordering (minimal ALTER statements)
    * - Table property consolidation
@@ -233,8 +326,11 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       return levelA - levelB;
     });
 
+    // Filter out create+drop pairs that cancel each other
+    const filteredOps = this.filterCancelledOperations(sortedOps);
+
     // Pre-process: batch operations by object (catalog, schema, table)
-    const batches = this.batchOperations(sortedOps);
+    const batches = this.batchOperations(filteredOps);
     const processedOpIds = new Set<string>();
     const statements: string[] = [];
 
@@ -490,41 +586,20 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   }
   
   private dropTable(op: Operation): string {
-    // Try to get table info from payload first (for dropped tables not in current state)
+    // Payload contains required fields (created by state differ with table context)
     const tableName = op.payload.name;
     const catalogId = op.payload.catalogId;
     const schemaId = op.payload.schemaId;
     
-    let catalogName: string;
-    let schemaName: string;
-    let resolvedTableName: string;
+    // Resolve catalog and schema names from IDs
+    const catalogFqn = this.idNameMap[catalogId] || 'unknown';
+    const catalogName = catalogFqn.includes('.') ? catalogFqn.split('.')[0] : catalogFqn;
     
-    if (tableName && catalogId && schemaId) {
-      // Best case: we have all IDs from payload
-      const catalogFqn = this.idNameMap[catalogId] || 'unknown';
-      catalogName = catalogFqn.includes('.') ? catalogFqn.split('.')[0] : catalogFqn;
-      
-      const schemaFqn = this.idNameMap[schemaId] || `${catalogName}.unknown`;
-      const parts = schemaFqn.split('.');
-      schemaName = parts[1] || 'unknown';
-      resolvedTableName = tableName;
-    } else if (tableName && schemaId) {
-      // Fallback: only have schema_id (backward compatibility)
-      const schemaFqn = this.idNameMap[schemaId] || 'unknown.unknown';
-      const parts = schemaFqn.split('.');
-      catalogName = parts[0];
-      schemaName = parts[1] || 'unknown';
-      resolvedTableName = tableName;
-    } else {
-      // Last resort: try idNameMap with table ID (for very old operations)
-      const fqn = this.idNameMap[op.target] || 'unknown.unknown.unknown';
-      const parts = fqn.split('.');
-      catalogName = parts[0];
-      schemaName = parts[1] || 'unknown';
-      resolvedTableName = parts[2] || 'unknown';
-    }
+    const schemaFqn = this.idNameMap[schemaId] || `${catalogName}.unknown`;
+    const parts = schemaFqn.split('.');
+    const schemaName = parts[1] || 'unknown';
     
-    return `DROP TABLE IF EXISTS ${this.buildFqn(catalogName, schemaName, resolvedTableName)}`;
+    return `DROP TABLE IF EXISTS ${this.buildFqn(catalogName, schemaName, tableName)}`;
   }
   
   private setTableComment(op: Operation): string {

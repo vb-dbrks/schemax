@@ -351,12 +351,88 @@ class UnitySQLGenerator(BaseSQLGenerator):
     # END ABSTRACT METHOD IMPLEMENTATIONS
     # ========================================
 
+    def _filter_cancelled_operations(self, ops: list[Operation]) -> list[Operation]:
+        """
+        Filter out create+drop pairs that cancel each other.
+
+        If an object is created and then dropped in the same changeset,
+        skip ALL operations for that object (they cancel out).
+
+        Examples:
+        - add_table + drop_table → skip both (and any operations in between)
+        - add_catalog + drop_catalog → skip both
+        - add_schema + drop_schema → skip both
+        - add_column + drop_column → skip both
+
+        This prevents errors when trying to drop objects that were never
+        created in the database (e.g., table in non-existent schema).
+        """
+        # Group operations by target object
+        by_target: dict[str, list[Operation]] = {}
+        for op in ops:
+            target_id = self._get_target_object_id(op)
+            if target_id:
+                by_target.setdefault(target_id, []).append(op)
+            else:
+                # Keep operations without specific target (global operations)
+                by_target.setdefault("__global__", []).append(op)
+
+        # Filter each group
+        filtered = []
+        for target_id, target_ops in by_target.items():
+            # Skip empty groups
+            if not target_ops:
+                continue
+
+            # Check if first op is CREATE and last op is DROP
+            if len(target_ops) >= 2:
+                first_op_type = target_ops[0].op
+                last_op_type = target_ops[-1].op
+
+                # Define create/drop pairs
+                cancel_pairs = [
+                    ("unity.add_catalog", "unity.drop_catalog"),
+                    ("unity.add_schema", "unity.drop_schema"),
+                    ("unity.add_table", "unity.drop_table"),
+                ]
+
+                # Check if this is a cancellation pair
+                cancelled = False
+                for create_op, drop_op in cancel_pairs:
+                    if first_op_type == create_op and last_op_type == drop_op:
+                        # Cancel out: skip ALL operations for this object
+                        # (including any modifications in between)
+                        cancelled = True
+                        break
+
+                # Special handling for columns: only cancel if adding and dropping THE SAME column
+                if (
+                    not cancelled
+                    and first_op_type == "unity.add_column"
+                    and last_op_type == "unity.drop_column"
+                ):
+                    # For columns, we need to check if we're adding and dropping the same column
+                    # (not just any columns on the same table)
+                    if len(target_ops) == 2 and target_ops[0].target == target_ops[1].target:
+                        # Same column ID - cancel it
+                        cancelled = True
+
+                if not cancelled:
+                    # Not cancelled - keep all operations
+                    filtered.extend(target_ops)
+            else:
+                # Single operation or global - keep it
+                filtered.extend(target_ops)
+
+        return filtered
+
     def generate_sql(self, ops: list[Operation]) -> str:
         """
         Generate SQL statements with comprehensive batch optimizations.
 
         Optimizations include:
         - Dependency-ordered operations (catalog → schema → table)
+        - CREATE + DROP cancellation (skip objects created then dropped)
         - Batched CREATE + UPDATE operations (squashed into single CREATE)
         - Complete CREATE TABLE statements (no empty tables + ALTERs)
         - Batched column reordering (minimal ALTER statements)
@@ -365,9 +441,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Sort operations by dependency level first
         sorted_ops = sorted(ops, key=lambda op: self._get_dependency_level(op))
 
+        # Filter out create+drop pairs that cancel each other
+        filtered_ops = self._filter_cancelled_operations(sorted_ops)
+
         # Use base class's generic batcher (no duplication!)
         batches = self.batcher.batch_operations(
-            sorted_ops, self._get_target_object_id, self._is_create_operation
+            filtered_ops, self._get_target_object_id, self._is_create_operation
         )
         processed_op_ids = set()
         statements = []
@@ -417,7 +496,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     table_stmts.append(f"{header}\n{sql};")
 
         # Process unbatched operations
-        for op in sorted_ops:
+        for op in filtered_ops:
             if op.id in processed_op_ids:
                 continue
 
@@ -797,32 +876,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER TABLE {old_esc} RENAME TO {new_esc}"
 
     def _drop_table(self, op: Operation) -> str:
-        # Try to get table info from payload first (for dropped tables not in current state)
-        table_name = op.payload.get("name")
-        catalog_id = op.payload.get("catalogId")
-        schema_id = op.payload.get("schemaId")
+        # Payload contains required fields (created by state differ with table context)
+        table_name = op.payload["name"]
+        catalog_id = op.payload["catalogId"]
+        schema_id = op.payload["schemaId"]
 
-        if table_name and catalog_id and schema_id:
-            # Best case: we have all IDs from payload
-            catalog_fqn = self.id_name_map.get(catalog_id, "unknown")
-            catalog_name = catalog_fqn if "." not in catalog_fqn else catalog_fqn.split(".")[0]
+        # Resolve catalog and schema names from IDs
+        catalog_fqn = self.id_name_map.get(catalog_id, "unknown")
+        catalog_name = catalog_fqn if "." not in catalog_fqn else catalog_fqn.split(".")[0]
 
-            schema_fqn = self.id_name_map.get(schema_id, f"{catalog_name}.unknown")
-            parts = schema_fqn.split(".")
-            schema_name = parts[1] if len(parts) > 1 else "unknown"
-        elif table_name and schema_id:
-            # Fallback: only have schema_id (backward compatibility)
-            schema_fqn = self.id_name_map.get(schema_id, "unknown.unknown")
-            parts = schema_fqn.split(".")
-            catalog_name = parts[0]
-            schema_name = parts[1] if len(parts) > 1 else "unknown"
-        else:
-            # Last resort: try id_name_map with table ID (for very old operations)
-            fqn = self.id_name_map.get(op.target, "unknown.unknown.unknown")
-            parts = fqn.split(".")
-            catalog_name = parts[0]
-            schema_name = parts[1] if len(parts) > 1 else "unknown"
-            table_name = parts[2] if len(parts) > 2 else "unknown"
+        schema_fqn = self.id_name_map.get(schema_id, f"{catalog_name}.unknown")
+        parts = schema_fqn.split(".")
+        schema_name = parts[1] if len(parts) > 1 else "unknown"
 
         # Use _build_fqn for consistent formatting
         fqn_esc = self._build_fqn(catalog_name, schema_name, table_name)
