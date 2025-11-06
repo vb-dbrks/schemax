@@ -164,7 +164,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     description: 'Delete a table',
     category: OperationCategory.Table,
     requiredFields: [],
-    optionalFields: [],
+    optionalFields: ['name', 'catalogId', 'schemaId'],  // Added for SQL generation when table no longer in state
     isDestructive: true,
   },
   {
