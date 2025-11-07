@@ -17,7 +17,6 @@ from .storage import (
     ensure_schematic_dir,
     get_changelog_file_path,
     get_environment_config,
-    get_last_deployment,
     get_project_file_path,
     get_schematic_dir,
     get_snapshot_file_path,
@@ -28,7 +27,6 @@ from .storage import (
     read_project,
     read_snapshot,
     write_changelog,
-    write_deployment,
     write_project,
     write_snapshot,
 )
@@ -49,7 +47,6 @@ __all__ = [
     "ensure_schematic_dir",
     "get_changelog_file_path",
     "get_environment_config",
-    "get_last_deployment",
     "get_project_file_path",
     "get_schematic_dir",
     "get_snapshot_file_path",
@@ -60,7 +57,6 @@ __all__ = [
     "read_project",
     "read_snapshot",
     "write_changelog",
-    "write_deployment",
     "write_project",
     "write_snapshot",
     # Deployment

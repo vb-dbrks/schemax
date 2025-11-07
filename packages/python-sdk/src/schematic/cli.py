@@ -13,13 +13,11 @@ import schematic.providers  # noqa: F401
 
 from .commands import (
     ApplyError,
-    DeploymentRecordingError,
     DiffError,
     SQLGenerationError,
     apply_to_environment,
     generate_diff,
     generate_sql_migration,
-    record_deployment_to_environment,
     rollback_complete,
     validate_project,
 )
@@ -232,77 +230,6 @@ def diff(
     except Exception as e:
         console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
-
-
-@cli.command(name="record-deployment")
-@click.option(
-    "--target",
-    "-t",
-    required=True,
-    help="Target environment (dev/test/prod)",
-)
-@click.option(
-    "--version",
-    "-v",
-    help="Version to deploy (default: latest snapshot or 'changelog')",
-)
-@click.option(
-    "--mark-deployed",
-    is_flag=True,
-    help="Mark the deployment as successful",
-)
-def record_deployment(target: str, version: str | None, mark_deployed: bool) -> None:
-    """Record a deployment to an environment (manual tracking)
-
-    This command manually tracks a deployment record in project.json.
-    For automated deployment with execution, use 'schematic apply' instead.
-    """
-    try:
-        workspace_path = Path.cwd()
-
-        record_deployment_to_environment(
-            workspace=workspace_path,
-            environment=target,
-            version=version,
-            mark_deployed=mark_deployed,
-        )
-
-    except DeploymentRecordingError as e:
-        console.print(f"[red]✗ Deployment recording failed:[/red] {e}")
-        sys.exit(1)
-    except Exception as e:
-        console.print(f"[red]✗ Unexpected error:[/red] {e}")
-        sys.exit(1)
-
-
-@cli.command(name="deploy", hidden=True)
-@click.option(
-    "--target",
-    "-t",
-    required=True,
-    help="Target environment (dev/test/prod)",
-)
-@click.option(
-    "--version",
-    "-v",
-    help="Version to deploy (default: latest snapshot or 'changelog')",
-)
-@click.option(
-    "--mark-deployed",
-    is_flag=True,
-    help="Mark the deployment as successful",
-)
-def deploy_alias(target: str, version: str | None, mark_deployed: bool) -> None:
-    """[DEPRECATED] Use 'record-deployment' instead
-
-    This command is deprecated. Use 'schematic record-deployment' for manual
-    deployment tracking, or 'schematic apply' for automated deployment with execution.
-    """
-    console.print(
-        "[yellow]⚠️  'deploy' is deprecated. Use 'record-deployment' for manual tracking "
-        "or 'apply' for automated deployment.[/yellow]\n"
-    )
-    record_deployment(target, version, mark_deployed)
 
 
 @cli.command()

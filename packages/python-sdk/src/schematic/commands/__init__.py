@@ -7,7 +7,6 @@ and testability. The CLI layer (cli.py) acts as a thin routing layer.
 """
 
 from .apply import ApplyError, apply_to_environment
-from .deployment import DeploymentRecordingError, record_deployment_to_environment
 from .diff import DiffError, generate_diff
 from .rollback import RollbackError, RollbackResult, rollback_complete, rollback_partial
 from .sql import SQLGenerationError, generate_sql_migration
@@ -20,8 +19,6 @@ __all__ = [
     "DiffError",
     "generate_sql_migration",
     "SQLGenerationError",
-    "record_deployment_to_environment",
-    "DeploymentRecordingError",
     "validate_project",
     "ValidationError",
     "rollback_partial",

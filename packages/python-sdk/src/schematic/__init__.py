@@ -14,12 +14,10 @@ __version__ = "0.2.0"
 from .core.storage import (
     create_snapshot,
     ensure_project_file,
-    get_last_deployment,
     load_current_state,
     read_changelog,
     read_project,
     read_snapshot,
-    write_deployment,
 )
 from .providers import (
     Operation,
@@ -103,8 +101,6 @@ __all__ = [
     "read_snapshot",
     "load_current_state",
     "create_snapshot",
-    "write_deployment",
-    "get_last_deployment",
     # Diff operations
     "generate_diff_operations",
 ]

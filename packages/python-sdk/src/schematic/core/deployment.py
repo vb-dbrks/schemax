@@ -170,29 +170,40 @@ class DeploymentTracker:
         """Get the latest successful deployment for an environment
 
         Queries the database (source of truth) to find the most recent
-        successful deployment. Returns None if:
-        - Catalog doesn't exist
-        - Tracking schema doesn't exist
-        - No successful deployments found
+        successful deployment.
+
+        Returns None if:
+        - Catalog doesn't exist (expected on first deployment)
+        - Tracking schema doesn't exist (expected on first deployment)
+        - No successful deployments found (expected on first deployment)
+
+        Raises exception for real errors:
+        - Connection failures
+        - Authentication errors
+        - Timeout errors
+        - Permission errors
 
         Args:
             environment: Target environment name (dev/test/prod)
 
         Returns:
-            Deployment record with 'version' and 'id' or None
+            Deployment record with 'version' and 'id', or None if first deployment
+
+        Raises:
+            Exception: For database connection or query errors (not catalog-not-found)
         """
         from databricks.sdk.service.sql import StatementState
 
-        try:
-            sql = f"""
-            SELECT snapshot_version, id, deployed_at
-            FROM {self.schema}.deployments
-            WHERE environment = '{environment}'
-              AND status = 'success'
-            ORDER BY deployed_at DESC
-            LIMIT 1
-            """
+        sql = f"""
+        SELECT snapshot_version, id, deployed_at
+        FROM {self.schema}.deployments
+        WHERE environment = '{environment}'
+          AND status = 'success'
+        ORDER BY deployed_at DESC
+        LIMIT 1
+        """
 
+        try:
             response = self.client.statement_execution.execute_statement(
                 warehouse_id=self.warehouse_id,
                 statement=sql,
@@ -201,7 +212,26 @@ class DeploymentTracker:
 
             # Check if query succeeded
             if not response.status or response.status.state != StatementState.SUCCEEDED:
-                return None
+                # Check error message to distinguish catalog-not-found from real errors
+                error_msg = ""
+                if response.status and response.status.error:
+                    error_msg = str(response.status.error.message or "")
+
+                # Expected errors on first deployment (catalog/schema doesn't exist)
+                if any(
+                    pattern in error_msg.lower()
+                    for pattern in [
+                        "catalog",
+                        "schema",
+                        "not found",
+                        "does not exist",
+                        "table_or_view_not_found",
+                    ]
+                ):
+                    return None
+
+                # Real error - raise it
+                raise Exception(f"Database query failed: {error_msg}")
 
             # Parse results
             if response.result and response.result.data_array:
@@ -210,44 +240,68 @@ class DeploymentTracker:
                     row = response.result.data_array[0]
                     return {"version": row[0], "id": row[1]}
 
+            # No rows returned - first deployment
             return None
 
-        except Exception:
-            # Catalog or schema doesn't exist, or query failed
-            # This is expected on first deployment
-            return None
+        except Exception as e:
+            # Check if it's a catalog/schema not found error (expected on first deployment)
+            error_str = str(e).lower()
+            if any(
+                pattern in error_str
+                for pattern in [
+                    "catalog",
+                    "schema",
+                    "not found",
+                    "does not exist",
+                    "table_or_view_not_found",
+                ]
+            ):
+                return None
+
+            # Real error (connection, auth, timeout, etc.) - re-raise
+            raise
 
     def get_deployment_by_id(self, deployment_id: str) -> dict[str, Any] | None:
         """Get a specific deployment by ID from the database
 
         Queries the database (source of truth) to find a deployment by its ID.
 
+        Returns None if:
+        - Catalog doesn't exist (expected on first deployment)
+        - Tracking schema doesn't exist (expected on first deployment)
+        - Deployment ID not found
+
+        Raises exception for real errors (connection, auth, timeout, etc.)
+
         Args:
             deployment_id: Deployment ID to look up
 
         Returns:
             Deployment record or None if not found
+
+        Raises:
+            Exception: For database connection or query errors (not catalog-not-found)
         """
         from databricks.sdk.service.sql import StatementState
 
-        try:
-            sql = f"""
-            SELECT 
-                id, 
-                environment, 
-                snapshot_version, 
-                from_snapshot_version,
-                deployed_at,
-                deployed_by,
-                status,
-                statement_count,
-                successful_statements,
-                failed_statement_index
-            FROM {self.schema}.deployments
-            WHERE id = '{deployment_id}'
-            LIMIT 1
-            """
+        sql = f"""
+        SELECT 
+            id, 
+            environment, 
+            snapshot_version, 
+            from_snapshot_version,
+            deployed_at,
+            deployed_by,
+            status,
+            statement_count,
+            successful_statements,
+            failed_statement_index
+        FROM {self.schema}.deployments
+        WHERE id = '{deployment_id}'
+        LIMIT 1
+        """
 
+        try:
             response = self.client.statement_execution.execute_statement(
                 warehouse_id=self.warehouse_id,
                 statement=sql,
@@ -256,7 +310,26 @@ class DeploymentTracker:
 
             # Check if query succeeded
             if not response.status or response.status.state != StatementState.SUCCEEDED:
-                return None
+                # Check error message to distinguish catalog-not-found from real errors
+                error_msg = ""
+                if response.status and response.status.error:
+                    error_msg = str(response.status.error.message or "")
+
+                # Expected errors (catalog/schema doesn't exist)
+                if any(
+                    pattern in error_msg.lower()
+                    for pattern in [
+                        "catalog",
+                        "schema",
+                        "not found",
+                        "does not exist",
+                        "table_or_view_not_found",
+                    ]
+                ):
+                    return None
+
+                # Real error - raise it
+                raise Exception(f"Database query failed: {error_msg}")
 
             # Parse results
             if response.result and response.result.data_array:
@@ -275,11 +348,26 @@ class DeploymentTracker:
                         "failedStatementIndex": row[9],
                     }
 
+            # No rows returned - deployment not found
             return None
 
-        except Exception:
-            # Catalog or schema doesn't exist, or query failed
-            return None
+        except Exception as e:
+            # Check if it's a catalog/schema not found error (expected)
+            error_str = str(e).lower()
+            if any(
+                pattern in error_str
+                for pattern in [
+                    "catalog",
+                    "schema",
+                    "not found",
+                    "does not exist",
+                    "table_or_view_not_found",
+                ]
+            ):
+                return None
+
+            # Real error (connection, auth, timeout, etc.) - re-raise
+            raise
 
     def _execute_ddl(self, sql: str) -> None:
         """Execute DDL statement and wait for completion

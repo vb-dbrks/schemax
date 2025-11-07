@@ -83,7 +83,6 @@ class TestRollbackPartial:
         assert result.success is True
         assert result.operations_rolled_back == 0
 
-    @patch("schematic.commands.rollback.write_deployment")
     @patch("schematic.commands.rollback.DeploymentTracker")
     @patch("schematic.commands.rollback.get_environment_config")
     @patch("schematic.commands.rollback.read_project")
@@ -94,7 +93,6 @@ class TestRollbackPartial:
         mock_read_project,
         mock_get_env_config,
         mock_tracker_class,
-        mock_write_deployment,
     ):
         """Test rollback with safe operations"""
         # Setup mocks
@@ -227,7 +225,6 @@ class TestRollbackPartial:
         mock_tracker.start_deployment.assert_called_once()
         mock_tracker.record_operation.assert_called_once()
         mock_tracker.complete_deployment.assert_called_once()
-        mock_write_deployment.assert_called_once()
 
     @patch("schematic.commands.rollback.DeploymentTracker")
     @patch("schematic.commands.rollback.get_environment_config")
@@ -320,7 +317,6 @@ class TestRollbackPartial:
                     from_version=None,  # First deployment (empty initial state)
                 )
 
-    @patch("schematic.commands.rollback.write_deployment")
     @patch("schematic.commands.rollback.DeploymentTracker")
     @patch("schematic.commands.rollback.get_environment_config")
     @patch("schematic.commands.rollback.read_project")
@@ -331,7 +327,6 @@ class TestRollbackPartial:
         mock_read_project,
         mock_get_env_config,
         mock_tracker_class,
-        mock_write_deployment,
     ):
         """Test rollback handles execution failures"""
         # Setup mocks
@@ -449,4 +444,3 @@ class TestRollbackPartial:
         mock_tracker.ensure_tracking_schema.assert_called_once()
         mock_tracker.start_deployment.assert_called_once()
         mock_tracker.complete_deployment.assert_called_once()
-        mock_write_deployment.assert_called_once()

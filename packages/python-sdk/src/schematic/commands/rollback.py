@@ -22,7 +22,6 @@ from schematic.core.storage import (
     get_environment_config,
     load_current_state,
     read_project,
-    write_deployment,
 )
 from schematic.providers.base.executor import ExecutionConfig, SQLExecutor
 from schematic.providers.base.operations import Operation
@@ -288,24 +287,6 @@ def rollback_partial(
 
         # Complete rollback deployment tracking in database
         tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
-
-        # Write rollback deployment record locally (silent backup)
-        deployment_record = {
-            "id": rollback_deployment_id,
-            "environment": target_env,
-            "type": "rollback",  # Mark as rollback type
-            "rolledBackDeployment": deployment_id,  # Link to original failed deployment
-            "version": f"rollback_of_{deployment_id}",
-            "ts": datetime.now(UTC).isoformat(),
-            "status": result.status,
-            "executionTimeMs": result.total_execution_time_ms,
-            "statementCount": result.total_statements,
-            "successfulStatements": result.successful_statements,
-            "failedStatementIndex": result.failed_statement_index,
-            "opsApplied": [op.id for op in rollback_ops],
-        }
-
-        write_deployment(workspace, deployment_record)
 
         # 10. Report execution results
         console.print()
@@ -573,24 +554,6 @@ def rollback_complete(
             )
 
         tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
-
-        # Write rollback deployment record locally (silent backup)
-        deployment_record = {
-            "id": rollback_deployment_id,
-            "environment": target_env,
-            "type": "complete_rollback",
-            "targetSnapshot": to_snapshot,
-            "version": to_snapshot,
-            "ts": datetime.now(UTC).isoformat(),
-            "status": result.status,
-            "executionTimeMs": result.total_execution_time_ms,
-            "statementCount": result.total_statements,
-            "successfulStatements": result.successful_statements,
-            "failedStatementIndex": result.failed_statement_index,
-            "opsApplied": [op.id for op in rollback_ops],
-        }
-
-        write_deployment(workspace, deployment_record)
 
         # 13. Report results
         console.print()

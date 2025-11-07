@@ -19,12 +19,10 @@ from schematic.core.deployment import DeploymentTracker
 from schematic.core.storage import (
     create_snapshot,
     get_environment_config,
-    get_last_deployment,
     load_current_state,
     read_changelog,
     read_project,
     read_snapshot,
-    write_deployment,
 )
 from schematic.providers.base.executor import ExecutionConfig, ExecutionResult
 from schematic.providers.unity.executor import UnitySQLExecutor
@@ -196,18 +194,19 @@ def apply_to_environment(
                 console.print(f"[blue]First deployment to {target_env}[/blue]")
                 console.print("[dim](No successful deployments in database)[/dim]")
         except Exception as e:
-            # Fallback to local records if database query fails
-            console.print(f"[yellow]⚠️  Could not query database: {e}[/yellow]")
-            console.print("[yellow]Using local deployment records (may be stale!)[/yellow]")
-
-            last_deployment = get_last_deployment(project, target_env)
-            if last_deployment:
-                deployed_version = last_deployment.get("version")
-                console.print(f"[blue]Deployed to {target_env}:[/blue] {deployed_version}")
-                console.print(f"[dim](Source: Fallback to local project.json)[/dim]")
-            else:
-                deployed_version = None
-                console.print(f"[blue]First deployment to {target_env}[/blue]")
+            # Database connection or query error - fail fast
+            console.print(f"\n[red]✗ Failed to query deployment database[/red]")
+            console.print(f"[red]Error: {e}[/red]")
+            console.print("\n[yellow]Cannot proceed without database access.[/yellow]")
+            console.print("[yellow]Please check:[/yellow]")
+            console.print("  • Databricks credentials are valid")
+            console.print(f"  • Warehouse {warehouse_id} is running")
+            console.print("  • Network connectivity to Databricks")
+            console.print(
+                f"\n[blue]Retry with:[/blue] schematic apply --target {target_env} "
+                f"--profile {profile} --warehouse-id {warehouse_id}"
+            )
+            raise ApplyError(f"Database query failed: {e}")
 
         # 7. Load snapshot states
         latest_snap = read_snapshot(workspace, latest_snapshot_version)
@@ -412,24 +411,7 @@ def apply_to_environment(
         # 21. Complete deployment tracking in database
         tracker.complete_deployment(deployment_id, result, result.error_message)
 
-        # 22. Write deployment record locally (silent backup)
-        deployment_record = {
-            "id": deployment_id,
-            "environment": target_env,
-            "version": latest_snapshot_version,
-            "fromVersion": deployed_version,
-            "ts": datetime.now(UTC).isoformat(),
-            "status": result.status,
-            "executionTimeMs": result.total_execution_time_ms,
-            "statementCount": result.total_statements,
-            "successfulStatements": result.successful_statements,
-            "failedStatementIndex": result.failed_statement_index,
-            "opsApplied": [op.id for op in diff_operations],
-        }
-
-        write_deployment(workspace, deployment_record)
-
-        # 23. Show results
+        # 22. Show results
         console.print()
         console.print("─" * 60)
 
