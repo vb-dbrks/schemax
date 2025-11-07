@@ -164,6 +164,57 @@ class DeploymentTracker:
         """
         self._execute_ddl(sql)
 
+    def get_latest_deployment(self, environment: str) -> dict[str, str] | None:
+        """Get the latest successful deployment for an environment
+
+        Queries the database (source of truth) to find the most recent
+        successful deployment. Returns None if:
+        - Catalog doesn't exist
+        - Tracking schema doesn't exist
+        - No successful deployments found
+
+        Args:
+            environment: Target environment name (dev/test/prod)
+
+        Returns:
+            Deployment record with 'version' and 'id' or None
+        """
+        from databricks.sdk.service.sql import StatementState
+
+        try:
+            sql = f"""
+            SELECT snapshot_version, id, deployed_at
+            FROM {self.schema}.deployments
+            WHERE environment = '{environment}'
+              AND status = 'success'
+            ORDER BY deployed_at DESC
+            LIMIT 1
+            """
+
+            response = self.client.statement_execution.execute_statement(
+                warehouse_id=self.warehouse_id,
+                statement=sql,
+                wait_timeout="10s",
+            )
+
+            # Check if query succeeded
+            if not response.status or response.status.state != StatementState.SUCCEEDED:
+                return None
+
+            # Parse results
+            if response.result and response.result.data_array:
+                # Result format: [['v0.3.0', 'deploy_xyz', '2025-11-06T...']]
+                if len(response.result.data_array) > 0:
+                    row = response.result.data_array[0]
+                    return {"version": row[0], "id": row[1]}
+
+            return None
+
+        except Exception:
+            # Catalog or schema doesn't exist, or query failed
+            # This is expected on first deployment
+            return None
+
     def _execute_ddl(self, sql: str) -> None:
         """Execute DDL statement and wait for completion
 

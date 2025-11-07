@@ -7,10 +7,9 @@ import { TableTags } from './TableTags';
 import { TableConstraints } from './TableConstraints';
 import { SecurityGovernance } from './SecurityGovernance';
 
+// Codicon icon - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
-  <svg slot="start" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <path fillRule="evenodd" d="M11.414 1.586a2 2 0 0 1 2.828 2.828l-.793.793-2.828-2.828zm-2.121 2.121-7 7A2 2 0 0 0 2 12.414V14a1 1 0 0 0 1 1h1.586a2 2 0 0 0 1.414-.586l7-7z" clipRule="evenodd" />
-  </svg>
+  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
 );
 
 export const TableDesigner: React.FC = () => {

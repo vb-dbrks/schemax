@@ -239,6 +239,10 @@ class UnityStateDiffer(StateDiffer):
         """Compare table properties (TBLPROPERTIES)"""
         ops: list[Operation] = []
 
+        # Handle None values - treat as empty dict
+        old_props = old_props or {}
+        new_props = new_props or {}
+
         # Added or updated properties
         for key, value in new_props.items():
             if key not in old_props or old_props[key] != value:
@@ -256,6 +260,10 @@ class UnityStateDiffer(StateDiffer):
     ) -> list[Operation]:
         """Compare table tags (Unity Catalog governance tags)"""
         ops: list[Operation] = []
+
+        # Handle None values - treat as empty dict
+        old_tags = old_tags or {}
+        new_tags = new_tags or {}
 
         # Added or updated tags
         for tag_name, tag_value in new_tags.items():
@@ -287,6 +295,10 @@ class UnityStateDiffer(StateDiffer):
             new_tags: New tags dict
         """
         ops: list[Operation] = []
+
+        # Handle None values - treat as empty dict
+        old_tags = old_tags or {}
+        new_tags = new_tags or {}
 
         # Added or updated tags
         for tag_name, tag_value in new_tags.items():
@@ -346,10 +358,11 @@ class UnityStateDiffer(StateDiffer):
             ops.append(self._create_add_column_op(column, table_id))
 
             # Add column tags if present
-            if column.get("tags"):
+            column_tags = column.get("tags")
+            if column_tags and isinstance(column_tags, dict):
                 column_name = column.get("name")
                 if column_name:  # Safety check - column must have name
-                    for tag_name, tag_value in column["tags"].items():
+                    for tag_name, tag_value in column_tags.items():
                         ops.append(
                             self._create_set_column_tag_op(
                                 column["id"], table_id, column_name, tag_name, str(tag_value)

@@ -9,16 +9,21 @@ simpler and more robust than manual reverse operation generation.
 """
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
+from uuid import uuid4
 
 from rich.console import Console
 from rich.prompt import Confirm
 
+from ..deployment_tracker import DeploymentTracker
 from ..providers.base.executor import ExecutionConfig, SQLExecutor
 from ..providers.base.operations import Operation
 from ..providers.base.reverse_generator import SafetyLevel
+from ..providers.unity.executor import UnitySQLExecutor
 from ..providers.unity.safety_validator import SafetyValidator
-from ..storage_v4 import load_current_state
+from ..storage_v4 import get_environment_config, load_current_state, read_project, write_deployment
 from .apply import parse_sql_statements
 
 console = Console()
@@ -49,6 +54,7 @@ def rollback_partial(
     executor: SQLExecutor,
     catalog_mapping: dict[str, str] | None = None,
     auto_triggered: bool = False,
+    from_version: str | None = None,
 ) -> RollbackResult:
     """Rollback failed deployment by reversing successful operations
 
@@ -66,6 +72,7 @@ def rollback_partial(
         executor: SQL executor (reused from apply)
         catalog_mapping: Logical to physical catalog name mapping
         auto_triggered: If True, skips confirmation and blocks on risky operations
+        from_version: Pre-deployment snapshot version (optional, auto-detected if not provided)
 
     Returns:
         RollbackResult with success status and details
@@ -80,17 +87,43 @@ def rollback_partial(
         console.print("   No operations to rollback")
         return RollbackResult(success=True, operations_rolled_back=0)
 
-    # 1. Load project and provider
-    pre_deployment_state, _, provider = load_current_state(workspace)
+    # Load project metadata for tracking
+    project = read_project(workspace)
+    project_name = project.get("name", "unknown")
+    env_config = get_environment_config(project, target_env)
+    deployment_catalog = env_config["topLevelName"]
 
-    # 2. Calculate post-deployment state (after successful operations)
+    # 1. Determine pre-deployment version
+    from ..storage_v4 import read_snapshot
+    
+    # If from_version not provided, look it up from deployment record
+    if from_version is None:
+        deployment = None
+        for dep in project.get("deployments", []):
+            if dep.get("id") == deployment_id:
+                deployment = dep
+                break
+        
+        if not deployment:
+            raise RollbackError(f"Deployment '{deployment_id}' not found in project.json")
+        
+        from_version = deployment.get("fromVersion")
+
+    # 2. Load pre-deployment state (from the fromVersion snapshot, not current workspace state!)
+    _, _, provider = load_current_state(workspace)
+    
+    if from_version:
+        from_snap = read_snapshot(workspace, from_version)
+        pre_deployment_state = from_snap["state"]
+    else:
+        # First deployment - pre-deployment state is empty
+        pre_deployment_state = provider.create_initial_state()
+
+    # 3. Calculate post-deployment state (after successful operations)
     # Apply successful operations to pre-deployment state to get current state
-    state_reducer = provider.get_state_reducer()
-    post_deployment_state = state_reducer.apply_operations(
-        pre_deployment_state.copy(), successful_ops
-    )
+    post_deployment_state = provider.apply_operations(pre_deployment_state.copy(), successful_ops)
 
-    # 3. Generate rollback operations using state_differ
+    # 4. Generate rollback operations using state_differ
     # This is the same approach as diff.py - battle-tested and robust!
     console.print("   Generating rollback operations...")
     differ = provider.get_state_differ(
@@ -111,7 +144,7 @@ def rollback_partial(
         console.print("   No rollback operations needed (state unchanged)")
         return RollbackResult(success=True, operations_rolled_back=0)
 
-    # 4. Validate safety of rollback operations
+    # 5. Validate safety of rollback operations
     safety_validator = SafetyValidator(executor)
 
     console.print("   Analyzing safety...", end=" ")
@@ -160,7 +193,7 @@ def rollback_partial(
     else:
         console.print()
 
-    # 5. Show operations and confirm (if not auto-triggered)
+    # 6. Show operations and confirm (if not auto-triggered)
     if not auto_triggered:
         console.print()
         console.print("[bold]Rollback operations to execute:[/bold]")
@@ -174,11 +207,11 @@ def rollback_partial(
                 success=False, operations_rolled_back=0, error_message="Cancelled by user"
             )
 
-    # 6. Generate SQL for rollback operations
+    # 7. Generate SQL for rollback operations
     sql_generator = provider.get_sql_generator(pre_deployment_state, catalog_mapping)
     sql = sql_generator.generate_sql(rollback_ops)
 
-    # 7. Parse SQL into individual statements
+    # 8. Parse SQL into individual statements
     statements = parse_sql_statements(sql)
 
     if not statements:
@@ -187,7 +220,7 @@ def rollback_partial(
             success=False, operations_rolled_back=0, error_message="No SQL generated"
         )
 
-    # 8. Execute rollback SQL statements
+    # 9. Execute rollback SQL statements
     console.print()
     console.print(f"[cyan]Executing {len(statements)} rollback statements...[/cyan]")
 
@@ -201,7 +234,63 @@ def rollback_partial(
     try:
         result = executor.execute_statements(statements, config)
 
-        # 9. Report execution results
+        # 9. Track rollback deployment in database and locally
+        console.print()
+        console.print("[cyan]Recording rollback...[/cyan]")
+
+        # Initialize deployment tracker
+        unity_executor = cast(UnitySQLExecutor, executor)
+        tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
+
+        # Ensure tracking schema exists
+        tracker.ensure_tracking_schema(auto_create=env_config.get("autoCreateSchematicSchema", True))
+
+        # Generate unique rollback deployment ID
+        rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
+
+        # Start rollback deployment tracking
+        tracker.start_deployment(
+            deployment_id=rollback_deployment_id,
+            environment=target_env,
+            snapshot_version=f"rollback_of_{deployment_id}",
+            project_name=project_name,
+            provider_type=provider.info.id,
+            provider_version=provider.info.version,
+            schematic_version="0.2.0",
+        )
+
+        # Track individual rollback operations
+        for i, (rollback_op, stmt_result) in enumerate(zip(rollback_ops, result.statement_results)):
+            tracker.record_operation(
+                deployment_id=rollback_deployment_id,
+                op=rollback_op,
+                sql_stmt=stmt_result.sql,
+                result=stmt_result,
+                execution_order=i + 1,
+            )
+
+        # Complete rollback deployment tracking in database
+        tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
+
+        # Write rollback deployment record to local project.json
+        deployment_record = {
+            "id": rollback_deployment_id,
+            "environment": target_env,
+            "type": "rollback",  # Mark as rollback type
+            "rolledBackDeployment": deployment_id,  # Link to original failed deployment
+            "version": f"rollback_of_{deployment_id}",
+            "ts": datetime.now(UTC).isoformat(),
+            "status": result.status,
+            "executionTimeMs": result.total_execution_time_ms,
+            "statementCount": result.total_statements,
+            "successfulStatements": result.successful_statements,
+            "failedStatementIndex": result.failed_statement_index,
+            "opsApplied": [op.id for op in rollback_ops],
+        }
+
+        write_deployment(workspace, deployment_record)
+
+        # 10. Report execution results
         console.print()
         if result.status == "success":
             console.print(
@@ -209,6 +298,8 @@ def rollback_partial(
             )
             for i, rollback_op in enumerate(rollback_ops, 1):
                 console.print(f"  [{i}/{len(rollback_ops)}] {rollback_op.op} {rollback_op.target}")
+            console.print(f"[green]✓ Rollback recorded: {rollback_deployment_id}[/green]")
+            console.print("[green]✓ Local record saved to project.json[/green]")
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
         else:
             # Rollback execution failed
@@ -217,6 +308,8 @@ def rollback_partial(
             console.print(f"[yellow]{result.successful_statements} statements succeeded[/yellow]")
             if result.error_message:
                 console.print(f"[red]Error: {result.error_message}[/red]")
+            console.print(f"[yellow]Partial rollback recorded: {rollback_deployment_id}[/yellow]")
+            console.print("[yellow]Local record saved to project.json[/yellow]")
 
             return RollbackResult(
                 success=False,
@@ -245,19 +338,262 @@ def rollback_complete(
 ) -> RollbackResult:
     """Complete rollback to a previous snapshot
 
+    This uses the same pattern as diff.py - compare current state with
+    target snapshot and generate operations to transform current → target.
+
     Args:
         workspace: Project workspace path
         target_env: Target environment name
         to_snapshot: Target snapshot version to roll back to
         profile: Databricks CLI profile
         warehouse_id: SQL Warehouse ID
-        create_clone: Optional name for backup SHALLOW CLONE
+        create_clone: Optional name for backup SHALLOW CLONE (not yet implemented)
         safe_only: Only execute safe operations (skip destructive)
         dry_run: Preview impact without executing
 
     Returns:
         RollbackResult with success status
     """
-    # TODO: Implement complete rollback
-    console.print("[yellow]Complete rollback not yet implemented[/yellow]")
-    return RollbackResult(success=False, operations_rolled_back=0, error_message="Not implemented")
+    console.print(f"[bold]🔄 Complete Rollback to {to_snapshot}[/bold]")
+    console.print()
+
+    try:
+        # 1. Load project and environment config
+        project = read_project(workspace)
+        project_name = project.get("name", "unknown")
+        env_config = get_environment_config(project, target_env)
+        deployment_catalog = env_config["topLevelName"]
+
+        # 2. Build catalog mapping
+        from ..commands.diff import _build_catalog_mapping
+        from ..storage_v4 import read_snapshot
+
+        target_snapshot = read_snapshot(workspace, to_snapshot)
+        catalog_mapping = _build_catalog_mapping(target_snapshot["state"], env_config)
+
+        console.print(f"[cyan]Environment:[/cyan] {target_env}")
+        console.print(f"[cyan]Target catalog:[/cyan] {deployment_catalog}")
+        console.print(f"[cyan]Target snapshot:[/cyan] {to_snapshot}")
+        console.print()
+
+        # 3. Load current state and target snapshot state
+        console.print("[cyan]Loading states...[/cyan]")
+        current_state, _, provider = load_current_state(workspace)
+        target_state = target_snapshot["state"]
+
+        console.print("  [green]✓[/green] Current state loaded")
+        console.print(f"  [green]✓[/green] Target snapshot loaded: {to_snapshot}")
+
+        # 4. Generate rollback operations using state_differ (same as diff.py)
+        console.print()
+        console.print("[cyan]Generating rollback operations...[/cyan]")
+
+        differ = provider.get_state_differ(
+            current_state,  # Source: current state
+            target_state,  # Target: previous snapshot state
+            [],  # Current state has no operations (it's merged)
+            target_snapshot.get("operations", []),  # Target operations from snapshot
+        )
+
+        rollback_ops = differ.generate_diff_operations()
+
+        if not rollback_ops:
+            console.print("[yellow]✓ No changes needed - already at target state[/yellow]")
+            return RollbackResult(success=True, operations_rolled_back=0)
+
+        console.print(f"  [green]✓[/green] Generated {len(rollback_ops)} rollback operations")
+
+        # 5. Validate safety of rollback operations
+        console.print()
+        console.print("[cyan]Analyzing safety...[/cyan]")
+
+        # Initialize executor for safety validation
+        from ..providers.unity.auth import create_databricks_client
+
+        client = create_databricks_client(profile)
+        executor = UnitySQLExecutor(client)
+
+        safety_validator = SafetyValidator(executor)
+
+        safe_ops = []
+        risky_ops = []
+        destructive_ops = []
+
+        for rollback_op in rollback_ops:
+            try:
+                safety = safety_validator.validate(rollback_op, catalog_mapping)
+
+                if safety.level == SafetyLevel.SAFE:
+                    safe_ops.append((rollback_op, safety))
+                elif safety.level == SafetyLevel.RISKY:
+                    risky_ops.append((rollback_op, safety))
+                else:  # DESTRUCTIVE
+                    destructive_ops.append((rollback_op, safety))
+            except Exception as e:
+                console.print(f"  [yellow]⚠️  Could not validate {rollback_op.op}: {e}[/yellow]")
+                risky_ops.append((rollback_op, None))
+
+        console.print(f"  [green]SAFE:[/green] {len(safe_ops)} operations")
+        console.print(f"  [yellow]RISKY:[/yellow] {len(risky_ops)} operations")
+        console.print(f"  [red]DESTRUCTIVE:[/red] {len(destructive_ops)} operations")
+
+        # 6. Show operations
+        console.print()
+        console.print("[bold]Rollback Operations:[/bold]")
+        for i, op in enumerate(rollback_ops, 1):
+            console.print(f"  [{i}/{len(rollback_ops)}] {op.op} {op.target}")
+
+        # 7. Apply safe_only filter if requested
+        if safe_only and (risky_ops or destructive_ops):
+            console.print()
+            console.print(
+                "[yellow]⚠️  --safe-only flag enabled, skipping risky/destructive operations[/yellow]"
+            )
+            rollback_ops = [op for op, _ in safe_ops]
+
+            if not rollback_ops:
+                console.print("[yellow]No safe operations to execute[/yellow]")
+                return RollbackResult(
+                    success=False, operations_rolled_back=0, error_message="No safe operations"
+                )
+
+        # 8. Generate SQL
+        console.print()
+        console.print("[cyan]Generating SQL...[/cyan]")
+        sql_generator = provider.get_sql_generator(target_state, catalog_mapping)
+        sql = sql_generator.generate_sql(rollback_ops)
+
+        statements = parse_sql_statements(sql)
+        console.print(f"  [green]✓[/green] Generated {len(statements)} SQL statements")
+
+        # 9. Dry run - show SQL and exit
+        if dry_run:
+            console.print()
+            console.print("[bold yellow]DRY RUN - No changes will be made[/bold yellow]")
+            console.print()
+            console.print("[bold]SQL Preview:[/bold]")
+            from rich.syntax import Syntax
+
+            syntax = Syntax(sql, "sql", theme="monokai", line_numbers=True)
+            console.print(syntax)
+            console.print()
+            console.print(f"[yellow]Would execute {len(statements)} statements[/yellow]")
+            return RollbackResult(success=True, operations_rolled_back=0)
+
+        # 10. Confirm rollback (unless safe_only with all safe ops)
+        if not safe_only or risky_ops or destructive_ops:
+            console.print()
+            if destructive_ops:
+                console.print(
+                    "[red]⚠️  WARNING: This rollback includes DESTRUCTIVE operations![/red]"
+                )
+                for op, safety in destructive_ops[:3]:  # Show first 3
+                    console.print(f"  • {op.op}: {safety.reason if safety else 'Unknown risk'}")
+                if len(destructive_ops) > 3:
+                    console.print(f"  ... and {len(destructive_ops) - 3} more")
+                console.print()
+
+            if not Confirm.ask(
+                f"Execute complete rollback to {to_snapshot}?", default=False
+            ):
+                console.print("[yellow]Rollback cancelled[/yellow]")
+                return RollbackResult(
+                    success=False, operations_rolled_back=0, error_message="Cancelled by user"
+                )
+
+        # 11. Execute rollback SQL
+        console.print()
+        console.print(f"[cyan]Executing {len(statements)} rollback statements...[/cyan]")
+
+        config = ExecutionConfig(
+            target_env=target_env,
+            profile=profile,
+            warehouse_id=warehouse_id,
+            catalog=catalog_mapping.get("__implicit__") if catalog_mapping else None,
+        )
+
+        result = executor.execute_statements(statements, config)
+
+        # 12. Track rollback deployment
+        console.print()
+        console.print("[cyan]Recording rollback...[/cyan]")
+
+        tracker = DeploymentTracker(executor.client, deployment_catalog, warehouse_id)
+        tracker.ensure_tracking_schema(auto_create=env_config.get("autoCreateSchematicSchema", True))
+
+        rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
+
+        tracker.start_deployment(
+            deployment_id=rollback_deployment_id,
+            environment=target_env,
+            snapshot_version=to_snapshot,
+            project_name=project_name,
+            provider_type=provider.info.id,
+            provider_version=provider.info.version,
+            schematic_version="0.2.0",
+        )
+
+        # Track individual operations
+        for i, (rollback_op, stmt_result) in enumerate(zip(rollback_ops, result.statement_results)):
+            tracker.record_operation(
+                deployment_id=rollback_deployment_id,
+                op=rollback_op,
+                sql_stmt=stmt_result.sql,
+                result=stmt_result,
+                execution_order=i + 1,
+            )
+
+        tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
+
+        # Write local record
+        deployment_record = {
+            "id": rollback_deployment_id,
+            "environment": target_env,
+            "type": "complete_rollback",
+            "targetSnapshot": to_snapshot,
+            "version": to_snapshot,
+            "ts": datetime.now(UTC).isoformat(),
+            "status": result.status,
+            "executionTimeMs": result.total_execution_time_ms,
+            "statementCount": result.total_statements,
+            "successfulStatements": result.successful_statements,
+            "failedStatementIndex": result.failed_statement_index,
+            "opsApplied": [op.id for op in rollback_ops],
+        }
+
+        write_deployment(workspace, deployment_record)
+
+        # 13. Report results
+        console.print()
+        console.print("─" * 60)
+
+        if result.status == "success":
+            exec_time = result.total_execution_time_ms / 1000
+            console.print(
+                f"[green]✓ Rolled back to {to_snapshot} ({result.successful_statements} "
+                f"statements, {exec_time:.2f}s)[/green]"
+            )
+            console.print(f"[green]✓ Rollback recorded: {rollback_deployment_id}[/green]")
+            console.print("[green]✓ Local record saved to project.json[/green]")
+            return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
+        else:
+            failed_idx = result.failed_statement_index or 0
+            console.print(f"[red]✗ Rollback failed at statement {failed_idx + 1}[/red]")
+            console.print(f"[yellow]{result.successful_statements} statements succeeded[/yellow]")
+            if result.error_message:
+                console.print(f"[red]Error: {result.error_message}[/red]")
+            console.print(f"[yellow]Partial rollback recorded: {rollback_deployment_id}[/yellow]")
+
+            return RollbackResult(
+                success=False,
+                operations_rolled_back=result.successful_statements,
+                error_message=result.error_message,
+            )
+
+    except Exception as e:
+        console.print(f"[red]✗ Complete rollback failed: {e}[/red]")
+        return RollbackResult(
+            success=False,
+            operations_rolled_back=0,
+            error_message=str(e),
+        )

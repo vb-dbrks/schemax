@@ -9,22 +9,17 @@ interface EnvironmentConfig {
   [key: string]: any;
 }
 
+// Codicon icons - theme-aware and vector-based
 const IconPlus: React.FC = () => (
-  <svg slot="start" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <path fillRule="evenodd" d="M8.75 3.25a.75.75 0 0 0-1.5 0V7H3.5a.75.75 0 0 0 0 1.5h3.75V12.75a.75.75 0 0 0 1.5 0V8.5h3.75a.75.75 0 0 0 0-1.5H8.75z" clipRule="evenodd" />
-  </svg>
+  <i slot="start" className="codicon codicon-add" aria-hidden="true"></i>
 );
 
 const IconEdit: React.FC = () => (
-  <svg slot="start" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <path fillRule="evenodd" d="M11.414 1.586a2 2 0 0 1 2.828 2.828l-.793.793-2.828-2.828zm-2.121 2.121-7 7A2 2 0 0 0 2 12.414V14a1 1 0 0 0 1 1h1.586a2 2 0 0 0 1.414-.586l7-7z" clipRule="evenodd" />
-  </svg>
+  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
 );
 
 const IconTrash: React.FC = () => (
-  <svg slot="start" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <path fillRule="evenodd" d="M6.5 1A1.5 1.5 0 0 0 5 2.5V3H2.75a.75.75 0 0 0 0 1.5h.427l.561 8.414A2 2 0 0 0 5.73 15h4.54a2 2 0 0 0 1.992-2.086l.561-8.414h.427a.75.75 0 0 0 0-1.5H11V2.5A1.5 1.5 0 0 0 9.5 1zm0 1.5h3V3h-3zm-1.771 3h6.542l-.545 8.171a.5.5 0 0 1-.498.462H5.73a.5.5 0 0 1-.498-.462z" clipRule="evenodd" />
-  </svg>
+  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
 );
 
 // Tooltip component for showing logical → physical catalog name mappings
@@ -433,9 +428,7 @@ export const Sidebar: React.FC = () => {
                 }}
                 title="View environment mappings"
               >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path fillRule="evenodd" d="M7.775 3.275a.75.75 0 001.06 1.06l1.25-1.25a2 2 0 112.83 2.83l-2.5 2.5a2 2 0 01-2.83 0 .75.75 0 00-1.06 1.06 3.5 3.5 0 004.95 0l2.5-2.5a3.5 3.5 0 00-4.95-4.95l-1.25 1.25zm-4.69 9.64a2 2 0 010-2.83l2.5-2.5a2 2 0 012.83 0 .75.75 0 001.06-1.06 3.5 3.5 0 00-4.95 0l-2.5 2.5a3.5 3.5 0 004.95 4.95l1.25-1.25a.75.75 0 00-1.06-1.06l-1.25 1.25a2 2 0 01-2.83 0z" clipRule="evenodd"/>
-                </svg>
+                <i className="codicon codicon-link"></i>
               </span>
               <span className="actions">
                 <VSCodeButton
@@ -537,9 +530,7 @@ export const Sidebar: React.FC = () => {
                           }}
                         >
                           <span className="icon">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                              <path fillRule="evenodd" d="M1 1.75A.75.75 0 0 1 1.75 1h12.5a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75H1.75a.75.75 0 0 1-.75-.75zm1.5.75v3h11v-3zm0 11V7H5v6.5zm4 0h3V7h-3zM11 7v6.5h2.5V7z" clipRule="evenodd"/>
-                            </svg>
+                            <i className="codicon codicon-table"></i>
                           </span>
                           <span className="name">{table.name}</span>
                           <span className="badge">{table.format}</span>

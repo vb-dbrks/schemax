@@ -28,7 +28,9 @@ class ProviderRegistryClass:
             raise ValueError(f"Provider with ID '{provider.info.id}' is already registered")
 
         self.providers[provider.info.id] = provider
-        print(f"[Schematic] Registered provider: {provider.info.name} ({provider.info.id})")
+        import sys
+
+        print(f"[Schematic] Registered provider: {provider.info.name} ({provider.info.id})", file=sys.stderr)
 
     def get(self, provider_id: str) -> Provider | None:
         """

@@ -112,61 +112,66 @@ class TestApplyCommand:
                     with patch(
                         "schematic.commands.apply.create_snapshot"
                     ) as mock_snapshot:
-                        # Setup mocks
-                        mock_prompt.side_effect = Exception(
-                            "ERROR: Prompt.ask should not be called in non-interactive mode!"
-                        )
-                        mock_input.side_effect = Exception(
-                            "ERROR: input() should not be called in non-interactive mode!"
-                        )
-
-                        # Mock load_current_state to return empty state
-                        mock_provider = Mock()
-                        mock_provider.info.name = "Unity Catalog"
-                        mock_provider.info.version = "1.0.0"
-                        mock_provider.create_initial_state.return_value = {
-                            "catalogs": []
-                        }
-                        mock_provider.get_state_differ.return_value = Mock(
-                            generate_diff_operations=Mock(return_value=[])
-                        )
-
-                        mock_load.return_value = (
-                            {"catalogs": []},  # state
-                            {"ops": []},  # changelog
-                            mock_provider,  # provider
-                        )
-
-                        # Execute apply in non-interactive mode
-                        try:
-                            result = apply_to_environment(
-                                workspace=workspace_with_uncommitted_ops,
-                                target_env="dev",
-                                profile="DEFAULT",
-                                warehouse_id="test123",
-                                dry_run=True,
-                                no_interaction=True,  # KEY: non-interactive mode
-                            )
-
-                            # Verify snapshot was created automatically
-                            mock_snapshot.assert_called_once()
-                            assert mock_snapshot.call_args[1]["version"] == "v0.2.0"
-
-                            # Verify NO interactive prompts were called
-                            mock_prompt.assert_not_called()
-                            mock_input.assert_not_called()
-
-                            # Should succeed
-                            assert result.status == "success"
-
-                        except Exception as e:
-                            # If Prompt.ask or input() was called, fail the test
-                            if "should not be called" in str(e):
-                                pytest.fail(
-                                    f"Interactive prompt called in non-interactive mode: {e}"
+                        with patch("schematic.providers.unity.auth.create_databricks_client"):
+                            with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
+                                # Mock database query to return None (first deployment)
+                                mock_tracker.return_value.get_latest_deployment.return_value = None
+                                
+                                # Setup mocks
+                                mock_prompt.side_effect = Exception(
+                                    "ERROR: Prompt.ask should not be called in non-interactive mode!"
                                 )
-                            # Other exceptions (like missing state) are fine for this test
-                            pass
+                                mock_input.side_effect = Exception(
+                                    "ERROR: input() should not be called in non-interactive mode!"
+                                )
+
+                                # Mock load_current_state to return empty state
+                                mock_provider = Mock()
+                                mock_provider.info.name = "Unity Catalog"
+                                mock_provider.info.version = "1.0.0"
+                                mock_provider.create_initial_state.return_value = {
+                                    "catalogs": []
+                                }
+                                mock_provider.get_state_differ.return_value = Mock(
+                                    generate_diff_operations=Mock(return_value=[])
+                                )
+
+                                mock_load.return_value = (
+                                    {"catalogs": []},  # state
+                                    {"ops": []},  # changelog
+                                    mock_provider,  # provider
+                                )
+
+                                # Execute apply in non-interactive mode
+                                try:
+                                    result = apply_to_environment(
+                                        workspace=workspace_with_uncommitted_ops,
+                                        target_env="dev",
+                                        profile="DEFAULT",
+                                        warehouse_id="test123",
+                                        dry_run=True,
+                                        no_interaction=True,  # KEY: non-interactive mode
+                                    )
+
+                                    # Verify snapshot was created automatically
+                                    mock_snapshot.assert_called_once()
+                                    assert mock_snapshot.call_args[1]["version"] == "v0.2.0"
+
+                                    # Verify NO interactive prompts were called
+                                    mock_prompt.assert_not_called()
+                                    mock_input.assert_not_called()
+
+                                    # Should succeed
+                                    assert result.status == "success"
+
+                                except Exception as e:
+                                    # If Prompt.ask or input() was called, fail the test
+                                    if "should not be called" in str(e):
+                                        pytest.fail(
+                                            f"Interactive prompt called in non-interactive mode: {e}"
+                                        )
+                                    # Other exceptions (like missing state) are fine for this test
+                                    pass
 
     def test_interactive_mode_prompts_for_snapshot(self, workspace_with_uncommitted_ops):
         """
@@ -177,81 +182,91 @@ class TestApplyCommand:
         with patch("schematic.commands.apply.Prompt.ask") as mock_prompt:
             with patch("schematic.commands.apply.load_current_state") as mock_load:
                 with patch("schematic.commands.apply.create_snapshot") as mock_snapshot:
-                    # User chooses to abort
-                    mock_prompt.return_value = "abort"
+                    with patch("schematic.providers.unity.auth.create_databricks_client"):
+                        with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
+                            # Mock database query
+                            mock_tracker.return_value.get_latest_deployment.return_value = None
+                            
+                            # User chooses to abort
+                            mock_prompt.return_value = "abort"
 
-                    # Mock load_current_state
-                    mock_provider = Mock()
-                    mock_load.return_value = (
-                        {"catalogs": []},
-                        {"ops": []},
-                        mock_provider,
-                    )
+                            # Mock load_current_state
+                            mock_provider = Mock()
+                            mock_load.return_value = (
+                                {"catalogs": []},
+                                {"ops": []},
+                                mock_provider,
+                            )
 
-                    # Execute apply in interactive mode
-                    with pytest.raises(SystemExit) as exc_info:
-                        apply_to_environment(
-                            workspace=workspace_with_uncommitted_ops,
-                            target_env="dev",
-                            profile="DEFAULT",
-                            warehouse_id="test123",
-                            dry_run=True,
-                            no_interaction=False,  # Interactive mode
-                        )
+                            # Execute apply in interactive mode
+                            with pytest.raises(SystemExit) as exc_info:
+                                apply_to_environment(
+                                    workspace=workspace_with_uncommitted_ops,
+                                    target_env="dev",
+                                    profile="DEFAULT",
+                                    warehouse_id="test123",
+                                    dry_run=True,
+                                    no_interaction=False,  # Interactive mode
+                                )
 
-                    # Should prompt user
-                    mock_prompt.assert_called_once()
-                    assert mock_prompt.call_args[0][0] == "[bold]What would you like to do?[/bold]"
-                    assert mock_prompt.call_args[1]["choices"] == [
-                        "create",
-                        "continue",
-                        "abort",
-                    ]
-                    assert mock_prompt.call_args[1]["default"] == "create"
+                            # Should prompt user
+                            mock_prompt.assert_called_once()
+                            assert mock_prompt.call_args[0][0] == "[bold]What would you like to do?[/bold]"
+                            assert mock_prompt.call_args[1]["choices"] == [
+                                "create",
+                                "continue",
+                                "abort",
+                            ]
+                            assert mock_prompt.call_args[1]["default"] == "create"
 
-                    # Should exit cleanly when user aborts
-                    assert exc_info.value.code == 0
+                            # Should exit cleanly when user aborts
+                            assert exc_info.value.code == 0
 
     def test_interactive_mode_create_snapshot(self, workspace_with_uncommitted_ops):
         """Test that interactive mode creates snapshot when user chooses 'create'"""
         with patch("schematic.commands.apply.Prompt.ask") as mock_prompt:
             with patch("schematic.commands.apply.load_current_state") as mock_load:
                 with patch("schematic.commands.apply.create_snapshot") as mock_snapshot:
-                    # User chooses to create snapshot
-                    mock_prompt.return_value = "create"
+                    with patch("schematic.providers.unity.auth.create_databricks_client"):
+                        with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
+                            # Mock database query
+                            mock_tracker.return_value.get_latest_deployment.return_value = None
+                            
+                            # User chooses to create snapshot
+                            mock_prompt.return_value = "create"
 
-                    # Mock load_current_state to return empty state (no changes)
-                    mock_provider = Mock()
-                    mock_provider.info.name = "Unity Catalog"
-                    mock_provider.info.version = "1.0.0"
-                    mock_provider.create_initial_state.return_value = {"catalogs": []}
-                    mock_provider.get_state_differ.return_value = Mock(
-                        generate_diff_operations=Mock(return_value=[])
-                    )
+                            # Mock load_current_state to return empty state (no changes)
+                            mock_provider = Mock()
+                            mock_provider.info.name = "Unity Catalog"
+                            mock_provider.info.version = "1.0.0"
+                            mock_provider.create_initial_state.return_value = {"catalogs": []}
+                            mock_provider.get_state_differ.return_value = Mock(
+                                generate_diff_operations=Mock(return_value=[])
+                            )
 
-                    mock_load.return_value = (
-                        {"catalogs": []},
-                        {"ops": []},
-                        mock_provider,
-                    )
+                            mock_load.return_value = (
+                                {"catalogs": []},
+                                {"ops": []},
+                                mock_provider,
+                            )
 
-                    # Execute apply
-                    try:
-                        apply_to_environment(
-                            workspace=workspace_with_uncommitted_ops,
-                            target_env="dev",
-                            profile="DEFAULT",
-                            warehouse_id="test123",
-                            dry_run=True,
-                            no_interaction=False,
-                        )
-                    except Exception:
-                        pass  # We're just testing snapshot creation
+                            # Execute apply
+                            try:
+                                apply_to_environment(
+                                    workspace=workspace_with_uncommitted_ops,
+                                    target_env="dev",
+                                    profile="DEFAULT",
+                                    warehouse_id="test123",
+                                    dry_run=True,
+                                    no_interaction=False,
+                                )
+                            except Exception:
+                                pass  # We're just testing snapshot creation
 
-                    # Should prompt and create snapshot
-                    mock_prompt.assert_called_once()
-                    mock_snapshot.assert_called_once()
-                    assert mock_snapshot.call_args[1]["version"] == "v0.2.0"
+                            # Should prompt and create snapshot
+                            mock_prompt.assert_called_once()
+                            mock_snapshot.assert_called_once()
+                            assert mock_snapshot.call_args[1]["version"] == "v0.2.0"
 
     def test_sql_preview_noninteractive_skips_prompt(
         self, workspace_with_uncommitted_ops
@@ -335,32 +350,37 @@ class TestApplyCommand:
 
         with patch("schematic.commands.apply.Prompt.ask") as mock_prompt:
             with patch("schematic.commands.apply.load_current_state") as mock_load:
-                # Mock load_current_state
-                mock_provider = Mock()
-                mock_provider.info.name = "Unity Catalog"
-                mock_provider.info.version = "1.0.0"
-                mock_provider.create_initial_state.return_value = {"catalogs": []}
-                mock_provider.get_state_differ.return_value = Mock(
-                    generate_diff_operations=Mock(return_value=[])
-                )
+                with patch("schematic.providers.unity.auth.create_databricks_client"):
+                    with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
+                        # Mock database query
+                        mock_tracker.return_value.get_latest_deployment.return_value = None
+                        
+                        # Mock load_current_state
+                        mock_provider = Mock()
+                        mock_provider.info.name = "Unity Catalog"
+                        mock_provider.info.version = "1.0.0"
+                        mock_provider.create_initial_state.return_value = {"catalogs": []}
+                        mock_provider.get_state_differ.return_value = Mock(
+                            generate_diff_operations=Mock(return_value=[])
+                        )
 
-                mock_load.return_value = (
-                    {"catalogs": []},
-                    {"ops": []},
-                    mock_provider,
-                )
+                        mock_load.return_value = (
+                            {"catalogs": []},
+                            {"ops": []},
+                            mock_provider,
+                        )
 
-                # Should not prompt when there are no uncommitted ops
-                result = apply_to_environment(
-                    workspace=temp_workspace,
-                    target_env="dev",
-                    profile="DEFAULT",
-                    warehouse_id="test123",
-                    dry_run=True,
-                    no_interaction=False,
-                )
+                        # Should not prompt when there are no uncommitted ops
+                        result = apply_to_environment(
+                            workspace=temp_workspace,
+                            target_env="dev",
+                            profile="DEFAULT",
+                            warehouse_id="test123",
+                            dry_run=True,
+                            no_interaction=False,
+                        )
 
-                # No prompts should have been called
-                mock_prompt.assert_not_called()
-                assert result.status == "success"
+                        # No prompts should have been called
+                        mock_prompt.assert_not_called()
+                        assert result.status == "success"
 

@@ -9,16 +9,25 @@ import { ProjectSettingsPanel } from './components/ProjectSettingsPanel';
 
 const vscode = getVsCodeApi();
 
+// Codicon icons automatically adapt to VS Code themes
 const IconSettings: React.FC = () => (
-  <svg slot="start" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <path fillRule="evenodd" d="M9.078 2.044a.75.75 0 0 0-1.156 0l-.52.649a4 4 0 0 0-1.236.29l-.785-.27a.75.75 0 0 0-.95.46l-.518 1.554a.75.75 0 0 0 .41.923l.742.33a4 4 0 0 0-.002 1.342l-.74.33a.75.75 0 0 0-.41.923l.518 1.554a.75.75 0 0 0 .95.46l.784-.27a4 4 0 0 0 1.237.29l.521.65a.75.75 0 0 0 1.155 0l.52-.65a4 4 0 0 0 1.237-.29l.784.27a.75.75 0 0 0 .95-.46l.518-1.554a.75.75 0 0 0-.41-.923l-.74-.33a4 4 0 0 0-.002-1.342l.742-.33a.75.75 0 0 0 .41-.923l-.518-1.554a.75.75 0 0 0-.95-.46l-.785.27a4 4 0 0 0-1.236-.29zm-1.078 1.956a2.5 2.5 0 1 1 0 5.001 2.5 2.5 0 0 1 0-5z" clipRule="evenodd" />
-  </svg>
+  <i slot="start" className="codicon codicon-settings-gear" aria-hidden="true"></i>
+);
+
+// Codicon icons automatically adapt to VS Code themes
+const IconRefresh: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <i className={`codicon codicon-refresh ${className}`} aria-hidden="true"></i>
 );
 
 export const App: React.FC = () => {
   const { project, setProject, setProvider, provider } = useDesignerStore();
   const [loading, setLoading] = React.useState(true);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = React.useState(false);
+  const [hasConflicts, setHasConflicts] = React.useState(false);
+  const [conflictInfo, setConflictInfo] = React.useState<any>(null);
+  const [hasStaleSnapshots, setHasStaleSnapshots] = React.useState(false);
+  const [staleSnapshotInfo, setStaleSnapshotInfo] = React.useState<any>(null);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
 
   useEffect(() => {
     // Set up message listener from extension
@@ -33,6 +42,25 @@ export const App: React.FC = () => {
           
           setProject(message.payload);
           setLoading(false);
+          setIsRefreshing(false); // Stop refresh spinner
+          
+          // Check for conflicts
+          if (message.payload.conflicts) {
+            setHasConflicts(true);
+            setConflictInfo(message.payload.conflicts);
+          } else {
+            setHasConflicts(false);
+            setConflictInfo(null);
+          }
+          
+          // Check for stale snapshots
+          if (message.payload.staleSnapshots) {
+            setHasStaleSnapshots(true);
+            setStaleSnapshotInfo(message.payload.staleSnapshots);
+          } else {
+            setHasStaleSnapshots(false);
+            setStaleSnapshotInfo(null);
+          }
           break;
       }
     };
@@ -84,9 +112,48 @@ export const App: React.FC = () => {
             {snapshotCount ? ` · ${snapshotCount} snapshot${snapshotCount === 1 ? '' : 's'}` : ''}
           </p>
         </div>
-        <div className="app-header__status" data-state={pendingOps > 0 ? 'dirty' : 'clean'}>
-          <span className="status-dot" aria-hidden="true" />
-          <span>{pendingOps > 0 ? `${pendingOps} pending ${pendingOps === 1 ? 'change' : 'changes'}` : 'No pending changes'}</span>
+        <div className="app-header__actions">
+          <div 
+            className="app-header__status" 
+            data-state={hasConflicts ? 'conflict' : (hasStaleSnapshots ? 'stale' : (pendingOps > 0 ? 'dirty' : 'clean'))}
+            style={{ cursor: (hasConflicts || hasStaleSnapshots) ? 'pointer' : 'default' }}
+            onClick={() => {
+              if (hasConflicts && conflictInfo) {
+                // Show conflict details (higher priority)
+                vscode.postMessage({ type: 'show-conflict-details', payload: conflictInfo });
+              } else if (hasStaleSnapshots && staleSnapshotInfo) {
+                // Show stale snapshot details
+                vscode.postMessage({ type: 'show-stale-snapshot-details', payload: staleSnapshotInfo });
+              }
+            }}
+          >
+            <span className="status-dot" aria-hidden="true" />
+            <span>
+              {hasConflicts 
+                ? '⚠️ Rebase conflict detected' 
+                : (hasStaleSnapshots
+                    ? '⚠️ Stale snapshots detected'
+                    : (pendingOps > 0 
+                        ? `${pendingOps} pending ${pendingOps === 1 ? 'change' : 'changes'}` 
+                        : 'No pending changes'
+                      )
+                  )
+              }
+            </span>
+          </div>
+          <button
+            className="refresh-button"
+            onClick={() => {
+              setIsRefreshing(true);
+              vscode.postMessage({ type: 'refresh-project' });
+            }}
+            title="Refresh project state (re-check for stale snapshots and conflicts)"
+            aria-label="Refresh project"
+            disabled={isRefreshing}
+            data-refreshing={isRefreshing}
+          >
+            <IconRefresh />
+          </button>
         </div>
       </header>
       <div className="content">

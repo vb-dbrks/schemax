@@ -68,6 +68,26 @@ def validate_project(workspace: Path) -> bool:
             )
             console.print(f"[bold]Tables:[/bold] {total_tables}")
 
+        # Check for stale snapshots
+        from .snapshot_rebase import detect_stale_snapshots
+
+        stale = detect_stale_snapshots(workspace)
+        if stale:
+            console.print()
+            console.print(f"[yellow]⚠️  Found {len(stale)} stale snapshot(s):[/yellow]")
+            for snap in stale:
+                console.print(f"  [yellow]{snap['version']}[/yellow]")
+                console.print(f"    Current base: {snap['currentBase']}")
+                console.print(f"    Should be: {snap['shouldBeBase']}")
+                console.print(f"    Missing: {', '.join(snap['missing'])}")
+            console.print()
+            console.print("[cyan]Run the following commands to fix:[/cyan]")
+            for snap in stale:
+                console.print(f"  schematic snapshot rebase {snap['version']}")
+            console.print()
+            console.print("[yellow]⚠️ Validation passed but snapshots need rebasing[/yellow]")
+            return False  # Return False to indicate warning
+
         console.print("\n[green]✓ Schema files are valid[/green]")
 
         return True

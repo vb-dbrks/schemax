@@ -80,15 +80,19 @@ class UnitySQLExecutor:
 
                     # Fail-fast: stop on first error
                     total_time_ms = int((time.time() - start_time) * 1000)
+                    successful_count = i - 1
+
+                    # Determine status: "failed" if 0 succeeded, "partial" if some succeeded
+                    status = "failed" if successful_count == 0 else "partial"
 
                     return ExecutionResult(
                         deployment_id=deployment_id,
                         total_statements=len(statements),
-                        successful_statements=i - 1,
+                        successful_statements=successful_count,
                         failed_statement_index=i - 1,
                         statement_results=results,
                         total_execution_time_ms=total_time_ms,
-                        status="partial",
+                        status=status,
                         error_message=result.error_message,
                     )
 
@@ -109,15 +113,19 @@ class UnitySQLExecutor:
                 )
 
                 total_time_ms = int((time.time() - start_time) * 1000)
+                successful_count = i - 1
+
+                # Determine status: "failed" if 0 succeeded, "partial" if some succeeded
+                status = "failed" if successful_count == 0 else "partial"
 
                 return ExecutionResult(
                     deployment_id=deployment_id,
                     total_statements=len(statements),
-                    successful_statements=i - 1,
+                    successful_statements=successful_count,
                     failed_statement_index=i - 1,
                     statement_results=results,
                     total_execution_time_ms=total_time_ms,
-                    status="partial",
+                    status=status,
                     error_message=error_msg,
                 )
 

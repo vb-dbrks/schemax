@@ -8,10 +8,17 @@ interface ColumnGridProps {
   columns: Column[];
 }
 
+// Codicon icons - theme-aware and vector-based
 const IconPlusSmall: React.FC = () => (
-  <svg slot="start" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <path fillRule="evenodd" d="M8.75 2.75a.75.75 0 0 0-1.5 0V7H3.25a.75.75 0 0 0 0 1.5H7.25v4.25a.75.75 0 0 0 1.5 0V8.5h4.25a.75.75 0 0 0 0-1.5H8.75z" clipRule="evenodd" />
-  </svg>
+  <i slot="start" className="codicon codicon-add" aria-hidden="true"></i>
+);
+
+const IconEdit: React.FC = () => (
+  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
+);
+
+const IconTrash: React.FC = () => (
+  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
 );
 
 export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
@@ -279,16 +286,20 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                       </>
                     ) : (
                       <>
-                        <button onClick={() => handleEditColumn(col)} title="Edit column">
-                          ✏️ Edit
-                        </button>
-                        <button 
-                          onClick={() => handleDropColumn(col.id, col.name)} 
-                          title="Drop column"
-                          style={{color: 'var(--vscode-errorForeground)'}}
+                        <VSCodeButton
+                          appearance="icon"
+                          onClick={() => handleEditColumn(col)}
+                          title="Edit column"
                         >
-                          🗑️ Drop
-                        </button>
+                          <IconEdit />
+                        </VSCodeButton>
+                        <VSCodeButton
+                          appearance="icon"
+                          onClick={() => handleDropColumn(col.id, col.name)}
+                          title="Drop column"
+                        >
+                          <IconTrash />
+                        </VSCodeButton>
                       </>
                     )}
                   </td>

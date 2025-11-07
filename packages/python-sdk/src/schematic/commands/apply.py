@@ -178,15 +178,37 @@ def apply_to_environment(
 
         console.print(f"[blue]Latest snapshot:[/blue] {latest_snapshot_version}")
 
-        # 6. Get last deployment for target environment
-        last_deployment = get_last_deployment(project, target_env)
+        # 6. Get last deployment from DATABASE (source of truth!)
+        # Query the database to see what's actually deployed
+        # Local project.json is just an audit log, not source of truth
+        from ..providers.unity.auth import create_databricks_client
 
-        if last_deployment:
-            deployed_version = last_deployment.get("version")
-            console.print(f"[blue]Deployed to {target_env}:[/blue] {deployed_version}")
-        else:
-            deployed_version = None
-            console.print(f"[blue]First deployment to {target_env}[/blue]")
+        try:
+            client = create_databricks_client(profile)
+            tracker = DeploymentTracker(client, env_config["topLevelName"], warehouse_id)
+            db_deployment = tracker.get_latest_deployment(target_env)
+
+            if db_deployment:
+                deployed_version = db_deployment.get("version")
+                console.print(f"[blue]Deployed to {target_env}:[/blue] {deployed_version}")
+                console.print("[dim](Source: Database tracking table)[/dim]")
+            else:
+                deployed_version = None
+                console.print(f"[blue]First deployment to {target_env}[/blue]")
+                console.print("[dim](No successful deployments in database)[/dim]")
+        except Exception as e:
+            # Fallback to local records if database query fails
+            console.print(f"[yellow]⚠️  Could not query database: {e}[/yellow]")
+            console.print("[yellow]Using local deployment records (may be stale!)[/yellow]")
+
+            last_deployment = get_last_deployment(project, target_env)
+            if last_deployment:
+                deployed_version = last_deployment.get("version")
+                console.print(f"[blue]Deployed to {target_env}:[/blue] {deployed_version}")
+                console.print("[dim](Source: Local project.json)[/dim]")
+            else:
+                deployed_version = None
+                console.print(f"[blue]First deployment to {target_env}[/blue]")
 
         # 7. Load snapshot states
         latest_snap = read_snapshot(workspace, latest_snapshot_version)

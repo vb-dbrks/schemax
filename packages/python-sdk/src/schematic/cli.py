@@ -236,10 +236,10 @@ def diff(
 
 @cli.command(name="record-deployment")
 @click.option(
-    "--environment",
-    "-e",
+    "--target",
+    "-t",
     required=True,
-    help="Environment name (dev/test/prod)",
+    help="Target environment (dev/test/prod)",
 )
 @click.option(
     "--version",
@@ -251,7 +251,7 @@ def diff(
     is_flag=True,
     help="Mark the deployment as successful",
 )
-def record_deployment(environment: str, version: str | None, mark_deployed: bool) -> None:
+def record_deployment(target: str, version: str | None, mark_deployed: bool) -> None:
     """Record a deployment to an environment (manual tracking)
 
     This command manually tracks a deployment record in project.json.
@@ -262,7 +262,7 @@ def record_deployment(environment: str, version: str | None, mark_deployed: bool
 
         record_deployment_to_environment(
             workspace=workspace_path,
-            environment=environment,
+            environment=target,
             version=version,
             mark_deployed=mark_deployed,
         )
@@ -277,10 +277,10 @@ def record_deployment(environment: str, version: str | None, mark_deployed: bool
 
 @cli.command(name="deploy", hidden=True)
 @click.option(
-    "--environment",
-    "-e",
+    "--target",
+    "-t",
     required=True,
-    help="Environment name (dev/test/prod)",
+    help="Target environment (dev/test/prod)",
 )
 @click.option(
     "--version",
@@ -292,7 +292,7 @@ def record_deployment(environment: str, version: str | None, mark_deployed: bool
     is_flag=True,
     help="Mark the deployment as successful",
 )
-def deploy_alias(environment: str, version: str | None, mark_deployed: bool) -> None:
+def deploy_alias(target: str, version: str | None, mark_deployed: bool) -> None:
     """[DEPRECATED] Use 'record-deployment' instead
 
     This command is deprecated. Use 'schematic record-deployment' for manual
@@ -302,15 +302,15 @@ def deploy_alias(environment: str, version: str | None, mark_deployed: bool) -> 
         "[yellow]⚠️  'deploy' is deprecated. Use 'record-deployment' for manual tracking "
         "or 'apply' for automated deployment.[/yellow]\n"
     )
-    record_deployment(environment, version, mark_deployed)
+    record_deployment(target, version, mark_deployed)
 
 
 @cli.command()
 @click.option(
-    "--environment",
-    "-e",
+    "--target",
+    "-t",
     required=True,
-    help="Environment name",
+    help="Target environment (dev/test/prod)",
 )
 @click.option(
     "--version",
@@ -325,14 +325,14 @@ def deploy_alias(environment: str, version: str | None, mark_deployed: bool) -> 
     default=".schematic/dab",
     help="Output directory (default: .schematic/dab)",
 )
-def bundle(environment: str, version: str, output: str) -> None:
+def bundle(target: str, version: str, output: str) -> None:
     """Generate Databricks Asset Bundle for deployment"""
 
     try:
         _workspace = Path.cwd()  # noqa: F841 - Reserved for future DAB implementation
         _output_dir = Path(output)  # noqa: F841 - Reserved for future DAB implementation
 
-        console.print(f"Generating DAB for [cyan]{environment}[/cyan] v{version}...")
+        console.print(f"Generating DAB for [cyan]{target}[/cyan] v{version}...")
 
         # TODO: Implement DAB generation
         # from .dab import generate_dab
@@ -414,7 +414,7 @@ def apply(
 @cli.command()
 @click.option("--deployment", "-d", help="Deployment ID to rollback (for partial rollback)")
 @click.option("--partial", is_flag=True, help="Partial rollback of failed deployment")
-@click.option("--environment", "-e", help="Environment name (for complete rollback)")
+@click.option("--target", "-t", help="Target environment (dev/test/prod) for complete rollback")
 @click.option("--to-snapshot", help="Target snapshot version (for complete rollback)")
 @click.option("--profile", "-p", help="Databricks CLI profile")
 @click.option("--warehouse-id", "-w", help="SQL Warehouse ID")
@@ -425,7 +425,7 @@ def apply(
 def rollback(
     deployment: str | None,
     partial: bool,
-    environment: str | None,
+    target: str | None,
     to_snapshot: str | None,
     profile: str | None,
     warehouse_id: str | None,
@@ -442,7 +442,7 @@ def rollback(
        Usage: schematic rollback --deployment deploy_abc123 --partial
 
     2. Complete rollback: Revert to a previous snapshot version
-       Usage: schematic rollback --environment prod --to-snapshot v0.5.0
+       Usage: schematic rollback --target prod --to-snapshot v0.5.0
 
     Examples:
 
@@ -451,21 +451,21 @@ def rollback(
             --profile PROD --warehouse-id abc123
 
         # Complete rollback to previous version
-        schematic rollback --environment prod --to-snapshot v0.5.0 \\
+        schematic rollback --target prod --to-snapshot v0.5.0 \\
             --profile PROD --warehouse-id abc123
 
         # Complete rollback with backup clone
-        schematic rollback --environment prod --to-snapshot v0.5.0 \\
+        schematic rollback --target prod --to-snapshot v0.5.0 \\
             --create-clone prod_backup --profile PROD --warehouse-id abc123
 
         # Preview rollback impact (dry-run)
-        schematic rollback --environment prod --to-snapshot v0.5.0 --dry-run
+        schematic rollback --target prod --to-snapshot v0.5.0 --dry-run
     """
     try:
         workspace_path = Path(workspace).resolve()
 
         if partial:
-            # Partial rollback mode
+            # Partial rollback mode - manual rollback of a recorded deployment
             if not deployment:
                 console.print("[red]✗[/red] --deployment required for partial rollback")
                 sys.exit(1)
@@ -474,15 +474,165 @@ def rollback(
                     "[red]✗[/red] --profile and --warehouse-id required for partial rollback"
                 )
                 sys.exit(1)
+            if not target:
+                console.print("[red]✗[/red] --target required for partial rollback")
+                sys.exit(1)
 
-            console.print("[yellow]Partial rollback not yet fully implemented[/yellow]")
-            console.print("Use --auto-rollback flag with apply command instead")
-            sys.exit(1)
+            # Load deployment record from local project.json
+            from .storage_v4 import get_environment_config, read_project
+
+            project = read_project(workspace_path)
+            deployments = project.get("deployments", [])
+
+            # Find the deployment by ID
+            target_deployment = None
+            for dep in deployments:
+                if dep.get("id") == deployment:
+                    target_deployment = dep
+                    break
+
+            if not target_deployment:
+                console.print(f"[red]✗[/red] Deployment '{deployment}' not found in project.json")
+                console.print("\nAvailable deployments:")
+                for dep in deployments[-10:]:  # Show last 10
+                    console.print(f"  - {dep.get('id')} ({dep.get('environment')}, {dep.get('status')})")
+                sys.exit(1)
+
+            # Check if it's a failed deployment
+            if target_deployment.get("status") != "failed":
+                console.print(
+                    f"[yellow]⚠️  Deployment '{deployment}' has status: "
+                    f"{target_deployment.get('status')}[/yellow]"
+                )
+                console.print("Partial rollback is typically used for failed deployments.")
+                from rich.prompt import Confirm
+
+                if not Confirm.ask("Continue anyway?", default=False):
+                    sys.exit(1)
+
+            # Get operations that were applied (successful before failure)
+            ops_applied = target_deployment.get("opsApplied", [])
+            failed_idx = target_deployment.get("failedStatementIndex", len(ops_applied))
+
+            # Successful ops are those before the failure point
+            successful_op_ids = ops_applied[:failed_idx]
+
+            if not successful_op_ids:
+                console.print("[yellow]No operations to rollback (deployment had no successful operations)[/yellow]")
+                sys.exit(0)
+
+            # Load operations - try changelog first, then regenerate from snapshots
+            from schematic.providers.base.operations import Operation
+            from .storage_v4 import read_changelog
+
+            changelog = read_changelog(workspace_path)
+            all_ops = [Operation(**op) for op in changelog.get("ops", [])]
+
+            # Filter to get the successful operations
+            successful_ops = [op for op in all_ops if op.id in successful_op_ids]
+
+            # If operations not found in changelog, they might be diff operations from snapshot deployment
+            if not successful_ops and target_deployment.get("version"):
+                console.print(
+                    "[cyan]Operations not in changelog - regenerating from snapshots...[/cyan]"
+                )
+                from .storage_v4 import read_snapshot, load_current_state
+
+                from_version = target_deployment.get("fromVersion")
+                to_version = target_deployment.get("version")
+
+                # Load states
+                _, _, provider = load_current_state(workspace_path)
+                
+                if from_version:
+                    from_snap = read_snapshot(workspace_path, from_version)
+                    from_state = from_snap["state"]
+                    from_ops = from_snap.get("operations", [])
+                else:
+                    # First deployment - diff from empty state
+                    from_state = provider.create_initial_state()
+                    from_ops = []
+                
+                to_snap = read_snapshot(workspace_path, to_version)
+                to_state = to_snap["state"]
+                to_ops = to_snap.get("operations", [])
+
+                # Regenerate diff operations using provider's state differ
+                differ = provider.get_state_differ(from_state, to_state, from_ops, to_ops)
+                all_diff_ops = differ.generate_diff_operations()
+
+                # Match by position, not ID (diff operations get new IDs each time)
+                # The deployment's failedStatementIndex tells us how many succeeded
+                num_successful = len(successful_op_ids)
+                successful_ops = all_diff_ops[:num_successful]
+
+                console.print(
+                    f"[dim]Matched {len(successful_ops)} operations by position[/dim]"
+                )
+
+            if not successful_ops:
+                console.print(
+                    "[red]✗[/red] Could not find operation details"
+                )
+                console.print("This may indicate the deployment is too old or data is corrupted")
+                sys.exit(1)
+
+            console.print(f"[cyan]Found {len(successful_ops)} operations to rollback[/cyan]")
+
+            # Get environment config and catalog mapping
+            env_config = get_environment_config(project, target)
+
+            # Build catalog mapping
+            from .storage_v4 import load_current_state
+
+            state, _, provider = load_current_state(workspace_path)
+
+            # Build simple catalog mapping (single catalog mode)
+            catalogs = state.get("catalogs", [])
+            catalog_mapping = {}
+            if catalogs:
+                logical_name = catalogs[0].get("name", "__implicit__")
+                catalog_mapping = {logical_name: env_config["topLevelName"]}
+
+            # Initialize executor
+            from schematic.providers.unity.auth import create_databricks_client
+            from schematic.providers.unity.executor import UnitySQLExecutor
+
+            client = create_databricks_client(profile)
+            executor = UnitySQLExecutor(client)
+
+            # Execute partial rollback
+            from .commands.rollback import rollback_partial
+
+            # Get the fromVersion from the deployment record
+            from_version = target_deployment.get("fromVersion")
+
+            result = rollback_partial(
+                workspace=workspace_path,
+                deployment_id=deployment,
+                successful_ops=successful_ops,
+                target_env=target,
+                profile=profile,
+                warehouse_id=warehouse_id,
+                executor=executor,
+                catalog_mapping=catalog_mapping,
+                auto_triggered=False,  # Manual mode - allow confirmation
+                from_version=from_version,
+            )
+
+            if result.success:
+                console.print(
+                    f"[green]✓[/green] Rolled back {result.operations_rolled_back} operations"
+                )
+                sys.exit(0)
+            else:
+                console.print(f"[red]✗[/red] Rollback failed: {result.error_message}")
+                sys.exit(1)
 
         elif to_snapshot:
             # Complete rollback mode
-            if not environment:
-                console.print("[red]✗[/red] --environment required for complete rollback")
+            if not target:
+                console.print("[red]✗[/red] --target required for complete rollback")
                 sys.exit(1)
             if not profile or not warehouse_id:
                 console.print("[red]✗[/red] --profile and --warehouse-id required")
@@ -490,7 +640,7 @@ def rollback(
 
             result = rollback_complete(
                 workspace=workspace_path,
-                target_env=environment,
+                target_env=target,
                 to_snapshot=to_snapshot,
                 profile=profile,
                 warehouse_id=warehouse_id,
@@ -511,11 +661,124 @@ def rollback(
             console.print("[red]✗[/red] Must specify either --partial or --to-snapshot")
             console.print("\nExamples:")
             console.print("  Partial:  schematic rollback --deployment deploy_abc123 --partial")
-            console.print("  Complete: schematic rollback --environment prod --to-snapshot v0.5.0")
+            console.print("  Complete: schematic rollback --target prod --to-snapshot v0.5.0")
             sys.exit(1)
 
     except Exception as e:
         console.print(f"[red]✗ Rollback error:[/red] {e}")
+        sys.exit(1)
+
+
+@cli.group()
+def snapshot() -> None:
+    """Snapshot management commands"""
+    pass
+
+
+@snapshot.command(name="rebase")
+@click.argument("snapshot_version", required=True)
+@click.option("--base", "-b", help="New base version (auto-detects latest if not provided)")
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def snapshot_rebase_cmd(snapshot_version: str, base: str | None, workspace: str) -> None:
+    """Rebase snapshot onto new base version after git rebase
+
+    After rebasing your git branch, use this command to rebase your snapshot
+    onto the new base version. This unpacks the snapshot, replays operations
+    on the new base, and detects conflicts.
+
+    Examples:
+
+        # Rebase v0.4.0 onto latest snapshot
+        schematic snapshot rebase v0.4.0
+
+        # Rebase v0.4.0 onto specific version
+        schematic snapshot rebase v0.4.0 --base v0.3.1
+    """
+    try:
+        workspace_path = Path(workspace).resolve()
+
+        from .commands.snapshot_rebase import RebaseError, rebase_snapshot
+
+        result = rebase_snapshot(
+            workspace=workspace_path,
+            snapshot_version=snapshot_version,
+            new_base_version=base,
+        )
+
+        if result.success:
+            console.print()
+            console.print(f"[green]✓ Successfully rebased {snapshot_version}[/green]")
+            sys.exit(0)
+        else:
+            console.print()
+            console.print("[red]✗ Rebase stopped due to conflicts[/red]")
+            console.print(f"[yellow]Resolved {result.applied_count} operations[/yellow]")
+            console.print(f"[yellow]{result.conflict_count} operations need manual resolution[/yellow]")
+            sys.exit(1)
+
+    except RebaseError as e:
+        console.print(f"[red]✗ Rebase failed:[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Unexpected error:[/red] {e}")
+        sys.exit(1)
+
+
+@snapshot.command(name="validate")
+@click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def snapshot_validate_cmd(workspace: str, json_output: bool) -> None:
+    """Validate snapshot chain and detect stale snapshots
+
+    Checks for snapshots that need rebasing after git rebase/merge.
+
+    Example:
+
+        schematic snapshot validate
+        schematic snapshot validate --json
+    """
+    try:
+        workspace_path = Path(workspace).resolve()
+
+        from .commands.snapshot_rebase import detect_stale_snapshots
+
+        stale = detect_stale_snapshots(workspace_path, json_output=json_output)
+
+        if json_output:
+            # Output JSON for programmatic use (e.g., VS Code extension)
+            import json
+
+            output = {"stale": stale, "count": len(stale)}
+            print(json.dumps(output))
+            sys.exit(1 if stale else 0)
+
+        if not stale:
+            console.print("[green]✓ All snapshots are up to date[/green]")
+            sys.exit(0)
+
+        console.print(f"[yellow]⚠️  Found {len(stale)} stale snapshot(s):[/yellow]")
+        console.print()
+
+        for snap in stale:
+            console.print(f"  [yellow]{snap['version']}[/yellow]")
+            console.print(f"    Current base: {snap['currentBase']}")
+            console.print(f"    Should be: {snap['shouldBeBase']}")
+            console.print(f"    Missing: {', '.join(snap['missing'])}")
+            console.print()
+
+        console.print("[cyan]Run the following commands to fix:[/cyan]")
+        for snap in stale:
+            console.print(f"  schematic snapshot rebase {snap['version']}")
+
+        sys.exit(1)
+
+    except Exception as e:
+        if json_output:
+            import json
+
+            print(json.dumps({"error": str(e)}))
+        else:
+            console.print(f"[red]✗ Validation failed:[/red] {e}")
         sys.exit(1)
 
 
