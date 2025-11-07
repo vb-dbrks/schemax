@@ -346,8 +346,7 @@ def apply_to_environment(
         # Two formats:
         # 1. Single operation: "-- Operation: op_abc123 (...)\n-- Type: unity.add_table\n..."
         # 2. Batched operations: "-- Batch ... Operations: 2 operations\n-- Operations: op_abc, op_xyz\n..."
-        import re
-
+        
         op_id_to_op = {op.id: op for op in diff_operations}
 
         for i, stmt_result in enumerate(result.statement_results):
