@@ -15,10 +15,19 @@ from .operations import Operation
 from .optimization import ColumnReorderOptimizer
 
 
-class SQLGenerationResult(BaseModel):
-    """SQL generation result"""
+class StatementInfo(BaseModel):
+    """Information about a single SQL statement"""
 
-    sql: str  # Generated SQL statements
+    sql: str  # The SQL statement
+    operation_ids: list[str]  # Operations that generated this statement
+    execution_order: int  # Order in which this statement should be executed
+
+
+class SQLGenerationResult(BaseModel):
+    """SQL generation result with explicit operation mapping"""
+
+    sql: str  # Generated SQL statements (combined script)
+    statements: list[StatementInfo] = []  # Explicit statement-to-operation mapping
     warnings: list[str] = []  # Warnings or notes
     is_idempotent: bool = True  # Whether SQL is idempotent
 

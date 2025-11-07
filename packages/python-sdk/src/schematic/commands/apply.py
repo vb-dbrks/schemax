@@ -7,7 +7,6 @@ confirmation, and deployment tracking.
 
 import re
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
@@ -195,7 +194,7 @@ def apply_to_environment(
                 console.print("[dim](No successful deployments in database)[/dim]")
         except Exception as e:
             # Database connection or query error - fail fast
-            console.print(f"\n[red]✗ Failed to query deployment database[/red]")
+            console.print("\n[red]✗ Failed to query deployment database[/red]")
             console.print(f"[red]Error: {e}[/red]")
             console.print("\n[yellow]Cannot proceed without database access.[/yellow]")
             console.print("[yellow]Please check:[/yellow]")
@@ -235,19 +234,21 @@ def apply_to_environment(
             console.print("[green]✓[/green] No changes to deploy")
             return _create_empty_result(target_env, latest_snapshot_version)
 
-        # 9. Generate SQL in-memory from diff operations
+        # 9. Generate SQL with explicit operation mapping
         console.print("[blue]Generating SQL...[/blue]")
 
         catalog_mapping = _build_catalog_mapping(latest_state, env_config)
         generator = provider.get_sql_generator(latest_state, catalog_mapping)
-        sql = generator.generate_sql(diff_operations)
+        
+        # Generate SQL with structured mapping (no comment parsing needed!)
+        sql_result = generator.generate_sql_with_mapping(diff_operations)
 
-        if not sql or not sql.strip():
+        if not sql_result.sql or not sql_result.sql.strip():
             console.print("[green]✓[/green] No SQL to execute")
             return _create_empty_result(target_env, latest_snapshot_version)
 
-        # 10. Parse into statements
-        statements = parse_sql_statements(sql)
+        # 10. Extract statements from structured result
+        statements = [stmt.sql for stmt in sql_result.statements]
 
         if not statements:
             console.print("\n[yellow]No SQL statements to execute.[/yellow]")
@@ -341,33 +342,18 @@ def apply_to_environment(
             from_snapshot_version=deployed_version,
         )
 
-        # Track individual operations
-        # Map SQL statements back to operations using operation IDs in SQL comments
-        # Two formats:
-        # 1. Single operation: "-- Operation: op_abc123 (...)\n-- Type: unity.add_table\n..."
-        # 2. Batched operations: "-- Batch ... Operations: 2 operations\n-- Operations: op_abc, op_xyz\n..."
+        # Track individual operations using explicit mapping
+        # No comment parsing needed - we have structured data!
         
         op_id_to_op = {op.id: op for op in diff_operations}
 
         for i, stmt_result in enumerate(result.statement_results):
-            # Try to extract operation IDs from SQL comment
-            op_ids = []
-
-            # Pattern 1: Single operation "-- Operation: <op_id>"
-            single_match = re.search(r"--\s*Operation:\s*(\S+)", stmt_result.sql)
-            if single_match:
-                op_ids.append(single_match.group(1))
-
-            # Pattern 2: Batched operations "-- Operations: op1, op2, op3"
-            batch_match = re.search(r"--\s*Operations:\s*(.+)", stmt_result.sql)
-            if batch_match:
-                # Parse comma-separated list of operation IDs
-                ops_str = batch_match.group(1).strip()
-                op_ids = [op_id.strip() for op_id in ops_str.split(",")]
-
-            if op_ids:
-                # Record each operation in the batch with the same SQL and result
-                for op_id in op_ids:
+            # Find the corresponding statement info from sql_result
+            stmt_info = sql_result.statements[i] if i < len(sql_result.statements) else None
+            
+            if stmt_info:
+                # Record each operation that contributed to this statement
+                for op_id in stmt_info.operation_ids:
                     op = op_id_to_op.get(op_id)
                     if op:
                         tracker.record_operation(
@@ -375,16 +361,16 @@ def apply_to_environment(
                             op=op,
                             sql_stmt=stmt_result.sql,
                             result=stmt_result,
-                            execution_order=i + 1,  # All ops in batch have same execution order
+                            execution_order=i + 1,
                         )
                     else:
                         console.print(
                             f"[yellow]⚠️  Warning: Operation {op_id} not found in diff[/yellow]"
                         )
             else:
-                # No operation metadata found (shouldn't happen)
+                # This shouldn't happen - mismatch between generated and executed statements
                 console.print(
-                    f"[yellow]⚠️  Warning: Statement {i+1} missing operation metadata[/yellow]"
+                    f"[yellow]⚠️  Warning: Statement {i+1} has no mapping info[/yellow]"
                 )
 
         # Complete deployment tracking
@@ -463,7 +449,8 @@ def apply_to_environment(
                 f"[green]✓ Deployed {latest_snapshot_version} to {target_env} "
                 f"({result.successful_statements} statements, {exec_time:.2f}s)[/green]"
             )
-            console.print(f"[green]✓ Deployment tracked in {env_config['topLevelName']}.schematic[/green]")
+            schema_name = f"{env_config['topLevelName']}.schematic"
+            console.print(f"[green]✓ Deployment tracked in {schema_name}[/green]")
             console.print(f"[dim]  Deployment ID: {deployment_id}[/dim]")
         else:
             failed_idx = result.failed_statement_index or 0
@@ -476,7 +463,8 @@ def apply_to_environment(
             console.print(f"[blue]Environment:[/blue] {target_env}")
             console.print(f"[blue]Version:[/blue] {latest_snapshot_version}")
             console.print(f"[blue]Status:[/blue] {result.status}")
-            console.print(f"[dim]  Tracked in {env_config['topLevelName']}.schematic (ID: {deployment_id})[/dim]")
+            schema_loc = f"{env_config['topLevelName']}.schematic"
+            console.print(f"[dim]  Tracked in {schema_loc} (ID: {deployment_id})[/dim]")
 
         return result
 
@@ -485,35 +473,6 @@ def apply_to_environment(
         raise ApplyError(str(e)) from e
 
 
-def parse_sql_statements(sql: str) -> list[str]:
-    """Parse SQL into individual statements
-
-    Splits SQL by semicolons, handling comments and multi-line statements.
-    IMPORTANT: Preserves comments as they contain operation metadata for tracking.
-
-    Args:
-        sql: SQL text to parse
-
-    Returns:
-        List of individual SQL statements (with comments preserved)
-    """
-    statements = []
-
-    # DO NOT remove comments - they contain operation IDs needed for tracking!
-    # Split by semicolon
-    raw_statements = sql.split(";")
-
-    for stmt in raw_statements:
-        # Clean up whitespace
-        stmt = stmt.strip()
-
-        # Skip empty statements
-        if not stmt:
-            continue
-
-        statements.append(stmt)
-
-    return statements
 
 
 def _create_empty_result(environment: str, version: str) -> ExecutionResult:

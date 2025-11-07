@@ -9,7 +9,6 @@ simpler and more robust than manual reverse operation generation.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
@@ -29,7 +28,6 @@ from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
 from schematic.providers.unity.executor import UnitySQLExecutor
 from schematic.providers.unity.safety_validator import SafetyValidator
 
-from .apply import parse_sql_statements
 
 console = Console()
 
@@ -223,10 +221,11 @@ def rollback_partial(
 
     # 7. Generate SQL for rollback operations
     sql_generator = provider.get_sql_generator(pre_deployment_state, catalog_mapping)
-    sql = sql_generator.generate_sql(rollback_ops)
+    # 8. Generate SQL with structured mapping
+    sql_result = sql_generator.generate_sql_with_mapping(rollback_ops)
 
-    # 8. Parse SQL into individual statements
-    statements = parse_sql_statements(sql)
+    # Extract statements
+    statements = [stmt.sql for stmt in sql_result.statements]
 
     if not statements:
         console.print("[yellow]No SQL statements generated[/yellow]")
@@ -266,6 +265,11 @@ def rollback_partial(
 
         # Determine the snapshot version after rollback
         # For partial rollback, we revert to the deployment's fromVersion
+        # Need to query deployment to get version info
+        target_deployment = tracker.get_deployment_by_id(deployment_id)
+        if not target_deployment:
+            raise RollbackError(f"Deployment '{deployment_id}' not found")
+        
         reverted_to_version = target_deployment.get("fromVersion")
         if not reverted_to_version:
             # Edge case: deployment has no fromVersion (created before tracking was added)
@@ -315,7 +319,8 @@ def rollback_partial(
             console.print(f"[yellow]{result.successful_statements} statements succeeded[/yellow]")
             if result.error_message:
                 console.print(f"[red]Error: {result.error_message}[/red]")
-            console.print(f"[dim]  Tracked in {deployment_catalog}.schematic (ID: {rollback_deployment_id})[/dim]")
+            schema_loc = f"{deployment_catalog}.schematic"
+            console.print(f"[dim]  Tracked in {schema_loc} (ID: {rollback_deployment_id})[/dim]")
 
             return RollbackResult(
                 success=False,
@@ -465,9 +470,8 @@ def rollback_complete(
         # 7. Apply safe_only filter if requested
         if safe_only and (risky_ops or destructive_ops):
             console.print()
-            console.print(
-                "[yellow]⚠️  --safe-only flag enabled, skipping risky/destructive operations[/yellow]"
-            )
+            msg = "⚠️  --safe-only flag enabled, skipping risky/destructive operations"
+            console.print(f"[yellow]{msg}[/yellow]")
             rollback_ops = [op for op, _ in safe_ops]
 
             if not rollback_ops:
@@ -480,9 +484,9 @@ def rollback_complete(
         console.print()
         console.print("[cyan]Generating SQL...[/cyan]")
         sql_generator = provider.get_sql_generator(target_state, catalog_mapping)
-        sql = sql_generator.generate_sql(rollback_ops)
+        sql_result = sql_generator.generate_sql_with_mapping(rollback_ops)
 
-        statements = parse_sql_statements(sql)
+        statements = [stmt.sql for stmt in sql_result.statements]
         console.print(f"  [green]✓[/green] Generated {len(statements)} SQL statements")
 
         # 9. Dry run - show SQL and exit
@@ -493,7 +497,7 @@ def rollback_complete(
             console.print("[bold]SQL Preview:[/bold]")
             from rich.syntax import Syntax
 
-            syntax = Syntax(sql, "sql", theme="monokai", line_numbers=True)
+            syntax = Syntax(sql_result.sql, "sql", theme="monokai", line_numbers=True)
             console.print(syntax)
             console.print()
             console.print(f"[yellow]Would execute {len(statements)} statements[/yellow]")
