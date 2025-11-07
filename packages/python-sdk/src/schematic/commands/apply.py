@@ -342,14 +342,51 @@ def apply_to_environment(
         )
 
         # Track individual operations
-        for i, (op, stmt_result) in enumerate(zip(diff_operations, result.statement_results)):
-            tracker.record_operation(
-                deployment_id=deployment_id,
-                op=op,
-                sql_stmt=stmt_result.sql,
-                result=stmt_result,
-                execution_order=i + 1,
-            )
+        # Map SQL statements back to operations using operation IDs in SQL comments
+        # Two formats:
+        # 1. Single operation: "-- Operation: op_abc123 (...)\n-- Type: unity.add_table\n..."
+        # 2. Batched operations: "-- Batch ... Operations: 2 operations\n-- Operations: op_abc, op_xyz\n..."
+        import re
+
+        op_id_to_op = {op.id: op for op in diff_operations}
+
+        for i, stmt_result in enumerate(result.statement_results):
+            # Try to extract operation IDs from SQL comment
+            op_ids = []
+
+            # Pattern 1: Single operation "-- Operation: <op_id>"
+            single_match = re.search(r"--\s*Operation:\s*(\S+)", stmt_result.sql)
+            if single_match:
+                op_ids.append(single_match.group(1))
+
+            # Pattern 2: Batched operations "-- Operations: op1, op2, op3"
+            batch_match = re.search(r"--\s*Operations:\s*(.+)", stmt_result.sql)
+            if batch_match:
+                # Parse comma-separated list of operation IDs
+                ops_str = batch_match.group(1).strip()
+                op_ids = [op_id.strip() for op_id in ops_str.split(",")]
+
+            if op_ids:
+                # Record each operation in the batch with the same SQL and result
+                for op_id in op_ids:
+                    op = op_id_to_op.get(op_id)
+                    if op:
+                        tracker.record_operation(
+                            deployment_id=deployment_id,
+                            op=op,
+                            sql_stmt=stmt_result.sql,
+                            result=stmt_result,
+                            execution_order=i + 1,  # All ops in batch have same execution order
+                        )
+                    else:
+                        console.print(
+                            f"[yellow]⚠️  Warning: Operation {op_id} not found in diff[/yellow]"
+                        )
+            else:
+                # No operation metadata found (shouldn't happen)
+                console.print(
+                    f"[yellow]⚠️  Warning: Statement {i+1} missing operation metadata[/yellow]"
+                )
 
         # Complete deployment tracking
         tracker.complete_deployment(deployment_id, result, result.error_message)
