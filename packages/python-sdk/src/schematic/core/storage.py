@@ -272,15 +272,19 @@ def write_snapshot(workspace_path: Path, snapshot: dict[str, Any]) -> None:
 
 
 def load_current_state(
-    workspace_path: Path,
-) -> tuple[ProviderState, dict[str, Any], Provider]:
+    workspace_path: Path, validate: bool = False
+) -> tuple[ProviderState, dict[str, Any], Provider, dict[str, Any] | None]:
     """Load current state using provider
 
     Args:
         workspace_path: Path to workspace
+        validate: Whether to validate dependencies (default False for performance)
 
     Returns:
-        Tuple of (state, changelog, provider)
+        Tuple of (state, changelog, provider, validation_result)
+        validation_result is None if validate=False, otherwise dict with:
+            - errors: list of error messages
+            - warnings: list of warning messages
     """
     project = read_project(workspace_path)
     changelog = read_changelog(workspace_path)
@@ -306,7 +310,53 @@ def load_current_state(
     ops = [Operation(**op) for op in changelog["ops"]]
     state = provider.apply_operations(state, ops)
 
-    return state, changelog, provider
+    # Validate dependencies if requested
+    validation_result = None
+    if validate:
+        validation_result = validate_dependencies_internal(state, ops, provider)
+
+    return state, changelog, provider, validation_result
+
+
+def validate_dependencies_internal(state, ops, provider):
+    """Internal helper to validate dependencies and return structured result"""
+    errors = []
+    warnings = []
+
+    try:
+        # Get SQL generator to build dependency graph
+        generator = provider.get_sql_generator(state=state)
+
+        # Try to build dependency graph
+        graph = generator._build_dependency_graph(ops)
+
+        # Check for circular dependencies
+        cycles = graph.detect_cycles()
+        if cycles:
+            for cycle in cycles:
+                # Get names from generator's id_name_map
+                cycle_names = []
+                for node_id in cycle:
+                    name = generator.id_name_map.get(node_id, node_id)
+                    cycle_names.append(name)
+                cycle_str = " → ".join(cycle_names)
+                errors.append(
+                    {
+                        "type": "circular_dependency",
+                        "message": f"Circular dependency: {cycle_str}",
+                        "cycle": cycle_names,
+                    }
+                )
+
+        # Check for invalid hierarchy
+        hierarchy_warnings = graph.validate_dependencies()
+        for warning in hierarchy_warnings:
+            warnings.append({"type": "hierarchy_warning", "message": warning})
+
+    except Exception as e:
+        warnings.append({"type": "validation_error", "message": f"Could not validate dependencies: {e}"})
+
+    return {"errors": errors, "warnings": warnings}
 
 
 def append_ops(workspace_path: Path, ops: list[Operation]) -> None:
@@ -363,7 +413,7 @@ def create_snapshot(
     changelog = read_changelog(workspace_path)
 
     # Load current state
-    state, _, _ = load_current_state(workspace_path)
+    state, _, _, _ = load_current_state(workspace_path, validate=False)
 
     # Determine version
     snapshot_version = version or _get_next_version(

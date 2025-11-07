@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, ColumnMask } from '../../providers/unity/models';
+import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, ColumnMask, View } from '../../providers/unity/models';
 import { Operation } from '../../providers/base/operations';
 import { ProviderInfo, ProviderCapabilities } from '../../providers/base/provider';
 import { getVsCodeApi } from '../vscode-api';
@@ -57,6 +57,26 @@ interface DesignerState {
   dropTable: (tableId: string) => void;
   setTableComment: (tableId: string, comment: string) => void;
   
+  // View operations
+  addView: (
+    schemaId: string,
+    name: string,
+    definition: string,
+    options?: {
+      comment?: string;
+      dependencies?: string[];
+      extractedDependencies?: {
+        tables: string[];
+        views: string[];
+        catalogs: string[];
+        schemas: string[];
+      };
+    }
+  ) => void;
+  renameView: (viewId: string, newName: string) => void;
+  updateView: (viewId: string, definition: string, dependencies?: string[]) => void;
+  dropView: (viewId: string) => void;
+  
   addColumn: (tableId: string, name: string, type: string, nullable: boolean, comment?: string, tags?: Record<string, string>) => void;
   renameColumn: (tableId: string, colId: string, newName: string) => void;
   dropColumn: (tableId: string, colId: string) => void;
@@ -94,6 +114,7 @@ interface DesignerState {
   findCatalog: (catalogId: string) => Catalog | undefined;
   findSchema: (schemaId: string) => { catalog: Catalog; schema: Schema } | undefined;
   findTable: (tableId: string) => { catalog: Catalog; schema: Schema; table: Table } | undefined;
+  findView: (viewId: string) => { catalog: Catalog; schema: Schema; view: View } | undefined;
 }
 
 function emitOps(ops: Operation[]) {
@@ -253,6 +274,43 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   setTableComment: (tableId, comment) => {
     const op = createOperation(get(), 'set_table_comment', tableId, { tableId, comment });
+    emitOps([op]);
+  },
+
+  // View operations
+  addView: (schemaId, name, definition, options) => {
+    const viewId = `view_${uuidv4()}`;
+    const op = createOperation(get(), 'add_view', viewId, {
+      viewId,
+      name,
+      schemaId,
+      definition,
+      ...options
+    });
+    emitOps([op]);
+  },
+
+  renameView: (viewId, newName) => {
+    const state = get();
+    const viewInfo = state.findView(viewId);
+    if (!viewInfo) {
+      throw new Error(`Cannot rename view: view ${viewId} not found`);
+    }
+    const oldName = viewInfo.view.name;
+    const op = createOperation(state, 'rename_view', viewId, { oldName, newName });
+    emitOps([op]);
+  },
+
+  updateView: (viewId, definition, dependencies) => {
+    const op = createOperation(get(), 'update_view', viewId, {
+      definition,
+      dependencies
+    });
+    emitOps([op]);
+  },
+
+  dropView: (viewId) => {
+    const op = createOperation(get(), 'drop_view', viewId, {});
     emitOps([op]);
   },
 
@@ -453,6 +511,20 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       for (const schema of catalog.schemas) {
         const table = schema.tables.find((t: Table) => t.id === tableId);
         if (table) return { catalog, schema, table };
+      }
+    }
+    return undefined;
+  },
+
+  findView: (viewId) => {
+    const { project } = get();
+    if (!project) return undefined;
+    for (const catalog of (project as any).state.catalogs) {
+      for (const schema of catalog.schemas) {
+        if (schema.views) {
+          const view = schema.views.find((v: View) => v.id === viewId);
+          if (view) return { catalog, schema, view };
+        }
       }
     }
     return undefined;

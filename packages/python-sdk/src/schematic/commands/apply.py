@@ -159,7 +159,7 @@ def apply_to_environment(
         console.print("─" * 60)
 
         # 4. Load current state and provider
-        state, changelog, provider = load_current_state(workspace)
+        state, changelog, provider, _ = load_current_state(workspace, validate=False)
 
         console.print(f"[blue]Provider:[/blue] {provider.info.name} v{provider.info.version}")
         console.print(f"[blue]Environment:[/blue] {target_env}")

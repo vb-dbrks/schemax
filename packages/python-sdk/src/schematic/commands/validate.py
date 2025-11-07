@@ -19,6 +19,57 @@ class ValidationError(Exception):
     pass
 
 
+def validate_dependencies(state, ops, provider):
+    """
+    Validate dependency graph for circular dependencies and missing references.
+
+    Args:
+        state: Current schema state
+        ops: List of operations
+        provider: Schema provider
+
+    Returns:
+        Tuple of (errors list, warnings list)
+    """
+    from schematic.providers.base.exceptions import CircularDependencyError
+    from schematic.providers.base.operations import Operation
+
+    errors = []
+    warnings = []
+
+    try:
+        # Convert ops to Operation objects if needed
+        if ops and not isinstance(ops[0], Operation):
+            ops = [Operation(**op) for op in ops]
+
+        # Get SQL generator to build dependency graph
+        generator = provider.get_sql_generator(state=state)
+
+        # Try to build dependency graph
+        graph = generator._build_dependency_graph(ops)
+
+        # Check for circular dependencies
+        cycles = graph.detect_cycles()
+        if cycles:
+            for cycle in cycles:
+                # Get names from generator's id_name_map
+                cycle_names = []
+                for node_id in cycle:
+                    name = generator.id_name_map.get(node_id, node_id)
+                    cycle_names.append(name)
+                cycle_str = " → ".join(cycle_names)
+                errors.append(f"Circular dependency: {cycle_str}")
+
+        # Check for invalid hierarchy (e.g., schema depending on table)
+        hierarchy_warnings = graph.validate_dependencies()
+        warnings.extend(hierarchy_warnings)
+
+    except Exception as e:
+        warnings.append(f"Could not validate dependencies: {e}")
+
+    return errors, warnings
+
+
 def validate_project(workspace: Path) -> bool:
     """Validate Schematic project files
 
@@ -40,7 +91,7 @@ def validate_project(workspace: Path) -> bool:
         project = read_project(workspace)
         console.print(f"  [green]✓[/green] project.json (version {project['version']})")
 
-        state, changelog, provider = load_current_state(workspace)
+        state, changelog, provider, _ = load_current_state(workspace, validate=False)
         console.print(f"  [green]✓[/green] changelog.json ({len(changelog['ops'])} operations)")
 
         # Validate state using provider
@@ -52,6 +103,23 @@ def validate_project(workspace: Path) -> bool:
             raise ValidationError("State validation failed")
 
         console.print("  [green]✓[/green] State structure valid")
+
+        # Validate dependencies (circular dependencies, missing refs, etc.)
+        console.print("\nValidating dependencies...")
+        dep_errors, dep_warnings = validate_dependencies(state, changelog["ops"], provider)
+
+        if dep_errors:
+            console.print("[red]✗ Dependency validation failed:[/red]")
+            for error in dep_errors:
+                console.print(f"  [red]•[/red] {error}")
+            raise ValidationError("Circular dependencies detected")
+
+        if dep_warnings:
+            console.print("[yellow]⚠  Dependency warnings:[/yellow]")
+            for warning in dep_warnings:
+                console.print(f"  [yellow]•[/yellow] {warning}")
+        else:
+            console.print("  [green]✓[/green] No dependency issues detected")
 
         # Display summary
         console.print(f"\n[bold]Project:[/bold] {project['name']}")

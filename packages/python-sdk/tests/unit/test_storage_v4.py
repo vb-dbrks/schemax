@@ -185,7 +185,7 @@ class TestStateLoading:
         """Should load empty state with implicit catalog"""
         storage.ensure_project_file(tmp_path, "unity")
 
-        state, changelog, provider = storage.load_current_state(tmp_path)
+        state, changelog, provider, _ = storage.load_current_state(tmp_path)
 
         # Should have implicit catalog
         assert len(state["catalogs"]) == 1
@@ -215,7 +215,7 @@ class TestStateLoading:
         ]
         storage.append_ops(tmp_path, ops)
 
-        state, changelog, provider = storage.load_current_state(tmp_path)
+        state, changelog, provider, _ = storage.load_current_state(tmp_path)
 
         # Should have implicit catalog with schema
         assert len(state["catalogs"]) == 1

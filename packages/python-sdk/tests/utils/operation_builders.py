@@ -489,6 +489,82 @@ class OperationBuilder:
         )
 
 
+    # View Operations
+    def add_view(
+        self,
+        view_id: str,
+        name: str,
+        schema_id: str,
+        definition: str,
+        comment: str | None = None,
+        dependencies: list[str] | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create an add_view operation"""
+        payload = {
+            "viewId": view_id,
+            "name": name,
+            "schemaId": schema_id,
+            "definition": definition,
+        }
+        if comment:
+            payload["comment"] = comment
+        if dependencies:
+            payload["dependencies"] = dependencies
+
+        return create_operation(
+            provider=self.provider,
+            op_type="add_view",
+            target=view_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
+    def rename_view(
+        self, view_id: str, new_name: str, old_name: str, op_id: str | None = None
+    ) -> Operation:
+        """Create a rename_view operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="rename_view",
+            target=view_id,
+            payload={"newName": new_name},
+            op_id=op_id,
+        )
+
+    def drop_view(self, view_id: str, op_id: str | None = None) -> Operation:
+        """Create a drop_view operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="drop_view",
+            target=view_id,
+            payload={},
+            op_id=op_id,
+        )
+
+    def update_view(
+        self,
+        view_id: str,
+        definition: str | None = None,
+        dependencies: list[str] | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create an update_view operation"""
+        payload = {}
+        if definition:
+            payload["definition"] = definition
+        if dependencies:
+            payload["dependencies"] = dependencies
+
+        return create_operation(
+            provider=self.provider,
+            op_type="update_view",
+            target=view_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
+
 def make_operation_sequence(
     specs: list[dict[str, Any]], provider: str = "unity"
 ) -> list[Operation]:

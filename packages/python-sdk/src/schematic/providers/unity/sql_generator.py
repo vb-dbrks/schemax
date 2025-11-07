@@ -95,6 +95,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
                         col_id = column.id if hasattr(column, "id") else column["id"]
                         id_map[col_id] = col_name
 
+                # Process views in this schema
+                views = schema.views if hasattr(schema, "views") else schema.get("views", [])
+                for view in views:
+                    view_name = view.name if hasattr(view, "name") else view["name"]
+                    view_id = view.id if hasattr(view, "id") else view["id"]
+                    view_fqn = f"{catalog_name}.{schema_name}.{view_name}"
+                    id_map[view_id] = view_fqn
+
         return id_map
 
     def _resolve_table_location(
@@ -223,7 +231,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _get_dependency_level(self, op: Operation) -> int:
         """
         Get dependency level for Unity operation ordering.
-        0 = catalog, 1 = schema, 2 = table, 3 = table modifications
+        0 = catalog, 1 = schema, 2 = table/view creation, 3 = table/view modifications
 
         Implements abstract method from BaseSQLGenerator.
         """
@@ -232,9 +240,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return 0
         if "schema" in op_type:
             return 1
-        if "add_table" in op_type:
+        if "add_table" in op_type or "add_view" in op_type:
             return 2
-        return 3  # All other table operations (columns, properties, etc.)
+        return 3  # All other table/view operations (columns, properties, updates, etc.)
 
     def _get_target_object_id(self, op: Operation) -> str | None:
         """
@@ -256,6 +264,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Table-level operations
         if op_type in ["add_table", "rename_table", "drop_table", "set_table_comment"]:
             return f"table:{op.target}"  # Add prefix for consistency
+
+        # View-level operations
+        if op_type in ["add_view", "rename_view", "drop_view", "update_view", "set_view_comment", "set_view_property", "unset_view_property"]:
+            return f"view:{op.target}"  # Prefix to avoid ID collisions
 
         # Column and table property operations
         if op_type in [
@@ -292,7 +304,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Implements abstract method from BaseSQLGenerator.
         """
-        return op.op in ["unity.add_catalog", "unity.add_schema", "unity.add_table"]
+        return op.op in ["unity.add_catalog", "unity.add_schema", "unity.add_table", "unity.add_view"]
 
     def _is_drop_operation(self, op: Operation) -> bool:
         """
@@ -547,6 +559,55 @@ class UnitySQLGenerator(BaseSQLGenerator):
         result = self.generate_sql_with_mapping(ops)
         return result.sql
 
+    def _topological_sort_with_fallback(
+        self, ops: list[Operation]
+    ) -> tuple[list[Operation], list[str]]:
+        """
+        Sort operations using topological sort based on dependencies.
+        Falls back to level-based sorting if cycles are detected.
+        
+        Args:
+            ops: Operations to sort
+            
+        Returns:
+            Tuple of (sorted operations, list of warning messages)
+        """
+        from ..base.exceptions import CircularDependencyError
+
+        warnings = []
+
+        try:
+            # Build dependency graph
+            graph = self._build_dependency_graph(ops)
+
+            # Check for cycles
+            cycles = graph.detect_cycles()
+            if cycles:
+                # Format cycles for error message
+                cycle_paths = []
+                for cycle in cycles:
+                    # Get names from id_name_map
+                    cycle_names = []
+                    for node_id in cycle:
+                        name = self.id_name_map.get(node_id, node_id)
+                        cycle_names.append(name)
+                    cycle_paths.append(" → ".join(cycle_names))
+
+                raise CircularDependencyError(cycle_paths)
+
+            # Use topological sort
+            return graph.topological_sort(), warnings
+
+        except CircularDependencyError as e:
+            # Re-raise to be handled by caller
+            raise
+        except Exception as e:
+            # Unexpected error - warn and fall back
+            warnings.append(
+                f"Dependency analysis failed: {e}. Falling back to level-based sorting."
+            )
+            return sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts)), warnings
+    
     def generate_sql_with_mapping(self, ops: list[Operation]) -> "SQLGenerationResult":
         """
         Generate SQL with explicit operation-to-statement mapping.
@@ -557,13 +618,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """
         from ..base.sql_generator import SQLGenerationResult, StatementInfo
 
-        # Sort operations by:
-        # 1. Dependency level (catalog → schema → table) for correct order
-        # 2. Timestamp (chronological) to preserve order of operations within same object
-        sorted_ops = sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
+        # Use dependency-aware topological sorting for correct execution order
+        # This handles view dependencies, foreign keys, and hierarchy
+        global_warnings = []
 
-        # Filter out create+drop pairs that cancel each other
-        filtered_ops = self._filter_cancelled_operations(sorted_ops)
+        try:
+            # Build dependency graph and get topologically sorted operations
+            sorted_ops, sort_warnings = self._topological_sort_with_fallback(ops)
+            global_warnings.extend(sort_warnings)
+        except Exception as e:
+            # Handle circular dependencies with loud warning
+            from ..base.exceptions import CircularDependencyError
+
+            if isinstance(e, CircularDependencyError):
+                # Format critical warning
+                warning_msg = "\n" + "=" * 70 + "\n"
+                warning_msg += "⚠️  CRITICAL WARNING: CIRCULAR DEPENDENCIES DETECTED\n"
+                warning_msg += "=" * 70 + "\n"
+                warning_msg += str(e)
+                warning_msg += "\n→ Falling back to level-based sorting (dependencies IGNORED)"
+                warning_msg += "\n→ Run 'schematic validate' to see full details"
+                warning_msg += "\n→ SQL execution may FAIL if dependencies are not met"
+                warning_msg += "\n" + "=" * 70
+                print(warning_msg)
+                global_warnings.append("Circular dependencies detected - dependencies ignored")
+            else:
+                print(f"Warning: Dependency analysis failed ({e}), using level-based sort")
+                global_warnings.append(f"Dependency analysis failed: {e}")
+
+            sorted_ops = sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
 
         # Separate DROP operations from CREATE/ALTER operations
         # DROP operations cannot be batched and must be processed individually
@@ -585,6 +668,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         catalog_stmts = []
         schema_stmts = []
         table_stmts = []
+        view_stmts = []
         other_ops = []
 
         # Process batched operations (CREATE and ALTER only)
@@ -592,13 +676,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
             op_ids = batch_info.op_ids
             processed_op_ids.update(op_ids)
 
-            # Determine object type from ID prefix (catalog:, schema:, table:)
+            # Determine object type from ID prefix (catalog:, schema:, table:, view:)
             if object_id.startswith("catalog:"):
                 object_type = "catalog"
             elif object_id.startswith("schema:"):
                 object_type = "schema"
             elif object_id.startswith("table:"):
                 object_type = "table"
+            elif object_id.startswith("view:"):
+                object_type = "view"
             else:
                 # Skip unknown object types
                 continue
@@ -615,6 +701,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 # Table operations can produce multiple statements
                 table_result = self._generate_table_sql_with_mapping(object_id, batch_info)
                 table_stmts.extend(table_result)  # List of (sql, op_ids) tuples
+            elif object_type == "view":
+                # View operations - simpler than tables
+                view_result = self._generate_view_sql_with_mapping(object_id, batch_info)
+                view_stmts.extend(view_result)  # List of (sql, op_ids) tuples
 
         # Process unbatched non-DROP operations
         for op in non_drop_ops:
@@ -641,6 +731,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
             )
 
         for sql, op_ids in table_stmts:
+            execution_order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
+            )
+
+        for sql, op_ids in view_stmts:
             execution_order += 1
             statement_infos.append(
                 StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
@@ -674,7 +770,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             combined_sql += ";"
 
         return SQLGenerationResult(
-            sql=combined_sql, statements=statement_infos, warnings=[], is_idempotent=True
+            sql=combined_sql, statements=statement_infos, warnings=global_warnings, is_idempotent=True
         )
 
     def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
@@ -731,6 +827,22 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._set_table_tag(op)
         elif op_type == "unset_table_tag":
             return self._unset_table_tag(op)
+
+        # View operations
+        elif op_type == "add_view":
+            return self._add_view(op)
+        elif op_type == "rename_view":
+            return self._rename_view(op)
+        elif op_type == "drop_view":
+            return self._drop_view(op)
+        elif op_type == "update_view":
+            return self._update_view(op)
+        elif op_type == "set_view_comment":
+            return self._set_view_comment(op)
+        elif op_type == "set_view_property":
+            return self._set_view_property(op)
+        elif op_type == "unset_view_property":
+            return self._unset_view_property(op)
 
         # Column operations
         elif op_type == "add_column":
@@ -1088,6 +1200,109 @@ class UnitySQLGenerator(BaseSQLGenerator):
         tag_name = op.payload["tagName"]
         return f"ALTER TABLE {fqn_esc} UNSET TAGS ('{tag_name}')"
 
+    # View operations
+    def _add_view(self, op: Operation) -> str:
+        """Generate CREATE VIEW statement"""
+        view_fqn = self.id_name_map.get(op.target, "unknown")
+        view_esc = self._build_fqn(*view_fqn.split("."))
+        definition = op.payload.get("definition", "")
+        comment = op.payload.get("comment")
+        
+        # Build CREATE VIEW statement
+        sql = f"CREATE VIEW IF NOT EXISTS {view_esc}"
+        
+        # Add comment if provided
+        if comment:
+            sql += f" COMMENT '{comment}'"
+        
+        # Add AS clause
+        sql += f" AS\n{definition}"
+        
+        # Add dependency comment if extracted dependencies exist
+        extracted_deps = op.payload.get("extractedDependencies", {})
+        tables = extracted_deps.get("tables", [])
+        views = extracted_deps.get("views", [])
+        
+        dep_list = []
+        if tables:
+            dep_list.extend(tables)
+        if views:
+            dep_list.extend(views)
+        
+        if dep_list:
+            deps_str = ", ".join(dep_list)
+            sql = f"-- View depends on: {deps_str}\n{sql}"
+        
+        return sql
+
+    def _rename_view(self, op: Operation) -> str:
+        """Generate ALTER VIEW RENAME statement"""
+        old_fqn = self.id_name_map.get(op.target, "unknown")
+        old_esc = self._build_fqn(*old_fqn.split("."))
+        
+        # Build new FQN with new name
+        parts = old_fqn.split(".")
+        parts[-1] = op.payload["newName"]
+        new_fqn = ".".join(parts)
+        new_esc = self._build_fqn(*parts)
+        
+        return f"ALTER VIEW {old_esc} RENAME TO {new_esc}"
+
+    def _drop_view(self, op: Operation) -> str:
+        """Generate DROP VIEW statement"""
+        view_fqn = self.id_name_map.get(op.target, "unknown")
+        view_esc = self._build_fqn(*view_fqn.split("."))
+        return f"DROP VIEW IF EXISTS {view_esc}"
+
+    def _update_view(self, op: Operation) -> str:
+        """Generate CREATE OR REPLACE VIEW statement to update definition"""
+        view_fqn = self.id_name_map.get(op.target, "unknown")
+        view_esc = self._build_fqn(*view_fqn.split("."))
+        definition = op.payload.get("definition", "")
+        
+        # Use CREATE OR REPLACE for updates
+        sql = f"CREATE OR REPLACE VIEW {view_esc} AS\n{definition}"
+        
+        # Add dependency comment if provided
+        extracted_deps = op.payload.get("extractedDependencies", {})
+        if extracted_deps:
+            tables = extracted_deps.get("tables", [])
+            views = extracted_deps.get("views", [])
+            
+            dep_list = []
+            if tables:
+                dep_list.extend(tables)
+            if views:
+                dep_list.extend(views)
+            
+            if dep_list:
+                deps_str = ", ".join(dep_list)
+                sql = f"-- View depends on: {deps_str}\n{sql}"
+        
+        return sql
+
+    def _set_view_comment(self, op: Operation) -> str:
+        """Generate ALTER VIEW SET TBLPROPERTIES for comment"""
+        view_fqn = self.id_name_map.get(op.payload["viewId"], "unknown")
+        view_esc = self._build_fqn(*view_fqn.split("."))
+        comment = op.payload["comment"].replace("'", "\\'")
+        return f"COMMENT ON VIEW {view_esc} IS '{comment}'"
+
+    def _set_view_property(self, op: Operation) -> str:
+        """Generate ALTER VIEW SET TBLPROPERTIES"""
+        view_fqn = self.id_name_map.get(op.payload["viewId"], "unknown")
+        view_esc = self._build_fqn(*view_fqn.split("."))
+        key = op.payload["key"]
+        value = op.payload["value"].replace("'", "\\'")
+        return f"ALTER VIEW {view_esc} SET TBLPROPERTIES ('{key}' = '{value}')"
+
+    def _unset_view_property(self, op: Operation) -> str:
+        """Generate ALTER VIEW UNSET TBLPROPERTIES"""
+        view_fqn = self.id_name_map.get(op.payload["viewId"], "unknown")
+        view_esc = self._build_fqn(*view_fqn.split("."))
+        key = op.payload["key"]
+        return f"ALTER VIEW {view_esc} UNSET TBLPROPERTIES ('{key}')"
+
     # Column operations
     def _add_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
@@ -1370,6 +1585,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
             # For now, attribute all statements in this batch to all operations in the batch
             # This is conservative but correct - all operations contributed to this batch
             statements.append((stmt, batch_info.op_ids))
+
+        return statements
+
+    def _generate_view_sql_with_mapping(
+        self, view_id: str, batch_info: BatchInfo
+    ) -> list[tuple[str, list[str]]]:
+        """Generate SQL for view operations with explicit operation mapping.
+
+        Returns list of (sql, operation_ids) tuples.
+        Views are simpler than tables - mainly create/update/drop operations.
+        """
+        statements = []
+
+        # Process create operation
+        if batch_info.create_op:
+            op = batch_info.create_op
+            sql = self._add_view(op)
+            if sql:
+                statements.append((sql, [op.id]))
+
+        # Process modify operations (update, rename, drop, etc.)
+        for op in batch_info.modify_ops:
+            op_type = op.op.replace("unity.", "")
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append((sql, [op.id]))
+            except Exception as e:
+                statements.append((f"-- Error generating SQL for {op.id}: {e}", [op.id]))
 
         return statements
 

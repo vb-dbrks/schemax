@@ -1,0 +1,214 @@
+import React, { useState, useMemo } from 'react';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
+import { useDesignerStore } from '../state/useDesignerStore';
+import './ViewDetails.css';
+
+interface ViewDetailsProps {
+  viewId: string;
+}
+
+export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
+  const { project, updateView } = useDesignerStore();
+  const [isEditingSQL, setIsEditingSQL] = useState(false);
+  const [editedSQL, setEditedSQL] = useState('');
+
+  // Find view
+  const viewInfo = useMemo(() => {
+    if (!project?.state?.catalogs) return null;
+    
+    for (const catalog of project.state.catalogs) {
+      for (const schema of catalog.schemas || []) {
+        for (const view of (schema as any).views || []) {
+          if (view.id === viewId) {
+            return { catalog, schema, view };
+          }
+        }
+      }
+    }
+    return null;
+  }, [project, viewId]);
+
+  if (!viewInfo) {
+    return (
+      <div className="view-details">
+        <div className="empty-state">
+          <p>View not found</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { catalog, schema, view } = viewInfo;
+
+  const handleEditSQL = () => {
+    setEditedSQL(view.definition);
+    setIsEditingSQL(true);
+  };
+
+  const handleSaveSQL = () => {
+    if (editedSQL.trim()) {
+      updateView(viewId, editedSQL.trim());
+      setIsEditingSQL(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedSQL('');
+    setIsEditingSQL(false);
+  };
+
+  return (
+    <div className="view-details">
+      {/* Header */}
+      <div className="view-header">
+        <div className="view-title">
+          <i className="codicon codicon-graph-line"></i>
+          <h2>{catalog.name}.{schema.name}.{view.name}</h2>
+        </div>
+        <span className="view-badge">VIEW</span>
+      </div>
+
+      {/* SQL Definition Section */}
+      <div className="view-section">
+        <div className="section-header">
+          <h3>SQL Definition</h3>
+          {!isEditingSQL && (
+            <VSCodeButton
+              appearance="secondary"
+              onClick={handleEditSQL}
+            >
+              <i className="codicon codicon-edit"></i>
+              Edit
+            </VSCodeButton>
+          )}
+        </div>
+        
+        {isEditingSQL ? (
+          <div className="edit-sql-container">
+            <textarea
+              value={editedSQL}
+              onChange={(e) => setEditedSQL(e.target.value)}
+              rows={12}
+              placeholder="SELECT * FROM..."
+              style={{
+                width: '100%',
+                fontFamily: 'var(--vscode-editor-font-family, monospace)',
+                fontSize: '13px',
+                padding: '12px',
+                border: '1px solid var(--vscode-input-border)',
+                background: 'var(--vscode-input-background)',
+                color: 'var(--vscode-input-foreground)',
+                resize: 'vertical',
+                borderRadius: '4px'
+              }}
+            />
+            <div className="edit-actions">
+              <VSCodeButton onClick={handleSaveSQL}>
+                <i className="codicon codicon-check"></i>
+                Save
+              </VSCodeButton>
+              <VSCodeButton
+                appearance="secondary"
+                onClick={handleCancelEdit}
+              >
+                <i className="codicon codicon-close"></i>
+                Cancel
+              </VSCodeButton>
+            </div>
+          </div>
+        ) : (
+          <pre className="sql-display">
+            {view.definition}
+          </pre>
+        )}
+      </div>
+
+      {/* Comment Section */}
+      {view.comment && (
+        <div className="view-section">
+          <h3>Comment</h3>
+          <p className="comment-text">{view.comment}</p>
+        </div>
+      )}
+
+      {/* Extracted Dependencies Section */}
+      {view.extractedDependencies && (
+        <div className="view-section">
+          <h3>Dependencies</h3>
+          <div className="dependencies-container">
+            {view.extractedDependencies.tables && view.extractedDependencies.tables.length > 0 && (
+              <div className="dependency-group">
+                <h4>Tables</h4>
+                <ul className="dependency-list">
+                  {view.extractedDependencies.tables.map((table: string, i: number) => (
+                    <li key={i}>
+                      <i className="codicon codicon-table"></i>
+                      <code>{table}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
+            {view.extractedDependencies.views && view.extractedDependencies.views.length > 0 && (
+              <div className="dependency-group">
+                <h4>Views</h4>
+                <ul className="dependency-list">
+                  {view.extractedDependencies.views.map((v: string, i: number) => (
+                    <li key={i}>
+                      <i className="codicon codicon-graph-line"></i>
+                      <code>{v}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {(!view.extractedDependencies.tables || view.extractedDependencies.tables.length === 0) &&
+             (!view.extractedDependencies.views || view.extractedDependencies.views.length === 0) && (
+              <p className="no-dependencies">No dependencies detected</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Properties Section */}
+      {view.properties && Object.keys(view.properties).length > 0 && (
+        <div className="view-section">
+          <h3>Properties</h3>
+          <table className="properties-table">
+            <thead>
+              <tr>
+                <th>Key</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(view.properties).map(([key, value]) => (
+                <tr key={key}>
+                  <td><code>{key}</code></td>
+                  <td><code>{value as string}</code></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Tags Section */}
+      {view.tags && Object.keys(view.tags).length > 0 && (
+        <div className="view-section">
+          <h3>Tags</h3>
+          <div className="tags-container">
+            {Object.entries(view.tags).map(([key, value]) => (
+              <span key={key} className="tag-badge">
+                <strong>{key}:</strong> {value as string}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+

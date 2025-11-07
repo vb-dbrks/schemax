@@ -10,6 +10,12 @@ from typing import Any
 from pydantic import BaseModel
 
 from .batching import BatchInfo, OperationBatcher
+from .dependency_graph import (
+    DependencyEnforcement,
+    DependencyGraph,
+    DependencyNode,
+    DependencyType,
+)
 from .models import ProviderState
 from .operations import Operation
 from .optimization import ColumnReorderOptimizer
@@ -123,6 +129,273 @@ class BaseSQLGenerator(SQLGenerator):
         self.name_mapping = name_mapping or {}
         self.batcher = OperationBatcher()
         self.optimizer = ColumnReorderOptimizer()
+        self.dependency_graph: DependencyGraph | None = None
+
+    # ====================
+    # DEPENDENCY GRAPH
+    # ====================
+
+    def _build_dependency_graph(self, ops: list[Operation]) -> DependencyGraph:
+        """
+        Build dependency graph from operations.
+
+        This analyzes operations to detect dependencies and builds a graph
+        that can be used for topological sorting.
+
+        Args:
+            ops: List of operations to analyze
+
+        Returns:
+            DependencyGraph with nodes and edges
+        """
+        graph = DependencyGraph()
+
+        # First pass: Add all nodes
+        for op in ops:
+            hierarchy_level = self._get_dependency_level(op)
+            target_id = self._get_target_object_id(op)
+
+            if not target_id:
+                continue  # Skip operations without a clear target
+
+            node = DependencyNode(
+                id=target_id,
+                type=self._get_object_type_from_operation(op),
+                hierarchy_level=hierarchy_level,
+                operation=op,
+                metadata={"op_type": op.get("op", "")},
+            )
+
+            # Only add if not already present
+            if target_id not in graph.nodes:
+                graph.add_node(node)
+
+        # Second pass: Extract and add dependencies
+        for op in ops:
+            target_id = self._get_target_object_id(op)
+            if not target_id:
+                continue
+
+            # Extract dependencies for this operation
+            dependencies = self._extract_operation_dependencies(op)
+
+            for dep_id, dep_type, enforcement in dependencies:
+                # Add dependency edge if both nodes exist
+                if target_id in graph.nodes and dep_id in graph.nodes:
+                    graph.add_edge(target_id, dep_id, dep_type, enforcement)
+
+        self.dependency_graph = graph
+        return graph
+
+    def _get_object_type_from_operation(self, op: Operation) -> str:
+        """
+        Infer object type from operation type.
+
+        Args:
+            op: Operation to analyze
+
+        Returns:
+            Object type string (e.g., "catalog", "schema", "table", "view")
+        """
+        op_type = op.get("op", "")
+
+        if "catalog" in op_type:
+            return "catalog"
+        elif "schema" in op_type:
+            return "schema"
+        elif "table" in op_type:
+            return "table"
+        elif "view" in op_type:
+            return "view"
+        elif "column" in op_type:
+            return "column"
+        elif "constraint" in op_type:
+            return "constraint"
+        else:
+            return "unknown"
+
+    def generate_sql_with_dependencies(self, ops: list[Operation]) -> SQLGenerationResult:
+        """
+        Generate SQL with dependency-aware ordering.
+
+        This is the enhanced version of generate_sql that builds a dependency
+        graph and uses topological sort to ensure correct execution order.
+
+        Args:
+            ops: Operations to convert to SQL
+
+        Returns:
+            SQLGenerationResult with dependency-sorted SQL statements
+        """
+        if not ops:
+            return SQLGenerationResult(sql="", statements=[], warnings=[])
+
+        warnings: list[str] = []
+
+        # Build dependency graph
+        try:
+            graph = self._build_dependency_graph(ops)
+
+            # Detect breaking changes (warn about dropping objects with dependents)
+            breaking_warnings = self._detect_breaking_changes(ops, graph)
+            warnings.extend(breaking_warnings)
+
+            # Detect cycles (will raise ValueError if found)
+            cycles = graph.detect_cycles()
+            if cycles:
+                cycle_str = "\n".join(
+                    " → ".join(str(nid) for nid in cycle) for cycle in cycles
+                )
+                warnings.append(f"Circular dependencies detected:\n{cycle_str}")
+                # Fall back to level-based sorting
+                sorted_ops = self._sort_operations_by_level(ops)
+            else:
+                # Use topological sort for optimal ordering
+                sorted_ops = graph.topological_sort()
+
+            # Validate dependencies
+            dep_warnings = graph.validate_dependencies()
+            warnings.extend(dep_warnings)
+
+        except Exception as e:
+            # If dependency analysis fails, fall back to level-based sorting
+            warnings.append(f"Dependency analysis failed: {e}. Using level-based sorting.")
+            sorted_ops = self._sort_operations_by_level(ops)
+
+        # Generate SQL for sorted operations
+        statements = []
+        for idx, op in enumerate(sorted_ops):
+            if not self.can_generate_sql(op):
+                warnings.append(f"Cannot generate SQL for operation: {op.get('op', 'unknown')}")
+                continue
+
+            result = self.generate_sql_for_operation(op)
+
+            # Add header comment with operation metadata
+            header = f"-- Operation: {op.get('id', 'unknown')} ({op.get('ts', '')})\n"
+            header += f"-- Type: {op.get('op', 'unknown')}"
+
+            # Add to statements list
+            statements.append(
+                StatementInfo(
+                    sql=result.sql,
+                    operation_ids=[op.get("id", "")],
+                    execution_order=idx + 1,
+                )
+            )
+
+            warnings.extend(result.warnings)
+
+        # Combine all SQL statements
+        combined_sql = "\n\n".join(
+            f"-- Statement {stmt.execution_order}\n{stmt.sql};" for stmt in statements
+        )
+
+        return SQLGenerationResult(
+            sql=combined_sql, statements=statements, warnings=warnings, is_idempotent=True
+        )
+
+    def _sort_operations_by_level(self, ops: list[Operation]) -> list[Operation]:
+        """
+        Sort operations by hierarchy level and timestamp (fallback method).
+
+        Args:
+            ops: Operations to sort
+
+        Returns:
+            Sorted operations
+        """
+        return sorted(
+            ops, key=lambda op: (self._get_dependency_level(op), op.get("ts", ""))
+        )
+
+    def _detect_breaking_changes(
+        self, ops: list[Operation], graph: DependencyGraph | None = None
+    ) -> list[str]:
+        """
+        Detect breaking changes from operations (e.g., dropping objects with dependents).
+
+        Args:
+            ops: Operations to analyze
+            graph: Optional dependency graph (if already built)
+
+        Returns:
+            List of warning messages about breaking changes
+        """
+        warnings: list[str] = []
+
+        # Build graph if not provided
+        if graph is None:
+            try:
+                graph = self._build_dependency_graph(ops)
+            except Exception:
+                # If graph building fails, return empty warnings
+                return warnings
+
+        # Check each drop operation for breaking changes
+        for op in ops:
+            op_type = op.get("op", "")
+
+            # Detect drop operations
+            is_drop = (
+                "drop" in op_type.lower()
+                or "remove" in op_type.lower()
+                or "delete" in op_type.lower()
+            )
+
+            if is_drop:
+                target_id = self._get_target_object_id(op)
+                if target_id and graph:
+                    # Get dependents
+                    dependents = graph.get_breaking_changes(target_id)
+
+                    if dependents:
+                        # Create warning message
+                        object_name = self._get_object_display_name_from_op(op)
+                        dependent_names = [
+                            graph._get_node_display_name(dep_id) for dep_id in dependents
+                        ]
+
+                        warning = (
+                            f"⚠️  Breaking change: Dropping {object_name} will affect "
+                            f"{len(dependents)} dependent object(s):\n"
+                        )
+                        for dep_name in dependent_names:
+                            warning += f"  • {dep_name}\n"
+
+                        warnings.append(warning.rstrip())
+
+        return warnings
+
+    def _get_object_display_name_from_op(self, op: Operation) -> str:
+        """
+        Get human-readable object name from operation.
+
+        Args:
+            op: Operation
+
+        Returns:
+            Display name (e.g., "table my_table", "view my_view")
+        """
+        op_type = op.get("op", "unknown")
+        target_id = op.get("target", "unknown")
+
+        # Extract object type from operation type
+        if "table" in op_type:
+            obj_type = "table"
+        elif "view" in op_type:
+            obj_type = "view"
+        elif "schema" in op_type:
+            obj_type = "schema"
+        elif "catalog" in op_type:
+            obj_type = "catalog"
+        else:
+            obj_type = "object"
+
+        # Try to get name from payload
+        name = op.get("payload", {}).get("name", target_id)
+
+        return f"{obj_type} '{name}'"
 
     # ====================
     # GENERIC UTILITIES
@@ -249,6 +522,36 @@ class BaseSQLGenerator(SQLGenerator):
             ...         return 3
         """
         pass
+
+    def _extract_operation_dependencies(
+        self, op: Operation
+    ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
+        """
+        Extract dependencies from an operation.
+
+        This method should be overridden by providers for operations that have
+        dependencies (e.g., views depending on tables/views, foreign keys).
+
+        Args:
+            op: Operation to analyze
+
+        Returns:
+            List of tuples: (dependency_id, dependency_type, enforcement)
+
+        Example (Unity - for views):
+            >>> def _extract_operation_dependencies(self, op):
+            ...     if op.op == "unity.add_view":
+            ...         # Parse SQL to extract table/view dependencies
+            ...         deps = parse_view_definition(op.payload.get("definition"))
+            ...         return [
+            ...             (table_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
+            ...             for table_id in deps
+            ...         ]
+            ...     return []
+        """
+        # Default: no dependencies
+        # Providers should override for view operations, foreign keys, etc.
+        return []
 
     @abstractmethod
     def _generate_batched_create_sql(self, object_id: str, batch_info: BatchInfo) -> str:

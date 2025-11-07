@@ -116,7 +116,7 @@ def rollback_partial(
         from_version = deployment.get("fromVersion")
 
     # 2. Load pre-deployment state (from the fromVersion snapshot, not current workspace state!)
-    _, _, provider = load_current_state(workspace)
+    _, _, provider, _ = load_current_state(workspace, validate=False)
 
     if from_version:
         from_snap = read_snapshot(workspace, from_version)
@@ -457,7 +457,7 @@ def rollback_complete(
 
         # 4. Load current state and target snapshot state
         console.print("[cyan]Loading states...[/cyan]")
-        current_state, _, provider = load_current_state(workspace)
+        current_state, _, provider, _ = load_current_state(workspace, validate=False)
         target_state = target_snapshot["state"]
 
         console.print("  [green]✓[/green] Current state loaded")

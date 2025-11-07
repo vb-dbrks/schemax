@@ -1258,9 +1258,204 @@ async function migrateV2ToV3(
 
 ### SQL Generation
 
-- **Streaming**: Generate SQL as operations are processed
-- **No State Needed**: Operations contain all required information
-- **Provider-Optimized**: Each provider generates optimal SQL for its system
+SQL generation in Schematic uses a **dependency-aware system** that ensures DDL statements are generated in the correct execution order.
+
+#### Dependency-Aware Ordering
+
+**Problem:** Database objects have dependencies (e.g., views depend on tables, foreign keys reference other tables). Naive SQL generation in operation timestamp order can produce unexecutable SQL.
+
+**Solution:** Build a dependency graph and use topological sorting to determine correct execution order.
+
+**Implementation:**
+
+```typescript
+// 1. Build dependency graph from operations
+const graph = new DependencyGraph();
+for (const op of operations) {
+  graph.addNode({
+    id: getTargetObjectId(op),
+    type: getObjectType(op),
+    hierarchyLevel: getDependencyLevel(op),
+    operation: op
+  });
+  
+  // Extract dependencies (e.g., view → table)
+  const deps = extractOperationDependencies(op);
+  for (const [depId, depType] of deps) {
+    graph.addEdge(targetId, depId, depType);
+  }
+}
+
+// 2. Detect cycles
+const cycles = graph.detectCycles();
+if (cycles.length > 0) {
+  throw new Error('Circular dependencies detected');
+}
+
+// 3. Topological sort (dependencies first)
+const sortedOps = graph.topologicalSort();
+
+// 4. Generate SQL in dependency order
+return sortedOps.map(op => generateSQLForOperation(op));
+```
+
+**Key Features:**
+
+- **Graph-Based Ordering**: Uses NetworkX (Python) or custom graph implementation (TypeScript)
+- **Cycle Detection**: Prevents invalid circular dependencies between views
+- **Breaking Change Detection**: Warns when dropping objects with dependents
+- **Hierarchy-Aware**: Respects natural hierarchy (catalog → schema → table/view)
+- **Provider-Extensible**: Each provider defines its own dependency extraction logic
+
+#### Dependency Types
+
+```typescript
+enum DependencyType {
+  HIERARCHY = 'hierarchy',           // Schema-level (catalog → schema → table)
+  FOREIGN_KEY = 'foreign_key',       // FK constraint dependency
+  VIEW_DEPENDENCY = 'view_dependency', // View depends on table/view
+  COLUMN_MASK = 'column_mask',       // Column mask dependency
+  ROW_FILTER = 'row_filter'          // Row filter dependency
+}
+
+enum DependencyEnforcement {
+  ENFORCED = 'enforced',             // Must be satisfied (hierarchical deps)
+  INFORMATIONAL = 'informational',   // Not enforced (Unity Catalog FKs)
+  WARNING = 'warning'                // Only for warnings
+}
+```
+
+#### View Dependency Extraction
+
+Views are the primary use case for dependency-aware ordering. Schematic extracts dependencies from view SQL:
+
+**Python (SQLGlot):**
+
+```python
+from sqlglot import parse_one
+
+def extract_dependencies_from_view(view_sql: str) -> dict:
+    parsed = parse_one(view_sql, dialect="databricks")
+    tables = []
+    for table_exp in parsed.find_all(exp.Table):
+        fqn = f"{table_exp.catalog}.{table_exp.schema}.{table_exp.name}"
+        tables.append(fqn)
+    return {"tables": tables, "views": [], ...}
+```
+
+**TypeScript (Regex-Based):**
+
+```typescript
+function extractDependenciesFromView(viewSql: string) {
+  const tablePattern = /(?:FROM|JOIN)\s+(?:(\w+)\.)?(?:(\w+)\.)?(\w+)/gi;
+  const tables = [];
+  let match;
+  while ((match = tablePattern.exec(viewSql)) !== null) {
+    const fqn = [match[1], match[2], match[3]].filter(Boolean).join('.');
+    tables.push(fqn);
+  }
+  return { tables, views: [], catalogs: [], schemas: [] };
+}
+```
+
+#### Hierarchy Levels
+
+Operations are assigned hierarchy levels for fallback ordering:
+
+```typescript
+Level 0: Catalog operations (CREATE CATALOG)
+Level 1: Schema operations (CREATE SCHEMA)
+Level 2: Table/View creation (CREATE TABLE, CREATE VIEW)
+Level 3: Modifications (ALTER TABLE, ADD COLUMN, SET PROPERTIES)
+```
+
+#### Breaking Change Detection
+
+When a DROP operation is detected, the system checks for dependents:
+
+```typescript
+if (opType.startsWith('drop_')) {
+  const dependents = graph.getDependents(targetId);
+  if (dependents.length > 0) {
+    warnings.push(
+      `BREAKING CHANGE: Dropping ${targetId} will affect: ${dependents}`
+    );
+  }
+}
+```
+
+#### Fallback Behavior
+
+If dependency analysis fails (e.g., cycles detected, parsing errors):
+
+1. **Detect Cycle**: Report cycle path to user
+2. **Fall Back**: Use hierarchy level + timestamp sorting
+3. **Add Warnings**: Include warnings in generated SQL comments
+
+**Example Warning:**
+
+```sql
+-- WARNINGS:
+-- Circular dependencies detected:
+--   view_a → view_b → view_a
+-- Using level-based sorting as fallback
+
+-- Statement 1
+CREATE SCHEMA my_schema;
+```
+
+#### Performance
+
+- **Graph Construction**: O(V + E) where V = operations, E = dependencies
+- **Cycle Detection**: O(V + E) using DFS
+- **Topological Sort**: O(V + E) using Kahn's algorithm
+- **Typical Scale**: <10ms for 100 operations with 50 dependencies
+
+#### Provider-Specific Implementation
+
+Each provider implements:
+
+```typescript
+abstract class BaseSQLGenerator {
+  // Required: Define hierarchy levels
+  protected abstract _getDependencyLevel(op: Operation): number;
+  
+  // Optional: Extract dependencies from operations
+  protected _extractOperationDependencies(op: Operation): Dependency[] {
+    return []; // Base implementation
+  }
+}
+
+class UnitySQLGenerator extends BaseSQLGenerator {
+  protected _getDependencyLevel(op: Operation): number {
+    if (op.op.includes('catalog')) return 0;
+    if (op.op.includes('schema')) return 1;
+    if (op.op.includes('add_table') || op.op.includes('add_view')) return 2;
+    return 3;
+  }
+  
+  protected _extractOperationDependencies(op: Operation): Dependency[] {
+    // Extract from view SQL, foreign keys, etc.
+    if (op.op === 'unity.add_view') {
+      const deps = extractDependenciesFromView(op.payload.definition);
+      return deps.tables.map(tableId => [
+        tableId,
+        DependencyType.VIEW_DEPENDENCY,
+        DependencyEnforcement.INFORMATIONAL
+      ]);
+    }
+    return [];
+  }
+}
+```
+
+#### Benefits
+
+- ✅ **Correct Execution Order**: SQL runs without dependency errors
+- ✅ **View Support**: Enables complex view hierarchies (view → view → table)
+- ✅ **Breaking Change Warnings**: Prevents accidental data loss
+- ✅ **Scalable**: Handles projects with 1000+ objects efficiently
+- ✅ **Provider-Agnostic**: Works with any catalog system
 
 ### Memory Usage
 

@@ -3,6 +3,7 @@ import { VSCodeButton, VSCodeProgressRing } from '@vscode/webview-ui-toolkit/rea
 import { useDesignerStore } from './state/useDesignerStore';
 import { Sidebar } from './components/Sidebar';
 import { TableDesigner } from './components/TableDesigner';
+import { ViewDetails } from './components/ViewDetails';
 import { SnapshotPanel } from './components/SnapshotPanel';
 import { getVsCodeApi } from './vscode-api';
 import { ProjectSettingsPanel } from './components/ProjectSettingsPanel';
@@ -20,7 +21,7 @@ const IconRefresh: React.FC<{ className?: string }> = ({ className = '' }) => (
 );
 
 export const App: React.FC = () => {
-  const { project, setProject, setProvider, provider } = useDesignerStore();
+  const { project, setProject, setProvider, provider, selectedTableId, findView } = useDesignerStore();
   const [loading, setLoading] = React.useState(true);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = React.useState(false);
   const [hasConflicts, setHasConflicts] = React.useState(false);
@@ -28,6 +29,9 @@ export const App: React.FC = () => {
   const [hasStaleSnapshots, setHasStaleSnapshots] = React.useState(false);
   const [staleSnapshotInfo, setStaleSnapshotInfo] = React.useState<any>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  
+  // Determine if selected object is a view
+  const isViewSelected = selectedTableId ? !!findView(selectedTableId) : false;
 
   useEffect(() => {
     // Set up message listener from extension
@@ -161,7 +165,11 @@ export const App: React.FC = () => {
           <Sidebar />
           <SnapshotPanel />
         </div>
-        <TableDesigner />
+        {isViewSelected && selectedTableId ? (
+          <ViewDetails viewId={selectedTableId} />
+        ) : (
+          <TableDesigner />
+        )}
       </div>
 
       {hasProjectSettings && isProjectSettingsOpen && project && (

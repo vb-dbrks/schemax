@@ -126,7 +126,7 @@ def generate_sql_migration(
                 state = snapshot_data["state"]
 
                 # Load provider from current state
-                _, _, provider = load_current_state(workspace)
+                _, _, provider, _ = load_current_state(workspace, validate=False)
 
                 console.print(f"[blue]Provider:[/blue] {provider.info.name}")
                 console.print("[blue]Source:[/blue] Snapshot (operations preserved)")
@@ -141,7 +141,7 @@ def generate_sql_migration(
                 )
         else:
             # Load current state from changelog
-            state, changelog, provider = load_current_state(workspace)
+            state, changelog, provider, _ = load_current_state(workspace, validate=False)
             ops_to_process = changelog["ops"]
 
             console.print(f"[blue]Provider:[/blue] {provider.info.name}")

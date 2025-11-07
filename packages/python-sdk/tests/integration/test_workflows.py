@@ -55,7 +55,7 @@ class TestBasicWorkflow:
         assert len(changelog["ops"]) == 3
 
         # Step 3: Load state and generate SQL
-        state, changelog, provider = load_current_state(temp_workspace)
+        state, changelog, provider, _ = load_current_state(temp_workspace)
 
         # Verify state
         assert len(state["catalogs"]) == 1
@@ -163,7 +163,7 @@ class TestSnapshotWorkflow:
         append_ops(initialized_workspace, additional_ops)
 
         # Load current state (should be snapshot + changelog ops)
-        state, changelog, provider = load_current_state(initialized_workspace)
+        state, changelog, provider, _ = load_current_state(initialized_workspace)
 
         # Verify state includes operations from snapshot
         # V4 has implicit catalog + user-defined catalog = 2
@@ -263,7 +263,7 @@ class TestCompleteSchemaWorkflow:
         append_ops(initialized_workspace, ops)
 
         # Load and verify state
-        state, changelog, provider = load_current_state(initialized_workspace)
+        state, changelog, provider, _ = load_current_state(initialized_workspace)
 
         # Verify structure
         assert len(state["catalogs"]) == 1
@@ -344,7 +344,7 @@ class TestCompleteSchemaWorkflow:
         create_snapshot(initialized_workspace, "Modified version", version="v0.2.0")
 
         # Load and verify final state
-        state, changelog, provider = load_current_state(initialized_workspace)
+        state, changelog, provider, _ = load_current_state(initialized_workspace)
 
         # Find user-defined catalog (not the implicit one)
         user_catalog = next(c for c in state["catalogs"] if c["name"] == "test")
@@ -381,7 +381,7 @@ class TestErrorRecovery:
     def test_empty_project_operations(self, initialized_workspace):
         """Test operations on empty project"""
         # Load state from empty project
-        state, changelog, provider = load_current_state(initialized_workspace)
+        state, changelog, provider, _ = load_current_state(initialized_workspace)
 
         # V4 auto-creates implicit catalog
         assert len(state["catalogs"]) == 1

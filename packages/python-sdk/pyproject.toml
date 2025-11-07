@@ -30,7 +30,9 @@ dependencies = [
     "click>=8.0.0",
     "rich>=13.0.0",
     "pyyaml>=6.0.0",
-    "databricks-sdk>=0.18.0"
+    "databricks-sdk>=0.18.0",
+    "networkx>=3.0",  # Dependency graph for SQL generation
+    "sqlglot>=20.0.0"  # SQL parsing for view dependencies
 ]
 
 [project.optional-dependencies]

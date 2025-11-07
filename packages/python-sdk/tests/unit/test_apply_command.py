@@ -132,6 +132,7 @@ class TestApplyCommand:
                                     {"catalogs": []},  # state
                                     {"ops": []},  # changelog
                                     mock_provider,  # provider
+                                    None,  # validation_result
                                 )
 
                                 # Execute apply in non-interactive mode
@@ -188,6 +189,7 @@ class TestApplyCommand:
                                 {"catalogs": []},
                                 {"ops": []},
                                 mock_provider,
+                                None,  # validation_result
                             )
 
                             # Execute apply in interactive mode
@@ -243,6 +245,7 @@ class TestApplyCommand:
                                 {"catalogs": []},
                                 {"ops": []},
                                 mock_provider,
+                                None,  # validation_result
                             )
 
                             # Execute apply
@@ -361,6 +364,7 @@ class TestApplyCommand:
                             {"catalogs": []},
                             {"ops": []},
                             mock_provider,
+                            None,  # validation_result
                         )
 
                         # Should not prompt when there are no uncommitted ops

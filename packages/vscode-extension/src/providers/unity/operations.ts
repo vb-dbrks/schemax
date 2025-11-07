@@ -33,6 +33,15 @@ export const UNITY_OPERATIONS = {
   SET_TABLE_TAG: 'unity.set_table_tag',
   UNSET_TABLE_TAG: 'unity.unset_table_tag',
   
+  // View operations
+  ADD_VIEW: 'unity.add_view',
+  RENAME_VIEW: 'unity.rename_view',
+  DROP_VIEW: 'unity.drop_view',
+  UPDATE_VIEW: 'unity.update_view',
+  SET_VIEW_COMMENT: 'unity.set_view_comment',
+  SET_VIEW_PROPERTY: 'unity.set_view_property',
+  UNSET_VIEW_PROPERTY: 'unity.unset_view_property',
+  
   // Column operations
   ADD_COLUMN: 'unity.add_column',
   RENAME_COLUMN: 'unity.rename_column',
@@ -211,6 +220,71 @@ export const unityOperationMetadata: OperationMetadata[] = [
     description: 'Remove a Unity Catalog table tag',
     category: OperationCategory.Metadata,
     requiredFields: ['tableId', 'tagName'],
+    optionalFields: [],
+    isDestructive: false,
+  },
+  
+  // View operations
+  {
+    type: UNITY_OPERATIONS.ADD_VIEW,
+    displayName: 'Add View',
+    description: 'Create a new view in a schema',
+    category: OperationCategory.Table, // Views are table-like objects
+    requiredFields: ['viewId', 'name', 'schemaId', 'definition'],
+    optionalFields: ['comment', 'dependencies', 'extractedDependencies'],
+    isDestructive: false,
+  },
+  {
+    type: UNITY_OPERATIONS.RENAME_VIEW,
+    displayName: 'Rename View',
+    description: 'Rename an existing view',
+    category: OperationCategory.Table,
+    requiredFields: ['newName'],
+    optionalFields: [],
+    isDestructive: false,
+  },
+  {
+    type: UNITY_OPERATIONS.DROP_VIEW,
+    displayName: 'Drop View',
+    description: 'Delete a view',
+    category: OperationCategory.Table,
+    requiredFields: [],
+    optionalFields: ['name', 'catalogId', 'schemaId'], // For SQL generation
+    isDestructive: true,
+  },
+  {
+    type: UNITY_OPERATIONS.UPDATE_VIEW,
+    displayName: 'Update View',
+    description: 'Update view definition or dependencies',
+    category: OperationCategory.Table,
+    requiredFields: [],
+    optionalFields: ['definition', 'dependencies', 'extractedDependencies'],
+    isDestructive: false,
+  },
+  {
+    type: UNITY_OPERATIONS.SET_VIEW_COMMENT,
+    displayName: 'Set View Comment',
+    description: 'Add or update view comment',
+    category: OperationCategory.Metadata,
+    requiredFields: ['viewId', 'comment'],
+    optionalFields: [],
+    isDestructive: false,
+  },
+  {
+    type: UNITY_OPERATIONS.SET_VIEW_PROPERTY,
+    displayName: 'Set View Property',
+    description: 'Set a view property',
+    category: OperationCategory.Metadata,
+    requiredFields: ['viewId', 'key', 'value'],
+    optionalFields: [],
+    isDestructive: false,
+  },
+  {
+    type: UNITY_OPERATIONS.UNSET_VIEW_PROPERTY,
+    displayName: 'Unset View Property',
+    description: 'Remove a view property',
+    category: OperationCategory.Metadata,
+    requiredFields: ['viewId', 'key'],
     optionalFields: [],
     isDestructive: false,
   },

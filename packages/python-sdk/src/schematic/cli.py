@@ -492,7 +492,7 @@ def rollback(
                     sys.exit(1)
 
                 # Load states
-                _, _, provider = load_current_state(workspace_path)
+                _, _, provider, _ = load_current_state(workspace_path, validate=False)
 
                 if from_version:
                     from_snap = read_snapshot(workspace_path, from_version)
@@ -558,7 +558,7 @@ def rollback(
             # Build catalog mapping
             from .core.storage import load_current_state
 
-            state, _, provider = load_current_state(workspace_path)
+            state, _, provider, _ = load_current_state(workspace_path, validate=False)
 
             # Build simple catalog mapping (single catalog mode)
             catalogs = state.get("catalogs", [])
