@@ -1251,6 +1251,51 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return sql
 
+    def _generate_create_or_replace_view(
+        self, create_op: Operation, update_op: Operation
+    ) -> str:
+        """
+        Generate CREATE OR REPLACE VIEW statement by batching create + update.
+        
+        Uses the final definition from update_op and dependencies from update_op.
+        This optimization squashes CREATE + UPDATE_VIEW into a single statement.
+        """
+        view_fqn = self.id_name_map.get(create_op.target, "unknown")
+        view_esc = self._build_fqn(*view_fqn.split("."))
+        
+        # Use updated definition from update_op
+        definition = update_op.payload.get("definition", "")
+        
+        # Use comment from create_op (if any)
+        comment = create_op.payload.get("comment")
+
+        # Build CREATE OR REPLACE VIEW statement
+        sql = f"CREATE OR REPLACE VIEW {view_esc}"
+
+        # Add comment if provided
+        if comment:
+            sql += f" COMMENT '{comment}'"
+
+        # Add AS clause
+        sql += f" AS\n{definition}"
+
+        # Add dependency comment from update_op (most recent dependencies)
+        extracted_deps = update_op.payload.get("extractedDependencies", {})
+        tables = extracted_deps.get("tables", [])
+        views = extracted_deps.get("views", [])
+
+        dep_list = []
+        if tables:
+            dep_list.extend(tables)
+        if views:
+            dep_list.extend(views)
+
+        if dep_list:
+            deps_str = ", ".join(dep_list)
+            sql = f"-- View depends on: {deps_str}\n{sql}"
+
+        return sql
+
     def _rename_view(self, op: Operation) -> str:
         """Generate ALTER VIEW RENAME statement"""
         old_fqn = self.id_name_map.get(op.target, "unknown")
@@ -1609,19 +1654,47 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """Generate SQL for view operations with explicit operation mapping.
 
         Returns list of (sql, operation_ids) tuples.
-        Views are simpler than tables - mainly create/update/drop operations.
+        
+        Optimization: If there's a CREATE + UPDATE_VIEW in the same batch,
+        squash them into a single CREATE OR REPLACE VIEW with the final definition.
         """
         statements = []
 
-        # Process create operation
-        if batch_info.create_op:
-            op = batch_info.create_op
-            sql = self._add_view(op)
+        # Check if we have both create and update_view operations
+        has_create = batch_info.create_op is not None
+        update_view_ops = [
+            op for op in batch_info.modify_ops if op.op.replace("unity.", "") == "update_view"
+        ]
+        
+        # Optimization: Squash CREATE + UPDATE_VIEW into single statement
+        if has_create and update_view_ops:
+            # Use the LAST update_view operation (most recent definition)
+            final_update_op = update_view_ops[-1]
+            
+            # Generate CREATE OR REPLACE VIEW with final definition
+            sql = self._generate_create_or_replace_view(batch_info.create_op, final_update_op)
             if sql:
-                statements.append((sql, [op.id]))
+                # Track all operation IDs (create + all updates)
+                op_ids = [batch_info.create_op.id] + [op.id for op in update_view_ops]
+                statements.append((sql, op_ids))
+            
+            # Process remaining modify operations (excluding update_view)
+            remaining_ops = [
+                op for op in batch_info.modify_ops 
+                if op.op.replace("unity.", "") != "update_view"
+            ]
+        else:
+            # No batching needed - process normally
+            if batch_info.create_op:
+                op = batch_info.create_op
+                sql = self._add_view(op)
+                if sql:
+                    statements.append((sql, [op.id]))
+            
+            remaining_ops = batch_info.modify_ops
 
-        # Process modify operations (update, rename, drop, etc.)
-        for op in batch_info.modify_ops:
+        # Process remaining modify operations (rename, drop, set properties, etc.)
+        for op in remaining_ops:
             op_type = op.op.replace("unity.", "")
             try:
                 sql = self._generate_sql_for_op_type(op_type, op)
