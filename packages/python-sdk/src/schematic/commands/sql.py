@@ -178,21 +178,36 @@ def generate_sql_migration(
             console.print("[yellow]No operations to generate SQL for[/yellow]")
             return ""
 
-        # Convert to Operation objects
-        operations = [Operation(**op) for op in ops_to_process]
+        # Ensure operations are Operation objects
+        # (may already be Operation objects from load_current_state)
+        if ops_to_process and isinstance(ops_to_process[0], dict):
+            operations = [Operation(**op) for op in ops_to_process]
+        else:
+            operations = ops_to_process
 
         # Log external table operations (if target environment specified)
-        external_table_ops = [
-            op
-            for op in ops_to_process
-            if op.get("op") == "unity.add_table" and op["payload"].get("external")
-        ]
+        # Note: operations may be Operation objects or dicts
+        external_table_ops = []
+        for op in operations:  # Use 'operations' which is consistently typed
+            if isinstance(op, Operation):
+                if op.op == "unity.add_table" and op.payload.get("external"):
+                    external_table_ops.append(op)
+            else:
+                if op.get("op") == "unity.add_table" and op["payload"].get("external"):
+                    external_table_ops.append(op)
+        
         if external_table_ops and target_env:
             console.print(f"\n[cyan]External Tables ({len(external_table_ops)}):[/cyan]")
             for op in external_table_ops:
-                table_name = op["payload"]["name"]
-                loc_name = op["payload"].get("externalLocationName")
-                path = op["payload"].get("path", "")
+                # Handle both Operation objects and dicts
+                if isinstance(op, Operation):
+                    table_name = op.payload["name"]
+                    loc_name = op.payload.get("externalLocationName")
+                    path = op.payload.get("path", "")
+                else:
+                    table_name = op["payload"]["name"]
+                    loc_name = op["payload"].get("externalLocationName")
+                    path = op["payload"].get("path", "")
 
                 # Resolve location from project-level externalLocations
                 ext_locs = project.get("externalLocations", {})

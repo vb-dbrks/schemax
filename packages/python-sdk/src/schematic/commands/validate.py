@@ -25,24 +25,20 @@ def validate_dependencies(state, ops, provider):
 
     Args:
         state: Current schema state
-        ops: List of operations (dicts or Operation objects)
+        ops: List of Operation objects (already Pydantic from storage layer)
         provider: Schema provider
 
     Returns:
         Tuple of (errors list, warnings list)
     """
-    from schematic.providers.base.operations import Operation
-
     errors = []
     warnings = []
 
     try:
-        # Convert dicts to Operation objects (standardize on Pydantic)
+        # Ops are already Operation objects from load_current_state()
+        # No conversion needed - storage layer handles this
         if not ops:
             return errors, warnings
-        
-        if isinstance(ops[0], dict):
-            ops = [Operation(**op) for op in ops]
         
         # Get SQL generator to build dependency graph
         generator = provider.get_sql_generator(state=state)

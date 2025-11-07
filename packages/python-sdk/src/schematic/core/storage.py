@@ -246,12 +246,26 @@ def read_changelog(workspace_path: Path) -> dict[str, Any]:
 
 
 def write_changelog(workspace_path: Path, changelog: dict[str, Any]) -> None:
-    """Write changelog file"""
+    """Write changelog file
+    
+    Note: Serializes Operation objects to dicts for JSON storage.
+    """
+    from schematic.providers.base.operations import Operation
+    
     changelog_path = get_changelog_file_path(workspace_path)
     changelog["lastModified"] = datetime.now(UTC).isoformat()
+    
+    # Convert Operation objects to dicts for JSON serialization
+    serializable_changelog = changelog.copy()
+    if "ops" in serializable_changelog and serializable_changelog["ops"]:
+        # Check if ops are Operation objects (not dicts)
+        if isinstance(serializable_changelog["ops"][0], Operation):
+            serializable_changelog["ops"] = [
+                op.model_dump(by_alias=True) for op in serializable_changelog["ops"]
+            ]
 
     with open(changelog_path, "w") as f:
-        json.dump(changelog, f, indent=2)
+        json.dump(serializable_changelog, f, indent=2)
 
 
 def read_snapshot(workspace_path: Path, version: str) -> dict[str, Any]:
@@ -307,8 +321,13 @@ def load_current_state(
         state = provider.create_initial_state()
 
     # Apply changelog ops using provider's state reducer
+    # Convert dict ops to Operation objects at storage boundary
     ops = [Operation(**op) for op in changelog["ops"]]
     state = provider.apply_operations(state, ops)
+
+    # Update changelog to contain Operation objects (standardize on Pydantic)
+    # This ensures consistent types throughout the system
+    changelog["ops"] = ops
 
     # Validate dependencies if requested
     validation_result = None
@@ -421,11 +440,22 @@ def create_snapshot(
     )
 
     # Generate IDs for ops that don't have them (backwards compatibility)
+    # Note: changelog["ops"] may contain Operation objects or dicts
+    from schematic.providers.base.operations import Operation
+    
     ops_with_ids = []
     for i, op in enumerate(changelog["ops"]):
-        if "id" not in op or not op["id"]:
-            op["id"] = f"op_{i}_{op['ts']}_{op['target']}"
-        ops_with_ids.append(op)
+        # Handle both Operation objects and dicts
+        if isinstance(op, Operation):
+            op_dict = op.model_dump(by_alias=True)
+            if not op.id:
+                op_dict["id"] = f"op_{i}_{op.ts}_{op.target}"
+            ops_with_ids.append(op_dict)
+        else:
+            # Dict format (backwards compatibility)
+            if "id" not in op or not op["id"]:
+                op["id"] = f"op_{i}_{op['ts']}_{op['target']}"
+            ops_with_ids.append(op)
 
     # Calculate hash (includes full operations)
     state_hash = _calculate_state_hash(state, ops_with_ids)

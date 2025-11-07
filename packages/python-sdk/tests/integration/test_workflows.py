@@ -174,7 +174,8 @@ class TestSnapshotWorkflow:
 
         # Verify changelog only has new operations
         assert len(changelog["ops"]) == 1
-        assert changelog["ops"][0]["id"] == "op_new_001"
+        # Note: changelog["ops"] now contains Operation objects (not dicts)
+        assert changelog["ops"][0].id == "op_new_001"
 
 
 @pytest.mark.integration

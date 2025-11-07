@@ -144,6 +144,10 @@ class BaseSQLGenerator(SQLGenerator):
         This analyzes operations to detect dependencies and builds a graph
         that can be used for topological sorting.
 
+        Note: Graph is built per-OBJECT (catalog, schema, table), not per-operation.
+        Multiple operations on the same object are tracked separately and returned
+        in original order after topological sort.
+
         Args:
             ops: List of operations to analyze
 
@@ -151,26 +155,36 @@ class BaseSQLGenerator(SQLGenerator):
             DependencyGraph with nodes and edges
         """
         graph = DependencyGraph()
+        
+        # Track all operations by target object
+        ops_by_target: dict[str, list[Operation]] = {}
 
-        # First pass: Add all nodes
+        # First pass: Group operations by target object and add nodes
         for op in ops:
             hierarchy_level = self._get_dependency_level(op)
             target_id = self._get_target_object_id(op)
 
             if not target_id:
                 continue  # Skip operations without a clear target
+            
+            # Track all operations for this target
+            if target_id not in ops_by_target:
+                ops_by_target[target_id] = []
+            ops_by_target[target_id].append(op)
 
-            node = DependencyNode(
-                id=target_id,
-                type=self._get_object_type_from_operation(op),
-                hierarchy_level=hierarchy_level,
-                operation=op,
-                metadata={"op_type": op.op},
-            )
-
-            # Only add if not already present
+            # Add node only once per target object
             if target_id not in graph.nodes:
+                node = DependencyNode(
+                    id=target_id,
+                    type=self._get_object_type_from_operation(op),
+                    hierarchy_level=hierarchy_level,
+                    operation=op,  # Use first operation as representative
+                    metadata={"op_type": op.op, "op_count": 1},
+                )
                 graph.add_node(node)
+            else:
+                # Update op count for metadata
+                graph.nodes[target_id].metadata["op_count"] += 1
 
         # Second pass: Extract and add dependencies
         for op in ops:
@@ -186,6 +200,9 @@ class BaseSQLGenerator(SQLGenerator):
                 if target_id in graph.nodes and dep_id in graph.nodes:
                     graph.add_edge(target_id, dep_id, dep_type, enforcement)
 
+        # Store operation mapping for topological sort
+        graph.metadata["ops_by_target"] = ops_by_target
+        
         self.dependency_graph = graph
         return graph
 

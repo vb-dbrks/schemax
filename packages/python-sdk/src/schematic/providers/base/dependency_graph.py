@@ -74,6 +74,8 @@ class DependencyGraph:
         self.graph = nx.DiGraph()
         # Keep node metadata separate for easy access
         self.nodes: dict[str, DependencyNode] = {}
+        # Graph-level metadata (for operations tracking, etc.)
+        self.metadata: dict[str, any] = {}
 
     def add_node(self, node: DependencyNode) -> None:
         """Add a node to the graph"""
@@ -170,7 +172,8 @@ class DependencyGraph:
         Perform topological sort using NetworkX.
 
         Returns:
-            List of operations in dependency order
+            List of operations in dependency order.
+            For objects with multiple operations, they are returned in original order.
 
         Raises:
             ValueError: If the graph contains cycles
@@ -194,11 +197,19 @@ class DependencyGraph:
             raise ValueError(f"Failed to perform topological sort: {e}")
 
         # Extract operations from sorted nodes
+        # For each node, return ALL operations (not just the first one)
         sorted_operations: list[Operation] = []
+        ops_by_target = self.metadata.get("ops_by_target", {})
+        
         for node_id in sorted_node_ids:
-            node = self.nodes.get(node_id)
-            if node and node.operation:
-                sorted_operations.append(node.operation)
+            # If we have multiple operations for this object, add them all
+            if node_id in ops_by_target:
+                sorted_operations.extend(ops_by_target[node_id])
+            else:
+                # Fallback: use single operation from node
+                node = self.nodes.get(node_id)
+                if node and node.operation:
+                    sorted_operations.append(node.operation)
 
         return sorted_operations
 
