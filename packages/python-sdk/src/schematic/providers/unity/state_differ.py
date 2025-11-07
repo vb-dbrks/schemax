@@ -87,6 +87,8 @@ class UnityStateDiffer(StateDiffer):
                 ops.append(self._create_add_schema_op(sch, catalog_id))
                 # Add all tables in this new schema
                 ops.extend(self._add_all_tables_in_schema(sch_id, sch))
+                # Add all views in this new schema
+                ops.extend(self._add_all_views_in_schema(sch_id, sch))
             else:
                 # Schema exists in both - check for changes
                 old_sch = old_schemas[sch_id]
@@ -382,6 +384,8 @@ class UnityStateDiffer(StateDiffer):
             ops.append(self._create_add_schema_op(schema, catalog_id))
             # Add all tables in this new schema
             ops.extend(self._add_all_tables_in_schema(schema["id"], schema))
+            # Add all views in this new schema
+            ops.extend(self._add_all_views_in_schema(schema["id"], schema))
 
         return ops
 
@@ -395,6 +399,15 @@ class UnityStateDiffer(StateDiffer):
             ops.extend(self._add_all_columns_in_table(table["id"], table))
             # Add all tags for this table
             ops.extend(self._add_all_tags_for_table(table["id"], table))
+
+        return ops
+
+    def _add_all_views_in_schema(self, schema_id: str, schema: dict[str, Any]) -> list[Operation]:
+        """Add all views in a newly created schema"""
+        ops: list[Operation] = []
+
+        for view in schema.get("views", []):
+            ops.append(self._create_add_view_op(view, schema_id))
 
         return ops
 
