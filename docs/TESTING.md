@@ -5,7 +5,7 @@ This document describes how to run tests for the Schematic project.
 ## Overview
 
 Schematic uses different testing frameworks for different components:
-- **Python SDK**: pytest with coverage reporting (201 tests)
+- **Python SDK**: pytest with coverage reporting (306 tests)
 - **VS Code Extension**: Jest with React Testing Library
 - **Integration**: End-to-end workflow tests
 
@@ -51,12 +51,15 @@ packages/python-sdk/tests/
 │   ├── test_storage_v4.py        # V4 storage layer tests
 │   ├── test_sql_generator.py     # SQL generation tests
 │   ├── test_state_reducer.py     # State reducer tests
+│   ├── test_state_differ.py      # State differ tests (including views)
 │   ├── test_catalog_mapping.py   # Catalog name mapping tests
 │   ├── test_unity_executor.py    # Databricks executor tests
 │   ├── test_deployment_tracker.py # Deployment tracking tests
+│   ├── test_dependency_graph.py  # Dependency graph & cycle detection tests
 │   └── test_apply_command.py     # Apply command tests (interactive/non-interactive)
 ├── integration/                   # Integration tests
-│   └── test_workflows.py         # End-to-end workflow tests
+│   ├── test_workflows.py         # End-to-end workflow tests
+│   └── test_view_dependencies.py # View dependency and FQN qualification tests
 ├── providers/                     # Provider-specific tests
 │   └── base/
 │       └── test_hierarchy.py     # Hierarchy tests
@@ -67,9 +70,12 @@ packages/python-sdk/tests/
 
 ### Current Status
 
-- ✅ **Python SDK**: 201 tests passing (12 skipped)
+- ✅ **Python SDK**: 306 tests passing (12 skipped)
 - ✅ **VS Code Extension**: 25 Jest tests passing
 - ✅ **SQLGlot validation** integrated for SQL syntax checking
+- ✅ **Dependency graph tests** with cycle detection and topological sorting
+- ✅ **View support tests** including FQN qualification regression tests
+- ✅ **State differ generic tests** to catch missing object type implementations
 - ✅ **Code coverage reporting** enabled for both Python and TypeScript
 - ✅ **Non-interactive mode tests** for CI/CD compatibility
 
@@ -97,6 +103,58 @@ pytest tests/unit/test_apply_command.py -v
 
 # Run specific test
 pytest tests/unit/test_apply_command.py::TestApplyCommand::test_noninteractive_mode_auto_creates_snapshot -xvs
+```
+
+### View Dependency Tests
+
+The view test suites ensure dependency-aware SQL generation works correctly, including FQN qualification and batching optimizations.
+
+**Integration Tests** (`test_view_dependencies.py`):
+1. ✅ `test_unqualified_table_refs_are_qualified_with_backticks` - **REGRESSION TEST** for FQN qualification
+2. ✅ `test_view_with_multiple_tables_all_qualified` - Validates JOINs are properly qualified
+3. ✅ `test_create_and_update_view_batched` - Verifies CREATE + UPDATE squashing
+4. ✅ `test_create_and_multiple_updates_batched` - Ensures last UPDATE wins
+5. ✅ `test_view_dependencies_are_sorted_correctly` - Validates topological sorting
+6. ✅ `test_circular_view_dependency_detection` - Detects cycles and falls back gracefully
+
+**State Differ Tests** (`test_state_differ.py`):
+1. ✅ `test_diff_added_view` - Detects newly added views
+2. ✅ `test_diff_removed_view` - Detects removed views
+3. ✅ `test_diff_renamed_view_with_history` - Detects view renames
+4. ✅ `test_diff_view_definition_change` - Detects SQL definition changes
+5. ✅ `test_diff_view_comment_change` - Detects comment changes
+6. ✅ `test_diff_multiple_views_added` - **REGRESSION TEST** for bulk view additions
+7. ✅ `test_new_schema_with_views_includes_all_views` - **REGRESSION TEST** for views in new schemas
+8. ✅ `test_new_catalog_with_views_includes_all_views` - **REGRESSION TEST** for views in new catalogs
+9. ✅ Generic object coverage tests to catch future bugs with any object type
+
+**Dependency Graph Tests** (`test_dependency_graph.py`):
+1. ✅ Cycle detection with detailed paths
+2. ✅ Topological sorting
+3. ✅ Breaking change detection
+
+**Why these tests matter:**
+- Catches FQN qualification bugs that cause `TABLE_OR_VIEW_NOT_FOUND` errors
+- Validates view SQL is generated in correct order (tables before views)
+- Ensures state differ includes all views when diffing snapshots
+- Generic tests prevent similar bugs for future object types
+
+**Running view tests:**
+```bash
+# Run all view dependency tests
+pytest tests/integration/test_view_dependencies.py -v
+
+# Run specific regression test
+pytest tests/integration/test_view_dependencies.py::TestViewFQNQualification::test_unqualified_table_refs_are_qualified_with_backticks -xvs
+
+# Run state differ view tests
+pytest tests/unit/test_state_differ.py::TestUnityStateDifferViews -v
+
+# Run state differ regression tests
+pytest tests/unit/test_state_differ.py::TestUnityStateDifferViewRegression -v
+
+# Run dependency graph tests
+pytest tests/unit/test_dependency_graph.py -v
 ```
 
 ## VS Code Extension Testing

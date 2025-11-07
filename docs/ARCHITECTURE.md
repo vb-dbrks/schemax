@@ -1114,6 +1114,7 @@ interface UnitySchema {
   id: string;
   name: string;
   tables: UnityTable[];
+  views: UnityView[];
 }
 
 interface UnityTable {
@@ -1137,6 +1138,19 @@ interface UnityColumn {
   comment?: string;
   tags?: Record<string, string>;
   maskId?: string;
+}
+
+interface UnityView {
+  id: string;
+  name: string;
+  definition: string;
+  comment?: string;
+  properties?: Record<string, string>;
+  tags?: Record<string, string>;
+  extractedDependencies?: {
+    tables?: string[];
+    views?: string[];
+  };
 }
 ```
 
@@ -1403,6 +1417,68 @@ If dependency analysis fails (e.g., cycles detected, parsing errors):
 -- Statement 1
 CREATE SCHEMA my_schema;
 ```
+
+#### Automatic FQN Qualification
+
+**Problem:** View SQL may contain unqualified table references (e.g., `SELECT * FROM table4`), which fail when executed without a current catalog/schema context (like in SQL Statement Execution API).
+
+**Solution:** Automatically qualify all table/view references in view definitions with fully-qualified names (FQN).
+
+**Python Implementation (SQLGlot):**
+
+```python
+def _qualify_view_definition(self, definition: str, extracted_deps: dict) -> str:
+    """Qualify unqualified table/view references with fully-qualified names"""
+    import sqlglot
+    from sqlglot import expressions as exp
+    
+    # Parse SQL
+    parsed = sqlglot.parse_one(definition, dialect="databricks")
+    
+    # Build name → FQN mapping from id_name_map
+    name_to_fqn = {}
+    for object_id, fqn in self.id_name_map.items():
+        if "." in fqn:
+            parts = fqn.split(".")
+            if len(parts) == 3:
+                catalog, schema, name = parts
+                name_to_fqn[name] = fqn                      # unqualified
+                name_to_fqn[f"{schema}.{name}"] = fqn        # partially qualified
+    
+    # Replace table references with FQNs
+    for table_node in parsed.find_all(exp.Table):
+        current_ref = ".".join([
+            table_node.catalog, table_node.db, table_node.name
+        ]).strip(".")
+        
+        if current_ref in name_to_fqn:
+            fqn = name_to_fqn[current_ref]
+            catalog, schema, name = fqn.split(".")
+            # Use quoted identifiers for Databricks compatibility
+            table_node.set("catalog", exp.to_identifier(catalog, quoted=True))
+            table_node.set("db", exp.to_identifier(schema, quoted=True))
+            table_node.set("this", exp.to_identifier(name, quoted=True))
+    
+    return parsed.sql(dialect="databricks", pretty=True)
+```
+
+**Example Transformation:**
+
+```sql
+-- Input (unqualified)
+SELECT * FROM table4
+
+-- Output (qualified with backticks)
+SELECT * FROM `dev_sales_analytics`.`customer_analytics`.`table4`
+```
+
+**Key Benefits:**
+
+- ✅ Views work regardless of current catalog/schema context
+- ✅ Compatible with SQL Statement Execution API
+- ✅ Prevents `TABLE_OR_VIEW_NOT_FOUND` errors
+- ✅ Uses SQLGlot for accurate SQL parsing and transformation
+- ✅ Supports unqualified (`table4`) and partially qualified (`schema.table4`) references
 
 #### Performance
 

@@ -15,6 +15,7 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 - Intuitive drag-and-drop interface for schema modeling
 - **Provider-based**: Unity Catalog (now), Hive/PostgreSQL (coming soon)
 - Adapts to provider-specific hierarchy and features
+- **Views with dependency-aware SQL generation** (automatic FQN qualification)
 - Data governance features (constraints, tags, row filters, column masks)
 - External table support with named locations per environment
 - Partitioning and liquid clustering support
@@ -24,17 +25,19 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 ### 🐍 Python SDK & CLI
 - Command-line tools for automation and CI/CD
 - Python API for custom workflows
-- Provider-aware SQL migration generation
+- Provider-aware SQL migration generation with **dependency-aware ordering**
+- **View dependency extraction and automatic FQN qualification**
 - **Deployment tracking with database-backed audit trail**
 - **Automatic and manual rollback capabilities**
 - **Snapshot lifecycle management (create, validate, rebase)**
-- Schema validation and comparison with stale snapshot detection
+- Schema validation with circular dependency detection and stale snapshot detection
 
 ### 🚀 Key Capabilities
 - **Extensible Provider System**: Easy to add new catalog types
-- **31+ Operation Types**: Complete coverage of Unity Catalog DDL
+- **31+ Operation Types**: Complete coverage of Unity Catalog DDL (including views)
+- **Dependency-Aware SQL Generation**: Topological sorting with circular dependency detection
 - **Dual Implementation**: TypeScript (VS Code) + Python (CLI/SDK)
-- **SQL Generation**: Provider-specific, idempotent DDL statements
+- **SQL Generation**: Provider-specific, idempotent DDL with automatic FQN qualification
 - **Version Control**: Git-friendly JSON format with snapshots
 - **CI/CD Ready**: Integrate with GitHub Actions, GitLab CI, etc.
 
@@ -42,9 +45,9 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 
 | Provider | Status | Hierarchy | Features |
 |----------|--------|-----------|----------|
-| **Unity Catalog** | ✅ Available (v1.0) | Catalog → Schema → Table | Full governance (constraints, tags, filters, masks) |
+| **Unity Catalog** | ✅ Available (v1.0) | Catalog → Schema → Table/View | Full governance (views, constraints, tags, filters, masks, external tables) |
 | **Hive Metastore** | 🔜 Coming Soon | Database → Table | Tables, partitions, views |
-| **PostgreSQL** | 🔜 Coming Soon | Database → Schema → Table | Tables, indexes, constraints |
+| **PostgreSQL** | 🔜 Coming Soon | Database → Schema → Table | Tables, indexes, constraints, views |
 
 **For Provider Developers:** See [PROVIDER_CONTRACT.md](docs/PROVIDER_CONTRACT.md) for implementing custom providers.
 
