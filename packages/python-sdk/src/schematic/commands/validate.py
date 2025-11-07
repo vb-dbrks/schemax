@@ -25,21 +25,54 @@ def validate_dependencies(state, ops, provider):
 
     Args:
         state: Current schema state
-        ops: List of operations
+        ops: List of operations (dicts or Operation objects)
         provider: Schema provider
 
     Returns:
         Tuple of (errors list, warnings list)
     """
-    # TODO: Fix type compatibility between dict and Pydantic Operation objects
-    # Currently disabled due to segfault when building dependency graph
-    # Root cause: Mismatch between base SQL generator (expects dicts) and
-    # Unity SQL generator (expects Pydantic objects)
-    # 
-    # Tracked in: https://github.com/schemax/issues/XXX
+    from schematic.providers.base.operations import Operation
+
     errors = []
     warnings = []
-    warnings.append("Dependency validation temporarily disabled (type refactoring needed)")
+
+    try:
+        # Convert dicts to Operation objects (standardize on Pydantic)
+        if not ops:
+            return errors, warnings
+        
+        if isinstance(ops[0], dict):
+            ops = [Operation(**op) for op in ops]
+        
+        # Get SQL generator to build dependency graph
+        generator = provider.get_sql_generator(state=state)
+
+        # Try to build dependency graph
+        graph = generator._build_dependency_graph(ops)
+
+        # Check for circular dependencies
+        cycles = graph.detect_cycles()
+        
+        if cycles:
+            for cycle in cycles:
+                # Get names from generator's id_name_map
+                cycle_names = []
+                for node_id in cycle:
+                    name = generator.id_name_map.get(node_id, node_id)
+                    cycle_names.append(name)
+                cycle_str = " → ".join(cycle_names)
+                errors.append(f"Circular dependency: {cycle_str}")
+
+        # Check for invalid hierarchy (e.g., schema depending on table)
+        hierarchy_warnings = graph.validate_dependencies()
+        warnings.extend(hierarchy_warnings)
+
+    except Exception as e:
+        import traceback
+        warnings.append(f"Could not validate dependencies: {e}")
+        # Add traceback for debugging
+        warnings.append(f"Traceback: {traceback.format_exc()[:200]}")
+
     return errors, warnings
 
 
@@ -86,20 +119,19 @@ def validate_project(workspace: Path, json_output: bool = False) -> bool:
             console.print("  [green]✓[/green] State structure valid")
 
         # Validate dependencies (circular dependencies, missing refs, etc.)
-        # Skip in JSON mode due to type compatibility issues between dict/Pydantic
-        dep_errors = []
-        dep_warnings = []
-        
         if not json_output:
             console.print("\nValidating dependencies...")
-            dep_errors, dep_warnings = validate_dependencies(state, changelog["ops"], provider)
+        
+        dep_errors, dep_warnings = validate_dependencies(state, changelog["ops"], provider)
 
-            if dep_errors:
+        if dep_errors:
+            if not json_output:
                 console.print("[red]✗ Dependency validation failed:[/red]")
                 for error in dep_errors:
                     console.print(f"  [red]•[/red] {error}")
-                raise ValidationError("Circular dependencies detected")
+            raise ValidationError("Circular dependencies detected")
 
+        if not json_output:
             if dep_warnings:
                 console.print("[yellow]⚠  Dependency warnings:[/yellow]")
                 for warning in dep_warnings:

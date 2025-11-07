@@ -38,22 +38,6 @@ class SQLGenerationResult(BaseModel):
     is_idempotent: bool = True  # Whether SQL is idempotent
 
 
-def _get_op_attr(op: Any, attr: str, default: Any = None) -> Any:
-    """
-    Safely get attribute from Operation (works with both dict and Pydantic objects).
-    
-    Args:
-        op: Operation as dict or Pydantic object
-        attr: Attribute name
-        default: Default value if attribute not found
-    
-    Returns:
-        Attribute value or default
-    """
-    if isinstance(op, dict):
-        return op.get(attr, default)
-    else:
-        return getattr(op, attr, default)
 
 
 class SQLGenerator(ABC):
@@ -181,7 +165,7 @@ class BaseSQLGenerator(SQLGenerator):
                 type=self._get_object_type_from_operation(op),
                 hierarchy_level=hierarchy_level,
                 operation=op,
-                metadata={"op_type": _get_op_attr(op, "op", "")},
+                metadata={"op_type": op.op},
             )
 
             # Only add if not already present
@@ -215,7 +199,7 @@ class BaseSQLGenerator(SQLGenerator):
         Returns:
             Object type string (e.g., "catalog", "schema", "table", "view")
         """
-        op_type = _get_op_attr(op, "op", "")
+        op_type = op.op
 
         if "catalog" in op_type:
             return "catalog"
@@ -284,20 +268,20 @@ class BaseSQLGenerator(SQLGenerator):
         statements = []
         for idx, op in enumerate(sorted_ops):
             if not self.can_generate_sql(op):
-                warnings.append(f"Cannot generate SQL for operation: {_get_op_attr(op, 'op', 'unknown')}")
+                warnings.append(f"Cannot generate SQL for operation: {op.op}")
                 continue
 
             result = self.generate_sql_for_operation(op)
 
             # Add header comment with operation metadata
-            header = f"-- Operation: {_get_op_attr(op, 'id', 'unknown')} ({_get_op_attr(op, 'ts', '')})\n"
-            header += f"-- Type: {_get_op_attr(op, 'op', 'unknown')}"
+            header = f"-- Operation: {op.id} ({op.ts})\n"
+            header += f"-- Type: {op.op}"
 
             # Add to statements list
             statements.append(
                 StatementInfo(
                     sql=result.sql,
-                    operation_ids=[_get_op_attr(op, "id", "")],
+                    operation_ids=[op.id],
                     execution_order=idx + 1,
                 )
             )
@@ -324,7 +308,7 @@ class BaseSQLGenerator(SQLGenerator):
             Sorted operations
         """
         return sorted(
-            ops, key=lambda op: (self._get_dependency_level(op), _get_op_attr(op, "ts", ""))
+            ops, key=lambda op: (self._get_dependency_level(op), op.ts)
         )
 
     def _detect_breaking_changes(
@@ -352,7 +336,7 @@ class BaseSQLGenerator(SQLGenerator):
 
         # Check each drop operation for breaking changes
         for op in ops:
-            op_type = _get_op_attr(op, "op", "")
+            op_type = op.op
 
             # Detect drop operations
             is_drop = (
@@ -395,8 +379,8 @@ class BaseSQLGenerator(SQLGenerator):
         Returns:
             Display name (e.g., "table my_table", "view my_view")
         """
-        op_type = _get_op_attr(op, "op", "unknown")
-        target_id = _get_op_attr(op, "target", "unknown")
+        op_type = op.op
+        target_id = op.target
 
         # Extract object type from operation type
         if "table" in op_type:
@@ -411,11 +395,7 @@ class BaseSQLGenerator(SQLGenerator):
             obj_type = "object"
 
         # Try to get name from payload
-        payload = _get_op_attr(op, "payload", {})
-        if isinstance(payload, dict):
-            name = payload.get("name", target_id)
-        else:
-            name = getattr(payload, "name", target_id) if payload else target_id
+        name = op.payload.get("name", target_id) if op.payload else target_id
 
         return f"{obj_type} '{name}'"
 
