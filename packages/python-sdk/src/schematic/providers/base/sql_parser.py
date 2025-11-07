@@ -33,9 +33,9 @@ def extract_table_references(sql: str, dialect: str = "databricks") -> dict[str,
     """
     try:
         parsed = sqlglot.parse_one(sql, dialect=dialect)
-    except Exception as e:
+    except Exception:
         # If parsing fails, return empty result
-        return {"tables": [], "views": [], "all": [], "error": str(e)}
+        return {"tables": [], "views": [], "all": []}
 
     # Extract all table references
     all_refs: list[str] = []

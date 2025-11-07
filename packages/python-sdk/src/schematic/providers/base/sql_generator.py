@@ -182,7 +182,9 @@ class BaseSQLGenerator(SQLGenerator):
                 graph.add_node(node)
             else:
                 # Update op count for metadata
-                graph.nodes[target_id].metadata["op_count"] += 1
+                node = graph.nodes[target_id]
+                if node and node.metadata:
+                    node.metadata["op_count"] += 1
 
         # Second pass: Extract and add dependencies
         for op in ops:

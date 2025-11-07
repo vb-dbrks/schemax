@@ -337,7 +337,9 @@ def load_current_state(
     return state, changelog, provider, validation_result
 
 
-def validate_dependencies_internal(state, ops, provider):
+def validate_dependencies_internal(
+    state: Any, ops: list[Operation], provider: Any
+) -> dict[str, Any]:
     """Internal helper to validate dependencies and return structured result"""
     errors = []
     warnings = []

@@ -125,8 +125,8 @@ def validate_project(workspace: Path, json_output: bool = False) -> bool:
         if dep_errors:
             if not json_output:
                 console.print("[red]✗ Dependency validation failed:[/red]")
-                for error in dep_errors:
-                    console.print(f"  [red]•[/red] {error}")
+                for error_msg in dep_errors:
+                    console.print(f"  [red]•[/red] {error_msg}")
             raise ValidationError("Circular dependencies detected")
 
         if not json_output:

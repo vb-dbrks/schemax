@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-import networkx as nx
+import networkx as nx  # type: ignore[import-untyped]
 
 from schematic.providers.base.operations import Operation
 
@@ -265,8 +265,8 @@ class DependencyGraph:
             return node_id
 
         if node.operation:
-            op_type = node.operation.get("op", "unknown")
-            target = node.operation.get("target", node_id)
+            op_type = node.operation.op if hasattr(node.operation, "op") else "unknown"
+            target = node.operation.target if hasattr(node.operation, "target") else node_id
             return f"{op_type}({target})"
 
         return f"{node.type}({node_id})"

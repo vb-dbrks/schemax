@@ -1665,7 +1665,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         ]
 
         # Optimization: Squash CREATE + UPDATE_VIEW into single statement
-        if has_create and update_view_ops:
+        if has_create and update_view_ops and batch_info.create_op:
             # Use the LAST update_view operation (most recent definition)
             final_update_op = update_view_ops[-1]
 
