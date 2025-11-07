@@ -394,12 +394,17 @@ export const Sidebar: React.FC = () => {
         const parsed = parseViewSQL(addViewSQL);
         const cleanSQL = parsed.cleanSQL || addViewSQL;
         
-        addView(addDialog.schemaId, trimmedName, cleanSQL, {
-          comment: addViewComment || undefined,
-          extractedDependencies: dependencies
-        });
-        
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
+        try {
+          addView(addDialog.schemaId, trimmedName, cleanSQL, {
+            comment: addViewComment || undefined,
+            extractedDependencies: dependencies
+          });
+          
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
+        } catch (error) {
+          setAddError(error instanceof Error ? error.message : 'Dependency validation failed');
+          return;
+        }
       } else {
         // TABLE CREATION
         const options = addTableType === 'external' ? {

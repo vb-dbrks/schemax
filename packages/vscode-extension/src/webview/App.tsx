@@ -28,6 +28,7 @@ export const App: React.FC = () => {
   const [conflictInfo, setConflictInfo] = React.useState<any>(null);
   const [hasStaleSnapshots, setHasStaleSnapshots] = React.useState(false);
   const [staleSnapshotInfo, setStaleSnapshotInfo] = React.useState<any>(null);
+  const [validationResult, setValidationResult] = React.useState<{errors: string[], warnings: string[]} | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   
   // Determine if selected object is a view
@@ -64,6 +65,13 @@ export const App: React.FC = () => {
           } else {
             setHasStaleSnapshots(false);
             setStaleSnapshotInfo(null);
+          }
+          
+          // Check for validation results
+          if (message.payload.validationResult) {
+            setValidationResult(message.payload.validationResult);
+          } else {
+            setValidationResult(null);
           }
           break;
       }
@@ -160,6 +168,39 @@ export const App: React.FC = () => {
           </button>
         </div>
       </header>
+
+      {/* Validation Results Banner */}
+      {validationResult && (validationResult.errors.length > 0 || validationResult.warnings.length > 0) && (
+        <div className="validation-banner">
+          {validationResult.errors.length > 0 && (
+            <div className="validation-error">
+              <i className="codicon codicon-error"></i>
+              <div className="validation-content">
+                <strong>Dependency Errors:</strong>
+                <ul>
+                  {validationResult.errors.map((error, i) => (
+                    <li key={i}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          {validationResult.warnings.length > 0 && (
+            <div className="validation-warning">
+              <i className="codicon codicon-warning"></i>
+              <div className="validation-content">
+                <strong>Dependency Warnings:</strong>
+                <ul>
+                  {validationResult.warnings.map((warning, i) => (
+                    <li key={i}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="content">
         <div className="left-panel">
           <Sidebar />

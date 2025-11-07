@@ -15,6 +15,8 @@ import { ProviderRegistry } from './providers/registry';
 import { Provider } from './providers/base/provider';
 import { Operation } from './providers/base/operations';
 import { ProviderState } from './providers/base/models';
+import { DependencyGraph } from './providers/base/dependency-graph';
+import { CircularDependencyError } from './providers/base/exceptions';
 
 const SCHEMATIC_DIR = '.schematic';
 const PROJECT_FILENAME = 'project.json';
@@ -390,12 +392,19 @@ export async function writeSnapshot(
 /**
  * Load current state (snapshot + changelog ops)
  */
+export interface ValidationResult {
+  errors: string[];
+  warnings: string[];
+}
+
 export async function loadCurrentState(
-  workspaceUri: vscode.Uri
+  workspaceUri: vscode.Uri,
+  validate: boolean = false
 ): Promise<{
   state: ProviderState;
   changelog: ChangelogFile;
   provider: Provider;
+  validationResult: ValidationResult | null;
 }> {
   const project = await readProject(workspaceUri);
   const changelog = await readChangelog(workspaceUri);
@@ -423,7 +432,54 @@ export async function loadCurrentState(
   // Apply changelog ops using provider's state reducer
   state = provider.applyOperations(state, changelog.ops);
 
-  return { state, changelog, provider };
+  // Optionally validate dependencies
+  let validationResult: ValidationResult | null = null;
+  if (validate && changelog.ops.length > 0) {
+    validationResult = validateDependenciesInternal(state, changelog.ops, provider);
+  }
+
+  return { state, changelog, provider, validationResult };
+}
+
+/**
+ * Internal dependency validation helper
+ */
+function validateDependenciesInternal(
+  state: ProviderState,
+  ops: Operation[],
+  provider: Provider
+): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  try {
+    // Build dependency graph (uses provider-specific SQL generator)
+    const sqlGenerator = provider.getSQLGenerator(state, {});
+    const graph = sqlGenerator.buildDependencyGraph(ops);
+
+    // Check for circular dependencies
+    const cycles = graph.detectCycles();
+    if (cycles.length > 0) {
+      cycles.forEach((cycle) => {
+        const cycleNames = cycle.map((nodeId) => {
+          return sqlGenerator.getObjectName(nodeId) || nodeId;
+        });
+        errors.push(`Circular dependency: ${cycleNames.join(' → ')}`);
+      });
+    }
+
+    // Check for hierarchy violations
+    const hierarchyWarnings = graph.validateDependencies();
+    warnings.push(...hierarchyWarnings);
+  } catch (error) {
+    if (error instanceof CircularDependencyError) {
+      errors.push(...error.cycles);
+    } else {
+      warnings.push(`Could not validate dependencies: ${error}`);
+    }
+  }
+
+  return { errors, warnings };
 }
 
 /**
