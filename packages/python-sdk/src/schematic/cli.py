@@ -478,26 +478,27 @@ def rollback(
                 console.print("[red]✗[/red] --target required for partial rollback")
                 sys.exit(1)
 
-            # Load deployment record from local project.json
-            from .core.storage import get_environment_config, read_project
+            # Load deployment record from database (source of truth)
+            from schematic.core.deployment import DeploymentTracker
+            from schematic.core.storage import get_environment_config, read_project
+            from schematic.providers.unity.auth import create_databricks_client
 
             project = read_project(workspace_path)
-            deployments = project.get("deployments", [])
+            env_config = get_environment_config(project, target)
+            deployment_catalog = env_config["topLevelName"]
 
-            # Find the deployment by ID
-            target_deployment = None
-            for dep in deployments:
-                if dep.get("id") == deployment:
-                    target_deployment = dep
-                    break
+            # Query database for deployment
+            client = create_databricks_client(profile)
+            tracker = DeploymentTracker(client, deployment_catalog, warehouse_id)
+            target_deployment = tracker.get_deployment_by_id(deployment)
 
             if not target_deployment:
-                console.print(f"[red]✗[/red] Deployment '{deployment}' not found in project.json")
-                console.print("\nAvailable deployments:")
-                for dep in deployments[-10:]:  # Show last 10
-                    console.print(
-                        f"  - {dep.get('id')} ({dep.get('environment')}, {dep.get('status')})"
-                    )
+                console.print(
+                    f"[red]✗[/red] Deployment '{deployment}' not found in {deployment_catalog}.schematic"
+                )
+                console.print(
+                    f"[dim]Check deployment tracking in {deployment_catalog}.schematic.deployments[/dim]"
+                )
                 sys.exit(1)
 
             # Check if it's a failed deployment

@@ -180,7 +180,6 @@ def apply_to_environment(
 
         # 6. Get last deployment from DATABASE (source of truth!)
         # Query the database to see what's actually deployed
-        # Local project.json is just an audit log, not source of truth
         from schematic.providers.unity.auth import create_databricks_client
 
         try:
@@ -205,7 +204,7 @@ def apply_to_environment(
             if last_deployment:
                 deployed_version = last_deployment.get("version")
                 console.print(f"[blue]Deployed to {target_env}:[/blue] {deployed_version}")
-                console.print("[dim](Source: Local project.json)[/dim]")
+                console.print(f"[dim](Source: Fallback to local project.json)[/dim]")
             else:
                 deployed_version = None
                 console.print(f"[blue]First deployment to {target_env}[/blue]")
@@ -413,7 +412,7 @@ def apply_to_environment(
         # 21. Complete deployment tracking in database
         tracker.complete_deployment(deployment_id, result, result.error_message)
 
-        # 22. Write deployment record to local project.json
+        # 22. Write deployment record locally (silent backup)
         deployment_record = {
             "id": deployment_id,
             "environment": target_env,
@@ -440,8 +439,8 @@ def apply_to_environment(
                 f"[green]✓ Deployed {latest_snapshot_version} to {target_env} "
                 f"({result.successful_statements} statements, {exec_time:.2f}s)[/green]"
             )
-            console.print(f"[green]✓ Deployment recorded: {deployment_id}[/green]")
-            console.print("[green]✓ Local record saved to project.json[/green]")
+            console.print(f"[green]✓ Deployment tracked in {env_config['topLevelName']}.schematic[/green]")
+            console.print(f"[dim]  Deployment ID: {deployment_id}[/dim]")
         else:
             failed_idx = result.failed_statement_index or 0
             console.print(f"[red]✗ Deployment failed at statement {failed_idx + 1}[/red]")
@@ -453,7 +452,7 @@ def apply_to_environment(
             console.print(f"[blue]Environment:[/blue] {target_env}")
             console.print(f"[blue]Version:[/blue] {latest_snapshot_version}")
             console.print(f"[blue]Status:[/blue] {result.status}")
-            console.print("[yellow]Local record saved to project.json[/yellow]")
+            console.print(f"[dim]  Tracked in {env_config['topLevelName']}.schematic (ID: {deployment_id})[/dim]")
 
         return result
 

@@ -102,16 +102,18 @@ def rollback_partial(
     # 1. Determine pre-deployment version
     from schematic.core.storage import read_snapshot
 
-    # If from_version not provided, look it up from deployment record
+    # If from_version not provided, look it up from deployment record in database
     if from_version is None:
-        deployment = None
-        for dep in project.get("deployments", []):
-            if dep.get("id") == deployment_id:
-                deployment = dep
-                break
+        # Query database for deployment (source of truth)
+        tracker = DeploymentTracker(
+            cast(UnitySQLExecutor, executor).client, deployment_catalog, warehouse_id
+        )
+        deployment = tracker.get_deployment_by_id(deployment_id)
 
         if not deployment:
-            raise RollbackError(f"Deployment '{deployment_id}' not found in project.json")
+            raise RollbackError(
+                f"Deployment '{deployment_id}' not found in {deployment_catalog}.schematic"
+            )
 
         from_version = deployment.get("fromVersion")
 
@@ -287,7 +289,7 @@ def rollback_partial(
         # Complete rollback deployment tracking in database
         tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
 
-        # Write rollback deployment record to local project.json
+        # Write rollback deployment record locally (silent backup)
         deployment_record = {
             "id": rollback_deployment_id,
             "environment": target_env,
@@ -313,8 +315,8 @@ def rollback_partial(
             )
             for i, rollback_op in enumerate(rollback_ops, 1):
                 console.print(f"  [{i}/{len(rollback_ops)}] {rollback_op.op} {rollback_op.target}")
-            console.print(f"[green]✓ Rollback recorded: {rollback_deployment_id}[/green]")
-            console.print("[green]✓ Local record saved to project.json[/green]")
+            console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
+            console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
         else:
             # Rollback execution failed
@@ -323,8 +325,7 @@ def rollback_partial(
             console.print(f"[yellow]{result.successful_statements} statements succeeded[/yellow]")
             if result.error_message:
                 console.print(f"[red]Error: {result.error_message}[/red]")
-            console.print(f"[yellow]Partial rollback recorded: {rollback_deployment_id}[/yellow]")
-            console.print("[yellow]Local record saved to project.json[/yellow]")
+            console.print(f"[dim]  Tracked in {deployment_catalog}.schematic (ID: {rollback_deployment_id})[/dim]")
 
             return RollbackResult(
                 success=False,
@@ -573,7 +574,7 @@ def rollback_complete(
 
         tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
 
-        # Write local record
+        # Write rollback deployment record locally (silent backup)
         deployment_record = {
             "id": rollback_deployment_id,
             "environment": target_env,
@@ -601,8 +602,8 @@ def rollback_complete(
                 f"[green]✓ Rolled back to {to_snapshot} ({result.successful_statements} "
                 f"statements, {exec_time:.2f}s)[/green]"
             )
-            console.print(f"[green]✓ Rollback recorded: {rollback_deployment_id}[/green]")
-            console.print("[green]✓ Local record saved to project.json[/green]")
+            console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
+            console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
         else:
             failed_idx = result.failed_statement_index or 0

@@ -5,6 +5,8 @@ Tracks deployments in the target catalog's schematic schema.
 Provides database-backed deployment history and audit trail.
 """
 
+from typing import Any
+
 from databricks.sdk import WorkspaceClient
 
 from schematic.providers.base.executor import ExecutionResult, StatementResult
@@ -213,6 +215,70 @@ class DeploymentTracker:
         except Exception:
             # Catalog or schema doesn't exist, or query failed
             # This is expected on first deployment
+            return None
+
+    def get_deployment_by_id(self, deployment_id: str) -> dict[str, Any] | None:
+        """Get a specific deployment by ID from the database
+
+        Queries the database (source of truth) to find a deployment by its ID.
+
+        Args:
+            deployment_id: Deployment ID to look up
+
+        Returns:
+            Deployment record or None if not found
+        """
+        from databricks.sdk.service.sql import StatementState
+
+        try:
+            sql = f"""
+            SELECT 
+                id, 
+                environment, 
+                snapshot_version, 
+                from_snapshot_version,
+                deployed_at,
+                deployed_by,
+                status,
+                statement_count,
+                successful_statements,
+                failed_statement_index
+            FROM {self.schema}.deployments
+            WHERE id = '{deployment_id}'
+            LIMIT 1
+            """
+
+            response = self.client.statement_execution.execute_statement(
+                warehouse_id=self.warehouse_id,
+                statement=sql,
+                wait_timeout="10s",
+            )
+
+            # Check if query succeeded
+            if not response.status or response.status.state != StatementState.SUCCEEDED:
+                return None
+
+            # Parse results
+            if response.result and response.result.data_array:
+                if len(response.result.data_array) > 0:
+                    row = response.result.data_array[0]
+                    return {
+                        "id": row[0],
+                        "environment": row[1],
+                        "version": row[2],
+                        "fromVersion": row[3],
+                        "deployedAt": row[4],
+                        "deployedBy": row[5],
+                        "status": row[6],
+                        "statementCount": row[7],
+                        "successfulStatements": row[8],
+                        "failedStatementIndex": row[9],
+                    }
+
+            return None
+
+        except Exception:
+            # Catalog or schema doesn't exist, or query failed
             return None
 
     def _execute_ddl(self, sql: str) -> None:

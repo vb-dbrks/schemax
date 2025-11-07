@@ -133,6 +133,14 @@ class TestRollbackPartial:
         # Mock deployment tracker
         mock_tracker = Mock()
         mock_tracker_class.return_value = mock_tracker
+        # Mock get_deployment_by_id to return deployment record
+        mock_tracker.get_deployment_by_id.return_value = {
+            "id": "test_deploy",
+            "fromVersion": None,  # First deployment
+            "version": "v0.1.0",
+            "environment": "dev",
+            "status": "failed",
+        }
 
         # Mock provider methods
         mock_provider.get_state_reducer.return_value = mock_state_reducer
@@ -221,11 +229,12 @@ class TestRollbackPartial:
         mock_tracker.complete_deployment.assert_called_once()
         mock_write_deployment.assert_called_once()
 
+    @patch("schematic.commands.rollback.DeploymentTracker")
     @patch("schematic.commands.rollback.get_environment_config")
     @patch("schematic.commands.rollback.read_project")
     @patch("schematic.commands.rollback.load_current_state")
     def test_rollback_blocks_on_destructive(
-        self, mock_load_state, mock_read_project, mock_get_env_config
+        self, mock_load_state, mock_read_project, mock_get_env_config, mock_tracker_class
     ):
         """Test rollback blocks on destructive operations in auto mode"""
         # Setup mocks
@@ -250,6 +259,17 @@ class TestRollbackPartial:
         mock_get_env_config.return_value = {
             "topLevelName": "prod_catalog",
             "autoCreateSchematicSchema": True,
+        }
+
+        # Mock deployment tracker
+        mock_tracker = Mock()
+        mock_tracker_class.return_value = mock_tracker
+        mock_tracker.get_deployment_by_id.return_value = {
+            "id": "test_deploy",
+            "fromVersion": None,
+            "version": "v0.1.0",
+            "environment": "prod",
+            "status": "failed",
         }
 
         mock_provider.get_state_reducer.return_value = mock_state_reducer
@@ -346,6 +366,13 @@ class TestRollbackPartial:
         # Mock deployment tracker
         mock_tracker = Mock()
         mock_tracker_class.return_value = mock_tracker
+        mock_tracker.get_deployment_by_id.return_value = {
+            "id": "test_deploy",
+            "fromVersion": None,
+            "version": "v0.1.0",
+            "environment": "dev",
+            "status": "failed",
+        }
 
         mock_provider.get_state_reducer.return_value = mock_state_reducer
         mock_provider.get_state_differ.return_value = mock_state_differ
