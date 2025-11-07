@@ -1515,7 +1515,7 @@ class TestOperationCancellation:
             Operation(
                 id="op_004",
                 provider="unity",
-                ts="2025-01-01T00:00:00Z",
+                ts="2099-12-31T23:59:59Z",  # Later timestamp so DROP comes after CREATE
                 op="unity.drop_table",
                 target="table_789",
                 payload={
@@ -1543,7 +1543,7 @@ class TestOperationCancellation:
             Operation(
                 id="op_002",
                 provider="unity",
-                ts="2025-01-01T00:00:00Z",
+                ts="2099-12-31T23:59:59Z",  # Later timestamp so DROP comes after CREATE
                 op="unity.drop_catalog",
                 target="cat_999",
                 payload={},
@@ -1570,7 +1570,7 @@ class TestOperationCancellation:
             Operation(
                 id="op_002",
                 provider="unity",
-                ts="2025-01-01T00:00:00Z",
+                ts="2099-12-31T23:59:59Z",  # Later timestamp so DROP comes after CREATE
                 op="unity.drop_schema",
                 target="schema_999",
                 payload={},

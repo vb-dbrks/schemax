@@ -359,11 +359,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
         If an object is created and then dropped in the same changeset,
         skip ALL operations for that object (they cancel out).
 
+        This is timestamp-aware: cancellation only occurs if CREATE timestamp < DROP timestamp
+        (chronological order). If DROP comes before CREATE, they don't cancel.
+
         Examples:
-        - add_table + drop_table → skip both (and any operations in between)
+        - add_table (T1) + drop_table (T2 where T2 > T1) → skip both
+        - drop_table (T1) + add_table (T2 where T2 > T1) → keep both (recreate)
         - add_catalog + drop_catalog → skip both
         - add_schema + drop_schema → skip both
-        - add_column + drop_column → skip both
 
         This prevents errors when trying to drop objects that were never
         created in the database (e.g., table in non-existent schema).
@@ -385,11 +388,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if not target_ops:
                 continue
 
-            # Check if first op is CREATE and last op is DROP
+            # Find CREATE and DROP operations (timestamp-aware)
             if len(target_ops) >= 2:
-                first_op_type = target_ops[0].op
-                last_op_type = target_ops[-1].op
-
                 # Define create/drop pairs
                 cancel_pairs = [
                     ("unity.add_catalog", "unity.drop_catalog"),
@@ -397,25 +397,31 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     ("unity.add_table", "unity.drop_table"),
                 ]
 
-                # Check if this is a cancellation pair
+                # Find the CREATE and DROP operations
+                create_op = None
+                drop_op = None
+                for op in target_ops:
+                    for create_type, drop_type in cancel_pairs:
+                        if op.op == create_type:
+                            create_op = op
+                        elif op.op == drop_type:
+                            drop_op = op
+
+                # Check if cancellation occurs (CREATE must come before DROP chronologically)
                 cancelled = False
-                for create_op, drop_op in cancel_pairs:
-                    if first_op_type == create_op and last_op_type == drop_op:
-                        # Cancel out: skip ALL operations for this object
-                        # (including any modifications in between)
-                        cancelled = True
-                        break
+                if create_op and drop_op and create_op.ts < drop_op.ts:
+                    # Cancel out: skip ALL operations for this object
+                    cancelled = True
 
                 # Special handling for columns: only cancel if adding and dropping THE SAME column
-                if (
-                    not cancelled
-                    and first_op_type == "unity.add_column"
-                    and last_op_type == "unity.drop_column"
-                ):
-                    # For columns, we need to check if we're adding and dropping the same column
-                    # (not just any columns on the same table)
-                    if len(target_ops) == 2 and target_ops[0].target == target_ops[1].target:
-                        # Same column ID - cancel it
+                if not cancelled and len(target_ops) == 2:
+                    if (
+                        target_ops[0].op == "unity.add_column"
+                        and target_ops[1].op == "unity.drop_column"
+                        and target_ops[0].target == target_ops[1].target
+                        and target_ops[0].ts < target_ops[1].ts  # Chronological
+                    ):
+                        # Same column ID, chronological order - cancel it
                         cancelled = True
 
                 if not cancelled:
@@ -439,8 +445,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         - Batched column reordering (minimal ALTER statements)
         - Table property consolidation
         """
-        # Sort operations by dependency level first
-        sorted_ops = sorted(ops, key=lambda op: self._get_dependency_level(op))
+        # Sort operations by:
+        # 1. Dependency level (catalog → schema → table) for correct order
+        # 2. Timestamp (chronological) to preserve order of operations within same object
+        sorted_ops = sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
 
         # Filter out create+drop pairs that cancel each other
         filtered_ops = self._filter_cancelled_operations(sorted_ops)
