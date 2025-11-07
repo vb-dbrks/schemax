@@ -152,19 +152,12 @@ class DependencyGraph:
         Returns:
             List of cycles, where each cycle is a list of node IDs
         """
-        # TODO: nx.simple_cycles() causes segfault in some Python/NetworkX versions
-        # For now, use simpler approach: check if graph is a DAG
-        # If not a DAG, there's at least one cycle (but we can't identify which one)
         try:
-            # Check if graph is a Directed Acyclic Graph
-            if nx.is_directed_acyclic_graph(self.graph):
-                return []  # No cycles
-            else:
-                # Graph has cycles, but we can't safely identify them
-                # Return a placeholder to indicate cycles exist
-                return [["<cycle_detected>"]]  # Indicates cycles exist but not identified
+            # NetworkX simple_cycles() works correctly with NetworkX 3.5+
+            # Returns a generator of cycles
+            return list(nx.simple_cycles(self.graph))
         except Exception:
-            # If even DAG check fails, assume no cycles
+            # If cycle detection fails, return empty list
             return []
 
     def topological_sort(self) -> list[Operation]:
