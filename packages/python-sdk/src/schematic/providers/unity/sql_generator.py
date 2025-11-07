@@ -313,12 +313,55 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._generate_create_schema_batched(object_id, batch_info)
         elif object_id.startswith("table:"):
             # Delegate to existing _generate_create_table_with_columns method
+            # Categorize operations properly
+            column_ops = []
+            property_ops = []
+            constraint_ops = []
+            reorder_ops = []
+            governance_ops = []
+            other_ops = []
+
+            for op in batch_info.modify_ops:
+                op_type = op.op.replace("unity.", "")
+                if op_type in [
+                    "add_column",
+                    "rename_column",
+                    "drop_column",
+                    "change_column_type",
+                    "set_nullable",
+                    "set_column_comment",
+                    "set_column_tag",
+                    "unset_column_tag",
+                ]:
+                    column_ops.append(op)
+                elif op_type in ["set_table_property", "unset_table_property"]:
+                    property_ops.append(op)
+                elif op_type in ["add_constraint", "drop_constraint"]:
+                    constraint_ops.append(op)
+                elif op_type == "reorder_columns":
+                    reorder_ops.append(op)
+                elif op_type in [
+                    "add_row_filter",
+                    "update_row_filter",
+                    "remove_row_filter",
+                    "add_column_mask",
+                    "update_column_mask",
+                    "remove_column_mask",
+                ]:
+                    governance_ops.append(op)
+                else:
+                    # Everything else goes to other_ops (includes set_table_tag, set_table_comment, etc.)
+                    other_ops.append(op)
+
             batch_dict = {
                 "is_new_table": batch_info.is_new,
                 "table_op": batch_info.create_op,
-                "column_ops": [op for op in batch_info.modify_ops if op.op == "unity.add_column"],
-                "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
-                "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
+                "column_ops": column_ops,
+                "property_ops": property_ops,
+                "constraint_ops": constraint_ops,
+                "reorder_ops": reorder_ops,
+                "governance_ops": governance_ops,
+                "other_ops": other_ops,
                 "op_ids": batch_info.op_ids,
                 "operation_types": list(batch_info.operation_types),
             }
@@ -334,15 +377,53 @@ class UnitySQLGenerator(BaseSQLGenerator):
         Implements abstract method from BaseSQLGenerator.
         """
         # Delegate to existing _generate_alter_statements_for_table method
+        # Categorize operations properly
+        column_ops = []
+        property_ops = []
+        constraint_ops = []
+        reorder_ops = []
+        governance_ops = []
+        other_ops = []
+
+        for op in batch_info.modify_ops:
+            op_type = op.op.replace("unity.", "")
+            if op_type in [
+                "add_column",
+                "rename_column",
+                "drop_column",
+                "change_column_type",
+                "set_nullable",
+                "set_column_comment",
+                "set_column_tag",
+                "unset_column_tag",
+            ]:
+                column_ops.append(op)
+            elif op_type in ["set_table_property", "unset_table_property"]:
+                property_ops.append(op)
+            elif op_type in ["add_constraint", "drop_constraint"]:
+                constraint_ops.append(op)
+            elif op_type == "reorder_columns":
+                reorder_ops.append(op)
+            elif op_type in [
+                "add_row_filter",
+                "update_row_filter",
+                "remove_row_filter",
+                "add_column_mask",
+                "update_column_mask",
+                "remove_column_mask",
+            ]:
+                governance_ops.append(op)
+            else:
+                # Everything else goes to other_ops (includes set_table_tag, set_table_comment, etc.)
+                other_ops.append(op)
+
         batch_dict = {
-            "column_ops": [op for op in batch_info.modify_ops if "column" in op.op],
-            "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
-            "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
-            "reorder_ops": [op for op in batch_info.modify_ops if "reorder" in op.op],
-            "governance_ops": [
-                op for op in batch_info.modify_ops if "filter" in op.op or "mask" in op.op
-            ],
-            "other_ops": [],
+            "column_ops": column_ops,
+            "property_ops": property_ops,
+            "constraint_ops": constraint_ops,
+            "reorder_ops": reorder_ops,
+            "governance_ops": governance_ops,
+            "other_ops": other_ops,
             "op_ids": batch_info.op_ids,
             "operation_types": list(batch_info.operation_types),
         }
@@ -1476,20 +1557,16 @@ class UnitySQLGenerator(BaseSQLGenerator):
         statements = [create_sql]
 
         # Process other column operations (like column tags) after table creation
-        # Add operation metadata for correct tracking
         for op in other_column_ops:
             op_type = op.op.replace("unity.", "")
             try:
                 sql = self._generate_sql_for_op_type(op_type, op)
                 if sql and not sql.startswith("--"):
-                    # Add operation metadata header for tracking
-                    header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
-                    statements.append(f"{header}\n{sql}")
+                    statements.append(sql)
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {op.id}: {e}")
 
         # Process other operations (like table tags)
-        # Add operation metadata for correct tracking
         for op in other_ops:
             op_type = op.op.replace("unity.", "")
             # Skip set_table_comment as it's already in CREATE TABLE
@@ -1498,9 +1575,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             try:
                 sql = self._generate_sql_for_op_type(op_type, op)
                 if sql and not sql.startswith("--"):
-                    # Add operation metadata header for tracking
-                    header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
-                    statements.append(f"{header}\n{sql}")
+                    statements.append(sql)
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {op.id}: {e}")
 

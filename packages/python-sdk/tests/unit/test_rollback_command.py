@@ -114,16 +114,12 @@ class TestRollbackPartial:
         # Mock SQL generator
         # Mock generate_sql_with_mapping to return SQLGenerationResult
         from schematic.providers.base.sql_generator import SQLGenerationResult, StatementInfo
-        
+
         mock_sql_generator.generate_sql_with_mapping.return_value = SQLGenerationResult(
             sql="DROP CATALOG test;",
             statements=[
-                StatementInfo(
-                    sql="DROP CATALOG test",
-                    operation_ids=["op_1"],
-                    execution_order=1
-                )
-            ]
+                StatementInfo(sql="DROP CATALOG test", operation_ids=["op_1"], execution_order=1)
+            ],
         )
 
         # Mock executor - successful execution with statement_results
@@ -348,19 +344,17 @@ class TestRollbackPartial:
             payload={},
         )
         mock_state_differ.generate_diff_operations.return_value = [rollback_op]
-        
+
         # Mock generate_sql_with_mapping
         from schematic.providers.base.sql_generator import SQLGenerationResult, StatementInfo
-        
+
         mock_sql_generator.generate_sql_with_mapping.return_value = SQLGenerationResult(
             sql="DROP CATALOG test;",
             statements=[
                 StatementInfo(
-                    sql="DROP CATALOG test",
-                    operation_ids=["rollback_1"],
-                    execution_order=1
+                    sql="DROP CATALOG test", operation_ids=["rollback_1"], execution_order=1
                 )
-            ]
+            ],
         )
 
         # Mock executor - failed execution
