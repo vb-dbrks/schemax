@@ -431,6 +431,9 @@ schematic rollback --to-snapshot VERSION --target ENV --profile PROFILE --wareho
 # Validate schema files and detect stale snapshots
 schematic validate [workspace_path]
 
+# Create a snapshot from current changelog
+schematic snapshot create --name "Snapshot name" [--version v0.2.0] [--comment "Description"] [--tags tag1]
+
 # Validate snapshots after Git rebase
 schematic snapshot validate
 
@@ -624,12 +627,13 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ Deployment status: `success`, `failed`, `partial` (0 statements = failed)
 
 **Snapshot Management** (NEW):
+- ✅ Snapshot creation via CLI with optional manual version override
 - ✅ Snapshot validation (detect stale snapshots after Git rebase)
 - ✅ Snapshot rebase (unpack, replay on new base, conflict detection)
 - ✅ Conflict detection and logging for manual UI resolution
 - ✅ Smart changelog management during rebase conflicts
 - ✅ Semantic versioning utilities (MAJOR.MINOR.PATCH)
-- ✅ `schematic snapshot validate` and `schematic snapshot rebase` commands
+- ✅ `schematic snapshot create`, `validate`, and `rebase` commands
 
 **CLI Improvements** (NEW):
 - ✅ Interactive snapshot prompts in `schematic apply` (with --no-interaction flag)
@@ -1254,7 +1258,7 @@ When starting a new conversation about this project:
     - **Test coverage**: storage, deployment, version, rollback, snapshot rebase, apply, workflows
 21. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
 22. **Project Schema**: V4 with project-level location configs and per-environment paths
-23. **CLI Commands**: `apply`, `rollback`, `sql`, `diff`, `validate`, `record-deployment`, `snapshot validate`, `snapshot rebase`
+23. **CLI Commands**: `apply`, `rollback`, `sql`, `diff`, `validate`, `record-deployment`, `snapshot create`, `snapshot validate`, `snapshot rebase`
 24. **Execution Flow**: Authenticate → Execute SQL → Create tracking schema → Record deployment (with auto-rollback)
 
 **Status**: Production-ready v0.2.0 with complete Unity Catalog governance, multi-environment support, and Databricks integration. Future: Schema import, drift detection, DAB generation, multi-catalog support.

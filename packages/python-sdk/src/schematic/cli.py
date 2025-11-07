@@ -676,6 +676,83 @@ def snapshot() -> None:
     pass
 
 
+@snapshot.command(name="create")
+@click.option("--name", "-n", required=True, help="Snapshot name")
+@click.option(
+    "--version", "-v", help="Snapshot version (e.g., v0.2.0, auto-generated if not provided)"
+)
+@click.option("--comment", "-c", help="Optional comment describing the snapshot")
+@click.option("--tags", "-t", multiple=True, help="Optional tags (can be specified multiple times)")
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def snapshot_create_cmd(
+    name: str, version: str | None, comment: str | None, tags: tuple[str, ...], workspace: str
+) -> None:
+    """Create a new snapshot from current changelog
+
+    Creates a snapshot of the current schema state, capturing all uncommitted
+    operations from the changelog. If version is not specified, it will be
+    auto-generated based on the latest snapshot and version bump strategy.
+
+    Examples:
+        schematic snapshot create --name "Initial schema"
+        schematic snapshot create --name "Add users table" --version v0.2.0
+        schematic snapshot create --name "Production release" --comment "First prod deployment" --tags prod
+    """
+    from pathlib import Path
+
+    from schematic.core.storage import create_snapshot, read_changelog
+
+    workspace_path = Path(workspace).resolve()
+
+    try:
+        # Check if there are uncommitted operations
+        changelog = read_changelog(workspace_path)
+        if not changelog["ops"]:
+            console.print("[yellow]⚠️  No uncommitted operations in changelog[/yellow]")
+            console.print("Create operations in the Schematic Designer before creating a snapshot.")
+            return
+
+        console.print(f"📸 Creating snapshot: [bold]{name}[/bold]")
+        console.print(f"   Operations to snapshot: {len(changelog['ops'])}")
+
+        # Create snapshot
+        project, snapshot = create_snapshot(
+            workspace_path,
+            name=name,
+            version=version,
+            comment=comment,
+            tags=list(tags) if tags else None,
+        )
+
+        # Success message
+        console.print()
+        console.print("[green]✓ Snapshot created successfully![/green]")
+        console.print(f"   Version: [bold]{snapshot['version']}[/bold]")
+        console.print(f"   Name: {snapshot['name']}")
+        if snapshot.get("comment"):
+            console.print(f"   Comment: {snapshot['comment']}")
+        if snapshot.get("tags"):
+            console.print(f"   Tags: {', '.join(snapshot['tags'])}")
+        console.print(f"   Operations: {len(snapshot['operations'])}")
+        console.print(f"   File: [dim].schematic/snapshots/{snapshot['version']}.json[/dim]")
+        console.print()
+        console.print(
+            f"[green]✓ Changelog cleared ({len(changelog['ops'])} ops moved to snapshot)[/green]"
+        )
+        console.print(f"[green]✓ Total snapshots: {len(project['snapshots'])}[/green]")
+
+    except FileNotFoundError as e:
+        console.print(f"[red]✗ Error: {e}[/red]")
+        console.print("Make sure you're in a Schematic project directory.")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Snapshot creation failed: {e}[/red]")
+        import traceback
+
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(1)
+
+
 @snapshot.command(name="rebase")
 @click.argument("snapshot_version", required=True)
 @click.option("--base", "-b", help="New base version (auto-detects latest if not provided)")

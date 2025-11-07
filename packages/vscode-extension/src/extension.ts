@@ -1010,6 +1010,25 @@ async function createSnapshotCommand_impl() {
       return;
     }
 
+    // Calculate next version (same logic as Python SDK)
+    const calculateNextVersion = (currentVersion: string | null, versionPrefix: string = 'v'): string => {
+      if (!currentVersion) {
+        return versionPrefix + '0.1.0';
+      }
+      
+      const match = currentVersion.match(/(\d+)\.(\d+)\.(\d+)/);
+      if (!match) {
+        return versionPrefix + '0.1.0';
+      }
+      
+      const [, major, minor] = match;
+      const nextMinor = parseInt(minor) + 1;
+      return `${versionPrefix}${major}.${nextMinor}.0`;
+    };
+
+    const versionPrefix = project.settings?.versionPrefix || 'v';
+    const suggestedVersion = calculateNextVersion(project.latestSnapshot, versionPrefix);
+
     // Get snapshot name
     const name = await vscode.window.showInputBox({
       prompt: 'Snapshot name',
@@ -1024,6 +1043,30 @@ async function createSnapshotCommand_impl() {
       return; // User cancelled
     }
 
+    // Get optional version (with suggested default)
+    const versionInput = await vscode.window.showInputBox({
+      prompt: 'Snapshot version (optional)',
+      placeHolder: `Press Enter for auto-generated: ${suggestedVersion}`,
+      value: '',
+      validateInput: (value) => {
+        if (!value.trim()) {
+          return null; // Empty is OK (will use auto-generated)
+        }
+        // Validate semantic version format
+        if (!/^v?\d+\.\d+\.\d+$/.test(value)) {
+          return 'Version must be in format: v0.1.0 or 0.1.0';
+        }
+        return null;
+      }
+    });
+
+    if (versionInput === undefined) {
+      outputChannel.appendLine('[Schematic] Snapshot creation cancelled by user');
+      return; // User cancelled
+    }
+
+    const version = versionInput.trim() || undefined; // Empty string becomes undefined
+
     // Get optional comment
     const comment = await vscode.window.showInputBox({
       prompt: 'Description (optional)',
@@ -1031,6 +1074,11 @@ async function createSnapshotCommand_impl() {
     });
 
     outputChannel.appendLine(`[Schematic] Creating snapshot: "${name}"`);
+    if (version) {
+      outputChannel.appendLine(`[Schematic] Version: "${version}"`);
+    } else {
+      outputChannel.appendLine(`[Schematic] Version: auto-generated (${suggestedVersion})`);
+    }
     if (comment) {
       outputChannel.appendLine(`[Schematic] Comment: "${comment}"`);
     }
@@ -1044,7 +1092,7 @@ async function createSnapshotCommand_impl() {
       const { project: updatedProject, snapshot } = await storageV4.createSnapshot(
         workspaceFolder.uri, 
         name, 
-        undefined, 
+        version, 
         comment
       );
       
