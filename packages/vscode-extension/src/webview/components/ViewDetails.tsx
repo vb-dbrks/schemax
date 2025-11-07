@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
+import { extractDependenciesFromView } from '../../providers/base/sql-parser';
 import './ViewDetails.css';
 
 interface ViewDetailsProps {
@@ -47,7 +48,10 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
 
   const handleSaveSQL = () => {
     if (editedSQL.trim()) {
-      updateView(viewId, editedSQL.trim());
+      // Re-extract dependencies from updated SQL
+      const dependencies = extractDependenciesFromView(editedSQL.trim());
+      
+      updateView(viewId, editedSQL.trim(), dependencies);
       setIsEditingSQL(false);
     }
   };

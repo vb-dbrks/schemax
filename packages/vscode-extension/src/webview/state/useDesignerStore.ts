@@ -74,7 +74,7 @@ interface DesignerState {
     }
   ) => void;
   renameView: (viewId: string, newName: string) => void;
-  updateView: (viewId: string, definition: string, dependencies?: string[]) => void;
+  updateView: (viewId: string, definition: string, extractedDependencies?: any) => void;
   dropView: (viewId: string) => void;
   
   addColumn: (tableId: string, name: string, type: string, nullable: boolean, comment?: string, tags?: Record<string, string>) => void;
@@ -301,10 +301,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     emitOps([op]);
   },
 
-  updateView: (viewId, definition, dependencies) => {
+  updateView: (viewId, definition, extractedDependencies) => {
     const op = createOperation(get(), 'update_view', viewId, {
       definition,
-      dependencies
+      extractedDependencies
     });
     emitOps([op]);
   },
