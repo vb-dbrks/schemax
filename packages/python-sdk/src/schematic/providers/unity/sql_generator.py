@@ -367,6 +367,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
         - drop_table (T1) + add_table (T2 where T2 > T1) → keep both (recreate)
         - add_catalog + drop_catalog → skip both
         - add_schema + drop_schema → skip both
+        Examples:
+        - add_table + drop_table → skip both (and any operations in between)
+        - add_catalog + drop_catalog → skip both
+        - add_schema + drop_schema → skip both
+        - add_column + drop_column → skip both
 
         This prevents errors when trying to drop objects that were never
         created in the database (e.g., table in non-existent schema).
@@ -395,6 +400,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     ("unity.add_catalog", "unity.drop_catalog"),
                     ("unity.add_schema", "unity.drop_schema"),
                     ("unity.add_table", "unity.drop_table"),
+                    ("unity.add_column", "unity.drop_column"),
                 ]
 
                 # Find the CREATE and DROP operations
@@ -465,6 +471,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # 1. Dependency level (catalog → schema → table) for correct order
         # 2. Timestamp (chronological) to preserve order of operations within same object
         sorted_ops = sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
+
+        # Filter out create+drop pairs that cancel each other
+        filtered_ops = self._filter_cancelled_operations(sorted_ops)
 
         # Filter out create+drop pairs that cancel each other
         filtered_ops = self._filter_cancelled_operations(sorted_ops)
