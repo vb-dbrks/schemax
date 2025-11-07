@@ -20,9 +20,7 @@ class ValidationError(Exception):
     pass
 
 
-def validate_dependencies(
-    state: Any, ops: list[Any], provider: Any
-) -> tuple[list[str], list[str]]:
+def validate_dependencies(state: Any, ops: list[Any], provider: Any) -> tuple[list[str], list[str]]:
     """
     Validate dependency graph for circular dependencies and missing references.
 

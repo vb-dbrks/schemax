@@ -9,7 +9,6 @@ Tests end-to-end dependency system:
 5. Circular dependency detection
 """
 
-
 from schematic.providers.base.sql_parser import extract_dependencies_from_view
 from schematic.providers.unity.models import UnityState
 from schematic.providers.unity.state_reducer import apply_operation, apply_operations
@@ -411,9 +410,9 @@ class TestViewUpdateScenarios:
     def test_update_view_dependencies_are_reextracted(self):
         """
         Test that when a view's SQL is updated, dependencies are re-extracted.
-        
+
         Regression test for bug where updating a view wouldn't update its dependencies.
-        
+
         Scenario:
         1. Create view1 that depends on table1
         2. Update view1 to depend on table2 instead
@@ -496,9 +495,9 @@ class TestViewSQLBatching:
     def test_create_and_update_view_batched(self):
         """
         Test that CREATE + UPDATE_VIEW operations are batched into single CREATE OR REPLACE VIEW.
-        
+
         Regression test for bug where separate CREATE and UPDATE statements were generated.
-        
+
         Scenario:
         1. Create a view with initial SQL
         2. Update the view's SQL in the same changeset
@@ -552,9 +551,9 @@ class TestViewSQLBatching:
         # Should have exactly ONE CREATE OR REPLACE VIEW statement
         assert create_or_replace_count == 1, "Should batch into single CREATE OR REPLACE VIEW"
         # Should NOT have separate CREATE VIEW IF NOT EXISTS
-        assert (
-            create_if_not_exists_count == 0
-        ), "Should not generate separate CREATE VIEW IF NOT EXISTS"
+        assert create_if_not_exists_count == 0, (
+            "Should not generate separate CREATE VIEW IF NOT EXISTS"
+        )
 
         # Verify the final SQL has the updated definition
         view_sql = next(sql for sql in sql_statements if "CREATE OR REPLACE VIEW" in sql)
@@ -563,7 +562,7 @@ class TestViewSQLBatching:
     def test_create_and_multiple_updates_batched(self):
         """
         Test that CREATE + multiple UPDATE_VIEW operations use the final definition.
-        
+
         Scenario:
         1. Create a view
         2. Update it multiple times in the same changeset

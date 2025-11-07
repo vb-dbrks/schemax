@@ -418,7 +418,9 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                         column.mask_id = None
                         break
                 # Remove mask
-                table_opt.column_masks = [m for m in table_opt.column_masks if m.id != op_dict["target"]]
+                table_opt.column_masks = [
+                    m for m in table_opt.column_masks if m.id != op_dict["target"]
+                ]
 
     return new_state
 

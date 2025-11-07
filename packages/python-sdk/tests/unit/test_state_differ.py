@@ -1191,7 +1191,7 @@ class TestUnityStateDifferViews:
     def test_diff_added_view(self) -> None:
         """
         Should generate add_view operation for new view
-        
+
         REGRESSION TEST: This would have caught the bug where views were ignored
         """
         old_state = {
@@ -1460,7 +1460,7 @@ class TestUnityStateDifferViews:
     def test_diff_multiple_views_added(self) -> None:
         """
         Should detect multiple views added in one diff
-        
+
         REGRESSION TEST: Tests the exact scenario from the bug report
         """
         old_state = {
@@ -1660,7 +1660,7 @@ class TestUnityStateDifferViews:
 
 class TestUnityStateDifferViewRegression:
     """Regression tests for view bugs in state differ
-    
+
     These tests specifically target bugs where views were silently excluded
     from operations when creating new parent containers (schemas/catalogs).
     """
@@ -1668,13 +1668,13 @@ class TestUnityStateDifferViewRegression:
     def test_new_schema_with_views_includes_all_views(self) -> None:
         """
         REGRESSION TEST: Views in newly created schemas must be included in operations
-        
+
         Bug: When a schema was added to an existing catalog, views within that
         schema were silently excluded from the generated operations.
-        
+
         Root cause: _diff_schemas() called _add_all_tables_in_schema() but not
         _add_all_views_in_schema() for new schemas.
-        
+
         Impact: First deployment to environment would skip all views.
         """
         old_state = {
@@ -1686,7 +1686,7 @@ class TestUnityStateDifferViewRegression:
                 },
             ]
         }
-        
+
         # Add new schema with both tables and views
         new_state = {
             "catalogs": [
@@ -1728,12 +1728,12 @@ class TestUnityStateDifferViewRegression:
 
         # Should generate: add_schema, add_table, add_view, add_view
         assert len(ops) == 4, f"Expected 4 ops (schema, table, 2 views), got {len(ops)}"
-        
+
         op_types = [op.op for op in ops]
         assert "unity.add_schema" in op_types, "Should include schema creation"
         assert "unity.add_table" in op_types, "Should include table creation"
         assert op_types.count("unity.add_view") == 2, "Should include BOTH view creations"
-        
+
         # Verify correct view IDs
         view_ops = [op for op in ops if op.op == "unity.add_view"]
         view_ids = {op.target for op in view_ops}
@@ -1742,18 +1742,18 @@ class TestUnityStateDifferViewRegression:
     def test_new_catalog_with_views_includes_all_views(self) -> None:
         """
         REGRESSION TEST: Views in newly created catalogs must be included
-        
+
         Bug: When deploying from empty state (first deployment), views were
         completely excluded from the generated operations.
-        
+
         Root cause: _add_all_schemas_in_catalog() called _add_all_tables_in_schema()
         but not _add_all_views_in_schema().
-        
+
         Impact: schematic apply from empty state would show "0 operations" even
         when snapshot contained views.
         """
         old_state = {"catalogs": []}  # Empty state (first deployment)
-        
+
         # New catalog with schemas containing both tables and views
         new_state = {
             "catalogs": [
@@ -1807,13 +1807,13 @@ class TestUnityStateDifferViewRegression:
 
         # Should generate: add_catalog, add_schema, add_table, add_view, add_view
         assert len(ops) == 5, f"Expected 5 ops (catalog, schema, table, 2 views), got {len(ops)}"
-        
+
         op_types = [op.op for op in ops]
         assert "unity.add_catalog" in op_types, "Should include catalog creation"
         assert "unity.add_schema" in op_types, "Should include schema creation"
         assert "unity.add_table" in op_types, "Should include table creation"
         assert op_types.count("unity.add_view") == 2, "Should include BOTH view creations"
-        
+
         # Verify correct view names in payloads
         view_ops = [op for op in ops if op.op == "unity.add_view"]
         view_names = {op.payload["name"] for op in view_ops}
@@ -1822,7 +1822,7 @@ class TestUnityStateDifferViewRegression:
     def test_multiple_schemas_with_views_all_included(self) -> None:
         """
         REGRESSION TEST: All views across multiple new schemas must be included
-        
+
         Ensures the fix works correctly when multiple schemas are added simultaneously,
         each containing views.
         """
@@ -1835,7 +1835,7 @@ class TestUnityStateDifferViewRegression:
                 },
             ]
         }
-        
+
         new_state = {
             "catalogs": [
                 {
@@ -1845,25 +1845,43 @@ class TestUnityStateDifferViewRegression:
                         {
                             "id": "sch_1",
                             "name": "bronze",
-                            "tables": [{"id": "tbl_1", "name": "raw", "format": "delta", "columns": []}],
+                            "tables": [
+                                {"id": "tbl_1", "name": "raw", "format": "delta", "columns": []}
+                            ],
                             "views": [
-                                {"id": "view_1", "name": "bronze_view", "definition": "SELECT * FROM raw"}
+                                {
+                                    "id": "view_1",
+                                    "name": "bronze_view",
+                                    "definition": "SELECT * FROM raw",
+                                }
                             ],
                         },
                         {
                             "id": "sch_2",
                             "name": "silver",
-                            "tables": [{"id": "tbl_2", "name": "clean", "format": "delta", "columns": []}],
+                            "tables": [
+                                {"id": "tbl_2", "name": "clean", "format": "delta", "columns": []}
+                            ],
                             "views": [
-                                {"id": "view_2", "name": "silver_view", "definition": "SELECT * FROM clean"}
+                                {
+                                    "id": "view_2",
+                                    "name": "silver_view",
+                                    "definition": "SELECT * FROM clean",
+                                }
                             ],
                         },
                         {
                             "id": "sch_3",
                             "name": "gold",
-                            "tables": [{"id": "tbl_3", "name": "agg", "format": "delta", "columns": []}],
+                            "tables": [
+                                {"id": "tbl_3", "name": "agg", "format": "delta", "columns": []}
+                            ],
                             "views": [
-                                {"id": "view_3", "name": "gold_view", "definition": "SELECT * FROM agg"}
+                                {
+                                    "id": "view_3",
+                                    "name": "gold_view",
+                                    "definition": "SELECT * FROM agg",
+                                }
                             ],
                         },
                     ],
@@ -1876,11 +1894,11 @@ class TestUnityStateDifferViewRegression:
 
         # Should generate: 3 schemas, 3 tables, 3 views = 9 ops
         assert len(ops) == 9, f"Expected 9 ops (3 schemas, 3 tables, 3 views), got {len(ops)}"
-        
+
         # Verify all views are present
         view_ops = [op for op in ops if op.op == "unity.add_view"]
         assert len(view_ops) == 3, "Should include all 3 views"
-        
+
         view_names = {op.payload["name"] for op in view_ops}
         assert view_names == {"bronze_view", "silver_view", "gold_view"}
 
@@ -1888,11 +1906,11 @@ class TestUnityStateDifferViewRegression:
 class TestUnityStateDifferGenericObjectCoverage:
     """
     Generic tests that validate ALL nested object types are handled consistently
-    
+
     These tests use introspection to automatically verify that state differ handles
     all object types defined in the Unity Catalog models. They will catch bugs like
     the view exclusion bug for any future object types we add.
-    
+
     Philosophy: If an object type exists in the state model, the state differ MUST:
     1. Generate operations when objects are added to new parents
     2. Generate operations when objects are added to existing parents
@@ -1902,15 +1920,15 @@ class TestUnityStateDifferGenericObjectCoverage:
     def test_all_nested_collections_included_in_new_catalog(self) -> None:
         """
         Generic test: ALL nested object types must be included when adding a catalog
-        
+
         This test will catch bugs where we forget to add a new object type to
         _add_all_schemas_in_catalog() or similar methods.
-        
+
         Approach: Create a state with a catalog containing ALL possible nested
         object types, then verify operations are generated for ALL of them.
         """
         old_state = {"catalogs": []}
-        
+
         # Build comprehensive new state with ALL object types
         new_state = {
             "catalogs": [
@@ -1975,7 +1993,7 @@ class TestUnityStateDifferGenericObjectCoverage:
         assert "add_view" in op_types_count, "Missing VIEW creation (regression!)"
         assert "add_column" in op_types_count, "Missing column creation"
         assert "set_column_tag" in op_types_count, "Missing column tag creation"
-        
+
         # TODO: Constraints not yet implemented in state differ - uncomment when added
         # assert "add_constraint" in op_types_count, "Missing constraint creation"
 
@@ -1987,7 +2005,7 @@ class TestUnityStateDifferGenericObjectCoverage:
         assert op_types_count["add_column"] == 1
         assert op_types_count["set_column_tag"] == 1
         # assert op_types_count["add_constraint"] == 1  # TODO: Uncomment when implemented
-        
+
         # Document what's expected but not yet implemented
         # When adding support for new object types (constraints, row filters, etc.),
         # uncomment the assertions above to ensure they're handled correctly
@@ -1995,7 +2013,7 @@ class TestUnityStateDifferGenericObjectCoverage:
     def test_all_nested_collections_included_in_new_schema(self) -> None:
         """
         Generic test: ALL nested object types must be included when adding a schema
-        
+
         This is the exact scenario where the view bug occurred - adding a schema
         to an existing catalog. This test ensures ALL object types are handled.
         """
@@ -2008,7 +2026,7 @@ class TestUnityStateDifferGenericObjectCoverage:
                 }
             ]
         }
-        
+
         new_state = {
             "catalogs": [
                 {
@@ -2024,7 +2042,12 @@ class TestUnityStateDifferGenericObjectCoverage:
                                     "name": "my_table",
                                     "format": "delta",
                                     "columns": [
-                                        {"id": "col_1", "name": "id", "type": "INT", "nullable": False}
+                                        {
+                                            "id": "col_1",
+                                            "name": "id",
+                                            "type": "INT",
+                                            "nullable": False,
+                                        }
                                     ],
                                 }
                             ],
@@ -2046,12 +2069,12 @@ class TestUnityStateDifferGenericObjectCoverage:
 
         # Should include: add_schema, add_table, add_column, add_view
         op_types = [op.op.replace("unity.", "") for op in ops]
-        
+
         assert "add_schema" in op_types, "Missing schema creation"
         assert "add_table" in op_types, "Missing table creation"
         assert "add_column" in op_types, "Missing column creation"
         assert "add_view" in op_types, "Missing VIEW creation (exact regression scenario!)"
-        
+
         # Count assertions
         assert op_types.count("add_view") == 1, "Should include exactly 1 view"
         assert op_types.count("add_table") == 1, "Should include exactly 1 table"
@@ -2059,7 +2082,7 @@ class TestUnityStateDifferGenericObjectCoverage:
     def test_symmetry_all_object_types_can_be_dropped(self) -> None:
         """
         Generic test: ALL object types that can be added must also be droppable
-        
+
         This test validates that for every ADD operation supported, there's a
         corresponding DROP operation that works correctly.
         """
@@ -2093,7 +2116,7 @@ class TestUnityStateDifferGenericObjectCoverage:
                 }
             ]
         }
-        
+
         # Drop everything
         new_state = {"catalogs": []}
 
