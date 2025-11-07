@@ -123,22 +123,30 @@ class DeploymentTracker:
             result: Statement execution result
             execution_order: Order of execution (1-indexed)
         """
+        import json
+
         # Escape single quotes in strings
         op_id = op.id.replace("'", "''")
         op_type = op.op.replace("'", "''")
         op_target = op.target.replace("'", "''") if op.target else ""
+        
+        # Serialize payload as JSON for exact matching
+        payload_json = json.dumps(op.payload, sort_keys=True)
+        payload_escaped = payload_json.replace("'", "''")
+        
         sql_escaped = sql_stmt.replace("'", "''")
         error_msg = result.error_message.replace("'", "''") if result.error_message else ""
 
         sql = f"""
         INSERT INTO {self.schema}.deployment_ops
-        (deployment_id, op_id, op_type, op_target, sql_statement,
+        (deployment_id, op_id, op_type, op_target, op_payload, sql_statement,
          executed_at, execution_order, status, error_message)
         VALUES (
             '{deployment_id}',
             '{op_id}',
             '{op_type}',
             '{op_target}',
+            '{payload_escaped}',
             '{sql_escaped}',
             current_timestamp(),
             {execution_order},
@@ -365,6 +373,7 @@ class DeploymentTracker:
                 op_id,
                 op_type,
                 op_target,
+                op_payload,
                 status,
                 execution_order,
                 error_message
@@ -380,6 +389,8 @@ class DeploymentTracker:
             )
 
             # Parse operations with full details
+            import json
+
             ops_applied = []
             ops_details = []
             successful_ops = []
@@ -390,8 +401,15 @@ class DeploymentTracker:
                     op_id = row[0]
                     op_type = row[1]
                     op_target = row[2]
-                    op_status = row[3]
-                    execution_order = row[4]
+                    op_payload_json = row[3]  # JSON string
+                    op_status = row[4]
+                    execution_order = row[5]
+
+                    # Parse payload from JSON
+                    try:
+                        op_payload = json.loads(op_payload_json) if op_payload_json else {}
+                    except json.JSONDecodeError:
+                        op_payload = {}
 
                     ops_applied.append(op_id)
                     ops_details.append(
@@ -399,6 +417,7 @@ class DeploymentTracker:
                             "id": op_id,
                             "type": op_type,
                             "target": op_target,
+                            "payload": op_payload,  # Include parsed payload
                             "status": op_status,
                             "executionOrder": execution_order,
                         }
@@ -516,6 +535,7 @@ class DeploymentTracker:
             op_id STRING COMMENT 'Operation ID from changelog',
             op_type STRING COMMENT 'Operation type (e.g., unity.add_catalog)',
             op_target STRING COMMENT 'Target resource (catalog/schema/table ID)',
+            op_payload STRING COMMENT 'Operation payload as JSON for exact matching',
             sql_statement STRING COMMENT 'Generated SQL for this operation',
             executed_at TIMESTAMP COMMENT 'Execution timestamp',
             execution_order INT COMMENT 'Order of execution',

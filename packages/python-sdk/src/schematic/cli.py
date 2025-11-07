@@ -509,7 +509,7 @@ def rollback(
                 differ = provider.get_state_differ(from_state, to_state, from_ops, to_ops)
                 all_diff_ops = differ.generate_diff_operations()
 
-                # Match by operation type and target, not by position
+                # Match by operation type + target + payload (exact semantic match)
                 # Use opsDetails from database to find matching operations
                 ops_details = target_deployment.get("opsDetails", [])
                 successful_ops_details = [
@@ -518,15 +518,18 @@ def rollback(
                     if op_detail["id"] in successful_op_ids
                 ]
 
-                # Match regenerated operations to successful operations by type+target
+                # Match regenerated operations to successful operations by type+target+payload
                 successful_ops = []
                 for op_detail in successful_ops_details:
                     # Find matching operation in regenerated diff
+                    # Match by type, target, AND payload for 100% accuracy
                     matching_op = next(
                         (
                             op
                             for op in all_diff_ops
-                            if op.op == op_detail["type"] and op.target == op_detail["target"]
+                            if op.op == op_detail["type"]
+                            and op.target == op_detail["target"]
+                            and op.payload == op_detail["payload"]  # Exact payload match
                         ),
                         None,
                     )
@@ -539,7 +542,7 @@ def rollback(
                     )
                 else:
                     console.print(
-                        f"[dim]Matched {len(successful_ops)} operations by type+target[/dim]"
+                        f"[dim]Matched {len(successful_ops)} operations by type+target+payload[/dim]"
                     )
 
             if not successful_ops:
