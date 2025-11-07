@@ -103,6 +103,9 @@ class UnityStateDiffer(StateDiffer):
                 # Compare tables within schema
                 ops.extend(self._diff_tables(catalog_id, sch_id, old_sch, sch))
 
+                # Compare views within schema
+                ops.extend(self._diff_views(catalog_id, sch_id, old_sch, sch))
+
         # Detect removed schemas
         for sch_id, sch in old_schemas.items():
             if sch_id not in new_schemas:
@@ -165,6 +168,51 @@ class UnityStateDiffer(StateDiffer):
         for tbl_id, tbl in old_tables.items():
             if tbl_id not in new_tables:
                 ops.append(self._create_drop_table_op(tbl, catalog_id, schema_id))
+
+        return ops
+
+    def _diff_views(
+        self,
+        catalog_id: str,
+        schema_id: str,
+        old_schema: dict[str, Any],
+        new_schema: dict[str, Any],
+    ) -> list[Operation]:
+        """Compare views within a schema"""
+        ops: list[Operation] = []
+
+        old_views = self._build_id_map(old_schema.get("views", []))
+        new_views = self._build_id_map(new_schema.get("views", []))
+
+        # Detect added views
+        for view_id, view in new_views.items():
+            if view_id not in old_views:
+                ops.append(self._create_add_view_op(view, schema_id))
+            else:
+                # View exists in both - check for changes
+                old_view = old_views[view_id]
+
+                # Check for rename
+                if old_view["name"] != view["name"]:
+                    if self._detect_rename(
+                        view_id, view_id, old_view["name"], view["name"], "rename_view"
+                    ):
+                        ops.append(
+                            self._create_rename_view_op(view_id, old_view["name"], view["name"])
+                        )
+
+                # Check for definition change
+                if old_view.get("definition") != view.get("definition"):
+                    ops.append(self._create_update_view_op(view_id, view))
+
+                # Check for comment change
+                if old_view.get("comment") != view.get("comment"):
+                    ops.append(self._create_set_view_comment_op(view_id, view.get("comment")))
+
+        # Detect removed views
+        for view_id, view in old_views.items():
+            if view_id not in new_views:
+                ops.append(self._create_drop_view_op(view))
 
         return ops
 
@@ -511,6 +559,85 @@ class UnityStateDiffer(StateDiffer):
             provider="unity",
             op="unity.drop_table",
             target=table["id"],
+            payload=payload,
+        )
+
+    # View operation creators
+    def _create_add_view_op(self, view: dict[str, Any], schema_id: str) -> Operation:
+        payload = {
+            "viewId": view["id"],
+            "name": view["name"],
+            "schemaId": schema_id,
+            "definition": view.get("definition", ""),
+        }
+
+        # Include optional fields if present
+        if "comment" in view and view["comment"]:
+            payload["comment"] = view["comment"]
+        if "dependencies" in view:
+            payload["dependencies"] = view["dependencies"]
+        if "extractedDependencies" in view:
+            payload["extractedDependencies"] = view["extractedDependencies"]
+
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.add_view",
+            target=view["id"],
+            payload=payload,
+        )
+
+    def _create_rename_view_op(self, view_id: str, old_name: str, new_name: str) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.rename_view",
+            target=view_id,
+            payload={"oldName": old_name, "newName": new_name},
+        )
+
+    def _create_update_view_op(self, view_id: str, view: dict[str, Any]) -> Operation:
+        payload = {"definition": view.get("definition", "")}
+
+        # Include extracted dependencies if present
+        if "extractedDependencies" in view:
+            payload["extractedDependencies"] = view["extractedDependencies"]
+
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.update_view",
+            target=view_id,
+            payload=payload,
+        )
+
+    def _create_set_view_comment_op(self, view_id: str, comment: str | None) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.set_view_comment",
+            target=view_id,
+            payload={"viewId": view_id, "comment": comment},
+        )
+
+    def _create_drop_view_op(self, view: dict[str, Any]) -> Operation:
+        # Build payload with view metadata
+        payload: dict[str, Any] = {}
+
+        # Add view name (required for SQL generation)
+        if "name" in view:
+            payload["name"] = view["name"]
+
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.drop_view",
+            target=view["id"],
             payload=payload,
         )
 
