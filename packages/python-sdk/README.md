@@ -118,7 +118,7 @@ schematic sql --target prod --output prod-migration.sql
 
 ### `schematic apply` (Unity Catalog only)
 
-Execute SQL migrations against a Databricks Unity Catalog environment.
+Execute SQL migrations against a Databricks Unity Catalog environment with automatic deployment tracking and optional rollback.
 
 **Options:**
 - `--target, -t`: Target environment (required)
@@ -127,11 +127,21 @@ Execute SQL migrations against a Databricks Unity Catalog environment.
 - `--sql`: SQL file to execute (optional, generates from changelog if not provided)
 - `--dry-run`: Preview changes without executing
 - `--no-interaction`: Skip confirmation prompts (for CI/CD)
+- `--auto-rollback`: Automatically rollback on failure (NEW!)
+
+**Features:**
+- Interactive snapshot prompts (create snapshot before deployment)
+- SQL preview with statement-by-statement display
+- Database-backed deployment tracking in `{catalog}.schematic`
+- Automatic rollback on partial failures (with `--auto-rollback`)
 
 **Examples:**
 ```bash
 # Preview changes
 schematic apply --target dev --profile default --warehouse-id abc123 --dry-run
+
+# Apply with automatic rollback on failure
+schematic apply --target dev --profile default --warehouse-id abc123 --auto-rollback
 
 # Apply with confirmation
 schematic apply --target prod --profile prod --warehouse-id xyz789
@@ -139,6 +149,79 @@ schematic apply --target prod --profile prod --warehouse-id xyz789
 # Non-interactive (CI/CD)
 schematic apply --target prod --profile prod --warehouse-id xyz789 --no-interaction
 ```
+
+### `schematic rollback` (Unity Catalog only)
+
+Rollback failed or unwanted deployments with safety validation.
+
+**Partial Rollback** - Revert successful operations from a failed deployment:
+```bash
+schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
+
+# With dry-run
+schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id> --dry-run
+
+# Only safe operations
+schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id> --safe-only
+```
+
+**Complete Rollback** - Rollback to a previous snapshot:
+```bash
+schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
+
+# With dry-run
+schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id> --dry-run
+```
+
+**Options:**
+- `--partial`: Rollback successful operations from a failed deployment
+- `--deployment, -d`: Deployment ID to rollback (required for partial)
+- `--to-snapshot`: Snapshot version to rollback to (required for complete)
+- `--target, -t`: Target environment (required)
+- `--profile, -p`: Databricks CLI profile (required)
+- `--warehouse-id, -w`: SQL Warehouse ID (required)
+- `--dry-run`: Preview rollback SQL without executing
+- `--safe-only`: Only execute SAFE operations (skip RISKY/DESTRUCTIVE)
+
+**Safety Levels:**
+- **SAFE**: No data loss (e.g., DROP empty table)
+- **RISKY**: Potential data loss (e.g., ALTER COLUMN TYPE)
+- **DESTRUCTIVE**: Certain data loss (e.g., DROP table with data)
+
+### `schematic snapshot`
+
+Manage schema snapshots with lifecycle commands.
+
+**Create Snapshot:**
+```bash
+# Auto-generate version
+schematic snapshot create --name "Initial schema"
+
+# Specify version manually
+schematic snapshot create --name "Production release" --version v1.0.0
+
+# With tags
+schematic snapshot create --name "Hotfix" --version v0.2.1 --tags hotfix,urgent
+```
+
+**Validate Snapshots:**
+```bash
+# Detect stale snapshots after git rebase
+schematic snapshot validate
+```
+
+**Rebase Snapshot:**
+```bash
+# Rebase a stale snapshot onto new base
+schematic snapshot rebase v0.3.0
+```
+
+**Features:**
+- Semantic versioning (MAJOR.MINOR.PATCH)
+- Detects stale snapshots after Git rebases
+- Unpacks and replays operations on new base
+- Conflict detection with manual UI resolution
+- Validates snapshot lineage
 
 ### `schematic validate`
 
