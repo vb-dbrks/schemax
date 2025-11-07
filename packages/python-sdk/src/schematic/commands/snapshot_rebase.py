@@ -12,9 +12,17 @@ from pathlib import Path
 
 from rich.console import Console
 
-from schematic.providers.base.operations import Operation
-from schematic.core.storage import get_snapshot_file_path, read_changelog, read_project, read_snapshot, write_changelog, write_project, write_snapshot
+from schematic.core.storage import (
+    get_snapshot_file_path,
+    read_changelog,
+    read_project,
+    read_snapshot,
+    write_changelog,
+    write_project,
+    write_snapshot,
+)
 from schematic.core.version import get_versions_between
+from schematic.providers.base.operations import Operation
 
 console = Console()
 
@@ -88,12 +96,11 @@ def rebase_snapshot(
 
         # 3. Check if rebase is needed
         if old_base == new_base_version:
-            console.print(f"[yellow]No rebase needed - already based on {new_base_version}[/yellow]")
+            console.print(
+                f"[yellow]No rebase needed - already based on {new_base_version}[/yellow]"
+            )
             return RebaseResult(
-                success=True,
-                applied_count=0,
-                conflict_count=0,
-                message="No rebase needed"
+                success=True, applied_count=0, conflict_count=0, message="No rebase needed"
             )
 
         console.print(f"  Old base: [yellow]{old_base}[/yellow]")
@@ -218,7 +225,9 @@ def rebase_snapshot(
             console.print()
             console.print("[yellow]Resolution:[/yellow]")
             console.print("  1. Open Schematic Designer (UI will show conflict indicator)")
-            console.print(f"  2. Review the conflict in {conflicting_ops[0]['operation']['target']}")
+            console.print(
+                f"  2. Review the conflict in {conflicting_ops[0]['operation']['target']}"
+            )
             console.print("  3. Manually apply your changes in the UI")
             console.print(f"  4. Run: schematic snapshot create --version {snapshot_version}")
 
@@ -327,9 +336,7 @@ def _clear_changelog(workspace: Path, based_on: str) -> None:
     write_changelog(workspace, changelog)
 
 
-def _save_applied_ops_to_changelog(
-    workspace: Path, operations: list[dict], based_on: str
-) -> None:
+def _save_applied_ops_to_changelog(workspace: Path, operations: list[dict], based_on: str) -> None:
     """Save successfully applied operations to changelog (clean, no temp flags)
 
     This preserves work that succeeded before a conflict occurred.
@@ -349,9 +356,7 @@ def _save_applied_ops_to_changelog(
     write_changelog(workspace, changelog)
 
 
-def _save_to_temp_changelog(
-    workspace: Path, operations: list[dict], based_on: str
-) -> None:
+def _save_to_temp_changelog(workspace: Path, operations: list[dict], based_on: str) -> None:
     """Save operations to temporary changelog"""
     changelog = read_changelog(workspace)
 
@@ -444,4 +449,3 @@ def detect_stale_snapshots(workspace: Path, json_output: bool = False) -> list[d
             )
 
     return stale_snapshots
-

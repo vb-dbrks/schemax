@@ -5,14 +5,12 @@ Tests the apply command behavior including interactive and non-interactive modes
 """
 
 import json
-import sys
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
-from schematic.commands.apply import ApplyError, apply_to_environment
-from schematic.providers.base.executor import ExecutionResult
+from schematic.commands.apply import apply_to_environment
 
 
 class TestApplyCommand:
@@ -45,9 +43,7 @@ class TestApplyCommand:
             },
             "managedLocations": {},
             "externalLocations": {},
-            "snapshots": [
-                {"id": "snap1", "version": "v0.1.0", "ts": "2025-01-01T00:00:00Z"}
-            ],
+            "snapshots": [{"id": "snap1", "version": "v0.1.0", "ts": "2025-01-01T00:00:00Z"}],
             "deployments": [],
             "settings": {"versionPrefix": "v"},
             "latestSnapshot": "v0.1.0",
@@ -97,26 +93,24 @@ class TestApplyCommand:
 
         return temp_workspace
 
-    def test_noninteractive_mode_auto_creates_snapshot(
-        self, workspace_with_uncommitted_ops
-    ):
+    def test_noninteractive_mode_auto_creates_snapshot(self, workspace_with_uncommitted_ops):
         """
         Test that non-interactive mode auto-creates snapshot without prompting.
-        
+
         This is critical for CI/CD pipelines - the command must not hang
         waiting for user input when --no-interaction flag is used.
         """
         with patch("schematic.commands.apply.Prompt.ask") as mock_prompt:
             with patch("builtins.input") as mock_input:
                 with patch("schematic.commands.apply.load_current_state") as mock_load:
-                    with patch(
-                        "schematic.commands.apply.create_snapshot"
-                    ) as mock_snapshot:
+                    with patch("schematic.commands.apply.create_snapshot") as mock_snapshot:
                         with patch("schematic.providers.unity.auth.create_databricks_client"):
-                            with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
+                            with patch(
+                                "schematic.commands.apply.DeploymentTracker"
+                            ) as mock_tracker:
                                 # Mock database query to return None (first deployment)
                                 mock_tracker.return_value.get_latest_deployment.return_value = None
-                                
+
                                 # Setup mocks
                                 mock_prompt.side_effect = Exception(
                                     "ERROR: Prompt.ask should not be called in non-interactive mode!"
@@ -129,9 +123,7 @@ class TestApplyCommand:
                                 mock_provider = Mock()
                                 mock_provider.info.name = "Unity Catalog"
                                 mock_provider.info.version = "1.0.0"
-                                mock_provider.create_initial_state.return_value = {
-                                    "catalogs": []
-                                }
+                                mock_provider.create_initial_state.return_value = {"catalogs": []}
                                 mock_provider.get_state_differ.return_value = Mock(
                                     generate_diff_operations=Mock(return_value=[])
                                 )
@@ -176,17 +168,17 @@ class TestApplyCommand:
     def test_interactive_mode_prompts_for_snapshot(self, workspace_with_uncommitted_ops):
         """
         Test that interactive mode prompts user for snapshot action.
-        
+
         Users should have choice: create snapshot, continue without, or abort.
         """
         with patch("schematic.commands.apply.Prompt.ask") as mock_prompt:
             with patch("schematic.commands.apply.load_current_state") as mock_load:
-                with patch("schematic.commands.apply.create_snapshot") as mock_snapshot:
+                with patch("schematic.commands.apply.create_snapshot"):
                     with patch("schematic.providers.unity.auth.create_databricks_client"):
                         with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
                             # Mock database query
                             mock_tracker.return_value.get_latest_deployment.return_value = None
-                            
+
                             # User chooses to abort
                             mock_prompt.return_value = "abort"
 
@@ -211,7 +203,10 @@ class TestApplyCommand:
 
                             # Should prompt user
                             mock_prompt.assert_called_once()
-                            assert mock_prompt.call_args[0][0] == "[bold]What would you like to do?[/bold]"
+                            assert (
+                                mock_prompt.call_args[0][0]
+                                == "[bold]What would you like to do?[/bold]"
+                            )
                             assert mock_prompt.call_args[1]["choices"] == [
                                 "create",
                                 "continue",
@@ -231,7 +226,7 @@ class TestApplyCommand:
                         with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
                             # Mock database query
                             mock_tracker.return_value.get_latest_deployment.return_value = None
-                            
+
                             # User chooses to create snapshot
                             mock_prompt.return_value = "create"
 
@@ -268,21 +263,21 @@ class TestApplyCommand:
                             mock_snapshot.assert_called_once()
                             assert mock_snapshot.call_args[1]["version"] == "v0.2.0"
 
-    def test_sql_preview_noninteractive_skips_prompt(
-        self, workspace_with_uncommitted_ops
-    ):
+    def test_sql_preview_noninteractive_skips_prompt(self, workspace_with_uncommitted_ops):
         """
         Test that SQL preview in non-interactive mode doesn't prompt for full SQL.
-        
+
         This ensures CI/CD pipelines don't hang on SQL preview prompts.
         """
         # This test would require more complex mocking to get to SQL preview stage
         # For now, we verify the code patterns exist (already done in main implementation)
-        
+
         # Read the apply.py source to verify patterns
-        apply_file = Path(__file__).parent.parent.parent / "src" / "schematic" / "commands" / "apply.py"
+        apply_file = (
+            Path(__file__).parent.parent.parent / "src" / "schematic" / "commands" / "apply.py"
+        )
         content = apply_file.read_text()
-        
+
         # Verify non-interactive checks are present
         assert "if no_interaction:" in content, "Missing no_interaction check for snapshot"
         assert "if not no_interaction:" in content, "Missing no_interaction check for SQL preview"
@@ -313,9 +308,7 @@ class TestApplyCommand:
             },
             "managedLocations": {},
             "externalLocations": {},
-            "snapshots": [
-                {"id": "snap1", "version": "v0.1.0", "ts": "2025-01-01T00:00:00Z"}
-            ],
+            "snapshots": [{"id": "snap1", "version": "v0.1.0", "ts": "2025-01-01T00:00:00Z"}],
             "deployments": [],
             "settings": {},
             "latestSnapshot": "v0.1.0",
@@ -354,7 +347,7 @@ class TestApplyCommand:
                     with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
                         # Mock database query
                         mock_tracker.return_value.get_latest_deployment.return_value = None
-                        
+
                         # Mock load_current_state
                         mock_provider = Mock()
                         mock_provider.info.name = "Unity Catalog"
@@ -383,4 +376,3 @@ class TestApplyCommand:
                         # No prompts should have been called
                         mock_prompt.assert_not_called()
                         assert result.status == "success"
-

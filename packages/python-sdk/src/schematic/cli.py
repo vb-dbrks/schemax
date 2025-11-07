@@ -26,8 +26,8 @@ from .commands import (
 from .commands import (
     ValidationError as CommandValidationError,
 )
-from .providers import ProviderRegistry
 from .core.storage import ensure_project_file
+from .providers import ProviderRegistry
 
 console = Console()
 
@@ -495,7 +495,9 @@ def rollback(
                 console.print(f"[red]✗[/red] Deployment '{deployment}' not found in project.json")
                 console.print("\nAvailable deployments:")
                 for dep in deployments[-10:]:  # Show last 10
-                    console.print(f"  - {dep.get('id')} ({dep.get('environment')}, {dep.get('status')})")
+                    console.print(
+                        f"  - {dep.get('id')} ({dep.get('environment')}, {dep.get('status')})"
+                    )
                 sys.exit(1)
 
             # Check if it's a failed deployment
@@ -518,11 +520,14 @@ def rollback(
             successful_op_ids = ops_applied[:failed_idx]
 
             if not successful_op_ids:
-                console.print("[yellow]No operations to rollback (deployment had no successful operations)[/yellow]")
+                console.print(
+                    "[yellow]No operations to rollback (deployment had no successful operations)[/yellow]"
+                )
                 sys.exit(0)
 
             # Load operations - try changelog first, then regenerate from snapshots
             from schematic.providers.base.operations import Operation
+
             from .core.storage import read_changelog
 
             changelog = read_changelog(workspace_path)
@@ -536,14 +541,14 @@ def rollback(
                 console.print(
                     "[cyan]Operations not in changelog - regenerating from snapshots...[/cyan]"
                 )
-                from .core.storage import read_snapshot, load_current_state
+                from .core.storage import load_current_state, read_snapshot
 
                 from_version = target_deployment.get("fromVersion")
                 to_version = target_deployment.get("version")
 
                 # Load states
                 _, _, provider = load_current_state(workspace_path)
-                
+
                 if from_version:
                     from_snap = read_snapshot(workspace_path, from_version)
                     from_state = from_snap["state"]
@@ -552,7 +557,7 @@ def rollback(
                     # First deployment - diff from empty state
                     from_state = provider.create_initial_state()
                     from_ops = []
-                
+
                 to_snap = read_snapshot(workspace_path, to_version)
                 to_state = to_snap["state"]
                 to_ops = to_snap.get("operations", [])
@@ -566,14 +571,10 @@ def rollback(
                 num_successful = len(successful_op_ids)
                 successful_ops = all_diff_ops[:num_successful]
 
-                console.print(
-                    f"[dim]Matched {len(successful_ops)} operations by position[/dim]"
-                )
+                console.print(f"[dim]Matched {len(successful_ops)} operations by position[/dim]")
 
             if not successful_ops:
-                console.print(
-                    "[red]✗[/red] Could not find operation details"
-                )
+                console.print("[red]✗[/red] Could not find operation details")
                 console.print("This may indicate the deployment is too old or data is corrupted")
                 sys.exit(1)
 
@@ -713,7 +714,9 @@ def snapshot_rebase_cmd(snapshot_version: str, base: str | None, workspace: str)
             console.print()
             console.print("[red]✗ Rebase stopped due to conflicts[/red]")
             console.print(f"[yellow]Resolved {result.applied_count} operations[/yellow]")
-            console.print(f"[yellow]{result.conflict_count} operations need manual resolution[/yellow]")
+            console.print(
+                f"[yellow]{result.conflict_count} operations need manual resolution[/yellow]"
+            )
             sys.exit(1)
 
     except RebaseError as e:

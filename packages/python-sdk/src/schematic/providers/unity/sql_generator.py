@@ -10,6 +10,7 @@ from typing import Any, TypedDict
 from schematic.providers.base.batching import BatchInfo
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.sql_generator import BaseSQLGenerator, SQLGenerationResult
+
 from .models import UnityState
 from .operations import UNITY_OPERATIONS
 

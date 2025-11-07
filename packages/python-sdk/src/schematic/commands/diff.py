@@ -12,9 +12,9 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
+from schematic.core.storage import get_environment_config, read_project, read_snapshot
 from schematic.providers.base.operations import Operation
 from schematic.providers.registry import ProviderRegistry
-from schematic.core.storage import get_environment_config, read_project, read_snapshot
 
 console = Console()
 

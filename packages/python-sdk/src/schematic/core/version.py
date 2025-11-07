@@ -84,9 +84,7 @@ def parse_semantic_version(version_str: str) -> SemanticVersion:
     return SemanticVersion(major, minor, patch, prefix)
 
 
-def get_next_version(
-    current_version: str, bump_type: str = "minor", prefix: str = "v"
-) -> str:
+def get_next_version(current_version: str, bump_type: str = "minor", prefix: str = "v") -> str:
     """Get next semantic version
 
     Args:
@@ -118,9 +116,7 @@ def get_next_version(
     return str(next_version)
 
 
-def get_versions_between(
-    from_version: str, to_version: str, all_versions: list[str]
-) -> list[str]:
+def get_versions_between(from_version: str, to_version: str, all_versions: list[str]) -> list[str]:
     """Get all versions between two versions
 
     Args:
@@ -150,4 +146,3 @@ def get_versions_between(
 
     # Sort by semantic version
     return sorted(between, key=parse_semantic_version)
-

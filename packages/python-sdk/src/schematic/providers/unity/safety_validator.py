@@ -5,11 +5,12 @@ Validates rollback safety by querying Unity Catalog to determine data impact.
 Classifies operations as SAFE, RISKY, or DESTRUCTIVE based on actual data.
 """
 
-from typing import Any
+from typing import Any, cast
 
-from schematic.providers.base.executor import SQLExecutor
+from schematic.providers.base.executor import ExecutionConfig, SQLExecutor
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
+
 from .operations import UNITY_OPERATIONS
 
 
@@ -26,13 +27,15 @@ class SafetyValidator:
     RISKY_THRESHOLD = 1000  # Rows/values below this are RISKY
     SAFE_THRESHOLD = 1  # 0 rows/values = SAFE, >0 = at least RISKY
 
-    def __init__(self, executor: SQLExecutor) -> None:
+    def __init__(self, executor: SQLExecutor, config: ExecutionConfig) -> None:
         """Initialize safety validator
 
         Args:
             executor: SQL executor for querying Unity Catalog
+            config: Execution configuration with warehouse ID and settings
         """
         self.executor = executor
+        self.config = config
 
     def validate(
         self, op: Operation, catalog_mapping: dict[str, str] | None = None
@@ -328,9 +331,16 @@ class SafetyValidator:
         Returns:
             Count value
         """
-        result = self.executor.execute_query(sql)
-        if result and len(result) > 0 and "cnt" in result[0]:
-            return int(result[0]["cnt"])
+        result = self.executor.execute_statements([sql], self.config)
+        if (
+            result.statement_results
+            and len(result.statement_results) > 0
+            and result.statement_results[0].result_data
+            and len(result.statement_results[0].result_data) > 0
+            and "cnt" in result.statement_results[0].result_data[0]
+        ):
+            cnt_value = result.statement_results[0].result_data[0]["cnt"]
+            return int(cast(int, cnt_value)) if cnt_value is not None else 0
         return 0
 
     def _query(self, sql: str) -> list[dict[str, Any]]:
@@ -342,7 +352,10 @@ class SafetyValidator:
         Returns:
             Query results as list of dictionaries
         """
-        return self.executor.execute_query(sql)
+        result = self.executor.execute_statements([sql], self.config)
+        if result.statement_results and len(result.statement_results) > 0:
+            return result.statement_results[0].result_data or []
+        return []
 
     def _query_sample(self, from_clause: str, limit: int = 5) -> list[dict[str, Any]]:
         """Get sample rows from a table

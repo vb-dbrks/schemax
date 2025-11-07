@@ -10,7 +10,6 @@ Tests end-to-end workflows including:
 
 import pytest
 
-from schematic.providers.base.operations import Operation
 from schematic.core.storage import (
     append_ops,
     create_snapshot,
@@ -23,6 +22,7 @@ from schematic.core.storage import (
     read_snapshot,
     write_deployment,
 )
+from schematic.providers.base.operations import Operation
 from tests.utils import OperationBuilder
 
 

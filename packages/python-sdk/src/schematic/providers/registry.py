@@ -30,7 +30,10 @@ class ProviderRegistryClass:
         self.providers[provider.info.id] = provider
         import sys
 
-        print(f"[Schematic] Registered provider: {provider.info.name} ({provider.info.id})", file=sys.stderr)
+        print(
+            f"[Schematic] Registered provider: {provider.info.name} ({provider.info.id})",
+            file=sys.stderr,
+        )
 
     def get(self, provider_id: str) -> Provider | None:
         """

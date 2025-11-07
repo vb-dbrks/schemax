@@ -18,12 +18,18 @@ from rich.console import Console
 from rich.prompt import Confirm
 
 from schematic.core.deployment import DeploymentTracker
+from schematic.core.storage import (
+    get_environment_config,
+    load_current_state,
+    read_project,
+    write_deployment,
+)
 from schematic.providers.base.executor import ExecutionConfig, SQLExecutor
 from schematic.providers.base.operations import Operation
-from schematic.providers.base.reverse_generator import SafetyLevel
+from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
 from schematic.providers.unity.executor import UnitySQLExecutor
 from schematic.providers.unity.safety_validator import SafetyValidator
-from schematic.core.storage import get_environment_config, load_current_state, read_project, write_deployment
+
 from .apply import parse_sql_statements
 
 console = Console()
@@ -95,7 +101,7 @@ def rollback_partial(
 
     # 1. Determine pre-deployment version
     from schematic.core.storage import read_snapshot
-    
+
     # If from_version not provided, look it up from deployment record
     if from_version is None:
         deployment = None
@@ -103,15 +109,15 @@ def rollback_partial(
             if dep.get("id") == deployment_id:
                 deployment = dep
                 break
-        
+
         if not deployment:
             raise RollbackError(f"Deployment '{deployment_id}' not found in project.json")
-        
+
         from_version = deployment.get("fromVersion")
 
     # 2. Load pre-deployment state (from the fromVersion snapshot, not current workspace state!)
     _, _, provider = load_current_state(workspace)
-    
+
     if from_version:
         from_snap = read_snapshot(workspace, from_version)
         pre_deployment_state = from_snap["state"]
@@ -145,7 +151,14 @@ def rollback_partial(
         return RollbackResult(success=True, operations_rolled_back=0)
 
     # 5. Validate safety of rollback operations
-    safety_validator = SafetyValidator(executor)
+    validation_config = ExecutionConfig(
+        target_env=target_env,
+        profile=profile,
+        warehouse_id=warehouse_id,
+        dry_run=False,
+        no_interaction=False,
+    )
+    safety_validator = SafetyValidator(executor, validation_config)
 
     console.print("   Analyzing safety...", end=" ")
 
@@ -243,7 +256,9 @@ def rollback_partial(
         tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
 
         # Ensure tracking schema exists
-        tracker.ensure_tracking_schema(auto_create=env_config.get("autoCreateSchematicSchema", True))
+        tracker.ensure_tracking_schema(
+            auto_create=env_config.get("autoCreateSchematicSchema", True)
+        )
 
         # Generate unique rollback deployment ID
         rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
@@ -413,7 +428,14 @@ def rollback_complete(
         client = create_databricks_client(profile)
         executor = UnitySQLExecutor(client)
 
-        safety_validator = SafetyValidator(executor)
+        validation_config = ExecutionConfig(
+            target_env=target_env,
+            profile=profile,
+            warehouse_id=warehouse_id,
+            dry_run=False,
+            no_interaction=False,
+        )
+        safety_validator = SafetyValidator(executor, validation_config)
 
         safe_ops = []
         risky_ops = []
@@ -431,7 +453,13 @@ def rollback_complete(
                     destructive_ops.append((rollback_op, safety))
             except Exception as e:
                 console.print(f"  [yellow]⚠️  Could not validate {rollback_op.op}: {e}[/yellow]")
-                risky_ops.append((rollback_op, None))
+                # Create a default RISKY safety report for validation failures
+                default_safety = SafetyReport(
+                    level=SafetyLevel.RISKY,
+                    reason=f"Validation failed: {e}",
+                    data_at_risk=0,
+                )
+                risky_ops.append((rollback_op, default_safety))
 
         console.print(f"  [green]SAFE:[/green] {len(safe_ops)} operations")
         console.print(f"  [yellow]RISKY:[/yellow] {len(risky_ops)} operations")
@@ -493,9 +521,7 @@ def rollback_complete(
                     console.print(f"  ... and {len(destructive_ops) - 3} more")
                 console.print()
 
-            if not Confirm.ask(
-                f"Execute complete rollback to {to_snapshot}?", default=False
-            ):
+            if not Confirm.ask(f"Execute complete rollback to {to_snapshot}?", default=False):
                 console.print("[yellow]Rollback cancelled[/yellow]")
                 return RollbackResult(
                     success=False, operations_rolled_back=0, error_message="Cancelled by user"
@@ -519,7 +545,9 @@ def rollback_complete(
         console.print("[cyan]Recording rollback...[/cyan]")
 
         tracker = DeploymentTracker(executor.client, deployment_catalog, warehouse_id)
-        tracker.ensure_tracking_schema(auto_create=env_config.get("autoCreateSchematicSchema", True))
+        tracker.ensure_tracking_schema(
+            auto_create=env_config.get("autoCreateSchematicSchema", True)
+        )
 
         rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
 

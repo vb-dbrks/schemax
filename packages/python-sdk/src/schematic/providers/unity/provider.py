@@ -13,6 +13,7 @@ from schematic.providers.base.operations import Operation
 from schematic.providers.base.provider import BaseProvider, ProviderCapabilities, ProviderInfo
 from schematic.providers.base.sql_generator import SQLGenerator
 from schematic.providers.base.state_differ import StateDiffer
+
 from .auth import check_profile_exists, create_databricks_client
 from .executor import UnitySQLExecutor
 from .hierarchy import unity_hierarchy

@@ -9,8 +9,13 @@ from pathlib import Path
 from rich.console import Console
 from rich.syntax import Syntax
 
+from schematic.core.storage import (
+    get_environment_config,
+    load_current_state,
+    read_project,
+    read_snapshot,
+)
 from schematic.providers.base.operations import Operation
-from schematic.core.storage import get_environment_config, load_current_state, read_project, read_snapshot
 
 console = Console()
 

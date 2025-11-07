@@ -2,15 +2,10 @@
 Tests for snapshot rebase functionality
 """
 
-from pathlib import Path
-
 import pytest
 
 from schematic.commands.snapshot_rebase import (
-    ConflictError,
-    RebaseError,
     detect_stale_snapshots,
-    rebase_snapshot,
 )
 from schematic.core.version import (
     SemanticVersion,
@@ -176,4 +171,3 @@ class TestSnapshotRebase:
 # Note: Full integration tests for rebase_snapshot() would require
 # setting up complete project structure with snapshots, provider registry, etc.
 # These would be better as integration tests.
-

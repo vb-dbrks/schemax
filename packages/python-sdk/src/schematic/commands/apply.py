@@ -16,9 +16,18 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
 from schematic.core.deployment import DeploymentTracker
+from schematic.core.storage import (
+    create_snapshot,
+    get_environment_config,
+    get_last_deployment,
+    load_current_state,
+    read_changelog,
+    read_project,
+    read_snapshot,
+    write_deployment,
+)
 from schematic.providers.base.executor import ExecutionConfig, ExecutionResult
 from schematic.providers.unity.executor import UnitySQLExecutor
-from schematic.core.storage import create_snapshot, get_environment_config, get_last_deployment, load_current_state, read_changelog, read_project, read_snapshot, write_deployment
 
 console = Console()
 
@@ -343,14 +352,14 @@ def apply_to_environment(
                     console.print()
                     console.print("Fix the issue and redeploy.")
 
-                    # Update result status to indicate rollback
-                    result.status = "failed_rolled_back"
-                else:
-                    console.print()
-                    console.print("[red]❌ Auto-rollback failed[/red]")
-                    if rollback_result.error_message:
-                        console.print(f"   {rollback_result.error_message}")
-                    console.print("   Manual rollback may be required")
+                    # Auto-rollback succeeded, exit with failure (no further tracking needed)
+                    sys.exit(1)
+
+                console.print()
+                console.print("[red]❌ Auto-rollback failed[/red]")
+                if rollback_result.error_message:
+                    console.print(f"   {rollback_result.error_message}")
+                console.print("   Manual rollback may be required")
 
             except RollbackError as e:
                 console.print()
@@ -364,11 +373,6 @@ def apply_to_environment(
                 console.print()
                 console.print(f"[red]❌ Auto-rollback failed unexpectedly: {e}[/red]")
                 console.print("[yellow]Manual rollback may be required[/yellow]")
-
-            # Don't continue with deployment tracking if auto-rollback succeeded
-            # Just exit with failure
-            if result.status == "failed_rolled_back":
-                sys.exit(1)
 
         # 18. Initialize deployment tracker AFTER catalog exists
         deployment_catalog = env_config["topLevelName"]

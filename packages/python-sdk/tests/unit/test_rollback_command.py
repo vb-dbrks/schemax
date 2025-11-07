@@ -3,13 +3,13 @@ Tests for rollback command implementation
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
 from schematic.commands.apply import parse_sql_statements
-from schematic.commands.rollback import RollbackError, RollbackResult, rollback_partial
-from schematic.providers.base.executor import ExecutionConfig, ExecutionResult
+from schematic.commands.rollback import RollbackError, rollback_partial
+from schematic.providers.base.executor import ExecutionResult
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
 

@@ -188,6 +188,24 @@ class UnitySQLExecutor:
                 if state == StatementState.SUCCEEDED:
                     exec_time_ms = int((time.time() - exec_start) * 1000)
 
+                    # Extract result data if available (for SELECT queries)
+                    result_data = None
+                    if (
+                        status_response.result
+                        and status_response.result.data_array
+                        and status_response.manifest
+                        and status_response.manifest.schema
+                        and status_response.manifest.schema.columns
+                    ):
+                        columns = [col.name for col in status_response.manifest.schema.columns]
+                        result_data = []
+                        for row in status_response.result.data_array:
+                            row_dict = {}
+                            for i, value in enumerate(row):
+                                if i < len(columns):
+                                    row_dict[columns[i]] = value
+                            result_data.append(row_dict)
+
                     return StatementResult(
                         statement_id=statement_id or "",
                         sql=sql,
@@ -195,6 +213,7 @@ class UnitySQLExecutor:
                         execution_time_ms=exec_time_ms,
                         rows_affected=None,  # Could extract from result if needed
                         error_message=None,
+                        result_data=result_data,
                     )
 
                 elif state == StatementState.FAILED:
