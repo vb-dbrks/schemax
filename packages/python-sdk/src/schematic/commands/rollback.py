@@ -264,15 +264,24 @@ def rollback_partial(
         # Generate unique rollback deployment ID
         rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
 
+        # Determine the snapshot version after rollback
+        # For partial rollback, we revert to the deployment's fromVersion
+        reverted_to_version = target_deployment.get("fromVersion")
+        if not reverted_to_version:
+            # Edge case: deployment has no fromVersion (created before tracking was added)
+            # Fall back to marking as rollback
+            reverted_to_version = f"rollback_of_{deployment_id}"
+
         # Start rollback deployment tracking
         tracker.start_deployment(
             deployment_id=rollback_deployment_id,
             environment=target_env,
-            snapshot_version=f"rollback_of_{deployment_id}",
+            snapshot_version=reverted_to_version,  # State after rollback
             project_name=project_name,
             provider_type=provider.info.id,
             provider_version=provider.info.version,
             schematic_version="0.2.0",
+            from_snapshot_version=target_deployment.get("version"),  # Failed deployment version
         )
 
         # Track individual rollback operations
@@ -531,16 +540,21 @@ def rollback_complete(
             auto_create=env_config.get("autoCreateSchematicSchema", True)
         )
 
+        # Get current deployed version from database for accurate tracking
+        current_deployment = tracker.get_latest_deployment(target_env)
+        current_deployed_version = current_deployment.get("version") if current_deployment else None
+
         rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
 
         tracker.start_deployment(
             deployment_id=rollback_deployment_id,
             environment=target_env,
-            snapshot_version=to_snapshot,
+            snapshot_version=to_snapshot,  # State after rollback
             project_name=project_name,
             provider_type=provider.info.id,
             provider_version=provider.info.version,
             schematic_version="0.2.0",
+            from_snapshot_version=current_deployed_version,  # State before rollback
         )
 
         # Track individual operations
