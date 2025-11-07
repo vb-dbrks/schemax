@@ -1396,16 +1396,20 @@ class UnitySQLGenerator(BaseSQLGenerator):
         statements = [create_sql]
 
         # Process other column operations (like column tags) after table creation
+        # Add operation metadata for correct tracking
         for op in other_column_ops:
             op_type = op.op.replace("unity.", "")
             try:
                 sql = self._generate_sql_for_op_type(op_type, op)
                 if sql and not sql.startswith("--"):
-                    statements.append(sql)
+                    # Add operation metadata header for tracking
+                    header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
+                    statements.append(f"{header}\n{sql}")
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {op.id}: {e}")
 
         # Process other operations (like table tags)
+        # Add operation metadata for correct tracking
         for op in other_ops:
             op_type = op.op.replace("unity.", "")
             # Skip set_table_comment as it's already in CREATE TABLE
@@ -1414,7 +1418,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
             try:
                 sql = self._generate_sql_for_op_type(op_type, op)
                 if sql and not sql.startswith("--"):
-                    statements.append(sql)
+                    # Add operation metadata header for tracking
+                    header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
+                    statements.append(f"{header}\n{sql}")
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {op.id}: {e}")
 
