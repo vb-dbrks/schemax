@@ -70,6 +70,7 @@ class DeploymentTracker:
         provider_type: str,
         provider_version: str,
         schematic_version: str = "0.2.0",
+        from_snapshot_version: str | None = None,
     ) -> None:
         """Record deployment start (status: pending)
 
@@ -81,15 +82,19 @@ class DeploymentTracker:
             provider_type: Provider type (unity/hms)
             provider_version: Provider version
             schematic_version: Schematic CLI version
+            from_snapshot_version: Previous snapshot version (for diff tracking)
         """
+        from_version_sql = f"'{from_snapshot_version}'" if from_snapshot_version else "NULL"
+        
         sql = f"""
         INSERT INTO {self.schema}.deployments
-        (id, environment, snapshot_version, deployed_at, deployed_by,
+        (id, environment, snapshot_version, from_snapshot_version, deployed_at, deployed_by,
          project_name, provider_type, provider_version, status, schematic_version)
         VALUES (
             '{deployment_id}',
             '{environment}',
             '{snapshot_version}',
+            {from_version_sql},
             current_timestamp(),
             current_user(),
             '{project_name}',
@@ -291,6 +296,7 @@ class DeploymentTracker:
             id, 
             environment, 
             snapshot_version,
+            from_snapshot_version,
             deployed_at,
             deployed_by,
             status,
@@ -341,12 +347,13 @@ class DeploymentTracker:
                         "id": row[0],
                         "environment": row[1],
                         "version": row[2],
-                        "deployedAt": row[3],
-                        "deployedBy": row[4],
-                        "status": row[5],
-                        "statementCount": row[6],
-                        "errorMessage": row[7],
-                        "executionTimeMs": row[8],
+                        "fromVersion": row[3],  # Can be NULL
+                        "deployedAt": row[4],
+                        "deployedBy": row[5],
+                        "status": row[6],
+                        "statementCount": row[7],
+                        "errorMessage": row[8],
+                        "executionTimeMs": row[9],
                     }
 
             if not deployment:
@@ -466,6 +473,7 @@ class DeploymentTracker:
             id STRING COMMENT 'Unique deployment ID',
             environment STRING COMMENT 'Target environment (dev/test/prod)',
             snapshot_version STRING COMMENT 'Snapshot version deployed (e.g., v1.0.0 or changelog)',
+            from_snapshot_version STRING COMMENT 'Previous snapshot version (source of diff)',
             snapshot_id STRING COMMENT 'Snapshot UUID',
             deployed_at TIMESTAMP COMMENT 'Deployment timestamp',
             deployed_by STRING COMMENT 'User/system that deployed',

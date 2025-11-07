@@ -396,6 +396,7 @@ def apply_to_environment(
             provider_type=provider.info.id,
             provider_version=provider.info.version,
             schematic_version="0.2.0",
+            from_snapshot_version=deployed_version,  # Track source version for rollback
         )
 
         # 20. Track individual operations from diff
