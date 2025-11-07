@@ -518,14 +518,6 @@ def rollback(
                     if op_detail["id"] in successful_op_ids
                 ]
 
-                # DEBUG: Show what we're trying to match
-                console.print(f"[dim]Successful op IDs from database: {successful_op_ids}[/dim]")
-                console.print(f"[dim]Ops details to match: {len(successful_ops_details)}[/dim]")
-                for op_detail in successful_ops_details:
-                    console.print(
-                        f"[dim]  - {op_detail['type']} on {op_detail['target'][:20]}...[/dim]"
-                    )
-
                 # Match regenerated operations to successful operations by type+target+payload
                 successful_ops = []
                 for op_detail in successful_ops_details:
@@ -543,13 +535,6 @@ def rollback(
                     )
                     if matching_op:
                         successful_ops.append(matching_op)
-                        console.print(
-                            f"[dim]  ✓ Matched: {matching_op.op} on {matching_op.target[:20]}...[/dim]"
-                        )
-                    else:
-                        console.print(
-                            f"[yellow]  ✗ No match for: {op_detail['type']} on {op_detail['target']}[/yellow]"
-                        )
 
                 if len(successful_ops) != len(successful_ops_details):
                     console.print(
