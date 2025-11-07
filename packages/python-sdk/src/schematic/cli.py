@@ -509,12 +509,38 @@ def rollback(
                 differ = provider.get_state_differ(from_state, to_state, from_ops, to_ops)
                 all_diff_ops = differ.generate_diff_operations()
 
-                # Match by position, not ID (diff operations get new IDs each time)
-                # The deployment's failedStatementIndex tells us how many succeeded
-                num_successful = len(successful_op_ids)
-                successful_ops = all_diff_ops[:num_successful]
+                # Match by operation type and target, not by position
+                # Use opsDetails from database to find matching operations
+                ops_details = target_deployment.get("opsDetails", [])
+                successful_ops_details = [
+                    op_detail
+                    for op_detail in ops_details
+                    if op_detail["id"] in successful_op_ids
+                ]
 
-                console.print(f"[dim]Matched {len(successful_ops)} operations by position[/dim]")
+                # Match regenerated operations to successful operations by type+target
+                successful_ops = []
+                for op_detail in successful_ops_details:
+                    # Find matching operation in regenerated diff
+                    matching_op = next(
+                        (
+                            op
+                            for op in all_diff_ops
+                            if op.op == op_detail["type"] and op.target == op_detail["target"]
+                        ),
+                        None,
+                    )
+                    if matching_op:
+                        successful_ops.append(matching_op)
+
+                if len(successful_ops) != len(successful_ops_details):
+                    console.print(
+                        f"[yellow]⚠️  Warning: Matched {len(successful_ops)}/{len(successful_ops_details)} operations[/yellow]"
+                    )
+                else:
+                    console.print(
+                        f"[dim]Matched {len(successful_ops)} operations by type+target[/dim]"
+                    )
 
             if not successful_ops:
                 console.print("[red]✗[/red] Could not find operation details")

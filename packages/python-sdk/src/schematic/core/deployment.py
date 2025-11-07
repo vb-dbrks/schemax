@@ -379,17 +379,30 @@ class DeploymentTracker:
                 wait_timeout="10s",
             )
 
-            # Parse operations
+            # Parse operations with full details
             ops_applied = []
+            ops_details = []
             successful_ops = []
             failed_statement_index = None
 
             if ops_response.result and ops_response.result.data_array:
                 for i, row in enumerate(ops_response.result.data_array):
                     op_id = row[0]
+                    op_type = row[1]
+                    op_target = row[2]
                     op_status = row[3]
+                    execution_order = row[4]
 
                     ops_applied.append(op_id)
+                    ops_details.append(
+                        {
+                            "id": op_id,
+                            "type": op_type,
+                            "target": op_target,
+                            "status": op_status,
+                            "executionOrder": execution_order,
+                        }
+                    )
 
                     if op_status == "success":
                         successful_ops.append(op_id)
@@ -398,6 +411,7 @@ class DeploymentTracker:
 
             # Add operation details to deployment record
             deployment["opsApplied"] = ops_applied
+            deployment["opsDetails"] = ops_details  # Full operation details for matching
             deployment["successfulStatements"] = len(successful_ops)
             deployment["failedStatementIndex"] = failed_statement_index
 
