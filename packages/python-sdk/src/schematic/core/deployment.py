@@ -85,7 +85,7 @@ class DeploymentTracker:
             from_snapshot_version: Previous snapshot version (for diff tracking)
         """
         from_version_sql = f"'{from_snapshot_version}'" if from_snapshot_version else "NULL"
-        
+
         sql = f"""
         INSERT INTO {self.schema}.deployments
         (id, environment, snapshot_version, from_snapshot_version, deployed_at, deployed_by,
@@ -129,11 +129,11 @@ class DeploymentTracker:
         op_id = op.id.replace("'", "''")
         op_type = op.op.replace("'", "''")
         op_target = op.target.replace("'", "''") if op.target else ""
-        
+
         # Serialize payload as JSON for exact matching
         payload_json = json.dumps(op.payload, sort_keys=True)
         payload_escaped = payload_json.replace("'", "''")
-        
+
         sql_escaped = sql_stmt.replace("'", "''")
         error_msg = result.error_message.replace("'", "''") if result.error_message else ""
 
@@ -300,9 +300,9 @@ class DeploymentTracker:
 
         # Query deployments table for basic info
         sql = f"""
-        SELECT 
-            id, 
-            environment, 
+        SELECT
+            id,
+            environment,
             snapshot_version,
             from_snapshot_version,
             deployed_at,
@@ -347,7 +347,7 @@ class DeploymentTracker:
                 raise Exception(f"Database query failed: {error_msg}")
 
             # Parse deployment record
-            deployment = None
+            deployment: dict[str, Any] | None = None
             if response.result and response.result.data_array:
                 if len(response.result.data_array) > 0:
                     row = response.result.data_array[0]
@@ -369,7 +369,7 @@ class DeploymentTracker:
 
             # Query deployment_ops to get operation details
             ops_sql = f"""
-            SELECT 
+            SELECT
                 op_id,
                 op_type,
                 op_target,

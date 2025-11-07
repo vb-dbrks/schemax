@@ -436,7 +436,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def generate_sql(self, ops: list[Operation]) -> str:
         """
         Generate SQL statements with comprehensive batch optimizations.
-        
+
         Returns just the SQL string for backward compatibility.
         Use generate_sql_with_mapping() for structured results with operation tracking.
 
@@ -454,13 +454,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def generate_sql_with_mapping(self, ops: list[Operation]) -> "SQLGenerationResult":
         """
         Generate SQL with explicit operation-to-statement mapping.
-        
+
         Returns SQLGenerationResult with:
         - sql: Combined SQL script
         - statements: List of StatementInfo (sql + operation_ids + execution_order)
         """
         from ..base.sql_generator import SQLGenerationResult, StatementInfo
-        
+
         # Sort operations by:
         # 1. Dependency level (catalog → schema → table) for correct order
         # 2. Timestamp (chronological) to preserve order of operations within same object
@@ -474,7 +474,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             filtered_ops, self._get_target_object_id, self._is_create_operation
         )
         processed_op_ids = set()
-        
+
         # Track statements with their operations
         statement_infos: list[StatementInfo] = []
         execution_order = 0
@@ -560,10 +560,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             combined_sql += ";"
 
         return SQLGenerationResult(
-            sql=combined_sql,
-            statements=statement_infos,
-            warnings=[],
-            is_idempotent=True
+            sql=combined_sql, statements=statement_infos, warnings=[], is_idempotent=True
         )
 
     def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
@@ -903,11 +900,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             f"USING {table_format}{comment_clause}{partition_clause}"
             f"{cluster_clause}{location_clause}"
         )
-        return (
-            f"{warnings}"
-            f"CREATE {external_keyword}TABLE IF NOT EXISTS {fqn_esc} () "
-            f"{using_clause}"
-        )
+        return f"{warnings}CREATE {external_keyword}TABLE IF NOT EXISTS {fqn_esc} () {using_clause}"
 
     def _rename_table(self, op: Operation) -> str:
         old_name = op.payload["oldName"]
@@ -1235,31 +1228,31 @@ class UnitySQLGenerator(BaseSQLGenerator):
         self, table_id: str, batch_info: BatchInfo
     ) -> list[tuple[str, list[str]]]:
         """Generate SQL for table operations with explicit operation mapping.
-        
+
         Returns list of (sql, operation_ids) tuples since table operations
         can produce multiple statements (CREATE TABLE + ALTER statements).
         """
         # Reuse existing logic but track which operations produce which statements
         sql = self._generate_optimized_table_sql(table_id, batch_info)
-        
+
         # Parse the combined SQL into individual statements
         # and map them to operations
         statements = []
-        
+
         # Split by semicolon to get individual statements
         raw_stmts = sql.split(";")
-        
+
         for stmt in raw_stmts:
             stmt = stmt.strip()
             if not stmt or stmt.startswith("--"):
                 continue
-                
+
             # For now, attribute all statements in this batch to all operations in the batch
             # This is conservative but correct - all operations contributed to this batch
             statements.append((stmt, batch_info.op_ids))
-        
+
         return statements
-    
+
     def _generate_optimized_table_sql(
         self, table_id: str, batch_info: dict[str, Any] | BatchInfo
     ) -> str:

@@ -345,5 +345,3 @@ class TestSnapshotCreation:
 
         # Verify hash includes operations (hash should be different if we change ops)
         assert len(saved_snapshot["hash"]) == 64  # SHA-256 hex string
-
-

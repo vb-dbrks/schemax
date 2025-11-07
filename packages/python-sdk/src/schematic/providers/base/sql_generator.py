@@ -51,6 +51,28 @@ class SQLGenerator(ABC):
         """
         pass
 
+    def generate_sql_with_mapping(self, ops: list[Operation]) -> SQLGenerationResult:
+        """
+        Generate SQL with explicit operation-to-statement mapping
+
+        Default implementation: calls generate_sql() and returns simple result.
+        Providers should override for robust operation tracking.
+
+        Args:
+            ops: List of operations to convert to SQL
+
+        Returns:
+            SQLGenerationResult with sql and statements mapping
+        """
+        sql = self.generate_sql(ops)
+        # Default: treat entire SQL as one statement with all operations
+        statements = []
+        if sql and sql.strip():
+            statements = [
+                StatementInfo(sql=sql, operation_ids=[op.id for op in ops], execution_order=1)
+            ]
+        return SQLGenerationResult(sql=sql, statements=statements)
+
     @abstractmethod
     def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
         """

@@ -28,7 +28,6 @@ from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
 from schematic.providers.unity.executor import UnitySQLExecutor
 from schematic.providers.unity.safety_validator import SafetyValidator
 
-
 console = Console()
 
 
@@ -285,7 +284,7 @@ def rollback_partial(
         target_deployment = tracker.get_deployment_by_id(deployment_id)
         if not target_deployment:
             raise RollbackError(f"Deployment '{deployment_id}' not found")
-        
+
         reverted_to_version = target_deployment.get("fromVersion")
         if not reverted_to_version:
             # Edge case: deployment has no fromVersion (created before tracking was added)

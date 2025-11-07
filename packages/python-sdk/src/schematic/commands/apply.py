@@ -239,7 +239,7 @@ def apply_to_environment(
 
         catalog_mapping = _build_catalog_mapping(latest_state, env_config)
         generator = provider.get_sql_generator(latest_state, catalog_mapping)
-        
+
         # Generate SQL with structured mapping (no comment parsing needed!)
         sql_result = generator.generate_sql_with_mapping(diff_operations)
 
@@ -344,13 +344,13 @@ def apply_to_environment(
 
         # Track individual operations using explicit mapping
         # No comment parsing needed - we have structured data!
-        
+
         op_id_to_op = {op.id: op for op in diff_operations}
 
         for i, stmt_result in enumerate(result.statement_results):
             # Find the corresponding statement info from sql_result
             stmt_info = sql_result.statements[i] if i < len(sql_result.statements) else None
-            
+
             if stmt_info:
                 # Record each operation that contributed to this statement
                 for op_id in stmt_info.operation_ids:
@@ -369,9 +369,7 @@ def apply_to_environment(
                         )
             else:
                 # This shouldn't happen - mismatch between generated and executed statements
-                console.print(
-                    f"[yellow]⚠️  Warning: Statement {i+1} has no mapping info[/yellow]"
-                )
+                console.print(f"[yellow]⚠️  Warning: Statement {i + 1} has no mapping info[/yellow]")
 
         # Complete deployment tracking
         tracker.complete_deployment(deployment_id, result, result.error_message)
@@ -471,8 +469,6 @@ def apply_to_environment(
     except Exception as e:
         console.print(f"\n[red]✗ Apply failed: {e}[/red]")
         raise ApplyError(str(e)) from e
-
-
 
 
 def _create_empty_result(environment: str, version: str) -> ExecutionResult:

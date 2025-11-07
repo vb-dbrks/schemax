@@ -423,9 +423,7 @@ def rollback(
                 console.print(
                     f"[red]✗[/red] Deployment '{deployment}' not found in {deployment_catalog}.schematic"
                 )
-                console.print(
-                    "\n[yellow]Troubleshooting steps:[/yellow]"
-                )
+                console.print("\n[yellow]Troubleshooting steps:[/yellow]")
                 console.print(
                     f"  1. Verify catalog exists:\n"
                     f"     [dim]SELECT * FROM {deployment_catalog}.information_schema.schemata[/dim]\n"
@@ -513,9 +511,7 @@ def rollback(
                 # Use opsDetails from database to find matching operations
                 ops_details = target_deployment.get("opsDetails", [])
                 successful_ops_details = [
-                    op_detail
-                    for op_detail in ops_details
-                    if op_detail["id"] in successful_op_ids
+                    op_detail for op_detail in ops_details if op_detail["id"] in successful_op_ids
                 ]
 
                 # Match regenerated operations to successful operations by type+target+payload
