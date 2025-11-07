@@ -629,3 +629,106 @@ class TestViewSQLBatching:
         assert "WHERE active = true" in final_sql or (
             "WHERE" in final_sql and "active" in final_sql
         ), "Should include final WHERE clause"
+
+
+class TestViewFQNQualification:
+    """Test that view SQL is properly qualified with backticks for Databricks"""
+
+    def test_unqualified_table_refs_are_qualified_with_backticks(self):
+        """
+        REGRESSION TEST: View SQL must have FQNs with backticks
+
+        This test validates the exact issue reported where views failed with:
+        [TABLE_OR_VIEW_NOT_FOUND] The table or view `table4` cannot be found
+
+        The problem was unqualified table names in view SQL.
+        The fix qualifies them with full catalog.schema.table and backticks.
+        """
+        from schematic.providers.unity.sql_generator import UnitySQLGenerator
+
+        state = UnityState(catalogs=[])
+        builder = OperationBuilder()
+
+        # Create operations with unqualified SQL
+        ops = [
+            builder.add_catalog("cat1", "sales_analytics", op_id="op1"),
+            builder.add_schema("schema1", "customer_analytics", "cat1", op_id="op2"),
+            builder.add_table("table1", "table4", "schema1", "delta", op_id="op3"),
+            builder.add_view(
+                "view1",
+                "test4",
+                "schema1",
+                "SELECT * FROM table4",  # ← Unqualified table name!
+                dependencies=["table4"],
+                op_id="op4",
+            ),
+        ]
+
+        # Apply to get state
+        state = apply_operations(state, ops)
+
+        # Generate SQL with catalog mapping (simulating dev deployment)
+        catalog_mapping = {"sales_analytics": "dev_sales_analytics"}
+        generator = UnitySQLGenerator(state, catalog_name_mapping=catalog_mapping)
+        result = generator.generate_sql_with_mapping(ops)
+
+        # Find the CREATE VIEW statement
+        view_sql = None
+        for stmt in result.statements:
+            if "CREATE VIEW" in stmt.sql and "test4" in stmt.sql:
+                view_sql = stmt.sql
+                break
+
+        assert view_sql is not None, "Should generate CREATE VIEW statement"
+
+        # Critical assertions: Must have FULLY-QUALIFIED names with BACKTICKS
+        assert "`dev_sales_analytics`.`customer_analytics`.`table4`" in view_sql, (
+            "Table reference must be fully qualified with backticks"
+        )
+
+        # Should NOT have unqualified reference
+        assert "FROM table4" not in view_sql, "Should not have unqualified table name"
+        assert "FROM `table4`" not in view_sql, "Should not have partially qualified table name"
+
+        print("Generated view SQL:")
+        print(view_sql)
+        print("✅ View SQL is properly qualified with backticks!")
+
+    def test_view_with_multiple_tables_all_qualified(self):
+        """Test that views referencing multiple tables get all refs qualified"""
+        from schematic.providers.unity.sql_generator import UnitySQLGenerator
+
+        state = UnityState(catalogs=[])
+        builder = OperationBuilder()
+
+        ops = [
+            builder.add_catalog("cat1", "analytics", op_id="op1"),
+            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.add_table("table1", "orders", "schema1", "delta", op_id="op3"),
+            builder.add_table("table2", "customers", "schema1", "delta", op_id="op4"),
+            builder.add_view(
+                "view1",
+                "order_details",
+                "schema1",
+                "SELECT o.id, c.name FROM orders o JOIN customers c ON o.customer_id = c.id",
+                dependencies=["orders", "customers"],
+                op_id="op5",
+            ),
+        ]
+
+        state = apply_operations(state, ops)
+
+        catalog_mapping = {"analytics": "prod_analytics"}
+        generator = UnitySQLGenerator(state, catalog_name_mapping=catalog_mapping)
+        result = generator.generate_sql_with_mapping(ops)
+
+        view_sql = next((stmt.sql for stmt in result.statements if "CREATE VIEW" in stmt.sql), None)
+        assert view_sql is not None
+
+        # Both tables must be qualified
+        assert "`prod_analytics`.`main`.`orders`" in view_sql, "orders must be qualified"
+        assert "`prod_analytics`.`main`.`customers`" in view_sql, "customers must be qualified"
+
+        # Should NOT have unqualified references
+        assert "FROM orders" not in view_sql.lower()
+        assert "JOIN customers" not in view_sql.lower()

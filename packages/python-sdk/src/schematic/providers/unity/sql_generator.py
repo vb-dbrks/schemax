@@ -1282,10 +1282,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 fqn = name_to_fqn[current_ref]
                 parts = fqn.split(".")
                 if len(parts) == 3:
-                    # Update the table node with qualified names
-                    table_node.set("catalog", parts[0])
-                    table_node.set("db", parts[1])  # schema
-                    table_node.set("this", parts[2])  # table name
+                    # Update the table node with qualified names (quoted for Databricks)
+                    table_node.set("catalog", exp.to_identifier(parts[0], quoted=True))
+                    table_node.set("db", exp.to_identifier(parts[1], quoted=True))  # schema
+                    table_node.set("this", exp.to_identifier(parts[2], quoted=True))  # table name
 
         # Generate SQL with qualified names
         qualified_sql = parsed.sql(dialect="databricks", pretty=True)
@@ -1298,10 +1298,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         definition = op.payload.get("definition", "")
         comment = op.payload.get("comment")
 
-        # Qualify table/view references in the definition
+        # Always qualify table/view references in the definition
+        # (even if extractedDependencies is missing, we use all objects from id_name_map)
         extracted_deps = op.payload.get("extractedDependencies", {})
-        if extracted_deps:
-            definition = self._qualify_view_definition(definition, extracted_deps)
+        definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Build CREATE VIEW statement
         sql = f"CREATE VIEW IF NOT EXISTS {view_esc}"
@@ -1342,10 +1342,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Use updated definition from update_op
         definition = update_op.payload.get("definition", "")
 
-        # Qualify table/view references in the definition
+        # Always qualify table/view references in the definition
         extracted_deps = update_op.payload.get("extractedDependencies", {})
-        if extracted_deps:
-            definition = self._qualify_view_definition(definition, extracted_deps)
+        definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Use comment from create_op (if any)
         comment = create_op.payload.get("comment")
@@ -1400,10 +1399,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         view_esc = self._build_fqn(*view_fqn.split("."))
         definition = op.payload.get("definition", "")
 
-        # Qualify table/view references in the definition
+        # Always qualify table/view references in the definition
         extracted_deps = op.payload.get("extractedDependencies", {})
-        if extracted_deps:
-            definition = self._qualify_view_definition(definition, extracted_deps)
+        definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Use CREATE OR REPLACE for updates
         sql = f"CREATE OR REPLACE VIEW {view_esc} AS\n{definition}"
