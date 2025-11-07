@@ -417,19 +417,34 @@ def rollback(
             # Query database for deployment
             client = create_databricks_client(profile)
             tracker = DeploymentTracker(client, deployment_catalog, warehouse_id)
-            target_deployment = tracker.get_deployment_by_id(deployment)
+        target_deployment = tracker.get_deployment_by_id(deployment)
 
-            if not target_deployment:
-                console.print(
-                    f"[red]✗[/red] Deployment '{deployment}' not found in {deployment_catalog}.schematic"
-                )
-                console.print(
-                    f"[dim]Check deployment tracking in {deployment_catalog}.schematic.deployments[/dim]"
-                )
-                sys.exit(1)
+        if not target_deployment:
+            console.print(
+                f"[red]✗[/red] Deployment '{deployment}' not found in {deployment_catalog}.schematic"
+            )
+            console.print(
+                f"\n[yellow]Troubleshooting steps:[/yellow]"
+            )
+            console.print(
+                f"  1. Verify catalog exists:\n"
+                f"     [dim]SELECT * FROM {deployment_catalog}.information_schema.schemata[/dim]\n"
+            )
+            console.print(
+                f"  2. Check if deployment was recorded:\n"
+                f"     [dim]SELECT * FROM {deployment_catalog}.schematic.deployments WHERE id = '{deployment}'[/dim]\n"
+            )
+            console.print(
+                f"  3. List recent deployments:\n"
+                f"     [dim]SELECT id, environment, snapshot_version, status, deployed_at\n"
+                f"     FROM {deployment_catalog}.schematic.deployments\n"
+                f"     WHERE environment = '{target}'\n"
+                f"     ORDER BY deployed_at DESC LIMIT 5[/dim]"
+            )
+            sys.exit(1)
 
-            # Check if it's a failed deployment
-            if target_deployment.get("status") != "failed":
+        # Check if it's a failed deployment
+        if target_deployment.get("status") != "failed":
                 console.print(
                     f"[yellow]⚠️  Deployment '{deployment}' has status: "
                     f"{target_deployment.get('status')}[/yellow]"
