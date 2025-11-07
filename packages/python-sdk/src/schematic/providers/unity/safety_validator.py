@@ -7,9 +7,9 @@ Classifies operations as SAFE, RISKY, or DESTRUCTIVE based on actual data.
 
 from typing import Any
 
-from ..base.executor import SQLExecutor
-from ..base.operations import Operation
-from ..base.reverse_generator import SafetyLevel, SafetyReport
+from schematic.providers.base.executor import SQLExecutor
+from schematic.providers.base.operations import Operation
+from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
 from .operations import UNITY_OPERATIONS
 
 

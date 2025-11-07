@@ -17,13 +17,13 @@ from uuid import uuid4
 from rich.console import Console
 from rich.prompt import Confirm
 
-from ..deployment_tracker import DeploymentTracker
-from ..providers.base.executor import ExecutionConfig, SQLExecutor
-from ..providers.base.operations import Operation
-from ..providers.base.reverse_generator import SafetyLevel
-from ..providers.unity.executor import UnitySQLExecutor
-from ..providers.unity.safety_validator import SafetyValidator
-from ..storage_v4 import get_environment_config, load_current_state, read_project, write_deployment
+from schematic.core.deployment import DeploymentTracker
+from schematic.providers.base.executor import ExecutionConfig, SQLExecutor
+from schematic.providers.base.operations import Operation
+from schematic.providers.base.reverse_generator import SafetyLevel
+from schematic.providers.unity.executor import UnitySQLExecutor
+from schematic.providers.unity.safety_validator import SafetyValidator
+from schematic.core.storage import get_environment_config, load_current_state, read_project, write_deployment
 from .apply import parse_sql_statements
 
 console = Console()
@@ -94,7 +94,7 @@ def rollback_partial(
     deployment_catalog = env_config["topLevelName"]
 
     # 1. Determine pre-deployment version
-    from ..storage_v4 import read_snapshot
+    from schematic.core.storage import read_snapshot
     
     # If from_version not provided, look it up from deployment record
     if from_version is None:
@@ -365,8 +365,8 @@ def rollback_complete(
         deployment_catalog = env_config["topLevelName"]
 
         # 2. Build catalog mapping
-        from ..commands.diff import _build_catalog_mapping
-        from ..storage_v4 import read_snapshot
+        from schematic.commands.diff import _build_catalog_mapping
+        from schematic.core.storage import read_snapshot
 
         target_snapshot = read_snapshot(workspace, to_snapshot)
         catalog_mapping = _build_catalog_mapping(target_snapshot["state"], env_config)
@@ -408,7 +408,7 @@ def rollback_complete(
         console.print("[cyan]Analyzing safety...[/cyan]")
 
         # Initialize executor for safety validation
-        from ..providers.unity.auth import create_databricks_client
+        from schematic.providers.unity.auth import create_databricks_client
 
         client = create_databricks_client(profile)
         executor = UnitySQLExecutor(client)

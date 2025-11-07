@@ -8,7 +8,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from ..storage_v4 import load_current_state, read_project
+from schematic.core.storage import load_current_state, read_project
 
 console = Console()
 

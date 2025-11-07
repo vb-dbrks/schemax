@@ -21,7 +21,7 @@ from .providers import (
 )
 
 # Storage V4 exports (latest)
-from .storage_v4 import (
+from .core.storage import (
     create_snapshot,
     ensure_project_file,
     get_last_deployment,

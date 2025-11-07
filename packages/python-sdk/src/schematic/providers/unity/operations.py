@@ -5,7 +5,7 @@ All operation types supported by Unity Catalog provider.
 Operations are prefixed with 'unity.' to indicate the provider.
 """
 
-from ..base.operations import OperationCategory, OperationMetadata
+from schematic.providers.base.operations import OperationCategory, OperationMetadata
 
 # Operation type constants
 UNITY_OPERATIONS = {

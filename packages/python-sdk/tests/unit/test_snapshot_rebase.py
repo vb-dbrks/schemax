@@ -12,7 +12,7 @@ from schematic.commands.snapshot_rebase import (
     detect_stale_snapshots,
     rebase_snapshot,
 )
-from schematic.version import (
+from schematic.core.version import (
     SemanticVersion,
     get_next_version,
     get_versions_between,

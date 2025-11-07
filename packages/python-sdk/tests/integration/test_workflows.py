@@ -11,7 +11,7 @@ Tests end-to-end workflows including:
 import pytest
 
 from schematic.providers.base.operations import Operation
-from schematic.storage_v4 import (
+from schematic.core.storage import (
     append_ops,
     create_snapshot,
     ensure_project_file,

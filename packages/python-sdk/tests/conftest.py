@@ -181,7 +181,7 @@ def empty_unity_state():
 @pytest.fixture
 def initialized_workspace(temp_workspace):
     """Workspace with initialized .schematic project (v4)"""
-    from schematic.storage_v4 import ensure_project_file
+    from schematic.core.storage import ensure_project_file
 
     ensure_project_file(temp_workspace, provider_id="unity")
     return temp_workspace
@@ -190,7 +190,7 @@ def initialized_workspace(temp_workspace):
 @pytest.fixture
 def workspace_with_operations(initialized_workspace, sample_operations):
     """Workspace with operations in changelog"""
-    from schematic.storage_v4 import append_ops
+    from schematic.core.storage import append_ops
 
     append_ops(initialized_workspace, sample_operations)
     return initialized_workspace

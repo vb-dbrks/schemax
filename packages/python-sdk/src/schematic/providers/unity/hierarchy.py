@@ -2,7 +2,7 @@
 Unity Catalog Hierarchy Configuration
 """
 
-from ..base.hierarchy import Hierarchy, HierarchyLevel
+from schematic.providers.base.hierarchy import Hierarchy, HierarchyLevel
 
 # Unity Catalog has a 3-level hierarchy: Catalog → Schema → Table
 unity_hierarchy_levels = [

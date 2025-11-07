@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
-from .providers import Operation, Provider, ProviderRegistry, ProviderState
+from schematic.providers import Operation, Provider, ProviderRegistry, ProviderState
 
 SCHEMATIC_DIR = ".schematic"
 PROJECT_FILENAME = "project.json"

@@ -7,9 +7,9 @@ Migrated from TypeScript sql-generator.ts
 
 from typing import Any, TypedDict
 
-from ..base.batching import BatchInfo
-from ..base.operations import Operation
-from ..base.sql_generator import BaseSQLGenerator, SQLGenerationResult
+from schematic.providers.base.batching import BatchInfo
+from schematic.providers.base.operations import Operation
+from schematic.providers.base.sql_generator import BaseSQLGenerator, SQLGenerationResult
 from .models import UnityState
 from .operations import UNITY_OPERATIONS
 

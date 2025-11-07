@@ -27,7 +27,7 @@ from .commands import (
     ValidationError as CommandValidationError,
 )
 from .providers import ProviderRegistry
-from .storage_v4 import ensure_project_file
+from .core.storage import ensure_project_file
 
 console = Console()
 
@@ -479,7 +479,7 @@ def rollback(
                 sys.exit(1)
 
             # Load deployment record from local project.json
-            from .storage_v4 import get_environment_config, read_project
+            from .core.storage import get_environment_config, read_project
 
             project = read_project(workspace_path)
             deployments = project.get("deployments", [])
@@ -523,7 +523,7 @@ def rollback(
 
             # Load operations - try changelog first, then regenerate from snapshots
             from schematic.providers.base.operations import Operation
-            from .storage_v4 import read_changelog
+            from .core.storage import read_changelog
 
             changelog = read_changelog(workspace_path)
             all_ops = [Operation(**op) for op in changelog.get("ops", [])]
@@ -536,7 +536,7 @@ def rollback(
                 console.print(
                     "[cyan]Operations not in changelog - regenerating from snapshots...[/cyan]"
                 )
-                from .storage_v4 import read_snapshot, load_current_state
+                from .core.storage import read_snapshot, load_current_state
 
                 from_version = target_deployment.get("fromVersion")
                 to_version = target_deployment.get("version")
@@ -583,7 +583,7 @@ def rollback(
             env_config = get_environment_config(project, target)
 
             # Build catalog mapping
-            from .storage_v4 import load_current_state
+            from .core.storage import load_current_state
 
             state, _, provider = load_current_state(workspace_path)
 

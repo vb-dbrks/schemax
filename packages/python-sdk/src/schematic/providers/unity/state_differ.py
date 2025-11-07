@@ -9,8 +9,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from ..base.operations import Operation
-from ..base.state_differ import StateDiffer
+from schematic.providers.base.operations import Operation
+from schematic.providers.base.state_differ import StateDiffer
 
 
 class UnityStateDiffer(StateDiffer):

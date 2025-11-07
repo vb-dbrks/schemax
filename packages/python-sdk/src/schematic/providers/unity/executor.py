@@ -12,7 +12,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementState
 from rich.console import Console
 
-from ..base.executor import ExecutionConfig, ExecutionResult, StatementResult
+from schematic.providers.base.executor import ExecutionConfig, ExecutionResult, StatementResult
 
 console = Console()
 

@@ -7,8 +7,8 @@ Provides database-backed deployment history and audit trail.
 
 from databricks.sdk import WorkspaceClient
 
-from .providers.base.executor import ExecutionResult, StatementResult
-from .providers.base.operations import Operation
+from schematic.providers.base.executor import ExecutionResult, StatementResult
+from schematic.providers.base.operations import Operation
 
 
 class DeploymentTracker:

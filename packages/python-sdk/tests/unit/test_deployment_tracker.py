@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from schematic.deployment_tracker import DeploymentTracker
+from schematic.core.deployment import DeploymentTracker
 from schematic.providers.base.executor import StatementResult
 
 

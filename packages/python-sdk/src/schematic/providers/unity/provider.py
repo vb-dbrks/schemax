@@ -7,16 +7,12 @@ Implements the Provider interface to enable Unity Catalog support in Schematic.
 
 from typing import Any
 
-from ..base.executor import ExecutionConfig, SQLExecutor
-from ..base.models import ProviderState, ValidationError, ValidationResult
-from ..base.operations import Operation
-from ..base.provider import (
-    BaseProvider,
-    ProviderCapabilities,
-    ProviderInfo,
-)
-from ..base.sql_generator import SQLGenerator
-from ..base.state_differ import StateDiffer
+from schematic.providers.base.executor import ExecutionConfig, SQLExecutor
+from schematic.providers.base.models import ProviderState, ValidationError, ValidationResult
+from schematic.providers.base.operations import Operation
+from schematic.providers.base.provider import BaseProvider, ProviderCapabilities, ProviderInfo
+from schematic.providers.base.sql_generator import SQLGenerator
+from schematic.providers.base.state_differ import StateDiffer
 from .auth import check_profile_exists, create_databricks_client
 from .executor import UnitySQLExecutor
 from .hierarchy import unity_hierarchy

@@ -15,19 +15,10 @@ from uuid import uuid4
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
-from ..deployment_tracker import DeploymentTracker
-from ..providers.base.executor import ExecutionConfig, ExecutionResult
-from ..providers.unity.executor import UnitySQLExecutor
-from ..storage_v4 import (
-    create_snapshot,
-    get_environment_config,
-    get_last_deployment,
-    load_current_state,
-    read_changelog,
-    read_project,
-    read_snapshot,
-    write_deployment,
-)
+from schematic.core.deployment import DeploymentTracker
+from schematic.providers.base.executor import ExecutionConfig, ExecutionResult
+from schematic.providers.unity.executor import UnitySQLExecutor
+from schematic.core.storage import create_snapshot, get_environment_config, get_last_deployment, load_current_state, read_changelog, read_project, read_snapshot, write_deployment
 
 console = Console()
 
@@ -181,7 +172,7 @@ def apply_to_environment(
         # 6. Get last deployment from DATABASE (source of truth!)
         # Query the database to see what's actually deployed
         # Local project.json is just an audit log, not source of truth
-        from ..providers.unity.auth import create_databricks_client
+        from schematic.providers.unity.auth import create_databricks_client
 
         try:
             client = create_databricks_client(profile)

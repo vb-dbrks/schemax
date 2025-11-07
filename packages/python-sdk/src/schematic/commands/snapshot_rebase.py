@@ -12,17 +12,9 @@ from pathlib import Path
 
 from rich.console import Console
 
-from ..providers.base.operations import Operation
-from ..storage_v4 import (
-    get_snapshot_file_path,
-    read_changelog,
-    read_project,
-    read_snapshot,
-    write_changelog,
-    write_project,
-    write_snapshot,
-)
-from ..version import get_versions_between
+from schematic.providers.base.operations import Operation
+from schematic.core.storage import get_snapshot_file_path, read_changelog, read_project, read_snapshot, write_changelog, write_project, write_snapshot
+from schematic.core.version import get_versions_between
 
 console = Console()
 
@@ -133,7 +125,7 @@ def rebase_snapshot(
         console.print("  ✓ Loaded state")
 
         # 8. Get provider for state reduction
-        from ..storage_v4 import load_current_state
+        from schematic.core.storage import load_current_state
 
         _, _, provider = load_current_state(workspace)
 

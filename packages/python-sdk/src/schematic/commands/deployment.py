@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from rich.console import Console
 
-from ..storage_v4 import load_current_state, read_project, write_deployment
+from schematic.core.storage import load_current_state, read_project, write_deployment
 
 console = Console()
 
