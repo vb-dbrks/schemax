@@ -1228,7 +1228,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Args:
             definition: Raw view SQL (may contain unqualified table names)
-            extracted_deps: Extracted dependencies with table/view IDs
+            extracted_deps: Extracted dependencies with table/view names (from frontend)
 
         Returns:
             SQL with all table/view references fully qualified
@@ -1244,30 +1244,25 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return definition
 
         # Build mapping from unqualified names to FQNs
+        # Note: extracted_deps contains table/view NAMES (not IDs) from frontend parsing
         name_to_fqn: dict[str, str] = {}
 
-        # Process table dependencies
-        for table_id in extracted_deps.get("tables", []):
-            fqn = self.id_name_map.get(table_id, "")
-            if fqn:
-                # Map both unqualified name and partially qualified names
-                parts = fqn.split(".")
-                if len(parts) == 3:
-                    catalog, schema, table = parts
-                    # Map: table -> catalog.schema.table
-                    name_to_fqn[table] = fqn
-                    # Map: schema.table -> catalog.schema.table
-                    name_to_fqn[f"{schema}.{table}"] = fqn
+        # Build reverse map: name -> FQN from id_name_map
+        # id_name_map is like: {"tbl1": "catalog.schema.table1", ...}
+        for object_id, fqn in self.id_name_map.items():
+            if not fqn or "." not in fqn:
+                continue
 
-        # Process view dependencies
-        for view_id in extracted_deps.get("views", []):
-            fqn = self.id_name_map.get(view_id, "")
-            if fqn:
-                parts = fqn.split(".")
-                if len(parts) == 3:
-                    catalog, schema, view = parts
-                    name_to_fqn[view] = fqn
-                    name_to_fqn[f"{schema}.{view}"] = fqn
+            parts = fqn.split(".")
+            if len(parts) == 3:
+                catalog, schema, name = parts
+                # Map: name -> catalog.schema.name (for unqualified refs)
+                name_to_fqn[name] = fqn
+                # Map: schema.name -> catalog.schema.name (for partially qualified refs)
+                name_to_fqn[f"{schema}.{name}"] = fqn
+
+        # Note: We don't need to filter by extracted_deps anymore since we built
+        # a comprehensive name->FQN map from all objects in id_name_map
 
         # Replace table references with FQNs
         for table_node in parsed.find_all(exp.Table):
