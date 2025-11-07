@@ -1251,21 +1251,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return sql
 
-    def _generate_create_or_replace_view(
-        self, create_op: Operation, update_op: Operation
-    ) -> str:
+    def _generate_create_or_replace_view(self, create_op: Operation, update_op: Operation) -> str:
         """
         Generate CREATE OR REPLACE VIEW statement by batching create + update.
-        
+
         Uses the final definition from update_op and dependencies from update_op.
         This optimization squashes CREATE + UPDATE_VIEW into a single statement.
         """
         view_fqn = self.id_name_map.get(create_op.target, "unknown")
         view_esc = self._build_fqn(*view_fqn.split("."))
-        
+
         # Use updated definition from update_op
         definition = update_op.payload.get("definition", "")
-        
+
         # Use comment from create_op (if any)
         comment = create_op.payload.get("comment")
 
@@ -1654,7 +1652,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """Generate SQL for view operations with explicit operation mapping.
 
         Returns list of (sql, operation_ids) tuples.
-        
+
         Optimization: If there's a CREATE + UPDATE_VIEW in the same batch,
         squash them into a single CREATE OR REPLACE VIEW with the final definition.
         """
@@ -1665,23 +1663,22 @@ class UnitySQLGenerator(BaseSQLGenerator):
         update_view_ops = [
             op for op in batch_info.modify_ops if op.op.replace("unity.", "") == "update_view"
         ]
-        
+
         # Optimization: Squash CREATE + UPDATE_VIEW into single statement
         if has_create and update_view_ops:
             # Use the LAST update_view operation (most recent definition)
             final_update_op = update_view_ops[-1]
-            
+
             # Generate CREATE OR REPLACE VIEW with final definition
             sql = self._generate_create_or_replace_view(batch_info.create_op, final_update_op)
             if sql:
                 # Track all operation IDs (create + all updates)
                 op_ids = [batch_info.create_op.id] + [op.id for op in update_view_ops]
                 statements.append((sql, op_ids))
-            
+
             # Process remaining modify operations (excluding update_view)
             remaining_ops = [
-                op for op in batch_info.modify_ops 
-                if op.op.replace("unity.", "") != "update_view"
+                op for op in batch_info.modify_ops if op.op.replace("unity.", "") != "update_view"
             ]
         else:
             # No batching needed - process normally
@@ -1690,7 +1687,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 sql = self._add_view(op)
                 if sql:
                     statements.append((sql, [op.id]))
-            
+
             remaining_ops = batch_info.modify_ops
 
         # Process remaining modify operations (rename, drop, set properties, etc.)
