@@ -490,20 +490,19 @@ def parse_sql_statements(sql: str) -> list[str]:
     """Parse SQL into individual statements
 
     Splits SQL by semicolons, handling comments and multi-line statements.
+    IMPORTANT: Preserves comments as they contain operation metadata for tracking.
 
     Args:
         sql: SQL text to parse
 
     Returns:
-        List of individual SQL statements
+        List of individual SQL statements (with comments preserved)
     """
     statements = []
 
-    # Remove comments
-    sql_no_comments = re.sub(r"--[^\n]*", "", sql)
-
+    # DO NOT remove comments - they contain operation IDs needed for tracking!
     # Split by semicolon
-    raw_statements = sql_no_comments.split(";")
+    raw_statements = sql.split(";")
 
     for stmt in raw_statements:
         # Clean up whitespace
