@@ -1217,12 +1217,96 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER TABLE {fqn_esc} UNSET TAGS ('{tag_name}')"
 
     # View operations
+    def _qualify_view_definition(
+        self, definition: str, extracted_deps: dict[str, list[str]]
+    ) -> str:
+        """
+        Qualify unqualified table/view references in view SQL with fully-qualified names.
+
+        This ensures views work correctly even when the current catalog/schema context
+        is not set, which is the case with SQL Statement Execution API.
+
+        Args:
+            definition: Raw view SQL (may contain unqualified table names)
+            extracted_deps: Extracted dependencies with table/view IDs
+
+        Returns:
+            SQL with all table/view references fully qualified
+        """
+        import sqlglot
+        from sqlglot import expressions as exp
+
+        try:
+            # Parse the SQL
+            parsed = sqlglot.parse_one(definition, dialect="databricks")
+        except Exception:
+            # If parsing fails, return original (let Databricks handle the error)
+            return definition
+
+        # Build mapping from unqualified names to FQNs
+        name_to_fqn: dict[str, str] = {}
+
+        # Process table dependencies
+        for table_id in extracted_deps.get("tables", []):
+            fqn = self.id_name_map.get(table_id, "")
+            if fqn:
+                # Map both unqualified name and partially qualified names
+                parts = fqn.split(".")
+                if len(parts) == 3:
+                    catalog, schema, table = parts
+                    # Map: table -> catalog.schema.table
+                    name_to_fqn[table] = fqn
+                    # Map: schema.table -> catalog.schema.table
+                    name_to_fqn[f"{schema}.{table}"] = fqn
+
+        # Process view dependencies
+        for view_id in extracted_deps.get("views", []):
+            fqn = self.id_name_map.get(view_id, "")
+            if fqn:
+                parts = fqn.split(".")
+                if len(parts) == 3:
+                    catalog, schema, view = parts
+                    name_to_fqn[view] = fqn
+                    name_to_fqn[f"{schema}.{view}"] = fqn
+
+        # Replace table references with FQNs
+        for table_node in parsed.find_all(exp.Table):
+            # Build current reference string
+            current_ref_parts = []
+            if table_node.catalog:
+                current_ref_parts.append(table_node.catalog)
+            if table_node.db:  # schema
+                current_ref_parts.append(table_node.db)
+            if table_node.name:
+                current_ref_parts.append(table_node.name)
+
+            current_ref = ".".join(current_ref_parts)
+
+            # Look up FQN
+            if current_ref in name_to_fqn:
+                fqn = name_to_fqn[current_ref]
+                parts = fqn.split(".")
+                if len(parts) == 3:
+                    # Update the table node with qualified names
+                    table_node.set("catalog", parts[0])
+                    table_node.set("db", parts[1])  # schema
+                    table_node.set("this", parts[2])  # table name
+
+        # Generate SQL with qualified names
+        qualified_sql = parsed.sql(dialect="databricks", pretty=True)
+        return qualified_sql
+
     def _add_view(self, op: Operation) -> str:
         """Generate CREATE VIEW statement"""
         view_fqn = self.id_name_map.get(op.target, "unknown")
         view_esc = self._build_fqn(*view_fqn.split("."))
         definition = op.payload.get("definition", "")
         comment = op.payload.get("comment")
+
+        # Qualify table/view references in the definition
+        extracted_deps = op.payload.get("extractedDependencies", {})
+        if extracted_deps:
+            definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Build CREATE VIEW statement
         sql = f"CREATE VIEW IF NOT EXISTS {view_esc}"
@@ -1235,7 +1319,6 @@ class UnitySQLGenerator(BaseSQLGenerator):
         sql += f" AS\n{definition}"
 
         # Add dependency comment if extracted dependencies exist
-        extracted_deps = op.payload.get("extractedDependencies", {})
         tables = extracted_deps.get("tables", [])
         views = extracted_deps.get("views", [])
 
@@ -1264,6 +1347,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Use updated definition from update_op
         definition = update_op.payload.get("definition", "")
 
+        # Qualify table/view references in the definition
+        extracted_deps = update_op.payload.get("extractedDependencies", {})
+        if extracted_deps:
+            definition = self._qualify_view_definition(definition, extracted_deps)
+
         # Use comment from create_op (if any)
         comment = create_op.payload.get("comment")
 
@@ -1278,7 +1366,6 @@ class UnitySQLGenerator(BaseSQLGenerator):
         sql += f" AS\n{definition}"
 
         # Add dependency comment from update_op (most recent dependencies)
-        extracted_deps = update_op.payload.get("extractedDependencies", {})
         tables = extracted_deps.get("tables", [])
         views = extracted_deps.get("views", [])
 
@@ -1318,11 +1405,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         view_esc = self._build_fqn(*view_fqn.split("."))
         definition = op.payload.get("definition", "")
 
+        # Qualify table/view references in the definition
+        extracted_deps = op.payload.get("extractedDependencies", {})
+        if extracted_deps:
+            definition = self._qualify_view_definition(definition, extracted_deps)
+
         # Use CREATE OR REPLACE for updates
         sql = f"CREATE OR REPLACE VIEW {view_esc} AS\n{definition}"
 
         # Add dependency comment if provided
-        extracted_deps = op.payload.get("extractedDependencies", {})
         if extracted_deps:
             tables = extracted_deps.get("tables", [])
             views = extracted_deps.get("views", [])
