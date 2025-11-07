@@ -265,6 +265,7 @@ class DeploymentTracker:
         """Get a specific deployment by ID from the database
 
         Queries the database (source of truth) to find a deployment by its ID.
+        Also queries deployment_ops to get the list of operations and their statuses.
 
         Returns None if:
         - Catalog doesn't exist (expected on first deployment)
@@ -277,25 +278,25 @@ class DeploymentTracker:
             deployment_id: Deployment ID to look up
 
         Returns:
-            Deployment record or None if not found
+            Deployment record with operations list, or None if not found
 
         Raises:
             Exception: For database connection or query errors (not catalog-not-found)
         """
         from databricks.sdk.service.sql import StatementState
 
+        # Query deployments table for basic info
         sql = f"""
         SELECT 
             id, 
             environment, 
-            snapshot_version, 
-            from_snapshot_version,
+            snapshot_version,
             deployed_at,
             deployed_by,
             status,
-            statement_count,
-            successful_statements,
-            failed_statement_index
+            ops_count,
+            error_message,
+            execution_time_ms
         FROM {self.schema}.deployments
         WHERE id = '{deployment_id}'
         LIMIT 1
@@ -331,25 +332,69 @@ class DeploymentTracker:
                 # Real error - raise it
                 raise Exception(f"Database query failed: {error_msg}")
 
-            # Parse results
+            # Parse deployment record
+            deployment = None
             if response.result and response.result.data_array:
                 if len(response.result.data_array) > 0:
                     row = response.result.data_array[0]
-                    return {
+                    deployment = {
                         "id": row[0],
                         "environment": row[1],
                         "version": row[2],
-                        "fromVersion": row[3],
-                        "deployedAt": row[4],
-                        "deployedBy": row[5],
-                        "status": row[6],
-                        "statementCount": row[7],
-                        "successfulStatements": row[8],
-                        "failedStatementIndex": row[9],
+                        "deployedAt": row[3],
+                        "deployedBy": row[4],
+                        "status": row[5],
+                        "statementCount": row[6],
+                        "errorMessage": row[7],
+                        "executionTimeMs": row[8],
                     }
 
-            # No rows returned - deployment not found
-            return None
+            if not deployment:
+                return None
+
+            # Query deployment_ops to get operation details
+            ops_sql = f"""
+            SELECT 
+                op_id,
+                op_type,
+                op_target,
+                status,
+                execution_order,
+                error_message
+            FROM {self.schema}.deployment_ops
+            WHERE deployment_id = '{deployment_id}'
+            ORDER BY execution_order
+            """
+
+            ops_response = self.client.statement_execution.execute_statement(
+                warehouse_id=self.warehouse_id,
+                statement=ops_sql,
+                wait_timeout="10s",
+            )
+
+            # Parse operations
+            ops_applied = []
+            successful_ops = []
+            failed_statement_index = None
+
+            if ops_response.result and ops_response.result.data_array:
+                for i, row in enumerate(ops_response.result.data_array):
+                    op_id = row[0]
+                    op_status = row[3]
+
+                    ops_applied.append(op_id)
+
+                    if op_status == "success":
+                        successful_ops.append(op_id)
+                    elif op_status == "failed" and failed_statement_index is None:
+                        failed_statement_index = i
+
+            # Add operation details to deployment record
+            deployment["opsApplied"] = ops_applied
+            deployment["successfulStatements"] = len(successful_ops)
+            deployment["failedStatementIndex"] = failed_statement_index
+
+            return deployment
 
         except Exception as e:
             # Check if it's a catalog/schema not found error (expected)
