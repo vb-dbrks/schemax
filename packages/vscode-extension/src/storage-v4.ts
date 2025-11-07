@@ -15,8 +15,6 @@ import { ProviderRegistry } from './providers/registry';
 import { Provider } from './providers/base/provider';
 import { Operation } from './providers/base/operations';
 import { ProviderState } from './providers/base/models';
-import { DependencyGraph } from './providers/base/dependency-graph';
-import { CircularDependencyError } from './providers/base/exceptions';
 
 const SCHEMATIC_DIR = '.schematic';
 const PROJECT_FILENAME = 'project.json';
@@ -432,50 +430,60 @@ export async function loadCurrentState(
   // Apply changelog ops using provider's state reducer
   state = provider.applyOperations(state, changelog.ops);
 
-  // Optionally validate dependencies
+  // Optionally validate dependencies (calls Python SDK)
   let validationResult: ValidationResult | null = null;
   if (validate && changelog.ops.length > 0) {
-    validationResult = validateDependenciesInternal(state, changelog.ops, provider);
+    validationResult = await validateDependenciesInternal(workspaceUri);
   }
 
   return { state, changelog, provider, validationResult };
 }
 
 /**
- * Internal dependency validation helper
+ * Internal dependency validation helper - calls Python SDK
  */
-function validateDependenciesInternal(
-  state: ProviderState,
-  ops: Operation[],
-  provider: Provider
-): ValidationResult {
+async function validateDependenciesInternal(
+  workspaceUri: vscode.Uri
+): Promise<ValidationResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
 
   try {
-    // Build dependency graph (uses provider-specific SQL generator)
-    const sqlGenerator = provider.getSQLGenerator(state, {});
-    const graph = sqlGenerator.buildDependencyGraph(ops);
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
 
-    // Check for circular dependencies
-    const cycles = graph.detectCycles();
-    if (cycles.length > 0) {
-      cycles.forEach((cycle) => {
-        const cycleNames = cycle.map((nodeId) => {
-          return sqlGenerator.getObjectName(nodeId) || nodeId;
-        });
-        errors.push(`Circular dependency: ${cycleNames.join(' → ')}`);
-      });
-    }
+    // Call schematic validate with --json flag
+    const { stdout } = await execAsync('schematic validate --json', {
+      cwd: workspaceUri.fsPath,
+    });
 
-    // Check for hierarchy violations
-    const hierarchyWarnings = graph.validateDependencies();
-    warnings.push(...hierarchyWarnings);
-  } catch (error) {
-    if (error instanceof CircularDependencyError) {
-      errors.push(...error.cycles);
+    // Parse JSON output (last non-empty line)
+    const lines = stdout.trim().split('\n').filter((line: string) => line.trim());
+    const jsonLine = lines[lines.length - 1];
+    const result = JSON.parse(jsonLine);
+
+    return {
+      errors: result.errors || [],
+      warnings: result.warnings || [],
+    };
+  } catch (error: any) {
+    // If validation fails, try to parse stdout
+    if (error.stdout) {
+      try {
+        const lines = error.stdout.trim().split('\n').filter((line: string) => line.trim());
+        const jsonLine = lines[lines.length - 1];
+        const result = JSON.parse(jsonLine);
+        return {
+          errors: result.errors || [],
+          warnings: result.warnings || [],
+        };
+      } catch {
+        // Fallback to error message
+        warnings.push(`Could not validate dependencies: ${error.message}`);
+      }
     } else {
-      warnings.push(`Could not validate dependencies: ${error}`);
+      warnings.push(`Could not validate dependencies: ${error.message}`);
     }
   }
 

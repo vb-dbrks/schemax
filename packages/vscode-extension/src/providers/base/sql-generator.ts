@@ -52,6 +52,20 @@ export interface SQLGenerator {
    * @returns True if operation can be converted to SQL
    */
   canGenerateSQL(op: Operation): boolean;
+  
+  /**
+   * Build dependency graph for validation
+   * @param ops - Operations to analyze
+   * @returns Dependency graph
+   */
+  buildDependencyGraph(ops: Operation[]): DependencyGraph;
+  
+  /**
+   * Get the fully-qualified name for an object ID
+   * @param objectId - Object ID
+   * @returns Object name or null if not found
+   */
+  getObjectName(objectId: string): string | null;
 }
 
 /**
@@ -346,6 +360,20 @@ export abstract class BaseSQLGenerator implements SQLGenerator {
   abstract generateSQLForOperation(op: Operation): SQLGenerationResult;
   
   abstract canGenerateSQL(op: Operation): boolean;
+  
+  /**
+   * Public method to build dependency graph for validation
+   */
+  buildDependencyGraph(ops: Operation[]): DependencyGraph {
+    return this._buildDependencyGraph(ops);
+  }
+  
+  /**
+   * Public method to get object name for validation
+   */
+  getObjectName(objectId: string): string | null {
+    return this._getObjectName(objectId);
+  }
   
   /**
    * Helper to escape SQL identifiers

@@ -144,18 +144,21 @@ def sql(
 
 
 @cli.command()
+@click.option("--json", "json_output", is_flag=True, help="Output validation results as JSON")
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
-def validate(workspace: str) -> None:
+def validate(workspace: str, json_output: bool) -> None:
     """Validate .schematic/ project files"""
     try:
         workspace_path = Path(workspace).resolve()
-        validate_project(workspace_path)
+        validate_project(workspace_path, json_output=json_output)
 
     except CommandValidationError as e:
-        console.print(f"[red]✗ Validation failed:[/red] {e}")
+        if not json_output:
+            console.print(f"[red]✗ Validation failed:[/red] {e}")
         sys.exit(1)
     except Exception as e:
-        console.print(f"[red]✗ Unexpected error:[/red] {e}")
+        if not json_output:
+            console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
 
 

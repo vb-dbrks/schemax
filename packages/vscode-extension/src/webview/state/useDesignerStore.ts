@@ -4,7 +4,6 @@ import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, Col
 import { Operation } from '../../providers/base/operations';
 import { ProviderInfo, ProviderCapabilities } from '../../providers/base/provider';
 import { getVsCodeApi } from '../vscode-api';
-import { DependencyGraph } from '../../providers/base/dependency-graph';
 
 const vscode = getVsCodeApi();
 
@@ -120,61 +119,6 @@ interface DesignerState {
 
 function emitOps(ops: Operation[]) {
   vscode.postMessage({ type: 'append-ops', payload: ops });
-}
-
-/**
- * Validate dependencies before emitting operations
- * Returns error message if validation fails, null if successful
- */
-function validateOperations(project: ProjectFile | null, newOps: Operation[]): string | null {
-  if (!project) return null;
-  
-  const state = (project as any).state;
-  if (!state) return null;
-  
-  // Get all existing operations
-  const existingOps: Operation[] = (project as any).ops || [];
-  
-  // Combine existing and new operations
-  const allOps = [...existingOps, ...newOps];
-  
-  try {
-    // Build dependency graph
-    const graph = new DependencyGraph(state, allOps);
-    
-    // Check for circular dependencies
-    const cycles = graph.detectCycles();
-    if (cycles.length > 0) {
-      // Build human-readable cycle paths
-      const cyclePaths = cycles.map((cycle) => {
-        // Try to get object names from state
-        const names = cycle.map((nodeId) => {
-          // Find object name in state
-          for (const catalog of state.catalogs || []) {
-            if (catalog.id === nodeId) return catalog.name;
-            for (const schema of catalog.schemas || []) {
-              if (schema.id === nodeId) return `${catalog.name}.${schema.name}`;
-              for (const table of schema.tables || []) {
-                if (table.id === nodeId) return `${catalog.name}.${schema.name}.${table.name}`;
-              }
-              for (const view of schema.views || []) {
-                if (view.id === nodeId) return `${catalog.name}.${schema.name}.${view.name}`;
-              }
-            }
-          }
-          return nodeId; // Fallback to ID
-        });
-        return names.join(' → ');
-      });
-      
-      return `Circular dependency detected:\n${cyclePaths.join('\n')}`;
-    }
-    
-    return null; // Validation successful
-  } catch (error) {
-    console.error('Validation error:', error);
-    return `Dependency validation failed: ${error}`;
-  }
 }
 
 // Helper to create an operation with provider context
@@ -343,13 +287,6 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       definition,
       ...options
     });
-    
-    // Validate dependencies before emitting
-    const validationError = validateOperations(get().project, [op]);
-    if (validationError) {
-      throw new Error(validationError);
-    }
-    
     emitOps([op]);
   },
 
@@ -369,13 +306,6 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       definition,
       dependencies
     });
-    
-    // Validate dependencies before emitting
-    const validationError = validateOperations(get().project, [op]);
-    if (validationError) {
-      throw new Error(validationError);
-    }
-    
     emitOps([op]);
   },
 

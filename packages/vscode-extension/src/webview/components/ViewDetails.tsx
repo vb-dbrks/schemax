@@ -11,7 +11,6 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
   const { project, updateView } = useDesignerStore();
   const [isEditingSQL, setIsEditingSQL] = useState(false);
   const [editedSQL, setEditedSQL] = useState('');
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Find view
   const viewInfo = useMemo(() => {
@@ -48,13 +47,8 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
 
   const handleSaveSQL = () => {
     if (editedSQL.trim()) {
-      try {
-        setSaveError(null);
-        updateView(viewId, editedSQL.trim());
-        setIsEditingSQL(false);
-      } catch (error) {
-        setSaveError(error instanceof Error ? error.message : 'Validation failed');
-      }
+      updateView(viewId, editedSQL.trim());
+      setIsEditingSQL(false);
     }
   };
 
@@ -108,11 +102,6 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
                 borderRadius: '4px'
               }}
             />
-            {saveError && (
-              <div className="error-message" style={{ marginTop: '12px' }}>
-                {saveError}
-              </div>
-            )}
             <div className="edit-actions">
               <VSCodeButton onClick={handleSaveSQL}>
                 <i className="codicon codicon-check"></i>
