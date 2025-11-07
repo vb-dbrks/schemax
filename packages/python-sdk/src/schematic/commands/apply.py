@@ -309,12 +309,55 @@ def apply_to_environment(
         executor = provider.get_sql_executor(config)
         console.print("[green]✓[/green] Authenticated successfully")
 
-        # 17. Execute statements FIRST (this creates catalog if autoCreateCatalog: true)
+        # 17. Generate deployment ID early (needed for auto-rollback tracking)
+        deployment_id = f"deploy_{uuid4().hex[:8]}"
+
+        # 18. Execute statements FIRST (this creates catalog if autoCreateCatalog: true)
         console.print("\n[cyan]Executing SQL statements...[/cyan]")
         result = executor.execute_statements(statements, config)
 
-        # NEW: Auto-rollback on failure (MVP feature!)
-        if result.status == "failed" and auto_rollback:
+        # 19. Track deployment IMMEDIATELY after execution (before auto-rollback)
+        deployment_catalog = env_config["topLevelName"]
+        unity_executor = cast(UnitySQLExecutor, executor)
+        tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
+
+        console.print(
+            f"\n[cyan]Setting up deployment tracking in {deployment_catalog}.schematic...[/cyan]"
+        )
+        tracker.ensure_tracking_schema(
+            auto_create=env_config.get("autoCreateSchematicSchema", True)
+        )
+        console.print("[green]✓[/green] Tracking schema ready")
+
+        # Start and complete deployment tracking
+        tracker.start_deployment(
+            deployment_id=deployment_id,
+            environment=target_env,
+            snapshot_version=latest_snapshot_version,
+            project_name=project_name,
+            provider_type=provider.info.id,
+            provider_version=provider.info.version,
+            schematic_version="0.2.0",
+            from_snapshot_version=deployed_version,
+        )
+
+        # Track individual operations
+        for i, (op, stmt_result) in enumerate(zip(diff_operations, result.statement_results)):
+            tracker.record_operation(
+                deployment_id=deployment_id,
+                op=op,
+                sql_stmt=stmt_result.sql,
+                result=stmt_result,
+                execution_order=i + 1,
+            )
+
+        # Complete deployment tracking
+        tracker.complete_deployment(deployment_id, result, result.error_message)
+
+        # 20. Auto-rollback on failure (MVP feature!)
+        # Only trigger for "partial" (some statements succeeded, some failed)
+        # If status is "failed" (0 successful), there's nothing to roll back
+        if result.status == "partial" and auto_rollback:
             console.print()
             console.print("[yellow]⚠️  Deployment failed! Auto-rollback triggered...[/yellow]")
             console.print()
@@ -328,16 +371,18 @@ def apply_to_environment(
                 successful_ops = diff_operations[:failed_idx]
 
                 # Trigger partial rollback automatically
+                # Pass the failed deployment_id so rollback can query the database
                 rollback_result = rollback_partial(
                     workspace=workspace,
-                    deployment_id=f"rollback_{uuid4().hex[:8]}",
+                    deployment_id=deployment_id,  # The failed deployment ID
                     successful_ops=successful_ops,
                     target_env=target_env,
                     profile=profile,
                     warehouse_id=warehouse_id,
                     executor=executor,  # Reuse existing connection
                     catalog_mapping=catalog_mapping,
-                    auto_triggered=True,  # Skip confirmation prompts, block on risky operations
+                    auto_triggered=True,  # Skip confirmation prompts
+                    from_version=deployed_version,  # For accurate rollback tracking
                 )
 
                 if rollback_result.success:
@@ -372,47 +417,7 @@ def apply_to_environment(
                 console.print(f"[red]❌ Auto-rollback failed unexpectedly: {e}[/red]")
                 console.print("[yellow]Manual rollback may be required[/yellow]")
 
-        # 18. Initialize deployment tracker AFTER catalog exists
-        deployment_catalog = env_config["topLevelName"]
-        # Cast to UnitySQLExecutor to access client attribute
-        unity_executor = cast(UnitySQLExecutor, executor)
-        tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
-
-        console.print(
-            f"\n[cyan]Setting up deployment tracking in {deployment_catalog}.schematic...[/cyan]"
-        )
-        tracker.ensure_tracking_schema(
-            auto_create=env_config.get("autoCreateSchematicSchema", True)
-        )
-        console.print("[green]✓[/green] Tracking schema ready")
-
-        # 19. Start deployment tracking
-        deployment_id = f"deploy_{uuid4().hex[:8]}"
-        tracker.start_deployment(
-            deployment_id=deployment_id,
-            environment=target_env,
-            snapshot_version=latest_snapshot_version,
-            project_name=project_name,
-            provider_type=provider.info.id,
-            provider_version=provider.info.version,
-            schematic_version="0.2.0",
-            from_snapshot_version=deployed_version,  # Track source version for rollback
-        )
-
-        # 20. Track individual operations from diff
-        for i, (op, stmt_result) in enumerate(zip(diff_operations, result.statement_results)):
-            tracker.record_operation(
-                deployment_id=deployment_id,
-                op=op,
-                sql_stmt=stmt_result.sql,
-                result=stmt_result,
-                execution_order=i + 1,
-            )
-
-        # 21. Complete deployment tracking in database
-        tracker.complete_deployment(deployment_id, result, result.error_message)
-
-        # 22. Show results
+        # 21. Show results
         console.print()
         console.print("─" * 60)
 
