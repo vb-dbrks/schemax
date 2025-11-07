@@ -373,9 +373,7 @@ class TestHierarchicalSort:
         catalog = DependencyNode(
             id="catalog_1", type="catalog", hierarchy_level=0, operation=op_cat
         )
-        schema = DependencyNode(
-            id="schema_1", type="schema", hierarchy_level=1, operation=op_sch
-        )
+        schema = DependencyNode(id="schema_1", type="schema", hierarchy_level=1, operation=op_sch)
         table = DependencyNode(id="table_1", type="table", hierarchy_level=2, operation=op_tbl)
         view = DependencyNode(id="view_1", type="view", hierarchy_level=2, operation=op_view)
 
@@ -446,4 +444,3 @@ class TestDependencyEnforcement:
         deps = graph.get_dependencies("table_1")
         assert len(deps) == 1
         assert deps[0].enforcement == DependencyEnforcement.WARNING
-

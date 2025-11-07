@@ -41,4 +41,3 @@ class MissingDependencyError(DependencyValidationError):
         super().__init__(
             f"Object '{object_name}' references non-existent object '{missing_dependency}'"
         )
-

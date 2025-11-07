@@ -247,14 +247,14 @@ def read_changelog(workspace_path: Path) -> dict[str, Any]:
 
 def write_changelog(workspace_path: Path, changelog: dict[str, Any]) -> None:
     """Write changelog file
-    
+
     Note: Serializes Operation objects to dicts for JSON storage.
     """
     from schematic.providers.base.operations import Operation
-    
+
     changelog_path = get_changelog_file_path(workspace_path)
     changelog["lastModified"] = datetime.now(UTC).isoformat()
-    
+
     # Convert Operation objects to dicts for JSON serialization
     serializable_changelog = changelog.copy()
     if "ops" in serializable_changelog and serializable_changelog["ops"]:
@@ -373,7 +373,9 @@ def validate_dependencies_internal(state, ops, provider):
             warnings.append({"type": "hierarchy_warning", "message": warning})
 
     except Exception as e:
-        warnings.append({"type": "validation_error", "message": f"Could not validate dependencies: {e}"})
+        warnings.append(
+            {"type": "validation_error", "message": f"Could not validate dependencies: {e}"}
+        )
 
     return {"errors": errors, "warnings": warnings}
 
@@ -442,7 +444,7 @@ def create_snapshot(
     # Generate IDs for ops that don't have them (backwards compatibility)
     # Note: changelog["ops"] may contain Operation objects or dicts
     from schematic.providers.base.operations import Operation
-    
+
     ops_with_ids = []
     for i, op in enumerate(changelog["ops"]):
         # Handle both Operation objects and dicts

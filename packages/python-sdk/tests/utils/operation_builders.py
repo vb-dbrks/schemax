@@ -488,7 +488,6 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-
     # View Operations
     def add_view(
         self,

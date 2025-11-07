@@ -195,7 +195,7 @@ def generate_sql_migration(
             else:
                 if op.get("op") == "unity.add_table" and op["payload"].get("external"):
                     external_table_ops.append(op)
-        
+
         if external_table_ops and target_env:
             console.print(f"\n[cyan]External Tables ({len(external_table_ops)}):[/cyan]")
             for op in external_table_ops:

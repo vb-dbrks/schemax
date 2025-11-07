@@ -38,8 +38,6 @@ class SQLGenerationResult(BaseModel):
     is_idempotent: bool = True  # Whether SQL is idempotent
 
 
-
-
 class SQLGenerator(ABC):
     """Base SQL Generator interface"""
 
@@ -155,7 +153,7 @@ class BaseSQLGenerator(SQLGenerator):
             DependencyGraph with nodes and edges
         """
         graph = DependencyGraph()
-        
+
         # Track all operations by target object
         ops_by_target: dict[str, list[Operation]] = {}
 
@@ -166,7 +164,7 @@ class BaseSQLGenerator(SQLGenerator):
 
             if not target_id:
                 continue  # Skip operations without a clear target
-            
+
             # Track all operations for this target
             if target_id not in ops_by_target:
                 ops_by_target[target_id] = []
@@ -202,7 +200,7 @@ class BaseSQLGenerator(SQLGenerator):
 
         # Store operation mapping for topological sort
         graph.metadata["ops_by_target"] = ops_by_target
-        
+
         self.dependency_graph = graph
         return graph
 
@@ -262,9 +260,7 @@ class BaseSQLGenerator(SQLGenerator):
             # Detect cycles (will raise ValueError if found)
             cycles = graph.detect_cycles()
             if cycles:
-                cycle_str = "\n".join(
-                    " → ".join(str(nid) for nid in cycle) for cycle in cycles
-                )
+                cycle_str = "\n".join(" → ".join(str(nid) for nid in cycle) for cycle in cycles)
                 warnings.append(f"Circular dependencies detected:\n{cycle_str}")
                 # Fall back to level-based sorting
                 sorted_ops = self._sort_operations_by_level(ops)
@@ -324,9 +320,7 @@ class BaseSQLGenerator(SQLGenerator):
         Returns:
             Sorted operations
         """
-        return sorted(
-            ops, key=lambda op: (self._get_dependency_level(op), op.ts)
-        )
+        return sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
 
     def _detect_breaking_changes(
         self, ops: list[Operation], graph: DependencyGraph | None = None

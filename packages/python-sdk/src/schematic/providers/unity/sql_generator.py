@@ -266,7 +266,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return f"table:{op.target}"  # Add prefix for consistency
 
         # View-level operations
-        if op_type in ["add_view", "rename_view", "drop_view", "update_view", "set_view_comment", "set_view_property", "unset_view_property"]:
+        if op_type in [
+            "add_view",
+            "rename_view",
+            "drop_view",
+            "update_view",
+            "set_view_comment",
+            "set_view_property",
+            "unset_view_property",
+        ]:
             return f"view:{op.target}"  # Prefix to avoid ID collisions
 
         # Column and table property operations
@@ -304,7 +312,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Implements abstract method from BaseSQLGenerator.
         """
-        return op.op in ["unity.add_catalog", "unity.add_schema", "unity.add_table", "unity.add_view"]
+        return op.op in [
+            "unity.add_catalog",
+            "unity.add_schema",
+            "unity.add_table",
+            "unity.add_view",
+        ]
 
     def _is_drop_operation(self, op: Operation) -> bool:
         """
@@ -565,16 +578,16 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """
         Sort operations using topological sort based on dependencies.
         Falls back to level-based sorting if cycles are detected.
-        
+
         Args:
             ops: Operations to sort
-            
+
         Returns:
             Tuple of (sorted operations, list of warning messages)
         """
         from ..base.exceptions import CircularDependencyError
 
-        warnings = []
+        warnings: list[str] = []
 
         try:
             # Build dependency graph
@@ -584,21 +597,21 @@ class UnitySQLGenerator(BaseSQLGenerator):
             cycles = graph.detect_cycles()
             if cycles:
                 # Format cycles for error message
-                cycle_paths = []
+                cycle_paths: list[list[str]] = []
                 for cycle in cycles:
                     # Get names from id_name_map
-                    cycle_names = []
+                    cycle_names: list[str] = []
                     for node_id in cycle:
                         name = self.id_name_map.get(node_id, node_id)
                         cycle_names.append(name)
-                    cycle_paths.append(" → ".join(cycle_names))
+                    cycle_paths.append(cycle_names)  # Append list, not string
 
                 raise CircularDependencyError(cycle_paths)
 
             # Use topological sort
             return graph.topological_sort(), warnings
 
-        except CircularDependencyError as e:
+        except CircularDependencyError:
             # Re-raise to be handled by caller
             raise
         except Exception as e:
@@ -607,7 +620,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 f"Dependency analysis failed: {e}. Falling back to level-based sorting."
             )
             return sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts)), warnings
-    
+
     def generate_sql_with_mapping(self, ops: list[Operation]) -> "SQLGenerationResult":
         """
         Generate SQL with explicit operation-to-statement mapping.
@@ -770,7 +783,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
             combined_sql += ";"
 
         return SQLGenerationResult(
-            sql=combined_sql, statements=statement_infos, warnings=global_warnings, is_idempotent=True
+            sql=combined_sql,
+            statements=statement_infos,
+            warnings=global_warnings,
+            is_idempotent=True,
         )
 
     def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
@@ -1207,45 +1223,44 @@ class UnitySQLGenerator(BaseSQLGenerator):
         view_esc = self._build_fqn(*view_fqn.split("."))
         definition = op.payload.get("definition", "")
         comment = op.payload.get("comment")
-        
+
         # Build CREATE VIEW statement
         sql = f"CREATE VIEW IF NOT EXISTS {view_esc}"
-        
+
         # Add comment if provided
         if comment:
             sql += f" COMMENT '{comment}'"
-        
+
         # Add AS clause
         sql += f" AS\n{definition}"
-        
+
         # Add dependency comment if extracted dependencies exist
         extracted_deps = op.payload.get("extractedDependencies", {})
         tables = extracted_deps.get("tables", [])
         views = extracted_deps.get("views", [])
-        
+
         dep_list = []
         if tables:
             dep_list.extend(tables)
         if views:
             dep_list.extend(views)
-        
+
         if dep_list:
             deps_str = ", ".join(dep_list)
             sql = f"-- View depends on: {deps_str}\n{sql}"
-        
+
         return sql
 
     def _rename_view(self, op: Operation) -> str:
         """Generate ALTER VIEW RENAME statement"""
         old_fqn = self.id_name_map.get(op.target, "unknown")
         old_esc = self._build_fqn(*old_fqn.split("."))
-        
+
         # Build new FQN with new name
         parts = old_fqn.split(".")
         parts[-1] = op.payload["newName"]
-        new_fqn = ".".join(parts)
         new_esc = self._build_fqn(*parts)
-        
+
         return f"ALTER VIEW {old_esc} RENAME TO {new_esc}"
 
     def _drop_view(self, op: Operation) -> str:
@@ -1259,26 +1274,26 @@ class UnitySQLGenerator(BaseSQLGenerator):
         view_fqn = self.id_name_map.get(op.target, "unknown")
         view_esc = self._build_fqn(*view_fqn.split("."))
         definition = op.payload.get("definition", "")
-        
+
         # Use CREATE OR REPLACE for updates
         sql = f"CREATE OR REPLACE VIEW {view_esc} AS\n{definition}"
-        
+
         # Add dependency comment if provided
         extracted_deps = op.payload.get("extractedDependencies", {})
         if extracted_deps:
             tables = extracted_deps.get("tables", [])
             views = extracted_deps.get("views", [])
-            
+
             dep_list = []
             if tables:
                 dep_list.extend(tables)
             if views:
                 dep_list.extend(views)
-            
+
             if dep_list:
                 deps_str = ", ".join(dep_list)
                 sql = f"-- View depends on: {deps_str}\n{sql}"
-        
+
         return sql
 
     def _set_view_comment(self, op: Operation) -> str:

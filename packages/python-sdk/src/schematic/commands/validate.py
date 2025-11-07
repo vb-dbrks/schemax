@@ -5,6 +5,7 @@ Validates Schematic project files and state structure.
 """
 
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 
@@ -19,7 +20,9 @@ class ValidationError(Exception):
     pass
 
 
-def validate_dependencies(state, ops, provider):
+def validate_dependencies(
+    state: Any, ops: list[Any], provider: Any
+) -> tuple[list[str], list[str]]:
     """
     Validate dependency graph for circular dependencies and missing references.
 
@@ -31,15 +34,15 @@ def validate_dependencies(state, ops, provider):
     Returns:
         Tuple of (errors list, warnings list)
     """
-    errors = []
-    warnings = []
+    errors: list[str] = []
+    warnings: list[str] = []
 
     try:
         # Ops are already Operation objects from load_current_state()
         # No conversion needed - storage layer handles this
         if not ops:
             return errors, warnings
-        
+
         # Get SQL generator to build dependency graph
         generator = provider.get_sql_generator(state=state)
 
@@ -48,7 +51,7 @@ def validate_dependencies(state, ops, provider):
 
         # Check for circular dependencies
         cycles = graph.detect_cycles()
-        
+
         if cycles:
             for cycle in cycles:
                 # Get names from generator's id_name_map
@@ -65,6 +68,7 @@ def validate_dependencies(state, ops, provider):
 
     except Exception as e:
         import traceback
+
         warnings.append(f"Could not validate dependencies: {e}")
         # Add traceback for debugging
         warnings.append(f"Traceback: {traceback.format_exc()[:200]}")
@@ -89,7 +93,7 @@ def validate_project(workspace: Path, json_output: bool = False) -> bool:
         ValidationError: If validation fails
     """
     import json
-    
+
     try:
         # Try to load project and changelog
         if not json_output:
@@ -117,7 +121,7 @@ def validate_project(workspace: Path, json_output: bool = False) -> bool:
         # Validate dependencies (circular dependencies, missing refs, etc.)
         if not json_output:
             console.print("\nValidating dependencies...")
-        
+
         dep_errors, dep_warnings = validate_dependencies(state, changelog["ops"], provider)
 
         if dep_errors:
@@ -139,14 +143,14 @@ def validate_project(workspace: Path, json_output: bool = False) -> bool:
         from .snapshot_rebase import detect_stale_snapshots
 
         stale = detect_stale_snapshots(workspace)
-        
+
         # If JSON output requested, output JSON and return
         if json_output:
             result = {
                 "valid": True,
                 "errors": [],
                 "warnings": dep_warnings,
-                "staleSnapshots": stale
+                "staleSnapshots": stale,
             }
             print(json.dumps(result))
             return len(stale) == 0  # Return False if stale snapshots

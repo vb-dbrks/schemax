@@ -380,4 +380,3 @@ def test_sqlglot_parse_success_rate():
         for sql, error in failed_parses:
             print(f"  SQL: {sql[:50]}...")
             print(f"  Error: {error}")
-

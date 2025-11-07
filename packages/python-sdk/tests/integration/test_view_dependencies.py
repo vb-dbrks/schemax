@@ -9,12 +9,9 @@ Tests end-to-end dependency system:
 5. Circular dependency detection
 """
 
-import pytest
 
-from schematic.providers.base.dependency_graph import DependencyEnforcement, DependencyType
 from schematic.providers.base.sql_parser import extract_dependencies_from_view
-from schematic.providers.unity.models import UnityCatalog, UnitySchema, UnityState, UnityTable
-from schematic.providers.unity.operations import UNITY_OPERATIONS
+from schematic.providers.unity.models import UnityState
 from schematic.providers.unity.state_reducer import apply_operation, apply_operations
 from tests.utils.operation_builders import OperationBuilder
 
@@ -32,7 +29,9 @@ class TestSimpleViewDependencies:
         state = apply_operation(state, builder.add_catalog("cat1", "my_catalog", op_id="op1"))
 
         # Add schema
-        state = apply_operation(state, builder.add_schema("schema1", "my_schema", "cat1", op_id="op2"))
+        state = apply_operation(
+            state, builder.add_schema("schema1", "my_schema", "cat1", op_id="op2")
+        )
 
         # Add table
         state = apply_operation(
@@ -408,4 +407,3 @@ class TestViewUpdateScenarios:
         schema = state.catalogs[0].schemas[0]
         assert len(schema.views) == 0
         assert len(schema.tables) == 1  # Table should still exist
-

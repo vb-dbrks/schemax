@@ -210,4 +210,3 @@ def extract_dependencies_from_view(
             views.append(obj_id)
 
     return {"tables": tables, "views": views, "unresolved": unresolved}
-

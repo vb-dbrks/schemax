@@ -75,7 +75,7 @@ class DependencyGraph:
         # Keep node metadata separate for easy access
         self.nodes: dict[str, DependencyNode] = {}
         # Graph-level metadata (for operations tracking, etc.)
-        self.metadata: dict[str, any] = {}
+        self.metadata: dict[str, Any] = {}
 
     def add_node(self, node: DependencyNode) -> None:
         """Add a node to the graph"""
@@ -113,9 +113,7 @@ class DependencyGraph:
             raise ValueError(f"Target node {to_id} not in graph")
 
         # NetworkX edge: from_id → to_id means from_id depends on to_id
-        self.graph.add_edge(
-            from_id, to_id, dep_type=dep_type.value, enforcement=enforcement.value
-        )
+        self.graph.add_edge(from_id, to_id, dep_type=dep_type.value, enforcement=enforcement.value)
 
     def get_node(self, node_id: str) -> DependencyNode | None:
         """Get a node by ID"""
@@ -175,8 +173,7 @@ class DependencyGraph:
         cycles = self.detect_cycles()
         if cycles:
             cycle_str = "\n".join(
-                " → ".join(self._get_node_display_name(nid) for nid in cycle)
-                for cycle in cycles
+                " → ".join(self._get_node_display_name(nid) for nid in cycle) for cycle in cycles
             )
             raise ValueError(f"Circular dependencies detected:\n{cycle_str}")
 
@@ -193,7 +190,7 @@ class DependencyGraph:
         # For each node, return ALL operations (not just the first one)
         sorted_operations: list[Operation] = []
         ops_by_target = self.metadata.get("ops_by_target", {})
-        
+
         for node_id in sorted_node_ids:
             # If we have multiple operations for this object, add them all
             if node_id in ops_by_target:
@@ -245,9 +242,7 @@ class DependencyGraph:
 
         # Collect node IDs at this level
         level_node_ids = [
-            node_id
-            for node_id, node in self.nodes.items()
-            if node.hierarchy_level == level
+            node_id for node_id, node in self.nodes.items() if node.hierarchy_level == level
         ]
 
         # Add nodes for this level
@@ -322,4 +317,3 @@ class DependencyGraph:
                     )
 
         return warnings
-
