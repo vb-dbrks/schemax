@@ -424,7 +424,7 @@ def rollback(
                     f"[red]✗[/red] Deployment '{deployment}' not found in {deployment_catalog}.schematic"
                 )
                 console.print(
-                    f"\n[yellow]Troubleshooting steps:[/yellow]"
+                    "\n[yellow]Troubleshooting steps:[/yellow]"
                 )
                 console.print(
                     f"  1. Verify catalog exists:\n"
@@ -591,6 +591,7 @@ def rollback(
                 catalog_mapping=catalog_mapping,
                 auto_triggered=False,  # Manual mode - allow confirmation
                 from_version=from_version,
+                dry_run=dry_run,
             )
 
             if result.success:

@@ -58,6 +58,7 @@ def rollback_partial(
     catalog_mapping: dict[str, str] | None = None,
     auto_triggered: bool = False,
     from_version: str | None = None,
+    dry_run: bool = False,
 ) -> RollbackResult:
     """Rollback failed deployment by reversing successful operations
 
@@ -76,6 +77,7 @@ def rollback_partial(
         catalog_mapping: Logical to physical catalog name mapping
         auto_triggered: If True, skips confirmation and blocks on risky operations
         from_version: Pre-deployment snapshot version (optional, auto-detected if not provided)
+        dry_run: If True, show SQL preview and exit without executing
 
     Returns:
         RollbackResult with success status and details
@@ -233,7 +235,21 @@ def rollback_partial(
             success=False, operations_rolled_back=0, error_message="No SQL generated"
         )
 
-    # 9. Execute rollback SQL statements
+    # 9. Dry run - show SQL and exit
+    if dry_run:
+        console.print()
+        console.print("[bold yellow]DRY RUN - No changes will be made[/bold yellow]")
+        console.print()
+        console.print("[bold]SQL Preview:[/bold]")
+        from rich.syntax import Syntax
+
+        syntax = Syntax(sql_result.sql, "sql", theme="monokai", line_numbers=True)
+        console.print(syntax)
+        console.print()
+        console.print(f"[yellow]Would execute {len(statements)} statements[/yellow]")
+        return RollbackResult(success=True, operations_rolled_back=0)
+
+    # 10. Execute rollback SQL statements
     console.print()
     console.print(f"[cyan]Executing {len(statements)} rollback statements...[/cyan]")
 
