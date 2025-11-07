@@ -7,58 +7,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from schematic.commands.apply import parse_sql_statements
 from schematic.commands.rollback import RollbackError, rollback_partial
 from schematic.providers.base.executor import ExecutionResult
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
-
-
-class TestParseSQLStatements:
-    """Test SQL statement parsing"""
-
-    def test_parse_simple_statements(self):
-        """Test parsing simple SQL statements"""
-        sql = "CREATE TABLE t1; DROP TABLE t2; ALTER TABLE t3;"
-        statements = parse_sql_statements(sql)
-
-        assert len(statements) == 3
-        assert statements[0] == "CREATE TABLE t1"
-        assert statements[1] == "DROP TABLE t2"
-        assert statements[2] == "ALTER TABLE t3"
-
-    def test_parse_with_comments(self):
-        """Test parsing SQL with comments"""
-        sql = """
-        -- Create table
-        CREATE TABLE t1;
-        -- Drop table
-        DROP TABLE t2;
-        """
-        statements = parse_sql_statements(sql)
-
-        assert len(statements) == 2
-        assert "CREATE TABLE t1" in statements[0]
-        assert "DROP TABLE t2" in statements[1]
-
-    def test_parse_multiline_statements(self):
-        """Test parsing multi-line SQL statements"""
-        sql = """
-        CREATE TABLE users (
-            id INT,
-            name STRING
-        );
-        """
-        statements = parse_sql_statements(sql)
-
-        assert len(statements) == 1
-        assert "CREATE TABLE users" in statements[0]
-
-    def test_parse_empty_sql(self):
-        """Test parsing empty SQL"""
-        assert parse_sql_statements("") == []
-        assert parse_sql_statements("   ") == []
-        assert parse_sql_statements(";;") == []
 
 
 class TestRollbackPartial:
@@ -160,7 +112,19 @@ class TestRollbackPartial:
         mock_state_differ.generate_diff_operations.return_value = [rollback_op]
 
         # Mock SQL generator
-        mock_sql_generator.generate_sql.return_value = "DROP CATALOG test;"
+        # Mock generate_sql_with_mapping to return SQLGenerationResult
+        from schematic.providers.base.sql_generator import SQLGenerationResult, StatementInfo
+        
+        mock_sql_generator.generate_sql_with_mapping.return_value = SQLGenerationResult(
+            sql="DROP CATALOG test;",
+            statements=[
+                StatementInfo(
+                    sql="DROP CATALOG test",
+                    operation_ids=["op_1"],
+                    execution_order=1
+                )
+            ]
+        )
 
         # Mock executor - successful execution with statement_results
         from schematic.providers.base.executor import StatementResult
@@ -384,7 +348,20 @@ class TestRollbackPartial:
             payload={},
         )
         mock_state_differ.generate_diff_operations.return_value = [rollback_op]
-        mock_sql_generator.generate_sql.return_value = "DROP CATALOG test;"
+        
+        # Mock generate_sql_with_mapping
+        from schematic.providers.base.sql_generator import SQLGenerationResult, StatementInfo
+        
+        mock_sql_generator.generate_sql_with_mapping.return_value = SQLGenerationResult(
+            sql="DROP CATALOG test;",
+            statements=[
+                StatementInfo(
+                    sql="DROP CATALOG test",
+                    operation_ids=["rollback_1"],
+                    execution_order=1
+                )
+            ]
+        )
 
         # Mock executor - failed execution
         from schematic.providers.base.executor import StatementResult

@@ -487,6 +487,10 @@ def rollback(
                 from_version = target_deployment.get("fromVersion")
                 to_version = target_deployment.get("version")
 
+                if not to_version:
+                    console.print("[red]✗ Deployment missing version information[/red]")
+                    sys.exit(1)
+
                 # Load states
                 _, _, provider = load_current_state(workspace_path)
 
