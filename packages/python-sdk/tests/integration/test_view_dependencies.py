@@ -407,3 +407,218 @@ class TestViewUpdateScenarios:
         schema = state.catalogs[0].schemas[0]
         assert len(schema.views) == 0
         assert len(schema.tables) == 1  # Table should still exist
+
+    def test_update_view_dependencies_are_reextracted(self):
+        """
+        Test that when a view's SQL is updated, dependencies are re-extracted.
+        
+        Regression test for bug where updating a view wouldn't update its dependencies.
+        
+        Scenario:
+        1. Create view1 that depends on table1
+        2. Update view1 to depend on table2 instead
+        3. Verify dependencies are updated correctly
+        """
+        state = UnityState(catalogs=[])
+        builder = OperationBuilder()
+
+        # Create state with two tables
+        state_dict = {
+            "catalogs": [
+                {
+                    "id": "cat1",
+                    "name": "test",
+                    "schemas": [
+                        {
+                            "id": "schema1",
+                            "name": "main",
+                            "tables": [
+                                {"id": "table1", "name": "table1"},
+                                {"id": "table2", "name": "table2"},
+                                {"id": "table3", "name": "table3"},
+                            ],
+                            "views": [],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        # Initial view SQL depends on table1
+        initial_sql = "SELECT * FROM table1"
+        initial_deps = extract_dependencies_from_view(initial_sql, state_dict, "test")
+        assert "table1" in initial_deps["tables"]
+        assert "table2" not in initial_deps["tables"]
+
+        # Updated view SQL depends on table2
+        updated_sql = "SELECT * FROM table2"
+        updated_deps = extract_dependencies_from_view(updated_sql, state_dict, "test")
+        assert "table2" in updated_deps["tables"]
+        assert "table1" not in updated_deps["tables"]
+
+        # Create operations
+        ops = [
+            builder.add_catalog("cat1", "test", op_id="op1"),
+            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.add_table("table1", "table1", "schema1", "delta", op_id="op3"),
+            builder.add_table("table2", "table2", "schema1", "delta", op_id="op4"),
+            builder.add_table("table3", "table3", "schema1", "delta", op_id="op5"),
+            builder.add_view(
+                "view1",
+                "my_view",
+                "schema1",
+                initial_sql,
+                dependencies=["table1"],
+                op_id="op6",
+            ),
+            builder.update_view(
+                "view1",
+                definition=updated_sql,
+                extracted_dependencies=updated_deps,
+                op_id="op7",
+            ),
+        ]
+
+        state = apply_operations(state, ops)
+
+        # Verify view has updated SQL and dependencies
+        view = state.catalogs[0].schemas[0].views[0]
+        assert view.definition == updated_sql
+        # Check extracted_dependencies (dict), not dependencies (list)
+        assert view.extracted_dependencies is not None
+        assert "table2" in view.extracted_dependencies.get("tables", [])
+        assert "table1" not in view.extracted_dependencies.get("tables", [])
+
+
+class TestViewSQLBatching:
+    """Test SQL generation batching optimizations for views"""
+
+    def test_create_and_update_view_batched(self):
+        """
+        Test that CREATE + UPDATE_VIEW operations are batched into single CREATE OR REPLACE VIEW.
+        
+        Regression test for bug where separate CREATE and UPDATE statements were generated.
+        
+        Scenario:
+        1. Create a view with initial SQL
+        2. Update the view's SQL in the same changeset
+        3. SQL generator should produce single CREATE OR REPLACE VIEW statement
+        """
+        from schematic.providers.unity.sql_generator import UnitySQLGenerator
+
+        state = UnityState(catalogs=[])
+        builder = OperationBuilder()
+
+        # Create operations
+        ops = [
+            builder.add_catalog("cat1", "test", op_id="op1"),
+            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.add_table("table1", "source", "schema1", "delta", op_id="op3"),
+            builder.add_view(
+                "view1",
+                "my_view",
+                "schema1",
+                "SELECT * FROM table1",
+                dependencies=["table1"],
+                op_id="op4",
+            ),
+            builder.update_view(
+                "view1",
+                definition="SELECT id, name FROM table1",
+                extracted_dependencies={"tables": ["table1"], "views": []},
+                op_id="op5",
+            ),
+        ]
+
+        # Apply operations to get state
+        state = apply_operations(state, ops)
+
+        # Generate SQL
+        generator = UnitySQLGenerator(state, catalog_name_mapping={})
+        result = generator.generate_sql_with_mapping(ops)
+
+        # Extract SQL statements
+        sql_statements = [stmt.sql for stmt in result.statements]
+
+        # Count view creation statements
+        # Note: "CREATE OR REPLACE VIEW" contains "CREATE VIEW", so we need to be specific
+        create_if_not_exists_count = sum(
+            1 for sql in sql_statements if "CREATE VIEW IF NOT EXISTS" in sql
+        )
+        create_or_replace_count = sum(
+            1 for sql in sql_statements if "CREATE OR REPLACE VIEW" in sql
+        )
+
+        # Should have exactly ONE CREATE OR REPLACE VIEW statement
+        assert create_or_replace_count == 1, "Should batch into single CREATE OR REPLACE VIEW"
+        # Should NOT have separate CREATE VIEW IF NOT EXISTS
+        assert (
+            create_if_not_exists_count == 0
+        ), "Should not generate separate CREATE VIEW IF NOT EXISTS"
+
+        # Verify the final SQL has the updated definition
+        view_sql = next(sql for sql in sql_statements if "CREATE OR REPLACE VIEW" in sql)
+        assert "SELECT id, name FROM" in view_sql, "Should use updated SQL definition"
+
+    def test_create_and_multiple_updates_batched(self):
+        """
+        Test that CREATE + multiple UPDATE_VIEW operations use the final definition.
+        
+        Scenario:
+        1. Create a view
+        2. Update it multiple times in the same changeset
+        3. Final SQL should use the last update's definition
+        """
+        from schematic.providers.unity.sql_generator import UnitySQLGenerator
+
+        state = UnityState(catalogs=[])
+        builder = OperationBuilder()
+
+        ops = [
+            builder.add_catalog("cat1", "test", op_id="op1"),
+            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.add_table("table1", "data", "schema1", "delta", op_id="op3"),
+            builder.add_view(
+                "view1",
+                "evolving_view",
+                "schema1",
+                "SELECT * FROM table1",
+                dependencies=["table1"],
+                op_id="op4",
+            ),
+            builder.update_view(
+                "view1",
+                definition="SELECT id FROM table1",
+                extracted_dependencies={"tables": ["table1"], "views": []},
+                op_id="op5",
+            ),
+            builder.update_view(
+                "view1",
+                definition="SELECT id, name FROM table1",
+                extracted_dependencies={"tables": ["table1"], "views": []},
+                op_id="op6",
+            ),
+            builder.update_view(
+                "view1",
+                definition="SELECT id, name, status FROM table1 WHERE active = true",
+                extracted_dependencies={"tables": ["table1"], "views": []},
+                op_id="op7",
+            ),
+        ]
+
+        state = apply_operations(state, ops)
+
+        # Generate SQL
+        generator = UnitySQLGenerator(state, catalog_name_mapping={})
+        result = generator.generate_sql_with_mapping(ops)
+
+        sql_statements = [stmt.sql for stmt in result.statements]
+
+        # Should have exactly ONE view creation statement
+        view_statements = [sql for sql in sql_statements if "VIEW" in sql and "CREATE" in sql]
+        assert len(view_statements) == 1, "Should generate only one CREATE statement"
+
+        # Should use the FINAL definition
+        final_sql = view_statements[0]
+        assert "SELECT id, name, status FROM" in final_sql, "Should use final definition"
+        assert "WHERE active = true" in final_sql, "Should include final WHERE clause"

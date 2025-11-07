@@ -546,6 +546,7 @@ class OperationBuilder:
         view_id: str,
         definition: str | None = None,
         dependencies: list[str] | None = None,
+        extracted_dependencies: dict[str, list[str]] | None = None,
         op_id: str | None = None,
     ) -> Operation:
         """Create an update_view operation"""
@@ -554,6 +555,8 @@ class OperationBuilder:
             payload["definition"] = definition
         if dependencies:
             payload["dependencies"] = dependencies
+        if extracted_dependencies:
+            payload["extractedDependencies"] = extracted_dependencies
 
         return create_operation(
             provider=self.provider,
