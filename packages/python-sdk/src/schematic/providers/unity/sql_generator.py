@@ -1042,17 +1042,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Get table FQN from id_name_map
         # SQL generator MUST be created with state containing objects to be dropped
         # (e.g., use current_state during rollback, not target_state)
-        table_fqn = self.id_name_map.get(op.target)fix(rollback): add idempotency check and SQL preview
-
-- Add database state check to prevent redundant rollbacks
-- Add SQL preview matching apply command UX
-- Query deployment tracking table before generating operations
-- Return early if already at target snapshot version
-- Remove extraneous f-strings and unused imports (ruff fixes)
-- Update documentation and cursor rules
-
-Test coverage: 240 tests passing (11 skipped)
-CI checks: ruff format ✓, ruff lint ✓, mypy ✓
+        table_fqn = self.id_name_map.get(op.target)
 
         if not table_fqn or "." not in table_fqn:
             # This should never happen if SQL generator is used correctly
