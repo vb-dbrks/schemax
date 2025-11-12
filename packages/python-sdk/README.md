@@ -152,7 +152,7 @@ schematic apply --target prod --profile prod --warehouse-id xyz789 --no-interact
 
 ### `schematic rollback` (Unity Catalog only)
 
-Rollback failed or unwanted deployments with safety validation.
+Rollback failed or unwanted deployments with safety validation. Idempotent design prevents redundant operations by checking database state.
 
 **Partial Rollback** - Revert successful operations from a failed deployment:
 ```bash
@@ -187,6 +187,11 @@ schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehou
 - **SAFE**: No data loss (e.g., DROP empty table)
 - **RISKY**: Potential data loss (e.g., ALTER COLUMN TYPE)
 - **DESTRUCTIVE**: Certain data loss (e.g., DROP table with data)
+
+**Features:**
+- **Idempotent**: Checks database deployment state to prevent redundant rollbacks
+- **SQL Preview**: Shows exact SQL statements before execution (matches `apply` UX)
+- **Database as Source of Truth**: Queries deployment tracking table for accurate state
 
 ### `schematic snapshot`
 

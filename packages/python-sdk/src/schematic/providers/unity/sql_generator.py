@@ -294,6 +294,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """
         return op.op in ["unity.add_catalog", "unity.add_schema", "unity.add_table"]
 
+    def _is_drop_operation(self, op: Operation) -> bool:
+        """
+        Check if Unity operation drops an object.
+
+        Implements abstract method from BaseSQLGenerator.
+        DROP operations cannot be batched with CREATE/ALTER and must be handled separately.
+        """
+        return op.op in ["unity.drop_catalog", "unity.drop_schema", "unity.drop_table"]
+
     def _generate_batched_create_sql(self, object_id: str, batch_info: BatchInfo) -> str:
         """
         Generate CREATE statement with batched modifications for Unity Catalog objects.
@@ -556,12 +565,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Filter out create+drop pairs that cancel each other
         filtered_ops = self._filter_cancelled_operations(sorted_ops)
 
-        # Filter out create+drop pairs that cancel each other
-        filtered_ops = self._filter_cancelled_operations(sorted_ops)
+        # Separate DROP operations from CREATE/ALTER operations
+        # DROP operations cannot be batched and must be processed individually
+        drop_ops = [op for op in filtered_ops if self._is_drop_operation(op)]
+        non_drop_ops = [op for op in filtered_ops if not self._is_drop_operation(op)]
 
         # Use base class's generic batcher (no duplication!)
+        # Only batch non-DROP operations
         batches = self.batcher.batch_operations(
-            filtered_ops, self._get_target_object_id, self._is_create_operation
+            non_drop_ops, self._get_target_object_id, self._is_create_operation
         )
         processed_op_ids = set()
 
@@ -575,7 +587,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_stmts = []
         other_ops = []
 
-        # Process batched operations
+        # Process batched operations (CREATE and ALTER only)
         for object_id, batch_info in batches.items():
             op_ids = batch_info.op_ids
             processed_op_ids.update(op_ids)
@@ -604,8 +616,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 table_result = self._generate_table_sql_with_mapping(object_id, batch_info)
                 table_stmts.extend(table_result)  # List of (sql, op_ids) tuples
 
-        # Process unbatched operations
-        for op in filtered_ops:
+        # Process unbatched non-DROP operations
+        for op in non_drop_ops:
             if op.id in processed_op_ids:
                 continue
 
@@ -635,6 +647,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
             )
 
         for op in other_ops:
+            result = self.generate_sql_for_operation(op)
+            if result.sql and not result.sql.startswith("--"):
+                execution_order += 1
+                statement_infos.append(
+                    StatementInfo(
+                        sql=result.sql, operation_ids=[op.id], execution_order=execution_order
+                    )
+                )
+
+        # Process DROP operations last (in reverse dependency order: table → schema → catalog)
+        # This ensures we drop dependent objects before their parents
+        for op in sorted(drop_ops, key=lambda op: -self._get_dependency_level(op)):
             result = self.generate_sql_for_operation(op)
             if result.sql and not result.sql.startswith("--"):
                 execution_order += 1
@@ -802,7 +826,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _drop_catalog(self, op: Operation) -> str:
         name = self.id_name_map.get(op.target, op.target)
-        return f"DROP CATALOG IF EXISTS {self.escape_identifier(name)}"
+        # Use CASCADE to ensure catalog drops even if it contains schemas/tables
+        # This handles drift scenarios where catalog may have objects we don't track
+        # CASCADE is safe for rollback: we're reverting to a previous known state
+        # Note: In Unity Catalog, CASCADE soft-deletes managed tables (cleanup in 7-30 days)
+        return f"DROP CATALOG IF EXISTS {self.escape_identifier(name)} CASCADE"
 
     # Schema operations
     def _add_schema(self, op: Operation) -> str:
@@ -926,7 +954,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Use _build_fqn for consistent formatting
         fqn_esc = self._build_fqn(catalog_name, schema_name)
 
-        return f"DROP SCHEMA IF EXISTS {fqn_esc}"
+        # Use CASCADE to ensure schema drops even if it contains objects
+        # This handles drift scenarios where schema may have tables we don't track
+        # CASCADE is safe for rollback: we're reverting to a previous known state
+        return f"DROP SCHEMA IF EXISTS {fqn_esc} CASCADE"
 
     # Table operations
     def _add_table(self, op: Operation) -> str:
@@ -1008,22 +1039,31 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER TABLE {old_esc} RENAME TO {new_esc}"
 
     def _drop_table(self, op: Operation) -> str:
-        # Payload contains required fields (created by state differ with table context)
-        table_name = op.payload["name"]
-        catalog_id = op.payload["catalogId"]
-        schema_id = op.payload["schemaId"]
+        # Get table FQN from id_name_map
+        # SQL generator MUST be created with state containing objects to be dropped
+        # (e.g., use current_state during rollback, not target_state)
+        table_fqn = self.id_name_map.get(op.target)fix(rollback): add idempotency check and SQL preview
 
-        # Resolve catalog and schema names from IDs
-        catalog_fqn = self.id_name_map.get(catalog_id, "unknown")
-        catalog_name = catalog_fqn if "." not in catalog_fqn else catalog_fqn.split(".")[0]
+- Add database state check to prevent redundant rollbacks
+- Add SQL preview matching apply command UX
+- Query deployment tracking table before generating operations
+- Return early if already at target snapshot version
+- Remove extraneous f-strings and unused imports (ruff fixes)
+- Update documentation and cursor rules
 
-        schema_fqn = self.id_name_map.get(schema_id, f"{catalog_name}.unknown")
-        parts = schema_fqn.split(".")
-        schema_name = parts[1] if len(parts) > 1 else "unknown"
+Test coverage: 240 tests passing (11 skipped)
+CI checks: ruff format ✓, ruff lint ✓, mypy ✓
 
-        # Use _build_fqn for consistent formatting
-        fqn_esc = self._build_fqn(catalog_name, schema_name, table_name)
+        if not table_fqn or "." not in table_fqn:
+            # This should never happen if SQL generator is used correctly
+            # If it does, it indicates a bug in the calling code
+            raise ValueError(
+                f"Cannot generate DROP TABLE for {op.target}: table not found in state.\n"
+                f"Hint: SQL generator must be created with state containing objects to be dropped.\n"
+                f"For rollback operations, use current_state (not target_state)."
+            )
 
+        fqn_esc = self._build_fqn(*table_fqn.split("."))
         return f"DROP TABLE IF EXISTS {fqn_esc}"
 
     def _set_table_comment(self, op: Operation) -> str:

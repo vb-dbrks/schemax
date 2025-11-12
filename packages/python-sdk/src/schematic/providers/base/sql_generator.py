@@ -200,6 +200,30 @@ class BaseSQLGenerator(SQLGenerator):
         pass
 
     @abstractmethod
+    def _is_drop_operation(self, op: Operation) -> bool:
+        """
+        Check if operation drops/deletes an object.
+
+        Used to handle DROP operations separately from batching since they
+        cannot be batched with CREATE/ALTER operations.
+
+        Args:
+            op: Operation to check
+
+        Returns:
+            True if operation drops an object (e.g., drop_table, drop_schema, drop_catalog)
+
+        Example (Unity):
+            >>> def _is_drop_operation(self, op):
+            ...     return op.op in [
+            ...         "unity.drop_catalog",
+            ...         "unity.drop_schema",
+            ...         "unity.drop_table"
+            ...     ]
+        """
+        pass
+
+    @abstractmethod
     def _get_dependency_level(self, op: Operation) -> int:
         """
         Get dependency level for operation ordering.

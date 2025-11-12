@@ -625,6 +625,8 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ Rollback uses state_differ for accurate reverse operations
 - ✅ Database query for latest deployment (source of truth)
 - ✅ Deployment status: `success`, `failed`, `partial` (0 statements = failed)
+- ✅ Idempotent rollback (checks database state to prevent redundant operations)
+- ✅ SQL preview in rollback (matches apply command UX)
 
 **Snapshot Management** (NEW):
 - ✅ Snapshot creation via CLI with optional manual version override
@@ -1101,10 +1103,12 @@ schematic sql
 - `test_catalog_mapping.py` - Logical → Physical catalog name mapping (8 tests)
 - `test_unity_executor.py` - Databricks SQL executor & authentication (6 tests)
 - `test_deployment_tracker.py` - Deployment tracking (1 test)
-- `test_rollback_command.py` - Rollback partial and complete (8 tests)
+- `test_rollback_command.py` - Rollback partial and complete (4 tests)
+- `test_rollback_idempotency.py` - Rollback idempotency checks (2 tests)
 - `test_snapshot_rebase.py` - Snapshot validation and rebase (12 tests)
 - `test_apply_command.py` - Apply command with prompts (5 tests)
 - `test_workflows.py` - Integration tests for complete workflows (14 tests)
+- `test_drop_operations_fix.py` - DROP operation SQL generation (6 tests)
 
 **Note**: V3 storage tests removed as v3 is deprecated in favor of v4.
 
@@ -1227,6 +1231,8 @@ When starting a new conversation about this project:
    - Complete: Rollback to previous snapshot
    - Uses state_differ for accurate reverse operations
    - Safety validation (SAFE, RISKY, DESTRUCTIVE levels)
+   - Idempotent: Checks database state to prevent redundant rollbacks
+   - SQL preview: Shows exact SQL statements before execution (matches apply UX)
    - Commands: `schematic rollback --partial` or `--to-snapshot`
 10. **Snapshot Management**: ✅ Fully implemented
    - Snapshot validation: Detect stale snapshots after Git rebase

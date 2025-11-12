@@ -221,7 +221,9 @@ def rollback_partial(
             )
 
     # 7. Generate SQL for rollback operations
-    sql_generator = provider.get_sql_generator(pre_deployment_state, catalog_mapping)
+    # Use post_deployment_state (current) so objects to be dropped are in id_name_map
+    # This makes SQL generation deterministic - no need for payload fallback
+    sql_generator = provider.get_sql_generator(post_deployment_state, catalog_mapping)
     # 8. Generate SQL with structured mapping
     sql_result = sql_generator.generate_sql_with_mapping(rollback_ops)
 
@@ -234,21 +236,37 @@ def rollback_partial(
             success=False, operations_rolled_back=0, error_message="No SQL generated"
         )
 
-    # 9. Dry run - show SQL and exit
+    # 9. Show SQL preview (match apply command behavior)
+    console.print()
+    console.print("[bold]SQL Preview:[/bold]")
+    console.print("─" * 60)
+
+    # Show each statement with per-statement truncation
+    for i, stmt in enumerate(statements, 1):
+        console.print(f"\n[cyan]Statement {i}/{len(statements)}:[/cyan]")
+        stmt_lines = stmt.strip().split("\n")
+
+        if len(stmt_lines) <= 5:
+            # Short statement - show in full
+            for line in stmt_lines:
+                console.print(f"  {line}")
+        else:
+            # Long statement - show first 3 and last 1 line
+            for line in stmt_lines[:3]:
+                console.print(f"  {line}")
+            console.print(f"  ... ({len(stmt_lines) - 4} more lines)")
+            console.print(f"  {stmt_lines[-1]}")
+
+    console.print()
+    console.print(f"[bold]Execute {len(statements)} rollback statements?[/bold]")
+
+    # 10. Dry run - stop here
     if dry_run:
         console.print()
-        console.print("[bold yellow]DRY RUN - No changes will be made[/bold yellow]")
-        console.print()
-        console.print("[bold]SQL Preview:[/bold]")
-        from rich.syntax import Syntax
-
-        syntax = Syntax(sql_result.sql, "sql", theme="monokai", line_numbers=True)
-        console.print(syntax)
-        console.print()
-        console.print(f"[yellow]Would execute {len(statements)} statements[/yellow]")
+        console.print("[yellow]✓ Dry-run complete (no changes made)[/yellow]")
         return RollbackResult(success=True, operations_rolled_back=0)
 
-    # 10. Execute rollback SQL statements
+    # 11. Execute rollback SQL statements
     console.print()
     console.print(f"[cyan]Executing {len(statements)} rollback statements...[/cyan]")
 
@@ -262,7 +280,7 @@ def rollback_partial(
     try:
         result = executor.execute_statements(statements, config)
 
-        # 9. Track rollback deployment in database and locally
+        # 12. Track rollback deployment in database and locally
         console.print()
         console.print("[cyan]Recording rollback...[/cyan]")
 
@@ -402,7 +420,42 @@ def rollback_complete(
         console.print(f"[cyan]Target snapshot:[/cyan] {to_snapshot}")
         console.print()
 
-        # 3. Load current state and target snapshot state
+        # 3. Check if already at target version in database (prevent redundant rollbacks)
+        from schematic.providers.unity.auth import create_databricks_client
+
+        console.print("[cyan]Checking database state...[/cyan]")
+        client = create_databricks_client(profile)
+        executor = UnitySQLExecutor(client)
+        tracker = DeploymentTracker(executor.client, deployment_catalog, warehouse_id)
+
+        try:
+            # Query database for latest deployment (source of truth)
+            current_deployment = tracker.get_latest_deployment(target_env)
+            if current_deployment:
+                deployed_version = current_deployment.get("version")
+                console.print(f"  [blue]Currently deployed:[/blue] {deployed_version}")
+
+                # Check if already at target version
+                if deployed_version == to_snapshot:
+                    console.print()
+                    console.print(f"[yellow]✓ Already at {to_snapshot} in database[/yellow]")
+                    console.print(
+                        "[dim]  No rollback needed - database matches target snapshot[/dim]"
+                    )
+                    console.print()
+                    console.print("[yellow]Hint:[/yellow] Your local workspace may be out of sync.")
+                    console.print("  Consider running: [cyan]schematic snapshot create[/cyan]")
+                    return RollbackResult(success=True, operations_rolled_back=0)
+            else:
+                console.print("  [dim]No deployment history found[/dim]")
+        except Exception as e:
+            # If we can't query database, continue with local state comparison
+            console.print(f"  [dim]Cannot query database: {e}[/dim]")
+            console.print("  [dim]Will compare local state with target snapshot[/dim]")
+
+        console.print()
+
+        # 4. Load current state and target snapshot state
         console.print("[cyan]Loading states...[/cyan]")
         current_state, _, provider = load_current_state(workspace)
         target_state = target_snapshot["state"]
@@ -410,7 +463,7 @@ def rollback_complete(
         console.print("  [green]✓[/green] Current state loaded")
         console.print(f"  [green]✓[/green] Target snapshot loaded: {to_snapshot}")
 
-        # 4. Generate rollback operations using state_differ (same as diff.py)
+        # 5. Generate rollback operations using state_differ (same as diff.py)
         console.print()
         console.print("[cyan]Generating rollback operations...[/cyan]")
 
@@ -429,15 +482,11 @@ def rollback_complete(
 
         console.print(f"  [green]✓[/green] Generated {len(rollback_ops)} rollback operations")
 
-        # 5. Validate safety of rollback operations
+        # 6. Validate safety of rollback operations
         console.print()
         console.print("[cyan]Analyzing safety...[/cyan]")
 
-        # Initialize executor for safety validation
-        from schematic.providers.unity.auth import create_databricks_client
-
-        client = create_databricks_client(profile)
-        executor = UnitySQLExecutor(client)
+        # Reuse executor from database check above (already initialized)
 
         validation_config = ExecutionConfig(
             target_env=target_env,
@@ -476,13 +525,13 @@ def rollback_complete(
         console.print(f"  [yellow]RISKY:[/yellow] {len(risky_ops)} operations")
         console.print(f"  [red]DESTRUCTIVE:[/red] {len(destructive_ops)} operations")
 
-        # 6. Show operations
+        # 7. Show operations
         console.print()
         console.print("[bold]Rollback Operations:[/bold]")
         for i, op in enumerate(rollback_ops, 1):
             console.print(f"  [{i}/{len(rollback_ops)}] {op.op} {op.target}")
 
-        # 7. Apply safe_only filter if requested
+        # 8. Apply safe_only filter if requested
         if safe_only and (risky_ops or destructive_ops):
             console.print()
             msg = "⚠️  --safe-only flag enabled, skipping risky/destructive operations"
@@ -495,30 +544,48 @@ def rollback_complete(
                     success=False, operations_rolled_back=0, error_message="No safe operations"
                 )
 
-        # 8. Generate SQL
+        # 9. Generate SQL
         console.print()
         console.print("[cyan]Generating SQL...[/cyan]")
-        sql_generator = provider.get_sql_generator(target_state, catalog_mapping)
+        # Use current_state (not target_state) so objects to be dropped are in id_name_map
+        # This makes SQL generation deterministic - no need for payload fallback
+        sql_generator = provider.get_sql_generator(current_state, catalog_mapping)
         sql_result = sql_generator.generate_sql_with_mapping(rollback_ops)
 
         statements = [stmt.sql for stmt in sql_result.statements]
         console.print(f"  [green]✓[/green] Generated {len(statements)} SQL statements")
 
-        # 9. Dry run - show SQL and exit
+        # 10. Show SQL preview (match apply command behavior)
+        console.print()
+        console.print("[bold]SQL Preview:[/bold]")
+        console.print("─" * 60)
+
+        # Show each statement with per-statement truncation
+        for i, stmt in enumerate(statements, 1):
+            console.print(f"\n[cyan]Statement {i}/{len(statements)}:[/cyan]")
+            stmt_lines = stmt.strip().split("\n")
+
+            if len(stmt_lines) <= 5:
+                # Short statement - show in full
+                for line in stmt_lines:
+                    console.print(f"  {line}")
+            else:
+                # Long statement - show first 3 and last 1 line
+                for line in stmt_lines[:3]:
+                    console.print(f"  {line}")
+                console.print(f"  ... ({len(stmt_lines) - 4} more lines)")
+                console.print(f"  {stmt_lines[-1]}")
+
+        console.print()
+        console.print(f"[bold]Execute {len(statements)} rollback statements?[/bold]")
+
+        # 11. Dry run - stop here
         if dry_run:
             console.print()
-            console.print("[bold yellow]DRY RUN - No changes will be made[/bold yellow]")
-            console.print()
-            console.print("[bold]SQL Preview:[/bold]")
-            from rich.syntax import Syntax
-
-            syntax = Syntax(sql_result.sql, "sql", theme="monokai", line_numbers=True)
-            console.print(syntax)
-            console.print()
-            console.print(f"[yellow]Would execute {len(statements)} statements[/yellow]")
+            console.print("[yellow]✓ Dry-run complete (no changes made)[/yellow]")
             return RollbackResult(success=True, operations_rolled_back=0)
 
-        # 10. Confirm rollback (unless safe_only with all safe ops)
+        # 12. Confirm rollback (unless safe_only with all safe ops)
         if not safe_only or risky_ops or destructive_ops:
             console.print()
             if destructive_ops:
@@ -537,7 +604,7 @@ def rollback_complete(
                     success=False, operations_rolled_back=0, error_message="Cancelled by user"
                 )
 
-        # 11. Execute rollback SQL
+        # 13. Execute rollback SQL
         console.print()
         console.print(f"[cyan]Executing {len(statements)} rollback statements...[/cyan]")
 
@@ -550,11 +617,11 @@ def rollback_complete(
 
         result = executor.execute_statements(statements, config)
 
-        # 12. Track rollback deployment
+        # 14. Track rollback deployment (reuse tracker from above)
         console.print()
         console.print("[cyan]Recording rollback...[/cyan]")
 
-        tracker = DeploymentTracker(executor.client, deployment_catalog, warehouse_id)
+        # Reuse tracker from above, ensure schema exists
         tracker.ensure_tracking_schema(
             auto_create=env_config.get("autoCreateSchematicSchema", True)
         )
@@ -588,7 +655,7 @@ def rollback_complete(
 
         tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
 
-        # 13. Report results
+        # 15. Report results
         console.print()
         console.print("─" * 60)
 
