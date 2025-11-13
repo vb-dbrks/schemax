@@ -1319,6 +1319,22 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     table_node.set("catalog", exp.to_identifier(parts[0], quoted=True))
                     table_node.set("db", exp.to_identifier(parts[1], quoted=True))  # schema
                     table_node.set("this", exp.to_identifier(parts[2], quoted=True))  # table name
+            elif table_node.catalog:
+                # If catalog is explicitly specified but not in our map,
+                # check if it's a logical catalog name and map it to physical name
+                logical_catalog = table_node.catalog
+                if logical_catalog in self.catalog_name_mapping:
+                    physical_catalog = self.catalog_name_mapping[logical_catalog]
+                    table_node.set("catalog", exp.to_identifier(physical_catalog, quoted=True))
+                else:
+                    # External catalog - preserve name but add backticks
+                    table_node.set("catalog", exp.to_identifier(logical_catalog, quoted=True))
+
+                # Always add backticks to schema and table (even for external refs)
+                if table_node.db:
+                    table_node.set("db", exp.to_identifier(table_node.db, quoted=True))
+                if table_node.name:
+                    table_node.set("this", exp.to_identifier(table_node.name, quoted=True))
 
         # Generate SQL with qualified names
         qualified_sql = parsed.sql(dialect="databricks", pretty=True)

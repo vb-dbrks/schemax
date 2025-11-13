@@ -48,10 +48,17 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
 
   const handleSaveSQL = () => {
     if (editedSQL.trim()) {
-      // Re-extract dependencies from updated SQL
-      const dependencies = extractDependenciesFromView(editedSQL.trim());
+      let cleanSQL = editedSQL.trim();
       
-      updateView(viewId, editedSQL.trim(), dependencies);
+      // Strip CREATE VIEW/CREATE OR REPLACE VIEW prefix if user accidentally included it
+      // Only the SELECT statement should be stored in the definition field
+      const createViewPattern = /^CREATE\s+(OR\s+REPLACE\s+)?VIEW(\s+IF\s+NOT\s+EXISTS)?\s+(`[^`]+`|[\w.]+)(\s+COMMENT\s+[^\s]+)?\s+AS\s+/i;
+      cleanSQL = cleanSQL.replace(createViewPattern, '');
+      
+      // Re-extract dependencies from updated SQL
+      const dependencies = extractDependenciesFromView(cleanSQL);
+      
+      updateView(viewId, cleanSQL, dependencies);
       setIsEditingSQL(false);
     }
   };
