@@ -400,8 +400,19 @@ def rollback_partial(
             console.print(
                 f"[green]✓ Successfully rolled back {len(rollback_ops)} operations[/green]"
             )
-            for i, rollback_op in enumerate(rollback_ops, 1):
-                console.print(f"  [{i}/{len(rollback_ops)}] {rollback_op.op} {rollback_op.target}")
+            # Show the actual SQL that was executed for each operation
+            for i, stmt_result in enumerate(result.statement_results, 1):
+                # Extract first line of SQL for compact display (remove leading dashes/comments)
+                sql_lines = stmt_result.sql.strip().split("\n")
+                first_sql_line = next(
+                    (
+                        line
+                        for line in sql_lines
+                        if line.strip() and not line.strip().startswith("--")
+                    ),
+                    sql_lines[0] if sql_lines else "",
+                )
+                console.print(f"  [{i}/{len(result.statement_results)}] {first_sql_line[:80]}...")
             console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
             console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
@@ -725,6 +736,19 @@ def rollback_complete(
                 f"[green]✓ Rolled back to {to_snapshot} ({result.successful_statements} "
                 f"statements, {exec_time:.2f}s)[/green]"
             )
+            # Show the actual SQL that was executed for each operation
+            for i, stmt_result in enumerate(result.statement_results, 1):
+                # Extract first line of SQL for compact display (remove leading dashes/comments)
+                sql_lines = stmt_result.sql.strip().split("\n")
+                first_sql_line = next(
+                    (
+                        line
+                        for line in sql_lines
+                        if line.strip() and not line.strip().startswith("--")
+                    ),
+                    sql_lines[0] if sql_lines else "",
+                )
+                console.print(f"  [{i}/{len(result.statement_results)}] {first_sql_line[:80]}...")
             console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
             console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
