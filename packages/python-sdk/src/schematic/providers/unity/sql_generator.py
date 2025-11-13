@@ -661,10 +661,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
             sorted_ops = sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
 
+        # Filter out cancelled operations (CREATE + DROP for same object)
+        sorted_ops = self._filter_cancelled_operations(sorted_ops)
+
         # Separate DROP operations from CREATE/ALTER operations
         # DROP operations cannot be batched and must be processed individually
-        drop_ops = [op for op in filtered_ops if self._is_drop_operation(op)]
-        non_drop_ops = [op for op in filtered_ops if not self._is_drop_operation(op)]
+        drop_ops = [op for op in sorted_ops if self._is_drop_operation(op)]
+        non_drop_ops = [op for op in sorted_ops if not self._is_drop_operation(op)]
 
         # Use base class's generic batcher (no duplication!)
         # Only batch non-DROP operations
