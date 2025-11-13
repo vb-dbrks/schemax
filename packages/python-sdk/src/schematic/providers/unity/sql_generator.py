@@ -7,9 +7,10 @@ Migrated from TypeScript sql-generator.ts
 
 from typing import Any, TypedDict
 
-from ..base.batching import BatchInfo
-from ..base.operations import Operation
-from ..base.sql_generator import BaseSQLGenerator, SQLGenerationResult
+from schematic.providers.base.batching import BatchInfo
+from schematic.providers.base.operations import Operation
+from schematic.providers.base.sql_generator import BaseSQLGenerator, SQLGenerationResult
+
 from .models import UnityState
 from .operations import UNITY_OPERATIONS
 
@@ -293,6 +294,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """
         return op.op in ["unity.add_catalog", "unity.add_schema", "unity.add_table"]
 
+    def _is_drop_operation(self, op: Operation) -> bool:
+        """
+        Check if Unity operation drops an object.
+
+        Implements abstract method from BaseSQLGenerator.
+        DROP operations cannot be batched with CREATE/ALTER and must be handled separately.
+        """
+        return op.op in ["unity.drop_catalog", "unity.drop_schema", "unity.drop_table"]
+
     def _generate_batched_create_sql(self, object_id: str, batch_info: BatchInfo) -> str:
         """
         Generate CREATE statement with batched modifications for Unity Catalog objects.
@@ -312,12 +322,55 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._generate_create_schema_batched(object_id, batch_info)
         elif object_id.startswith("table:"):
             # Delegate to existing _generate_create_table_with_columns method
+            # Categorize operations properly
+            column_ops = []
+            property_ops = []
+            constraint_ops = []
+            reorder_ops = []
+            governance_ops = []
+            other_ops = []
+
+            for op in batch_info.modify_ops:
+                op_type = op.op.replace("unity.", "")
+                if op_type in [
+                    "add_column",
+                    "rename_column",
+                    "drop_column",
+                    "change_column_type",
+                    "set_nullable",
+                    "set_column_comment",
+                    "set_column_tag",
+                    "unset_column_tag",
+                ]:
+                    column_ops.append(op)
+                elif op_type in ["set_table_property", "unset_table_property"]:
+                    property_ops.append(op)
+                elif op_type in ["add_constraint", "drop_constraint"]:
+                    constraint_ops.append(op)
+                elif op_type == "reorder_columns":
+                    reorder_ops.append(op)
+                elif op_type in [
+                    "add_row_filter",
+                    "update_row_filter",
+                    "remove_row_filter",
+                    "add_column_mask",
+                    "update_column_mask",
+                    "remove_column_mask",
+                ]:
+                    governance_ops.append(op)
+                else:
+                    # Everything else goes to other_ops (includes set_table_tag, set_table_comment, etc.)
+                    other_ops.append(op)
+
             batch_dict = {
                 "is_new_table": batch_info.is_new,
                 "table_op": batch_info.create_op,
-                "column_ops": [op for op in batch_info.modify_ops if op.op == "unity.add_column"],
-                "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
-                "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
+                "column_ops": column_ops,
+                "property_ops": property_ops,
+                "constraint_ops": constraint_ops,
+                "reorder_ops": reorder_ops,
+                "governance_ops": governance_ops,
+                "other_ops": other_ops,
                 "op_ids": batch_info.op_ids,
                 "operation_types": list(batch_info.operation_types),
             }
@@ -333,15 +386,53 @@ class UnitySQLGenerator(BaseSQLGenerator):
         Implements abstract method from BaseSQLGenerator.
         """
         # Delegate to existing _generate_alter_statements_for_table method
+        # Categorize operations properly
+        column_ops = []
+        property_ops = []
+        constraint_ops = []
+        reorder_ops = []
+        governance_ops = []
+        other_ops = []
+
+        for op in batch_info.modify_ops:
+            op_type = op.op.replace("unity.", "")
+            if op_type in [
+                "add_column",
+                "rename_column",
+                "drop_column",
+                "change_column_type",
+                "set_nullable",
+                "set_column_comment",
+                "set_column_tag",
+                "unset_column_tag",
+            ]:
+                column_ops.append(op)
+            elif op_type in ["set_table_property", "unset_table_property"]:
+                property_ops.append(op)
+            elif op_type in ["add_constraint", "drop_constraint"]:
+                constraint_ops.append(op)
+            elif op_type == "reorder_columns":
+                reorder_ops.append(op)
+            elif op_type in [
+                "add_row_filter",
+                "update_row_filter",
+                "remove_row_filter",
+                "add_column_mask",
+                "update_column_mask",
+                "remove_column_mask",
+            ]:
+                governance_ops.append(op)
+            else:
+                # Everything else goes to other_ops (includes set_table_tag, set_table_comment, etc.)
+                other_ops.append(op)
+
         batch_dict = {
-            "column_ops": [op for op in batch_info.modify_ops if "column" in op.op],
-            "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
-            "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
-            "reorder_ops": [op for op in batch_info.modify_ops if "reorder" in op.op],
-            "governance_ops": [
-                op for op in batch_info.modify_ops if "filter" in op.op or "mask" in op.op
-            ],
-            "other_ops": [],
+            "column_ops": column_ops,
+            "property_ops": property_ops,
+            "constraint_ops": constraint_ops,
+            "reorder_ops": reorder_ops,
+            "governance_ops": governance_ops,
+            "other_ops": other_ops,
             "op_ids": batch_info.op_ids,
             "operation_types": list(batch_info.operation_types),
         }
@@ -358,6 +449,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
         If an object is created and then dropped in the same changeset,
         skip ALL operations for that object (they cancel out).
 
+        This is timestamp-aware: cancellation only occurs if CREATE timestamp < DROP timestamp
+        (chronological order). If DROP comes before CREATE, they don't cancel.
+
+        Examples:
+        - add_table (T1) + drop_table (T2 where T2 > T1) → skip both
+        - drop_table (T1) + add_table (T2 where T2 > T1) → keep both (recreate)
+        - add_catalog + drop_catalog → skip both
+        - add_schema + drop_schema → skip both
         Examples:
         - add_table + drop_table → skip both (and any operations in between)
         - add_catalog + drop_catalog → skip both
@@ -384,37 +483,41 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if not target_ops:
                 continue
 
-            # Check if first op is CREATE and last op is DROP
+            # Find CREATE and DROP operations (timestamp-aware)
             if len(target_ops) >= 2:
-                first_op_type = target_ops[0].op
-                last_op_type = target_ops[-1].op
-
                 # Define create/drop pairs
                 cancel_pairs = [
                     ("unity.add_catalog", "unity.drop_catalog"),
                     ("unity.add_schema", "unity.drop_schema"),
                     ("unity.add_table", "unity.drop_table"),
+                    ("unity.add_column", "unity.drop_column"),
                 ]
 
-                # Check if this is a cancellation pair
+                # Find the CREATE and DROP operations
+                create_op = None
+                drop_op = None
+                for op in target_ops:
+                    for create_type, drop_type in cancel_pairs:
+                        if op.op == create_type:
+                            create_op = op
+                        elif op.op == drop_type:
+                            drop_op = op
+
+                # Check if cancellation occurs (CREATE must come before DROP chronologically)
                 cancelled = False
-                for create_op, drop_op in cancel_pairs:
-                    if first_op_type == create_op and last_op_type == drop_op:
-                        # Cancel out: skip ALL operations for this object
-                        # (including any modifications in between)
-                        cancelled = True
-                        break
+                if create_op and drop_op and create_op.ts < drop_op.ts:
+                    # Cancel out: skip ALL operations for this object
+                    cancelled = True
 
                 # Special handling for columns: only cancel if adding and dropping THE SAME column
-                if (
-                    not cancelled
-                    and first_op_type == "unity.add_column"
-                    and last_op_type == "unity.drop_column"
-                ):
-                    # For columns, we need to check if we're adding and dropping the same column
-                    # (not just any columns on the same table)
-                    if len(target_ops) == 2 and target_ops[0].target == target_ops[1].target:
-                        # Same column ID - cancel it
+                if not cancelled and len(target_ops) == 2:
+                    if (
+                        target_ops[0].op == "unity.add_column"
+                        and target_ops[1].op == "unity.drop_column"
+                        and target_ops[0].target == target_ops[1].target
+                        and target_ops[0].ts < target_ops[1].ts  # Chronological
+                    ):
+                        # Same column ID, chronological order - cancel it
                         cancelled = True
 
                 if not cancelled:
@@ -430,6 +533,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """
         Generate SQL statements with comprehensive batch optimizations.
 
+        Returns just the SQL string for backward compatibility.
+        Use generate_sql_with_mapping() for structured results with operation tracking.
+
         Optimizations include:
         - Dependency-ordered operations (catalog → schema → table)
         - CREATE + DROP cancellation (skip objects created then dropped)
@@ -438,18 +544,42 @@ class UnitySQLGenerator(BaseSQLGenerator):
         - Batched column reordering (minimal ALTER statements)
         - Table property consolidation
         """
-        # Sort operations by dependency level first
-        sorted_ops = sorted(ops, key=lambda op: self._get_dependency_level(op))
+        result = self.generate_sql_with_mapping(ops)
+        return result.sql
+
+    def generate_sql_with_mapping(self, ops: list[Operation]) -> "SQLGenerationResult":
+        """
+        Generate SQL with explicit operation-to-statement mapping.
+
+        Returns SQLGenerationResult with:
+        - sql: Combined SQL script
+        - statements: List of StatementInfo (sql + operation_ids + execution_order)
+        """
+        from ..base.sql_generator import SQLGenerationResult, StatementInfo
+
+        # Sort operations by:
+        # 1. Dependency level (catalog → schema → table) for correct order
+        # 2. Timestamp (chronological) to preserve order of operations within same object
+        sorted_ops = sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
 
         # Filter out create+drop pairs that cancel each other
         filtered_ops = self._filter_cancelled_operations(sorted_ops)
 
+        # Separate DROP operations from CREATE/ALTER operations
+        # DROP operations cannot be batched and must be processed individually
+        drop_ops = [op for op in filtered_ops if self._is_drop_operation(op)]
+        non_drop_ops = [op for op in filtered_ops if not self._is_drop_operation(op)]
+
         # Use base class's generic batcher (no duplication!)
+        # Only batch non-DROP operations
         batches = self.batcher.batch_operations(
-            filtered_ops, self._get_target_object_id, self._is_create_operation
+            non_drop_ops, self._get_target_object_id, self._is_create_operation
         )
         processed_op_ids = set()
-        statements = []
+
+        # Track statements with their operations
+        statement_infos: list[StatementInfo] = []
+        execution_order = 0
 
         # Separate batches by object type for proper ordering
         catalog_stmts = []
@@ -457,7 +587,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_stmts = []
         other_ops = []
 
-        # Process batched operations
+        # Process batched operations (CREATE and ALTER only)
         for object_id, batch_info in batches.items():
             op_ids = batch_info.op_ids
             processed_op_ids.update(op_ids)
@@ -473,30 +603,21 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 # Skip unknown object types
                 continue
 
-            sql = ""
-            operation_types = set(op.replace("unity.", "") for op in batch_info.operation_types)
-            header = (
-                f"-- Batch {object_type.capitalize()} Operations: {len(op_ids)} operations\n"
-                f"-- Object: {object_id}\n"
-                f"-- Types: {', '.join(sorted(operation_types))}\n"
-                f"-- Operations: {', '.join(op_ids)}"
-            )
-
             if object_type == "catalog":
                 sql = self._generate_create_catalog_batched(object_id, batch_info)
                 if sql and not sql.startswith("--"):
-                    catalog_stmts.append(f"{header}\n{sql};")
+                    catalog_stmts.append((sql, op_ids))
             elif object_type == "schema":
                 sql = self._generate_create_schema_batched(object_id, batch_info)
                 if sql and not sql.startswith("--"):
-                    schema_stmts.append(f"{header}\n{sql};")
+                    schema_stmts.append((sql, op_ids))
             elif object_type == "table":
-                sql = self._generate_optimized_table_sql(object_id, batch_info)
-                if sql and not sql.startswith("--"):
-                    table_stmts.append(f"{header}\n{sql};")
+                # Table operations can produce multiple statements
+                table_result = self._generate_table_sql_with_mapping(object_id, batch_info)
+                table_stmts.extend(table_result)  # List of (sql, op_ids) tuples
 
-        # Process unbatched operations
-        for op in filtered_ops:
+        # Process unbatched non-DROP operations
+        for op in non_drop_ops:
             if op.id in processed_op_ids:
                 continue
 
@@ -506,20 +627,55 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
             other_ops.append(op)
 
-        # Generate SQL in dependency order: catalogs → schemas → tables → others
-        statements.extend(catalog_stmts)
-        statements.extend(schema_stmts)
-        statements.extend(table_stmts)
+        # Build statement infos in dependency order
+        for sql, op_ids in catalog_stmts:
+            execution_order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
+            )
+
+        for sql, op_ids in schema_stmts:
+            execution_order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
+            )
+
+        for sql, op_ids in table_stmts:
+            execution_order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
+            )
 
         for op in other_ops:
             result = self.generate_sql_for_operation(op)
-            header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
-            warnings_comment = ""
-            if result.warnings:
-                warnings_comment = f"\n-- Warnings: {', '.join(result.warnings)}"
-            statements.append(f"{header}{warnings_comment}\n{result.sql};")
+            if result.sql and not result.sql.startswith("--"):
+                execution_order += 1
+                statement_infos.append(
+                    StatementInfo(
+                        sql=result.sql, operation_ids=[op.id], execution_order=execution_order
+                    )
+                )
 
-        return "\n\n".join(statements)
+        # Process DROP operations last (in reverse dependency order: table → schema → catalog)
+        # This ensures we drop dependent objects before their parents
+        for op in sorted(drop_ops, key=lambda op: -self._get_dependency_level(op)):
+            result = self.generate_sql_for_operation(op)
+            if result.sql and not result.sql.startswith("--"):
+                execution_order += 1
+                statement_infos.append(
+                    StatementInfo(
+                        sql=result.sql, operation_ids=[op.id], execution_order=execution_order
+                    )
+                )
+
+        # Build combined SQL script
+        combined_sql = ";\n\n".join(stmt.sql for stmt in statement_infos)
+        if combined_sql:
+            combined_sql += ";"
+
+        return SQLGenerationResult(
+            sql=combined_sql, statements=statement_infos, warnings=[], is_idempotent=True
+        )
 
     def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
         """Generate SQL for a single operation"""
@@ -670,7 +826,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _drop_catalog(self, op: Operation) -> str:
         name = self.id_name_map.get(op.target, op.target)
-        return f"DROP CATALOG IF EXISTS {self.escape_identifier(name)}"
+        # Use CASCADE to ensure catalog drops even if it contains schemas/tables
+        # This handles drift scenarios where catalog may have objects we don't track
+        # CASCADE is safe for rollback: we're reverting to a previous known state
+        # Note: In Unity Catalog, CASCADE soft-deletes managed tables (cleanup in 7-30 days)
+        return f"DROP CATALOG IF EXISTS {self.escape_identifier(name)} CASCADE"
 
     # Schema operations
     def _add_schema(self, op: Operation) -> str:
@@ -794,7 +954,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Use _build_fqn for consistent formatting
         fqn_esc = self._build_fqn(catalog_name, schema_name)
 
-        return f"DROP SCHEMA IF EXISTS {fqn_esc}"
+        # Use CASCADE to ensure schema drops even if it contains objects
+        # This handles drift scenarios where schema may have tables we don't track
+        # CASCADE is safe for rollback: we're reverting to a previous known state
+        return f"DROP SCHEMA IF EXISTS {fqn_esc} CASCADE"
 
     # Table operations
     def _add_table(self, op: Operation) -> str:
@@ -854,11 +1017,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
         comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
 
         # Create empty table (columns added via add_column ops)
-        return (
-            f"{warnings}"
-            f"CREATE {external_keyword}TABLE IF NOT EXISTS {fqn_esc} () "
-            f"USING {table_format}{comment_clause}{partition_clause}{cluster_clause}{location_clause}"
+        using_clause = (
+            f"USING {table_format}{comment_clause}{partition_clause}"
+            f"{cluster_clause}{location_clause}"
         )
+        return f"{warnings}CREATE {external_keyword}TABLE IF NOT EXISTS {fqn_esc} () {using_clause}"
 
     def _rename_table(self, op: Operation) -> str:
         old_name = op.payload["oldName"]
@@ -876,22 +1039,21 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER TABLE {old_esc} RENAME TO {new_esc}"
 
     def _drop_table(self, op: Operation) -> str:
-        # Payload contains required fields (created by state differ with table context)
-        table_name = op.payload["name"]
-        catalog_id = op.payload["catalogId"]
-        schema_id = op.payload["schemaId"]
+        # Get table FQN from id_name_map
+        # SQL generator MUST be created with state containing objects to be dropped
+        # (e.g., use current_state during rollback, not target_state)
+        table_fqn = self.id_name_map.get(op.target)
 
-        # Resolve catalog and schema names from IDs
-        catalog_fqn = self.id_name_map.get(catalog_id, "unknown")
-        catalog_name = catalog_fqn if "." not in catalog_fqn else catalog_fqn.split(".")[0]
+        if not table_fqn or "." not in table_fqn:
+            # This should never happen if SQL generator is used correctly
+            # If it does, it indicates a bug in the calling code
+            raise ValueError(
+                f"Cannot generate DROP TABLE for {op.target}: table not found in state.\n"
+                f"Hint: SQL generator must be created with state containing objects to be dropped.\n"
+                f"For rollback operations, use current_state (not target_state)."
+            )
 
-        schema_fqn = self.id_name_map.get(schema_id, f"{catalog_name}.unknown")
-        parts = schema_fqn.split(".")
-        schema_name = parts[1] if len(parts) > 1 else "unknown"
-
-        # Use _build_fqn for consistent formatting
-        fqn_esc = self._build_fqn(catalog_name, schema_name, table_name)
-
+        fqn_esc = self._build_fqn(*table_fqn.split("."))
         return f"DROP TABLE IF EXISTS {fqn_esc}"
 
     def _set_table_comment(self, op: Operation) -> str:
@@ -1182,6 +1344,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return table_batches
 
+    def _generate_table_sql_with_mapping(
+        self, table_id: str, batch_info: BatchInfo
+    ) -> list[tuple[str, list[str]]]:
+        """Generate SQL for table operations with explicit operation mapping.
+
+        Returns list of (sql, operation_ids) tuples since table operations
+        can produce multiple statements (CREATE TABLE + ALTER statements).
+        """
+        # Reuse existing logic but track which operations produce which statements
+        sql = self._generate_optimized_table_sql(table_id, batch_info)
+
+        # Parse the combined SQL into individual statements
+        # and map them to operations
+        statements = []
+
+        # Split by semicolon to get individual statements
+        raw_stmts = sql.split(";")
+
+        for stmt in raw_stmts:
+            stmt = stmt.strip()
+            if not stmt or stmt.startswith("--"):
+                continue
+
+            # For now, attribute all statements in this batch to all operations in the batch
+            # This is conservative but correct - all operations contributed to this batch
+            statements.append((stmt, batch_info.op_ids))
+
+        return statements
+
     def _generate_optimized_table_sql(
         self, table_id: str, batch_info: dict[str, Any] | BatchInfo
     ) -> str:
@@ -1248,7 +1439,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._generate_alter_statements_for_table(table_id, batch_dict)
 
     def _generate_create_table_with_columns(self, table_id: str, batch_info: dict[str, Any]) -> str:
-        """Generate complete CREATE TABLE statement with all columns included, plus ALTER statements for column tags"""
+        """Generate complete CREATE TABLE with columns and ALTER statements for tags"""
         table_op = batch_info["table_op"]
         column_ops = batch_info["column_ops"]
         property_ops = batch_info["property_ops"]
@@ -1370,15 +1561,24 @@ class UnitySQLGenerator(BaseSQLGenerator):
         properties_sql = f"\nTBLPROPERTIES ({', '.join(properties)})" if properties else ""
 
         if columns_sql:
+            # Build using clause
+            using_clause = (
+                f"USING {table_format}{table_comment}{partition_clause}"
+                f"{cluster_clause}{properties_sql}{location_clause}"
+            )
             create_sql = f"""{warnings}CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} (
 {columns_sql}
-) USING {table_format}{table_comment}{partition_clause}{cluster_clause}{properties_sql}{location_clause}"""
+) {using_clause}"""
         else:
             # No columns yet - create empty table (fallback to original behavior)
+            using_clause = (
+                f"USING {table_format}{table_comment}{partition_clause}"
+                f"{cluster_clause}{properties_sql}{location_clause}"
+            )
             create_sql = (
                 f"{warnings}"
                 f"CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} () "
-                f"USING {table_format}{table_comment}{partition_clause}{cluster_clause}{properties_sql}{location_clause}"
+                f"{using_clause}"
             )
 
         # Generate ALTER TABLE statements for operations that must happen after table creation

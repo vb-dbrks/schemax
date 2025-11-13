@@ -40,6 +40,7 @@ class StatementResult(BaseModel):
         execution_time_ms: Time taken to execute in milliseconds
         error_message: Error details if execution failed
         rows_affected: Number of rows affected (if applicable)
+        result_data: Query result data for SELECT statements (list of row dicts)
     """
 
     statement_id: str = Field(..., description="Statement execution ID")
@@ -48,6 +49,9 @@ class StatementResult(BaseModel):
     execution_time_ms: int = Field(default=0, description="Execution time in milliseconds")
     error_message: str | None = Field(None, description="Error message if failed")
     rows_affected: int | None = Field(None, description="Rows affected")
+    result_data: list[dict[str, object]] | None = Field(
+        None, description="Query result data (for SELECT statements)"
+    )
 
 
 class ExecutionResult(BaseModel):

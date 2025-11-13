@@ -5,7 +5,7 @@ This document describes how to run tests for the Schematic project.
 ## Overview
 
 Schematic uses different testing frameworks for different components:
-- **Python SDK**: pytest with coverage reporting (138 tests)
+- **Python SDK**: pytest with coverage reporting (201 tests)
 - **VS Code Extension**: Jest with React Testing Library
 - **Integration**: End-to-end workflow tests
 
@@ -53,7 +53,8 @@ packages/python-sdk/tests/
 │   ├── test_state_reducer.py     # State reducer tests
 │   ├── test_catalog_mapping.py   # Catalog name mapping tests
 │   ├── test_unity_executor.py    # Databricks executor tests
-│   └── test_deployment_tracker.py # Deployment tracking tests
+│   ├── test_deployment_tracker.py # Deployment tracking tests
+│   └── test_apply_command.py     # Apply command tests (interactive/non-interactive)
 ├── integration/                   # Integration tests
 │   └── test_workflows.py         # End-to-end workflow tests
 ├── providers/                     # Provider-specific tests
@@ -66,10 +67,37 @@ packages/python-sdk/tests/
 
 ### Current Status
 
-- ✅ **Python SDK**: 138 tests passing (12 skipped)
+- ✅ **Python SDK**: 201 tests passing (12 skipped)
 - ✅ **VS Code Extension**: 25 Jest tests passing
 - ✅ **SQLGlot validation** integrated for SQL syntax checking
 - ✅ **Code coverage reporting** enabled for both Python and TypeScript
+- ✅ **Non-interactive mode tests** for CI/CD compatibility
+
+### Apply Command Tests
+
+The `test_apply_command.py` test suite ensures the `schematic apply` command works correctly in both interactive and non-interactive modes. This is critical for CI/CD pipelines where user prompts would cause the command to hang.
+
+**Tests included:**
+1. ✅ `test_noninteractive_mode_auto_creates_snapshot` - Verifies snapshot auto-creation without prompting
+2. ✅ `test_interactive_mode_prompts_for_snapshot` - Verifies user prompt with 3 choices (create/continue/abort)
+3. ✅ `test_interactive_mode_create_snapshot` - Verifies snapshot creation when user chooses "create"
+4. ✅ `test_sql_preview_noninteractive_skips_prompt` - Verifies SQL preview doesn't prompt in CI/CD mode
+5. ✅ `test_workspace_without_uncommitted_ops` - Verifies no prompts when changelog is empty
+
+**Why these tests matter:**
+- Prevents regressions that would break CI/CD pipelines
+- Ensures `--no-interaction` flag is respected throughout the command
+- Validates that interactive mode provides proper user choices
+- Guarantees the command never hangs waiting for input in automated environments
+
+**Running apply command tests:**
+```bash
+# Run all apply command tests
+pytest tests/unit/test_apply_command.py -v
+
+# Run specific test
+pytest tests/unit/test_apply_command.py::TestApplyCommand::test_noninteractive_mode_auto_creates_snapshot -xvs
+```
 
 ## VS Code Extension Testing
 
@@ -288,7 +316,7 @@ Run all quality checks locally before committing:
 This script runs:
 1. ✅ Python code formatting check (Black, 100 char line length)
 2. ✅ Python linting (Ruff)
-3. ✅ Python SDK tests (pytest - 138 tests)
+3. ✅ Python SDK tests (pytest - 201 tests)
 4. ✅ VS Code Extension tests (Jest - 25 tests)
 5. ✅ Smoke tests (extension build, SDK install, CLI validation)
 

@@ -10,19 +10,17 @@ Tests end-to-end workflows including:
 
 import pytest
 
-from schematic.providers.base.operations import Operation
-from schematic.storage_v4 import (
+from schematic.core.storage import (
     append_ops,
     create_snapshot,
     ensure_project_file,
-    get_last_deployment,
     get_uncommitted_ops_count,
     load_current_state,
     read_changelog,
     read_project,
     read_snapshot,
-    write_deployment,
 )
+from schematic.providers.base.operations import Operation
 from tests.utils import OperationBuilder
 
 
@@ -361,56 +359,6 @@ class TestCompleteSchemaWorkflow:
         # Verify new column was added
         new_col = next((c for c in table["columns"] if c["id"] == "col_new"), None)
         assert new_col["name"] == "additional_field"
-
-
-@pytest.mark.integration
-class TestDeploymentWorkflow:
-    """Test deployment tracking workflows"""
-
-    def test_deployment_tracking(self, initialized_workspace, sample_operations):
-        """Test tracking deployments across environments"""
-        # Create initial schema
-        append_ops(initialized_workspace, sample_operations)
-        project, snapshot = create_snapshot(initialized_workspace, "Release 1.0", version="v1.0.0")
-
-        # Deploy to dev
-        dev_deployment = {
-            "id": "deploy_dev_001",
-            "environment": "dev",
-            "ts": "2025-01-01T10:00:00Z",
-            "deployedBy": "test@example.com",
-            "snapshotId": snapshot["id"],
-            "opsApplied": [op["id"] for op in snapshot["operations"]],
-            "schemaVersion": "v1.0.0",
-            "status": "success",
-            "driftDetected": False,
-        }
-        write_deployment(initialized_workspace, dev_deployment)
-
-        # Deploy to prod
-        prod_deployment = {
-            "id": "deploy_prod_001",
-            "environment": "prod",
-            "ts": "2025-01-01T14:00:00Z",
-            "deployedBy": "test@example.com",
-            "snapshotId": snapshot["id"],
-            "opsApplied": [op["id"] for op in snapshot["operations"]],
-            "schemaVersion": "v1.0.0",
-            "status": "success",
-            "driftDetected": False,
-        }
-        write_deployment(initialized_workspace, prod_deployment)
-
-        # Verify deployments were recorded
-        project = read_project(initialized_workspace)
-        assert len(project["deployments"]) == 2
-
-        # Get last deployment for each environment
-        last_dev = get_last_deployment(project, "dev")
-        last_prod = get_last_deployment(project, "prod")
-
-        assert last_dev["id"] == "deploy_dev_001"
-        assert last_prod["id"] == "deploy_prod_001"
 
 
 @pytest.mark.integration

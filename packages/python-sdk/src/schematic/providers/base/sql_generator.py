@@ -15,10 +15,19 @@ from .operations import Operation
 from .optimization import ColumnReorderOptimizer
 
 
-class SQLGenerationResult(BaseModel):
-    """SQL generation result"""
+class StatementInfo(BaseModel):
+    """Information about a single SQL statement"""
 
-    sql: str  # Generated SQL statements
+    sql: str  # The SQL statement
+    operation_ids: list[str]  # Operations that generated this statement
+    execution_order: int  # Order in which this statement should be executed
+
+
+class SQLGenerationResult(BaseModel):
+    """SQL generation result with explicit operation mapping"""
+
+    sql: str  # Generated SQL statements (combined script)
+    statements: list[StatementInfo] = []  # Explicit statement-to-operation mapping
     warnings: list[str] = []  # Warnings or notes
     is_idempotent: bool = True  # Whether SQL is idempotent
 
@@ -41,6 +50,28 @@ class SQLGenerator(ABC):
             SQL script as string
         """
         pass
+
+    def generate_sql_with_mapping(self, ops: list[Operation]) -> SQLGenerationResult:
+        """
+        Generate SQL with explicit operation-to-statement mapping
+
+        Default implementation: calls generate_sql() and returns simple result.
+        Providers should override for robust operation tracking.
+
+        Args:
+            ops: List of operations to convert to SQL
+
+        Returns:
+            SQLGenerationResult with sql and statements mapping
+        """
+        sql = self.generate_sql(ops)
+        # Default: treat entire SQL as one statement with all operations
+        statements = []
+        if sql and sql.strip():
+            statements = [
+                StatementInfo(sql=sql, operation_ids=[op.id for op in ops], execution_order=1)
+            ]
+        return SQLGenerationResult(sql=sql, statements=statements)
 
     @abstractmethod
     def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
@@ -164,6 +195,30 @@ class BaseSQLGenerator(SQLGenerator):
             ...         "unity.add_catalog",
             ...         "unity.add_schema",
             ...         "unity.add_table"
+            ...     ]
+        """
+        pass
+
+    @abstractmethod
+    def _is_drop_operation(self, op: Operation) -> bool:
+        """
+        Check if operation drops/deletes an object.
+
+        Used to handle DROP operations separately from batching since they
+        cannot be batched with CREATE/ALTER operations.
+
+        Args:
+            op: Operation to check
+
+        Returns:
+            True if operation drops an object (e.g., drop_table, drop_schema, drop_catalog)
+
+        Example (Unity):
+            >>> def _is_drop_operation(self, op):
+            ...     return op.op in [
+            ...         "unity.drop_catalog",
+            ...         "unity.drop_schema",
+            ...         "unity.drop_table"
             ...     ]
         """
         pass

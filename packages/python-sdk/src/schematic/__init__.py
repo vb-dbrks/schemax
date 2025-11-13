@@ -10,6 +10,15 @@ from pathlib import Path
 __version__ = "0.2.0"
 
 # Provider system exports
+# Storage V4 exports (latest)
+from .core.storage import (
+    create_snapshot,
+    ensure_project_file,
+    load_current_state,
+    read_changelog,
+    read_project,
+    read_snapshot,
+)
 from .providers import (
     Operation,
     Provider,
@@ -18,18 +27,6 @@ from .providers import (
     ProviderState,
     ValidationError,
     ValidationResult,
-)
-
-# Storage V4 exports (latest)
-from .storage_v4 import (
-    create_snapshot,
-    ensure_project_file,
-    get_last_deployment,
-    load_current_state,
-    read_changelog,
-    read_project,
-    read_snapshot,
-    write_deployment,
 )
 
 
@@ -104,8 +101,6 @@ __all__ = [
     "read_snapshot",
     "load_current_state",
     "create_snapshot",
-    "write_deployment",
-    "get_last_deployment",
     # Diff operations
     "generate_diff_operations",
 ]

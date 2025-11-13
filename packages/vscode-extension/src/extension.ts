@@ -481,14 +481,163 @@ async function openDesigner(context: vscode.ExtensionContext) {
     }
   );
 
+  // Helper function to detect stale snapshots using Python SDK
+  async function detectStaleSnapshots(workspacePath: string): Promise<any[]> {
+    try {
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execAsync = promisify(exec);
+
+      // Call schematic CLI with --json flag
+      const { stdout } = await execAsync('schematic snapshot validate --json', {
+        cwd: workspacePath,
+      });
+
+      // Parse only the JSON line (last non-empty line)
+      const lines = stdout.trim().split('\n').filter((line: string) => line.trim());
+      const jsonLine = lines[lines.length - 1];
+      const result = JSON.parse(jsonLine);
+      return result.stale || [];
+    } catch (error: any) {
+      // If exit code is 1, parse stdout (stale snapshots found)
+      if (error.stdout) {
+        try {
+          // Parse only the JSON line (last non-empty line)
+          const lines = error.stdout.trim().split('\n').filter((line: string) => line.trim());
+          const jsonLine = lines[lines.length - 1];
+          const result = JSON.parse(jsonLine);
+          return result.stale || [];
+        } catch (parseError) {
+          outputChannel.appendLine(`[Schematic] Failed to parse stale snapshot output: ${parseError}`);
+        }
+      }
+      
+      outputChannel.appendLine(`[Schematic] Failed to detect stale snapshots: ${error.message}`);
+      return [];
+    }
+  }
+
+  // Helper function to reload project data and send to webview
+  async function reloadProject(
+    workspaceFolder: vscode.WorkspaceFolder,
+    panel: vscode.WebviewPanel | undefined
+  ) {
+    if (!panel) return;
+
+    try {
+      const project = await storageV4.readProject(workspaceFolder.uri);
+      const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
+
+      // Check for conflicts
+      const conflictsDir = vscode.Uri.joinPath(workspaceFolder.uri, '.schematic', 'conflicts');
+      let conflicts = null;
+      try {
+        const conflictFiles = await vscode.workspace.fs.readDirectory(conflictsDir);
+        if (conflictFiles.length > 0) {
+          const latestConflictFile = conflictFiles.sort((a, b) => b[0].localeCompare(a[0]))[0];
+          const conflictFilePath = vscode.Uri.joinPath(conflictsDir, latestConflictFile[0]);
+          const conflictContent = await vscode.workspace.fs.readFile(conflictFilePath);
+          conflicts = JSON.parse(Buffer.from(conflictContent).toString('utf8'));
+          outputChannel.appendLine(`[Schematic] - Rebase conflict detected: ${latestConflictFile[0]}`);
+        }
+      } catch (error) {
+        // No conflicts directory or no conflicts - that's fine
+      }
+
+      // Check for stale snapshots (using Python SDK)
+      const staleSnapshots = await detectStaleSnapshots(workspaceFolder.uri.fsPath);
+      if (staleSnapshots.length > 0) {
+        outputChannel.appendLine(`[Schematic] - Detected ${staleSnapshots.length} stale snapshot(s)`);
+      }
+
+      const payloadForWebview = {
+        ...project,
+        state,
+        ops: changelog.ops,
+        conflicts,
+        staleSnapshots: staleSnapshots.length > 0 ? staleSnapshots : null,
+        provider: {
+          ...project.provider,
+          id: provider.info.id,
+          name: provider.info.name,
+          version: provider.info.version,
+          capabilities: provider.capabilities,
+        },
+      };
+
+      panel.webview.postMessage({
+        type: 'project-loaded',
+        payload: payloadForWebview,
+      });
+    } catch (error) {
+      outputChannel.appendLine(`[Schematic] ERROR: Failed to reload project: ${error}`);
+    }
+  }
+
   // Set webview content
   outputChannel.appendLine('[Schematic] Setting webview HTML');
   currentPanel.webview.html = getWebviewContent(context, currentPanel.webview);
   outputChannel.appendLine('[Schematic] Webview HTML set');
 
+  // Watch for conflict files and reload when they appear
+  const conflictsPattern = new vscode.RelativePattern(
+    workspaceFolder,
+    '.schematic/conflicts/*.json'
+  );
+  const conflictWatcher = vscode.workspace.createFileSystemWatcher(conflictsPattern);
+
+  // Reload project when conflict files are created or deleted
+  conflictWatcher.onDidCreate(async () => {
+    outputChannel.appendLine('[Schematic] Conflict file detected - reloading project');
+    await reloadProject(workspaceFolder, currentPanel);
+  });
+
+  conflictWatcher.onDidDelete(async () => {
+    outputChannel.appendLine('[Schematic] Conflict file removed - reloading project');
+    await reloadProject(workspaceFolder, currentPanel);
+  });
+
+  // Watch for snapshot file changes (to detect stale snapshots)
+  const snapshotsPattern = new vscode.RelativePattern(
+    workspaceFolder,
+    '.schematic/snapshots/*.json'
+  );
+  const snapshotsWatcher = vscode.workspace.createFileSystemWatcher(snapshotsPattern);
+
+  // Reload project when snapshots are created, changed, or deleted
+  snapshotsWatcher.onDidCreate(async () => {
+    outputChannel.appendLine('[Schematic] Snapshot file created - reloading project');
+    await reloadProject(workspaceFolder, currentPanel);
+  });
+
+  snapshotsWatcher.onDidChange(async () => {
+    outputChannel.appendLine('[Schematic] Snapshot file changed - reloading project');
+    await reloadProject(workspaceFolder, currentPanel);
+  });
+
+  snapshotsWatcher.onDidDelete(async () => {
+    outputChannel.appendLine('[Schematic] Snapshot file deleted - reloading project');
+    await reloadProject(workspaceFolder, currentPanel);
+  });
+
+  // Watch for project.json changes (snapshot metadata)
+  const projectJsonPattern = new vscode.RelativePattern(
+    workspaceFolder,
+    '.schematic/project.json'
+  );
+  const projectJsonWatcher = vscode.workspace.createFileSystemWatcher(projectJsonPattern);
+
+  projectJsonWatcher.onDidChange(async () => {
+    outputChannel.appendLine('[Schematic] project.json changed - reloading project');
+    await reloadProject(workspaceFolder, currentPanel);
+  });
+
   // Reset when panel is closed
   currentPanel.onDidDispose(() => {
     outputChannel.appendLine('[Schematic] Webview panel disposed');
+    conflictWatcher.dispose();
+    snapshotsWatcher.dispose();
+    projectJsonWatcher.dispose();
     currentPanel = undefined;
   });
 
@@ -497,6 +646,12 @@ async function openDesigner(context: vscode.ExtensionContext) {
     async (message) => {
       outputChannel.appendLine(`[Schematic] Received message from webview: ${message.type}`);
       switch (message.type) {
+        case 'refresh-project': {
+          outputChannel.appendLine('[Schematic] Manual refresh requested');
+          await reloadProject(workspaceFolder, currentPanel);
+          break;
+        }
+
         case 'load-project': {
           try {
             outputChannel.appendLine(`[Schematic] Loading project from: ${workspaceFolder.uri.fsPath}`);
@@ -516,11 +671,29 @@ async function openDesigner(context: vscode.ExtensionContext) {
               outputChannel.appendLine(`[Schematic] - Catalogs: ${(state as any).catalogs.length}`);
             }
             
+            // Check for rebase conflicts
+            const conflictsDir = vscode.Uri.joinPath(workspaceFolder.uri, '.schematic', 'conflicts');
+            let conflicts = null;
+            try {
+              const conflictFiles = await vscode.workspace.fs.readDirectory(conflictsDir);
+              if (conflictFiles.length > 0) {
+                // Read the latest conflict file
+                const latestConflictFile = conflictFiles.sort((a, b) => b[0].localeCompare(a[0]))[0];
+                const conflictFilePath = vscode.Uri.joinPath(conflictsDir, latestConflictFile[0]);
+                const conflictContent = await vscode.workspace.fs.readFile(conflictFilePath);
+                conflicts = JSON.parse(Buffer.from(conflictContent).toString('utf8'));
+                outputChannel.appendLine(`[Schematic] - Rebase conflict detected: ${latestConflictFile[0]}`);
+              }
+            } catch (error) {
+              // No conflicts directory or no conflicts - that's fine
+            }
+            
             // Send combined data to webview including provider info
             const payloadForWebview = {
               ...project,
               state,
               ops: changelog.ops,
+              conflicts, // Include conflict info if present
               provider: {
                 ...project.provider, // Keep environments and other project provider config
                 id: provider.info.id,
@@ -548,6 +721,61 @@ async function openDesigner(context: vscode.ExtensionContext) {
         case 'show-error': {
           const { message: errorMessage, detail } = message.payload;
           vscode.window.showErrorMessage(errorMessage, { modal: false, detail });
+          break;
+        }
+        case 'show-conflict-details': {
+          const conflictInfo = message.payload;
+          if (conflictInfo && conflictInfo.conflicting_operations && conflictInfo.conflicting_operations.length > 0) {
+            const firstConflict = conflictInfo.conflicting_operations[0];
+            const operation = firstConflict.operation;
+            const reason = firstConflict.reason;
+            
+            const detailMessage = `Snapshot: ${conflictInfo.snapshot_version}\n` +
+              `Old base: ${conflictInfo.old_base}\n` +
+              `New base: ${conflictInfo.new_base}\n\n` +
+              `Conflicting Operation: ${operation.op}\n` +
+              `Target: ${operation.target}\n\n` +
+              `Reason: ${reason}\n\n` +
+              `Resolution:\n` +
+              `1. Review the conflicting change in the designer\n` +
+              `2. Manually apply your changes in the UI\n` +
+              `3. Run: schematic snapshot create --version ${conflictInfo.snapshot_version}`;
+            
+            vscode.window.showWarningMessage(
+              '⚠️ Snapshot Rebase Conflict',
+              { modal: true, detail: detailMessage }
+            ).then((choice) => {
+              // User acknowledged the conflict
+              outputChannel.appendLine('[Schematic] User acknowledged rebase conflict');
+            });
+          }
+          break;
+        }
+
+        case 'show-stale-snapshot-details': {
+          const staleSnapshots = message.payload;
+          if (staleSnapshots && staleSnapshots.length > 0) {
+            const detailLines = staleSnapshots.map((snap: any) => {
+              return `Snapshot: ${snap.version}\n` +
+                `  Current base: ${snap.currentBase}\n` +
+                `  Should be: ${snap.shouldBeBase}\n` +
+                `  Missing: ${snap.missing.join(', ')}`;
+            }).join('\n\n');
+            
+            const detailMessage = `Found ${staleSnapshots.length} stale snapshot(s):\n\n` +
+              detailLines + '\n\n' +
+              `Resolution:\n` +
+              `Run the following command(s) in terminal:\n` +
+              staleSnapshots.map((snap: any) => `  schematic snapshot rebase ${snap.version}`).join('\n');
+            
+            vscode.window.showWarningMessage(
+              '⚠️ Stale Snapshots Detected',
+              { modal: true, detail: detailMessage }
+            ).then((choice) => {
+              // User acknowledged the stale snapshots
+              outputChannel.appendLine('[Schematic] User acknowledged stale snapshots');
+            });
+          }
           break;
         }
         case 'open-docs': {
@@ -732,7 +960,8 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https:; font-src ${webview.cspSource} https:; script-src 'nonce-${nonce}';">
+  <link href="https://cdn.jsdelivr.net/npm/@vscode/codicons@0.0.36/dist/codicon.css" rel="stylesheet">
   <link href="${styleUri}" rel="stylesheet">
   <title>Schematic Designer</title>
 </head>
@@ -781,6 +1010,25 @@ async function createSnapshotCommand_impl() {
       return;
     }
 
+    // Calculate next version (same logic as Python SDK)
+    const calculateNextVersion = (currentVersion: string | null, versionPrefix: string = 'v'): string => {
+      if (!currentVersion) {
+        return versionPrefix + '0.1.0';
+      }
+      
+      const match = currentVersion.match(/(\d+)\.(\d+)\.(\d+)/);
+      if (!match) {
+        return versionPrefix + '0.1.0';
+      }
+      
+      const [, major, minor] = match;
+      const nextMinor = parseInt(minor) + 1;
+      return `${versionPrefix}${major}.${nextMinor}.0`;
+    };
+
+    const versionPrefix = project.settings?.versionPrefix || 'v';
+    const suggestedVersion = calculateNextVersion(project.latestSnapshot, versionPrefix);
+
     // Get snapshot name
     const name = await vscode.window.showInputBox({
       prompt: 'Snapshot name',
@@ -795,6 +1043,30 @@ async function createSnapshotCommand_impl() {
       return; // User cancelled
     }
 
+    // Get optional version (with suggested default)
+    const versionInput = await vscode.window.showInputBox({
+      prompt: 'Snapshot version (optional)',
+      placeHolder: `Press Enter for auto-generated: ${suggestedVersion}`,
+      value: '',
+      validateInput: (value) => {
+        if (!value.trim()) {
+          return null; // Empty is OK (will use auto-generated)
+        }
+        // Validate semantic version format
+        if (!/^v?\d+\.\d+\.\d+$/.test(value)) {
+          return 'Version must be in format: v0.1.0 or 0.1.0';
+        }
+        return null;
+      }
+    });
+
+    if (versionInput === undefined) {
+      outputChannel.appendLine('[Schematic] Snapshot creation cancelled by user');
+      return; // User cancelled
+    }
+
+    const version = versionInput.trim() || undefined; // Empty string becomes undefined
+
     // Get optional comment
     const comment = await vscode.window.showInputBox({
       prompt: 'Description (optional)',
@@ -802,6 +1074,11 @@ async function createSnapshotCommand_impl() {
     });
 
     outputChannel.appendLine(`[Schematic] Creating snapshot: "${name}"`);
+    if (version) {
+      outputChannel.appendLine(`[Schematic] Version: "${version}"`);
+    } else {
+      outputChannel.appendLine(`[Schematic] Version: auto-generated (${suggestedVersion})`);
+    }
     if (comment) {
       outputChannel.appendLine(`[Schematic] Comment: "${comment}"`);
     }
@@ -815,7 +1092,7 @@ async function createSnapshotCommand_impl() {
       const { project: updatedProject, snapshot } = await storageV4.createSnapshot(
         workspaceFolder.uri, 
         name, 
-        undefined, 
+        version, 
         comment
       );
       

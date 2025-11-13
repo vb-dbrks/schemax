@@ -98,6 +98,17 @@ body {
   border-color: rgba(255, 171, 0, 0.25);
 }
 
+.app-header__status[data-state='conflict'] {
+  color: var(--vscode-errorForeground, #f48771);
+  background-color: var(--vscode-inputValidation-errorBackground, rgba(244, 135, 113, 0.18));
+  border-color: rgba(244, 135, 113, 0.35);
+  cursor: pointer;
+}
+
+.app-header__status[data-state='conflict']:hover {
+  background-color: rgba(244, 135, 113, 0.25);
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -109,6 +120,90 @@ body {
 .app-header__status[data-state='dirty'] .status-dot {
   background: var(--vscode-notificationsWarningIcon-foreground, #ffab00);
   box-shadow: 0 0 0 4px rgba(255, 171, 0, 0.25);
+}
+
+.app-header__status[data-state='conflict'] .status-dot {
+  background: var(--vscode-errorForeground, #f48771);
+  box-shadow: 0 0 0 4px rgba(244, 135, 113, 0.3);
+  animation: pulse 2s infinite;
+}
+
+.app-header__status[data-state='stale'] {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  background-color: var(--vscode-inputValidation-warningBackground, rgba(204, 167, 0, 0.18));
+  border-color: rgba(204, 167, 0, 0.35);
+  cursor: pointer;
+}
+
+.app-header__status[data-state='stale']:hover {
+  background-color: rgba(204, 167, 0, 0.25);
+}
+
+.app-header__status[data-state='stale'] .status-dot {
+  background: var(--vscode-editorWarning-foreground, #cca700);
+  box-shadow: 0 0 0 4px rgba(204, 167, 0, 0.3);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refresh-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  padding: 0;
+}
+
+.refresh-button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.refresh-button:active {
+  transform: scale(0.95);
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-button[data-refreshing="true"] .codicon {
+  animation: spin 1s linear infinite;
+}
+
+.refresh-button .codicon {
+  display: block;
+  font-size: 16px;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .project-settings-button::part(control) {
@@ -2307,9 +2402,8 @@ body {
   gap: 6px;
 }
 
-.project-settings-button svg {
-  width: 14px;
-  height: 14px;
+.project-settings-button .codicon {
+  font-size: 14px;
 }
 
 /* Responsive adjustments */

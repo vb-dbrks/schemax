@@ -7,7 +7,8 @@ Migrated from TypeScript state-reducer.ts
 
 from copy import deepcopy
 
-from ..base.operations import Operation
+from schematic.providers.base.operations import Operation
+
 from .models import (
     UnityCatalog,
     UnityColumn,

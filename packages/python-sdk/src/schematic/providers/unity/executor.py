@@ -12,7 +12,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementState
 from rich.console import Console
 
-from ..base.executor import ExecutionConfig, ExecutionResult, StatementResult
+from schematic.providers.base.executor import ExecutionConfig, ExecutionResult, StatementResult
 
 console = Console()
 
@@ -80,15 +80,19 @@ class UnitySQLExecutor:
 
                     # Fail-fast: stop on first error
                     total_time_ms = int((time.time() - start_time) * 1000)
+                    successful_count = i - 1
+
+                    # Determine status: "failed" if 0 succeeded, "partial" if some succeeded
+                    status = "failed" if successful_count == 0 else "partial"
 
                     return ExecutionResult(
                         deployment_id=deployment_id,
                         total_statements=len(statements),
-                        successful_statements=i - 1,
+                        successful_statements=successful_count,
                         failed_statement_index=i - 1,
                         statement_results=results,
                         total_execution_time_ms=total_time_ms,
-                        status="partial",
+                        status=status,
                         error_message=result.error_message,
                     )
 
@@ -109,15 +113,19 @@ class UnitySQLExecutor:
                 )
 
                 total_time_ms = int((time.time() - start_time) * 1000)
+                successful_count = i - 1
+
+                # Determine status: "failed" if 0 succeeded, "partial" if some succeeded
+                status = "failed" if successful_count == 0 else "partial"
 
                 return ExecutionResult(
                     deployment_id=deployment_id,
                     total_statements=len(statements),
-                    successful_statements=i - 1,
+                    successful_statements=successful_count,
                     failed_statement_index=i - 1,
                     statement_results=results,
                     total_execution_time_ms=total_time_ms,
-                    status="partial",
+                    status=status,
                     error_message=error_msg,
                 )
 
@@ -180,6 +188,24 @@ class UnitySQLExecutor:
                 if state == StatementState.SUCCEEDED:
                     exec_time_ms = int((time.time() - exec_start) * 1000)
 
+                    # Extract result data if available (for SELECT queries)
+                    result_data = None
+                    if (
+                        status_response.result
+                        and status_response.result.data_array
+                        and status_response.manifest
+                        and status_response.manifest.schema
+                        and status_response.manifest.schema.columns
+                    ):
+                        columns = [col.name for col in status_response.manifest.schema.columns]
+                        result_data = []
+                        for row in status_response.result.data_array:
+                            row_dict = {}
+                            for i, value in enumerate(row):
+                                if i < len(columns):
+                                    row_dict[columns[i]] = value
+                            result_data.append(row_dict)
+
                     return StatementResult(
                         statement_id=statement_id or "",
                         sql=sql,
@@ -187,6 +213,7 @@ class UnitySQLExecutor:
                         execution_time_ms=exec_time_ms,
                         rows_affected=None,  # Could extract from result if needed
                         error_message=None,
+                        result_data=result_data,
                     )
 
                 elif state == StatementState.FAILED:

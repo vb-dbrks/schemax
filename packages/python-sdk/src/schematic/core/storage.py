@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
-from .providers import Operation, Provider, ProviderRegistry, ProviderState
+from schematic.providers import Operation, Provider, ProviderRegistry, ProviderState
 
 SCHEMATIC_DIR = ".schematic"
 PROJECT_FILENAME = "project.json"
@@ -465,41 +465,6 @@ def _get_next_version(current_version: str | None, settings: dict[str, Any]) -> 
     next_minor = int(minor) + 1
 
     return f"{version_prefix}{major}.{next_minor}.0"
-
-
-def write_deployment(workspace_path: Path, deployment: dict[str, Any]) -> None:
-    """Add a deployment record to project file
-
-    Args:
-        workspace_path: Path to workspace
-        deployment: Deployment data
-    """
-    project = read_project(workspace_path)
-
-    if "deployments" not in project:
-        project["deployments"] = []
-
-    project["deployments"].append(deployment)
-    write_project(workspace_path, project)
-
-
-def get_last_deployment(project: dict[str, Any], environment: str) -> dict[str, Any] | None:
-    """Get the last deployment for a specific environment
-
-    Args:
-        project: Project data
-        environment: Environment name
-
-    Returns:
-        Last deployment record or None
-    """
-    deployments = [d for d in project.get("deployments", []) if d.get("environment") == environment]
-    if not deployments:
-        return None
-
-    # Sort by timestamp, return most recent
-    sorted_deployments = sorted(deployments, key=lambda d: d.get("ts", ""), reverse=True)
-    return cast(dict[str, Any], sorted_deployments[0])
 
 
 def get_environment_config(project: dict[str, Any], environment: str) -> dict[str, Any]:

@@ -34,30 +34,38 @@ schematic/
 │   │
 │   └── python-sdk/             # Python SDK & CLI
 │       ├── src/schematic/
+│       │   ├── core/                  # Core infrastructure (NEW)
+│       │   │   ├── storage.py         # V4 file storage (multi-environment)
+│       │   │   ├── deployment.py      # Deployment tracking
+│       │   │   └── version.py         # Semantic versioning utilities
 │       │   ├── providers/             # Provider-based architecture
 │       │   │   ├── base/             # Base provider contracts
 │       │   │   │   ├── models.py     # Pydantic models
 │       │   │   │   ├── operations.py # Operation types
 │       │   │   │   ├── sql_generator.py  # SQL generation
+│       │   │   │   ├── state_differ.py   # State diffing
 │       │   │   │   ├── provider.py   # Provider protocol
-│       │   │   │   └── executor.py   # SQL execution protocol
+│       │   │   │   ├── executor.py   # SQL execution protocol
+│       │   │   │   └── reverse_generator.py  # Safety validation
 │       │   │   ├── unity/            # Unity Catalog provider
 │       │   │   │   ├── models.py
 │       │   │   │   ├── operations.py
 │       │   │   │   ├── sql_generator.py
 │       │   │   │   ├── state_reducer.py
+│       │   │   │   ├── state_differ.py
 │       │   │   │   ├── provider.py
 │       │   │   │   ├── auth.py       # Databricks authentication
-│       │   │   │   └── executor.py   # Databricks SQL executor
+│       │   │   │   ├── executor.py   # Databricks SQL executor
+│       │   │   │   └── safety_validator.py  # Rollback safety
 │       │   │   └── registry.py       # Provider registry
 │       │   ├── commands/              # CLI command modules
-│       │   │   ├── apply.py          # Apply command
+│       │   │   ├── apply.py          # Apply command (with auto-rollback)
+│       │   │   ├── rollback.py       # Rollback command (NEW)
+│       │   │   ├── snapshot_rebase.py # Snapshot rebase (NEW)
 │       │   │   ├── sql.py            # SQL generation command
 │       │   │   ├── validate.py       # Validation command
+│       │   │   ├── diff.py           # Diff command
 │       │   │   └── deployment.py     # Deployment recording
-│       │   ├── storage_v4.py          # V4 file storage (multi-environment)
-│       │   ├── storage_v3.py          # V3 file storage (deprecated)
-│       │   ├── deployment_tracker.py  # Deployment tracking
 │       │   └── cli.py                 # CLI routing layer
 │       └── pyproject.toml
 │
@@ -397,9 +405,12 @@ Catalog
 - `registry.py` - Provider registry
 
 **Command Modules** (`commands/`):
-- `apply.py` - Apply SQL to environment with deployment tracking
+- `apply.py` - Apply SQL to environment with deployment tracking and auto-rollback
+- `rollback.py` - Rollback failed/partial deployments (partial or complete)
+- `snapshot_rebase.py` - Rebase snapshots after Git rebase
 - `sql.py` - Generate SQL migrations
-- `validate.py` - Validate project files
+- `validate.py` - Validate project files and detect stale snapshots
+- `diff.py` - Compare snapshots and generate diffs
 - `deployment.py` - Manual deployment recording
 
 ### CLI Commands
@@ -409,23 +420,38 @@ Catalog
 schematic sql [--output FILE] [--target ENV]
 
 # Apply SQL to environment with deployment tracking
-schematic apply --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--sql FILE] [--dry-run] [--no-interaction]
+schematic apply --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--sql FILE] [--dry-run] [--no-interaction] [--auto-rollback]
 
-# Validate schema files
+# Rollback a failed/partial deployment
+schematic rollback --deployment DEPLOYMENT_ID --partial --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--dry-run]
+
+# Rollback to a previous snapshot (complete rollback)
+schematic rollback --to-snapshot VERSION --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--dry-run]
+
+# Validate schema files and detect stale snapshots
 schematic validate [workspace_path]
 
-# Record deployment manually
-schematic record-deployment --environment ENV [--version VERSION] [--mark-deployed]
+# Create a snapshot from current changelog
+schematic snapshot create --name "Snapshot name" [--version v0.2.0] [--comment "Description"] [--tags tag1]
 
-# Compare versions (stub)
-schematic diff VERSION1 VERSION2
+# Validate snapshots after Git rebase
+schematic snapshot validate
+
+# Rebase a stale snapshot onto new base
+schematic snapshot rebase VERSION
+
+# Compare snapshots
+schematic diff --from-version V1 --to-version V2 [--target ENV]
+
+# Record deployment manually
+schematic record-deployment --target ENV [--version VERSION] [--mark-deployed]
 ```
 
 ### Python API
 
 ```python
 from pathlib import Path
-from schematic.storage_v4 import load_current_state, read_project, get_environment_config
+from schematic.core.storage import load_current_state, read_project, get_environment_config
 from schematic.providers.unity.sql_generator import UnitySQLGenerator
 
 # Load schema
@@ -436,7 +462,7 @@ project = read_project(Path.cwd())
 env_config = get_environment_config(project, "dev")
 
 # Build catalog mapping
-catalog_mapping = {"__implicit__": env_config["catalog"]}
+catalog_mapping = {"__implicit__": env_config["topLevelName"]}
 
 # Generate environment-specific SQL
 generator = UnitySQLGenerator(state, catalog_mapping)
@@ -591,19 +617,60 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ Individual operation tracking
 - ✅ Execution time and error logging
 
+**Rollback & Recovery** (NEW):
+- ✅ Partial rollback (revert successful operations from failed deployment)
+- ✅ Complete rollback (rollback to previous snapshot)
+- ✅ Auto-rollback option in `schematic apply --auto-rollback`
+- ✅ Safety validation (SAFE, RISKY, DESTRUCTIVE levels)
+- ✅ Rollback uses state_differ for accurate reverse operations
+- ✅ Database query for latest deployment (source of truth)
+- ✅ Deployment status: `success`, `failed`, `partial` (0 statements = failed)
+- ✅ Idempotent rollback (checks database state to prevent redundant operations)
+- ✅ SQL preview in rollback (matches apply command UX)
+
+**Snapshot Management** (NEW):
+- ✅ Snapshot creation via CLI with optional manual version override
+- ✅ Snapshot validation (detect stale snapshots after Git rebase)
+- ✅ Snapshot rebase (unpack, replay on new base, conflict detection)
+- ✅ Conflict detection and logging for manual UI resolution
+- ✅ Smart changelog management during rebase conflicts
+- ✅ Semantic versioning utilities (MAJOR.MINOR.PATCH)
+- ✅ `schematic snapshot create`, `validate`, and `rebase` commands
+
+**CLI Improvements** (NEW):
+- ✅ Interactive snapshot prompts in `schematic apply` (with --no-interaction flag)
+- ✅ Improved SQL preview (per-statement display, pagination)
+- ✅ `schematic rollback` command (--partial and --to-snapshot options)
+- ✅ `schematic diff` command for snapshot comparison
+- ✅ Consistent `--target` flag across all commands
+
+**UI Improvements** (NEW):
+- ✅ Conflict indicators in VS Code extension
+- ✅ Stale snapshot warnings in UI
+- ✅ Manual refresh button with loading spinner
+- ✅ File system watchers for auto-reload (conflicts, snapshots, project.json)
+- ✅ Codicon icons for theme consistency (settings, refresh, add, edit, delete buttons)
+- ✅ Real-time UI updates via `FileSystemWatcher`
+
+**Code Organization** (NEW):
+- ✅ `core/` package for infrastructure (storage, deployment, version)
+- ✅ Absolute imports (PEP 8 compliant) - 82 conversions
+- ✅ Removed version suffix from storage.py
+- ✅ Clean separation: core (infrastructure) vs providers vs commands
+
 **Python SDK & CLI**:
 - ✅ Provider-based architecture (Unity Catalog)
 - ✅ Modular command structure (`commands/` folder)
-- ✅ CLI commands: `apply`, `sql`, `validate`, `record-deployment`
+- ✅ CLI commands: `apply`, `rollback`, `sql`, `validate`, `diff`, `record-deployment`, `snapshot validate`, `snapshot rebase`
 - ✅ Python API for custom scripts
 - ✅ Databricks authentication helpers
-- ✅ Black code formatting (100 char line length)
-- ✅ Ruff linting
+- ✅ Ruff formatting (100 char line length)
+- ✅ Ruff linting with auto-fix
 
 **Testing**:
-- ✅ 138 passing pytest tests (unit + integration)
-- ⏭️ 12 tests skipped (features in development)
-- ✅ Test coverage for v4 storage, catalog mapping, auth, executor
+- ✅ 240 passing pytest tests (unit + integration)
+- ⏭️ 11 tests skipped (features in development)
+- ✅ Test coverage: v4 storage, catalog mapping, auth, executor, rollback, snapshot rebase
 - ✅ SQLGlot validation for generated SQL
 - ✅ OperationBuilder pattern for test utilities
 - ✅ Smoke tests (extension build, SDK install, CLI validation)
@@ -622,7 +689,6 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - Drift detection and reconciliation
 - Databricks Asset Bundle (DAB) generation
 - Multi-table transaction support
-- Rollback statements generation
 
 **Testing**:
 - Real integration tests against Databricks workspace
@@ -994,8 +1060,8 @@ The quality checks pipeline runs automatically on:
 - Manual trigger
 
 **Pipeline jobs**:
-1. **code-formatting**: Black + Ruff checks
-2. **python-tests**: 138 pytest tests + coverage reporting (12 skipped)
+1. **code-formatting**: Ruff format + lint checks
+2. **python-tests**: 240 pytest tests + coverage reporting (11 skipped)
 3. **smoke-tests**: Extension build + SDK validation
 4. **commit-signatures**: GPG signature verification
 
@@ -1025,19 +1091,24 @@ schematic sql
 ```
 
 **Current Test Status**:
-- ✅ 138 pytest tests passing
-- ⏭️ 12 tests skipped (features in development - see issues #19, #20)
+- ✅ 240 pytest tests passing
+- ⏭️ 11 tests skipped (features in development)
 - ✅ SQLGlot validation integrated
 - ✅ Code coverage reporting enabled
 - ✅ OperationBuilder pattern for test utilities
-- ✅ Test coverage: v4 storage, catalog mapping, auth, executor, deployment tracking
+- ✅ Test coverage: v4 storage, catalog mapping, auth, executor, deployment tracking, rollback, snapshot rebase
 
-**V4 Test Files**:
-- `test_storage_v4.py` - V4 storage with multi-environment support (19 tests)
+**Test Files**:
+- `test_storage_v4.py` - V4 storage with multi-environment support (20 tests)
 - `test_catalog_mapping.py` - Logical → Physical catalog name mapping (8 tests)
 - `test_unity_executor.py` - Databricks SQL executor & authentication (6 tests)
 - `test_deployment_tracker.py` - Deployment tracking (1 test)
-- `test_workflows.py` - Integration tests for complete workflows (8 tests)
+- `test_rollback_command.py` - Rollback partial and complete (4 tests)
+- `test_rollback_idempotency.py` - Rollback idempotency checks (2 tests)
+- `test_snapshot_rebase.py` - Snapshot validation and rebase (12 tests)
+- `test_apply_command.py` - Apply command with prompts (5 tests)
+- `test_workflows.py` - Integration tests for complete workflows (14 tests)
+- `test_drop_operations_fix.py` - DROP operation SQL generation (6 tests)
 
 **Note**: V3 storage tests removed as v3 is deprecated in favor of v4.
 
@@ -1053,18 +1124,30 @@ schematic sql
 - `packages/vscode-extension/src/providers/base/operations.ts` - Op definitions
 - `packages/vscode-extension/src/webview/state/useDesignerStore.ts` - Zustand store
 
-**Python SDK**:
+**Python SDK** (Core Infrastructure):
+- `packages/python-sdk/src/schematic/core/storage.py` - File I/O (v4 multi-environment)
+- `packages/python-sdk/src/schematic/core/deployment.py` - Deployment tracking
+- `packages/python-sdk/src/schematic/core/version.py` - Semantic versioning
+
+**Python SDK** (Providers):
 - `packages/python-sdk/src/schematic/providers/base/models.py` - Pydantic models
 - `packages/python-sdk/src/schematic/providers/base/executor.py` - SQL execution protocol
-- `packages/python-sdk/src/schematic/storage_v4.py` - File I/O (v4 multi-environment)
+- `packages/python-sdk/src/schematic/providers/base/state_differ.py` - State diffing
+- `packages/python-sdk/src/schematic/providers/base/reverse_generator.py` - Safety validation
 - `packages/python-sdk/src/schematic/providers/unity/state_reducer.py` - State reducer
+- `packages/python-sdk/src/schematic/providers/unity/state_differ.py` - Unity state diffing
 - `packages/python-sdk/src/schematic/providers/unity/sql_generator.py` - SQL generation with catalog mapping
 - `packages/python-sdk/src/schematic/providers/unity/executor.py` - Databricks SQL executor
 - `packages/python-sdk/src/schematic/providers/unity/auth.py` - Databricks authentication
-- `packages/python-sdk/src/schematic/deployment_tracker.py` - Deployment tracking
+- `packages/python-sdk/src/schematic/providers/unity/safety_validator.py` - Rollback safety
+
+**Python SDK** (Commands):
 - `packages/python-sdk/src/schematic/cli.py` - CLI routing layer
-- `packages/python-sdk/src/schematic/commands/apply.py` - Apply command
+- `packages/python-sdk/src/schematic/commands/apply.py` - Apply command (with auto-rollback)
+- `packages/python-sdk/src/schematic/commands/rollback.py` - Rollback command (partial & complete)
+- `packages/python-sdk/src/schematic/commands/snapshot_rebase.py` - Snapshot rebase & validation
 - `packages/python-sdk/src/schematic/commands/sql.py` - SQL generation command
+- `packages/python-sdk/src/schematic/commands/diff.py` - Diff command
 - `packages/python-sdk/src/schematic/commands/validate.py` - Validation command
 - `packages/python-sdk/src/schematic/commands/deployment.py` - Deployment recording
 
@@ -1123,9 +1206,12 @@ When starting a new conversation about this project:
 1. **Project Type**: Monorepo with VS Code extension (TypeScript) + Python SDK/CLI
 2. **Architecture**: Event sourcing with snapshots + changelog
 3. **Storage**: V4 architecture with multi-environment support
-   - Python: `packages/python-sdk/src/schematic/storage_v4.py`
+   - Python: `packages/python-sdk/src/schematic/core/storage.py` (moved from storage_v4.py)
    - TypeScript: `packages/vscode-extension/src/storage-v4.ts`
 4. **UI**: React webview with inline editing, implicit catalog mode, comprehensive governance features
+   - Conflict indicators, stale snapshot warnings, manual refresh button
+   - Codicon icons for theme consistency
+   - FileSystemWatcher for auto-reload
 5. **State**: Snapshot + changelog = current state
 6. **SQL Generation**: ✅ Implemented in both TypeScript and Python with environment-specific catalog mapping
    - **Fixed**: id_name_map now correctly rebuilds after setting catalog_name_mapping
@@ -1133,31 +1219,53 @@ When starting a new conversation about this project:
    - CREATE + UPDATE squashing optimization (e.g., single CREATE CATALOG ... MANAGED LOCATION)
 7. **Deployment Tracking**: ✅ Fully implemented
    - Database-backed in `{catalog}.schematic` schema (Unity Catalog)
+   - Database is source of truth for latest deployment (not local project.json)
    - Local tracking in `project.json` → `deployments` array
+   - Status: `success`, `failed`, `partial` (0 statements = failed)
 8. **Databricks Integration**: ✅ `schematic apply` command with SQL execution, authentication, deployment tracking
-9. **Operations**: Provider-based architecture (Unity Catalog = 31 operations)
+   - Interactive snapshot prompts (with --no-interaction flag)
+   - Improved SQL preview (per-statement display)
+   - Auto-rollback option (`--auto-rollback`)
+9. **Rollback**: ✅ Fully implemented (partial & complete)
+   - Partial: Revert successful operations from failed deployment
+   - Complete: Rollback to previous snapshot
+   - Uses state_differ for accurate reverse operations
+   - Safety validation (SAFE, RISKY, DESTRUCTIVE levels)
+   - Idempotent: Checks database state to prevent redundant rollbacks
+   - SQL preview: Shows exact SQL statements before execution (matches apply UX)
+   - Commands: `schematic rollback --partial` or `--to-snapshot`
+10. **Snapshot Management**: ✅ Fully implemented
+   - Snapshot validation: Detect stale snapshots after Git rebase
+   - Snapshot rebase: Unpack, replay on new base, conflict detection
+   - Conflict resolution: Manual via UI, conflict logs in `.schematic/conflicts/`
+   - Commands: `schematic snapshot validate`, `schematic snapshot rebase`
+11. **Operations**: Provider-based architecture (Unity Catalog = 31 operations)
    - Added: `update_catalog`, `update_schema` for managed location changes
-10. **Catalog Mapping**: Logical names (`__implicit__`, explicit) → Physical names per environment
-11. **External Tables**: ✅ Fully supported
+12. **Catalog Mapping**: Logical names (`__implicit__`, explicit) → Physical names per environment
+13. **External Tables**: ✅ Fully supported
    - Named external locations with per-environment paths (project-level config)
    - External location path resolution in SQL generation
    - Partitioning (PARTITIONED BY) and Liquid Clustering (CLUSTER BY)
-12. **Physical Isolation**: ✅ Managed locations for catalogs/schemas (project-level config)
-13. **Logs**: Check "Schematic" output channel in VS Code
-14. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
-15. **Code Formatting**: Ruff/Black for Python (100 char), manual for TypeScript
-16. **Documentation**: Clean structure, no redundant files
-17. **Testing**: 
+14. **Physical Isolation**: ✅ Managed locations for catalogs/schemas (project-level config)
+15. **Code Organization**: ✅ Refactored with `core/` package
+   - `core/storage.py` - File I/O (v4 multi-environment)
+   - `core/deployment.py` - Deployment tracking
+   - `core/version.py` - Semantic versioning
+   - Absolute imports (PEP 8 compliant) - 82 conversions
+16. **Logs**: Check "Schematic" output channel in VS Code
+17. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
+18. **Code Formatting**: Ruff format + lint for Python (100 char), manual for TypeScript
+19. **Documentation**: Clean structure, no redundant files
+20. **Testing**: 
     - **Before committing**: Run `./devops/run-checks.sh` (includes all checks)
-    - **Python tests**: `pytest tests/ -v` (138 passing, 12 skipped)
+    - **Python tests**: `pytest tests/ -v` (240 passing, 11 skipped)
     - **Smoke test**: `./scripts/smoke-test.sh`
     - **SQLGlot validation**: Integrated in pytest tests
-    - **V4 test coverage**: storage_v4, catalog_mapping, unity_executor, deployment_tracker, integration workflows
-    - **Note**: V3 storage tests removed (deprecated)
-18. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
-19. **Project Schema**: V4 with project-level location configs and per-environment paths
-20. **CLI Commands**: `apply`, `sql`, `validate`, `record-deployment`, `diff` (stub)
-21. **Execution Flow**: Authenticate → Execute SQL → Create tracking schema → Record deployment
+    - **Test coverage**: storage, deployment, version, rollback, snapshot rebase, apply, workflows
+21. **Quality Checks**: Code formatting, linting, pytest, smoke tests all automated
+22. **Project Schema**: V4 with project-level location configs and per-environment paths
+23. **CLI Commands**: `apply`, `rollback`, `sql`, `diff`, `validate`, `record-deployment`, `snapshot create`, `snapshot validate`, `snapshot rebase`
+24. **Execution Flow**: Authenticate → Execute SQL → Create tracking schema → Record deployment (with auto-rollback)
 
 **Status**: Production-ready v0.2.0 with complete Unity Catalog governance, multi-environment support, and Databricks integration. Future: Schema import, drift detection, DAB generation, multi-catalog support.
 
@@ -1183,3 +1291,14 @@ When starting a new conversation about this project:
 18. **Database-Backed Tracking**: Deployment history stored in target catalog
 19. **Terraform-Like Preview**: Show changes before execution with confirmation
 20. **Execution Flow**: SQL first → Tracking schema after (catalog must exist)
+21. **Rollback via State Diffing**: Uses state_differ (not manual reverse SQL) for accuracy
+22. **Safety Validation**: Classify operations (SAFE, RISKY, DESTRUCTIVE) before rollback
+23. **Database as Source of Truth**: Query database for deployment status, not local files
+24. **Snapshot Rebase**: Explicit CLI-triggered rebase (no auto-detection)
+25. **Conflict-First Design**: Stop on first conflict, log for manual UI resolution
+26. **Smart Changelog Management**: Clean state after rebase conflicts
+27. **FileSystemWatcher Pattern**: Auto-reload UI on file changes (conflicts, snapshots)
+28. **Interactive Prompts with CI/CD Support**: Use --no-interaction flag for automated workflows
+29. **Codicon Consistency**: Theme-aware vector icons from VS Code's Codicon library
+30. **Absolute Imports (PEP 8)**: No relative imports beyond package level
+31. **Core vs Providers vs Commands**: Clear separation of infrastructure, logic, and CLI

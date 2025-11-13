@@ -25,8 +25,10 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 - Command-line tools for automation and CI/CD
 - Python API for custom workflows
 - Provider-aware SQL migration generation
-- Deployment tracking across environments
-- Schema validation and comparison
+- **Deployment tracking with database-backed audit trail**
+- **Automatic and manual rollback capabilities**
+- **Snapshot lifecycle management (create, validate, rebase)**
+- Schema validation and comparison with stale snapshot detection
 
 ### 🚀 Key Capabilities
 - **Extensible Provider System**: Easy to add new catalog types
@@ -83,11 +85,29 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
    # Validate schema files
    schematic validate
    
-   # Generate SQL migration
-   schematic sql --output migration.sql
+   # Create a snapshot
+   schematic snapshot create --name "Initial schema" --version v0.1.0
    
-   # Track deployment
-   schematic deploy --environment prod --version v1.0.0 --mark-deployed
+   # Generate SQL migration
+   schematic sql --output migration.sql --target dev
+   
+   # Apply schema changes to environment
+   schematic apply --target dev --profile DEFAULT --warehouse-id <id>
+   
+   # Apply with automatic rollback on failure
+   schematic apply --target dev --profile DEFAULT --warehouse-id <id> --auto-rollback
+   
+   # Rollback a failed deployment (partial)
+   schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
+   
+   # Rollback to a previous snapshot (complete)
+   schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
+   
+   # Validate snapshots after git rebase
+   schematic snapshot validate
+   
+   # Rebase a stale snapshot
+   schematic snapshot rebase v0.3.0
    ```
 
 3. **Python API**:
@@ -105,6 +125,60 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
    sql = generator.generate_sql(operations)
    print(sql)
    ```
+
+## Deployment & Rollback ✨ NEW
+
+Schematic provides robust deployment tracking and rollback capabilities for safe schema migrations:
+
+### 🚀 Apply Command
+Deploy schema changes with confidence:
+- **Interactive snapshot prompts** - Create snapshots before deployment
+- **SQL preview** - Review all changes before execution  
+- **Database-backed tracking** - Audit trail in `{catalog}.schematic` schema
+- **Auto-rollback option** - Automatically revert on failure (`--auto-rollback`)
+- **Dry-run mode** - Test without making changes (`--dry-run`)
+
+```bash
+schematic apply --target dev --profile DEFAULT --warehouse-id <id> --auto-rollback
+```
+
+### ⏪ Rollback Command
+Recover from failed deployments:
+
+**Partial Rollback** - Revert successful operations from a failed deployment:
+```bash
+schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
+```
+
+**Complete Rollback** - Rollback to a previous snapshot:
+```bash
+schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
+```
+
+Both support:
+- **Safety validation** - Classifies operations as SAFE, RISKY, or DESTRUCTIVE
+- **State-based diffing** - Uses state_differ for accurate rollback operations
+- **Dry-run mode** - Preview rollback SQL without executing
+
+### 📸 Snapshot Management
+Manage schema versions after Git operations:
+
+```bash
+# Create snapshot manually
+schematic snapshot create --name "Production release" --version v1.0.0
+
+# Detect stale snapshots after git rebase
+schematic snapshot validate
+
+# Rebase snapshot onto new base
+schematic snapshot rebase v0.3.0
+```
+
+**Features:**
+- Validates snapshot lineage after Git rebases
+- Unpacks and replays changes on new base
+- Detects conflicts and prompts for manual resolution via UI
+- Semantic versioning (MAJOR.MINOR.PATCH)
 
 ## Documentation
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from ..storage_v4 import load_current_state, read_project
+from schematic.core.storage import load_current_state, read_project
 
 console = Console()
 
@@ -67,6 +67,26 @@ def validate_project(workspace: Path) -> bool:
                 len(s.get("tables", [])) for c in state["catalogs"] for s in c.get("schemas", [])
             )
             console.print(f"[bold]Tables:[/bold] {total_tables}")
+
+        # Check for stale snapshots
+        from .snapshot_rebase import detect_stale_snapshots
+
+        stale = detect_stale_snapshots(workspace)
+        if stale:
+            console.print()
+            console.print(f"[yellow]⚠️  Found {len(stale)} stale snapshot(s):[/yellow]")
+            for snap in stale:
+                console.print(f"  [yellow]{snap['version']}[/yellow]")
+                console.print(f"    Current base: {snap['currentBase']}")
+                console.print(f"    Should be: {snap['shouldBeBase']}")
+                console.print(f"    Missing: {', '.join(snap['missing'])}")
+            console.print()
+            console.print("[cyan]Run the following commands to fix:[/cyan]")
+            for snap in stale:
+                console.print(f"  schematic snapshot rebase {snap['version']}")
+            console.print()
+            console.print("[yellow]⚠️ Validation passed but snapshots need rebasing[/yellow]")
+            return False  # Return False to indicate warning
 
         console.print("\n[green]✓ Schema files are valid[/green]")
 

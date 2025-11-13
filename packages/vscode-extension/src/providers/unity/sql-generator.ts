@@ -319,11 +319,17 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
    * - Table property consolidation
    */
   generateSQL(ops: Operation[]): string {
-    // Sort operations by dependency level first
+    // Sort operations by:
+    // 1. Dependency level (catalog → schema → table) for correct order
+    // 2. Timestamp (chronological) to preserve order of operations within same object
     const sortedOps = [...ops].sort((a, b) => {
       const levelA = this.getOperationLevel(a.op);
       const levelB = this.getOperationLevel(b.op);
-      return levelA - levelB;
+      if (levelA !== levelB) {
+        return levelA - levelB;
+      }
+      // Secondary sort by timestamp (chronological)
+      return a.ts.localeCompare(b.ts);
     });
 
     // Filter out create+drop pairs that cancel each other

@@ -6,27 +6,25 @@ confirmation, and deployment tracking.
 """
 
 import re
-from datetime import UTC, datetime
+import sys
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
 from rich.console import Console
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 
-from ..deployment_tracker import DeploymentTracker
-from ..providers.base.executor import ExecutionConfig, ExecutionResult
-from ..providers.unity.executor import UnitySQLExecutor
-from ..storage_v4 import (
+from schematic.core.deployment import DeploymentTracker
+from schematic.core.storage import (
     create_snapshot,
     get_environment_config,
-    get_last_deployment,
     load_current_state,
     read_changelog,
     read_project,
     read_snapshot,
-    write_deployment,
 )
+from schematic.providers.base.executor import ExecutionConfig, ExecutionResult
+from schematic.providers.unity.executor import UnitySQLExecutor
 
 console = Console()
 
@@ -75,6 +73,7 @@ def apply_to_environment(
     warehouse_id: str,
     dry_run: bool = False,
     no_interaction: bool = False,
+    auto_rollback: bool = False,
 ) -> ExecutionResult:
     """Apply changes to target environment
 
@@ -97,38 +96,56 @@ def apply_to_environment(
         ApplyError: If apply fails
     """
     try:
-        # 1. Auto-create snapshot if changelog has uncommitted changes
+        # 1. Check for uncommitted changes and prompt user
         changelog = read_changelog(workspace)
         if changelog["ops"]:
             console.print(
                 f"[yellow]⚠ {len(changelog['ops'])} uncommitted operations found[/yellow]"
             )
 
-            # Generate next version
-            project = read_project(workspace)
-            settings = project.get("settings", {})
-            version_prefix = str(settings.get("versionPrefix", "v"))
-            current = project.get("latestSnapshot")
+            # In non-interactive mode, auto-create snapshot
+            if no_interaction:
+                console.print("[blue]Non-interactive mode: Auto-creating snapshot[/blue]")
+                choice = "create"
+            else:
+                console.print()
+                # Prompt user for action
+                choice = Prompt.ask(
+                    "[bold]What would you like to do?[/bold]",
+                    choices=["create", "continue", "abort"],
+                    default="create",
+                )
 
-            # Simple version increment
-            if current:
-                match = re.search(r"(\d+)\.(\d+)\.(\d+)", current)
-                if match:
-                    major, minor, patch = match.groups()
-                    next_version = f"{version_prefix}{major}.{int(minor) + 1}.0"
+            if choice == "abort":
+                console.print("[yellow]Apply cancelled[/yellow]")
+                sys.exit(0)
+            elif choice == "create":
+                # Generate next version
+                project = read_project(workspace)
+                settings = project.get("settings", {})
+                version_prefix = str(settings.get("versionPrefix", "v"))
+                current = project.get("latestSnapshot")
+
+                # Simple version increment
+                if current:
+                    match = re.search(r"(\d+)\.(\d+)\.(\d+)", current)
+                    if match:
+                        major, minor, patch = match.groups()
+                        next_version = f"{version_prefix}{major}.{int(minor) + 1}.0"
+                    else:
+                        next_version = f"{version_prefix}0.1.0"
                 else:
                     next_version = f"{version_prefix}0.1.0"
-            else:
-                next_version = f"{version_prefix}0.1.0"
 
-            console.print(f"[blue]Creating snapshot:[/blue] {next_version}")
-            create_snapshot(
-                workspace,
-                name=f"Auto-snapshot for {target_env}",
-                version=next_version,
-                comment=f"Automatic snapshot created before deploying to {target_env}",
-            )
-            console.print("[green]✓[/green] Snapshot created")
+                console.print(f"[blue]Creating snapshot:[/blue] {next_version}")
+                create_snapshot(
+                    workspace,
+                    name=f"Auto-snapshot for {target_env}",
+                    version=next_version,
+                    comment=f"Automatic snapshot created before deploying to {target_env}",
+                )
+                console.print("[green]✓[/green] Snapshot created")
+            # else: "continue" - proceed without creating snapshot
 
         # 2. Load project (v4 with environment config)
         project = read_project(workspace)
@@ -158,15 +175,37 @@ def apply_to_environment(
 
         console.print(f"[blue]Latest snapshot:[/blue] {latest_snapshot_version}")
 
-        # 6. Get last deployment for target environment
-        last_deployment = get_last_deployment(project, target_env)
+        # 6. Get last deployment from DATABASE (source of truth!)
+        # Query the database to see what's actually deployed
+        from schematic.providers.unity.auth import create_databricks_client
 
-        if last_deployment:
-            deployed_version = last_deployment.get("version")
-            console.print(f"[blue]Deployed to {target_env}:[/blue] {deployed_version}")
-        else:
-            deployed_version = None
-            console.print(f"[blue]First deployment to {target_env}[/blue]")
+        try:
+            client = create_databricks_client(profile)
+            tracker = DeploymentTracker(client, env_config["topLevelName"], warehouse_id)
+            db_deployment = tracker.get_latest_deployment(target_env)
+
+            if db_deployment:
+                deployed_version = db_deployment.get("version")
+                console.print(f"[blue]Deployed to {target_env}:[/blue] {deployed_version}")
+                console.print("[dim](Source: Database tracking table)[/dim]")
+            else:
+                deployed_version = None
+                console.print(f"[blue]First deployment to {target_env}[/blue]")
+                console.print("[dim](No successful deployments in database)[/dim]")
+        except Exception as e:
+            # Database connection or query error - fail fast
+            console.print("\n[red]✗ Failed to query deployment database[/red]")
+            console.print(f"[red]Error: {e}[/red]")
+            console.print("\n[yellow]Cannot proceed without database access.[/yellow]")
+            console.print("[yellow]Please check:[/yellow]")
+            console.print("  • Databricks credentials are valid")
+            console.print(f"  • Warehouse {warehouse_id} is running")
+            console.print("  • Network connectivity to Databricks")
+            console.print(
+                f"\n[blue]Retry with:[/blue] schematic apply --target {target_env} "
+                f"--profile {profile} --warehouse-id {warehouse_id}"
+            )
+            raise ApplyError(f"Database query failed: {e}")
 
         # 7. Load snapshot states
         latest_snap = read_snapshot(workspace, latest_snapshot_version)
@@ -195,19 +234,21 @@ def apply_to_environment(
             console.print("[green]✓[/green] No changes to deploy")
             return _create_empty_result(target_env, latest_snapshot_version)
 
-        # 9. Generate SQL in-memory from diff operations
+        # 9. Generate SQL with explicit operation mapping
         console.print("[blue]Generating SQL...[/blue]")
 
         catalog_mapping = _build_catalog_mapping(latest_state, env_config)
         generator = provider.get_sql_generator(latest_state, catalog_mapping)
-        sql = generator.generate_sql(diff_operations)
 
-        if not sql or not sql.strip():
+        # Generate SQL with structured mapping (no comment parsing needed!)
+        sql_result = generator.generate_sql_with_mapping(diff_operations)
+
+        if not sql_result.sql or not sql_result.sql.strip():
             console.print("[green]✓[/green] No SQL to execute")
             return _create_empty_result(target_env, latest_snapshot_version)
 
-        # 10. Parse into statements
-        statements = parse_sql_statements(sql)
+        # 10. Extract statements from structured result
+        statements = [stmt.sql for stmt in sql_result.statements]
 
         if not statements:
             console.print("\n[yellow]No SQL statements to execute.[/yellow]")
@@ -269,13 +310,15 @@ def apply_to_environment(
         executor = provider.get_sql_executor(config)
         console.print("[green]✓[/green] Authenticated successfully")
 
-        # 17. Execute statements FIRST (this creates catalog if autoCreateCatalog: true)
+        # 17. Generate deployment ID early (needed for auto-rollback tracking)
+        deployment_id = f"deploy_{uuid4().hex[:8]}"
+
+        # 18. Execute statements FIRST (this creates catalog if autoCreateCatalog: true)
         console.print("\n[cyan]Executing SQL statements...[/cyan]")
         result = executor.execute_statements(statements, config)
 
-        # 18. Initialize deployment tracker AFTER catalog exists
+        # 19. Track deployment IMMEDIATELY after execution (before auto-rollback)
         deployment_catalog = env_config["topLevelName"]
-        # Cast to UnitySQLExecutor to access client attribute
         unity_executor = cast(UnitySQLExecutor, executor)
         tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
 
@@ -287,8 +330,7 @@ def apply_to_environment(
         )
         console.print("[green]✓[/green] Tracking schema ready")
 
-        # 19. Start deployment tracking
-        deployment_id = f"deploy_{uuid4().hex[:8]}"
+        # Start and complete deployment tracking
         tracker.start_deployment(
             deployment_id=deployment_id,
             environment=target_env,
@@ -297,39 +339,105 @@ def apply_to_environment(
             provider_type=provider.info.id,
             provider_version=provider.info.version,
             schematic_version="0.2.0",
+            from_snapshot_version=deployed_version,
         )
 
-        # 20. Track individual operations from diff
-        for i, (op, stmt_result) in enumerate(zip(diff_operations, result.statement_results)):
-            tracker.record_operation(
-                deployment_id=deployment_id,
-                op=op,
-                sql_stmt=stmt_result.sql,
-                result=stmt_result,
-                execution_order=i + 1,
-            )
+        # Track individual operations using explicit mapping
+        # No comment parsing needed - we have structured data!
 
-        # 21. Complete deployment tracking in database
+        op_id_to_op = {op.id: op for op in diff_operations}
+
+        for i, stmt_result in enumerate(result.statement_results):
+            # Find the corresponding statement info from sql_result
+            stmt_info = sql_result.statements[i] if i < len(sql_result.statements) else None
+
+            if stmt_info:
+                # Record each operation that contributed to this statement
+                for op_id in stmt_info.operation_ids:
+                    op = op_id_to_op.get(op_id)
+                    if op:
+                        tracker.record_operation(
+                            deployment_id=deployment_id,
+                            op=op,
+                            sql_stmt=stmt_result.sql,
+                            result=stmt_result,
+                            execution_order=i + 1,
+                        )
+                    else:
+                        console.print(
+                            f"[yellow]⚠️  Warning: Operation {op_id} not found in diff[/yellow]"
+                        )
+            else:
+                # This shouldn't happen - mismatch between generated and executed statements
+                console.print(f"[yellow]⚠️  Warning: Statement {i + 1} has no mapping info[/yellow]")
+
+        # Complete deployment tracking
         tracker.complete_deployment(deployment_id, result, result.error_message)
 
-        # 22. Write deployment record to local project.json
-        deployment_record = {
-            "id": deployment_id,
-            "environment": target_env,
-            "version": latest_snapshot_version,
-            "fromVersion": deployed_version,
-            "ts": datetime.now(UTC).isoformat(),
-            "status": result.status,
-            "executionTimeMs": result.total_execution_time_ms,
-            "statementCount": result.total_statements,
-            "successfulStatements": result.successful_statements,
-            "failedStatementIndex": result.failed_statement_index,
-            "opsApplied": [op.id for op in diff_operations],
-        }
+        # 20. Auto-rollback on failure (MVP feature!)
+        # Only trigger for "partial" (some statements succeeded, some failed)
+        # If status is "failed" (0 successful), there's nothing to roll back
+        if result.status == "partial" and auto_rollback:
+            console.print()
+            console.print("[yellow]⚠️  Deployment failed! Auto-rollback triggered...[/yellow]")
+            console.print()
 
-        write_deployment(workspace, deployment_record)
+            try:
+                # Import rollback function and error here to avoid circular imports
+                from .rollback import RollbackError, rollback_partial
 
-        # 23. Show results
+                # Get successful operations (those that executed before failure)
+                failed_idx = result.failed_statement_index or 0
+                successful_ops = diff_operations[:failed_idx]
+
+                # Trigger partial rollback automatically
+                # Pass the failed deployment_id so rollback can query the database
+                rollback_result = rollback_partial(
+                    workspace=workspace,
+                    deployment_id=deployment_id,  # The failed deployment ID
+                    successful_ops=successful_ops,
+                    target_env=target_env,
+                    profile=profile,
+                    warehouse_id=warehouse_id,
+                    executor=executor,  # Reuse existing connection
+                    catalog_mapping=catalog_mapping,
+                    auto_triggered=True,  # Skip confirmation prompts
+                    from_version=deployed_version,  # For accurate rollback tracking
+                )
+
+                if rollback_result.success:
+                    console.print()
+                    console.print("[green]✅ Environment restored to pre-deployment state[/green]")
+                    console.print(
+                        f"   Rolled back {rollback_result.operations_rolled_back} operations"
+                    )
+                    console.print("   Status: FAILED + ROLLED BACK")
+                    console.print()
+                    console.print("Fix the issue and redeploy.")
+
+                    # Auto-rollback succeeded, exit with failure (no further tracking needed)
+                    sys.exit(1)
+
+                console.print()
+                console.print("[red]❌ Auto-rollback failed[/red]")
+                if rollback_result.error_message:
+                    console.print(f"   {rollback_result.error_message}")
+                console.print("   Manual rollback may be required")
+
+            except RollbackError as e:
+                console.print()
+                console.print("[red]❌ Auto-rollback blocked[/red]")
+                console.print(f"   {e}")
+                console.print()
+                console.print(
+                    "[yellow]Manual intervention required - deployment partially applied[/yellow]"
+                )
+            except Exception as e:
+                console.print()
+                console.print(f"[red]❌ Auto-rollback failed unexpectedly: {e}[/red]")
+                console.print("[yellow]Manual rollback may be required[/yellow]")
+
+        # 21. Show results
         console.print()
         console.print("─" * 60)
 
@@ -339,8 +447,9 @@ def apply_to_environment(
                 f"[green]✓ Deployed {latest_snapshot_version} to {target_env} "
                 f"({result.successful_statements} statements, {exec_time:.2f}s)[/green]"
             )
-            console.print(f"[green]✓ Deployment recorded: {deployment_id}[/green]")
-            console.print("[green]✓ Local record saved to project.json[/green]")
+            schema_name = f"{env_config['topLevelName']}.schematic"
+            console.print(f"[green]✓ Deployment tracked in {schema_name}[/green]")
+            console.print(f"[dim]  Deployment ID: {deployment_id}[/dim]")
         else:
             failed_idx = result.failed_statement_index or 0
             console.print(f"[red]✗ Deployment failed at statement {failed_idx + 1}[/red]")
@@ -352,45 +461,14 @@ def apply_to_environment(
             console.print(f"[blue]Environment:[/blue] {target_env}")
             console.print(f"[blue]Version:[/blue] {latest_snapshot_version}")
             console.print(f"[blue]Status:[/blue] {result.status}")
-            console.print("[yellow]Local record saved to project.json[/yellow]")
+            schema_loc = f"{env_config['topLevelName']}.schematic"
+            console.print(f"[dim]  Tracked in {schema_loc} (ID: {deployment_id})[/dim]")
 
         return result
 
     except Exception as e:
         console.print(f"\n[red]✗ Apply failed: {e}[/red]")
         raise ApplyError(str(e)) from e
-
-
-def parse_sql_statements(sql: str) -> list[str]:
-    """Parse SQL into individual statements
-
-    Splits SQL by semicolons, handling comments and multi-line statements.
-
-    Args:
-        sql: SQL text to parse
-
-    Returns:
-        List of individual SQL statements
-    """
-    statements = []
-
-    # Remove comments
-    sql_no_comments = re.sub(r"--[^\n]*", "", sql)
-
-    # Split by semicolon
-    raw_statements = sql_no_comments.split(";")
-
-    for stmt in raw_statements:
-        # Clean up whitespace
-        stmt = stmt.strip()
-
-        # Skip empty statements
-        if not stmt:
-            continue
-
-        statements.append(stmt)
-
-    return statements
 
 
 def _create_empty_result(environment: str, version: str) -> ExecutionResult:
