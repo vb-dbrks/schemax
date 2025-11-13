@@ -1333,6 +1333,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         schema_name = parts[1] if len(parts) > 1 else "unknown"
         view_name = op.payload["name"]
 
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+
         # Build fully qualified view name
         view_esc = self._build_fqn(catalog_name, schema_name, view_name)
         definition = op.payload.get("definition", "")
@@ -1383,6 +1386,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         schema_name = parts[1] if len(parts) > 1 else "unknown"
         view_name = create_op.payload["name"]
 
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+
         # Build fully qualified view name
         view_esc = self._build_fqn(catalog_name, schema_name, view_name)
 
@@ -1425,10 +1431,16 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _rename_view(self, op: Operation) -> str:
         """Generate ALTER VIEW RENAME statement"""
         old_fqn = self.id_name_map.get(op.target, "unknown")
-        old_esc = self._build_fqn(*old_fqn.split("."))
+        parts = old_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        old_esc = self._build_fqn(*parts)
 
         # Build new FQN with new name
-        parts = old_fqn.split(".")
         parts[-1] = op.payload["newName"]
         new_esc = self._build_fqn(*parts)
 
@@ -1437,13 +1449,28 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _drop_view(self, op: Operation) -> str:
         """Generate DROP VIEW statement"""
         view_fqn = self.id_name_map.get(op.target, "unknown")
-        view_esc = self._build_fqn(*view_fqn.split("."))
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
         return f"DROP VIEW IF EXISTS {view_esc}"
 
     def _update_view(self, op: Operation) -> str:
         """Generate CREATE OR REPLACE VIEW statement to update definition"""
         view_fqn = self.id_name_map.get(op.target, "unknown")
-        view_esc = self._build_fqn(*view_fqn.split("."))
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+
+        # Reconstruct FQN with physical catalog name
+        parts[0] = catalog_name
+        view_esc = self._build_fqn(*parts)
         definition = op.payload.get("definition", "")
 
         # Always qualify table/view references in the definition
@@ -1473,14 +1500,28 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _set_view_comment(self, op: Operation) -> str:
         """Generate ALTER VIEW SET TBLPROPERTIES for comment"""
         view_fqn = self.id_name_map.get(op.payload["viewId"], "unknown")
-        view_esc = self._build_fqn(*view_fqn.split("."))
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
         comment = op.payload["comment"].replace("'", "\\'")
         return f"COMMENT ON VIEW {view_esc} IS '{comment}'"
 
     def _set_view_property(self, op: Operation) -> str:
         """Generate ALTER VIEW SET TBLPROPERTIES"""
         view_fqn = self.id_name_map.get(op.payload["viewId"], "unknown")
-        view_esc = self._build_fqn(*view_fqn.split("."))
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
         key = op.payload["key"]
         value = op.payload["value"].replace("'", "\\'")
         return f"ALTER VIEW {view_esc} SET TBLPROPERTIES ('{key}' = '{value}')"
@@ -1488,7 +1529,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _unset_view_property(self, op: Operation) -> str:
         """Generate ALTER VIEW UNSET TBLPROPERTIES"""
         view_fqn = self.id_name_map.get(op.payload["viewId"], "unknown")
-        view_esc = self._build_fqn(*view_fqn.split("."))
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
         key = op.payload["key"]
         return f"ALTER VIEW {view_esc} UNSET TBLPROPERTIES ('{key}')"
 
