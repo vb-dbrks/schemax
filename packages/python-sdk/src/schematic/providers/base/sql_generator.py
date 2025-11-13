@@ -197,8 +197,12 @@ class BaseSQLGenerator(SQLGenerator):
 
             for dep_id, dep_type, enforcement in dependencies:
                 # Add dependency edge if both nodes exist
+                # Note: We add edge FROM dependency TO dependent (reversed direction)
+                # This is because NetworkX topological sort returns nodes such that
+                # for edge u -> v, u comes before v. So we want table -> view,
+                # not view -> table.
                 if target_id in graph.nodes and dep_id in graph.nodes:
-                    graph.add_edge(target_id, dep_id, dep_type, enforcement)
+                    graph.add_edge(dep_id, target_id, dep_type, enforcement)
 
         # Store operation mapping for topological sort
         graph.metadata["ops_by_target"] = ops_by_target

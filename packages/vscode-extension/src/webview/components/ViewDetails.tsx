@@ -145,7 +145,7 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
           <div className="dependencies-container">
             {view.extractedDependencies.tables && view.extractedDependencies.tables.length > 0 && (
               <div className="dependency-group">
-                <h4>Tables</h4>
+                <h4>Dependent Tables</h4>
                 <ul className="dependency-list">
                   {view.extractedDependencies.tables.map((table: string, i: number) => (
                     <li key={i}>
@@ -159,7 +159,7 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
             
             {view.extractedDependencies.views && view.extractedDependencies.views.length > 0 && (
               <div className="dependency-group">
-                <h4>Views</h4>
+                <h4>Dependent Views</h4>
                 <ul className="dependency-list">
                   {view.extractedDependencies.views.map((v: string, i: number) => (
                     <li key={i}>

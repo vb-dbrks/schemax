@@ -44,15 +44,15 @@ const validateViewSQL = (sql: string): string | null => {
 
 // Codicon icons - theme-aware and vector-based
 const IconPlus: React.FC = () => (
-  <i slot="start" className="codicon codicon-add" aria-hidden="true"></i>
+  <i className="codicon codicon-add" aria-hidden="true"></i>
 );
 
 const IconEdit: React.FC = () => (
-  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
+  <i className="codicon codicon-edit" aria-hidden="true"></i>
 );
 
 const IconTrash: React.FC = () => (
-  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+  <i className="codicon codicon-trash" aria-hidden="true"></i>
 );
 
 // Tooltip component for showing logical → physical catalog name mappings
@@ -868,30 +868,40 @@ export const Sidebar: React.FC = () => {
               );
             }}
           >
-            <h3>Add {addDialog.type}</h3>
+            <h3>
+              Add {addDialog.type === 'catalog' ? topLevelName : 
+                   addDialog.type === 'schema' ? secondLevelName : 
+                   addDialog.objectType === 'view' ? 'View' : thirdLevelName}
+            </h3>
             
             {/* Object Type Selector - Only for schema-level additions */}
             {addDialog.type === 'table' && (
               <div className="modal-field-group">
-                <label>Object Type</label>
-                <div className="radio-group">
-                  <label>
+                <label htmlFor="object-type-selector" style={{ display: 'block', marginBottom: '8px' }}>
+                  OBJECT TYPE
+                </label>
+                <div className="radio-group" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                     <input
                       type="radio"
+                      name="object-type"
                       value="table"
                       checked={addDialog.objectType === 'table'}
                       onChange={() => setAddDialog({...addDialog, objectType: 'table'})}
+                      style={{ margin: 0, cursor: 'pointer' }}
                     />
-                    Table
+                    <span>Table</span>
                   </label>
-                  <label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                     <input
                       type="radio"
+                      name="object-type"
                       value="view"
                       checked={addDialog.objectType === 'view'}
                       onChange={() => setAddDialog({...addDialog, objectType: 'view'})}
+                      style={{ margin: 0, cursor: 'pointer' }}
                     />
-                    View
+                    <span>View</span>
                   </label>
                 </div>
               </div>
@@ -1047,25 +1057,31 @@ export const Sidebar: React.FC = () => {
               <>
                 {/* Table Type Selection */}
                 <div className="modal-field-group">
-                  <label>Table Type</label>
-                  <div className="radio-group">
-                    <label>
+                  <label htmlFor="table-type-selector" style={{ display: 'block', marginBottom: '8px' }}>
+                    Table Type
+                  </label>
+                  <div className="radio-group" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                       <input
                         type="radio"
+                        name="table-type"
                         value="managed"
                         checked={addTableType === 'managed'}
                         onChange={() => setAddTableType('managed')}
+                        style={{ margin: 0, cursor: 'pointer' }}
                       />
-                      Managed (Recommended)
+                      <span>Managed (Recommended)</span>
                     </label>
-                    <label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                       <input
                         type="radio"
+                        name="table-type"
                         value="external"
                         checked={addTableType === 'external'}
                         onChange={() => setAddTableType('external')}
+                        style={{ margin: 0, cursor: 'pointer' }}
                       />
-                      External
+                      <span>External</span>
                     </label>
                   </div>
                 </div>

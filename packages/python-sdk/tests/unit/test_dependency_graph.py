@@ -56,8 +56,8 @@ class TestDependencyGraphBasics:
         graph.add_node(node1)
         graph.add_node(node2)
 
-        # Add edge: view_1 depends on table_1
-        graph.add_edge("view_1", "table_1", DependencyType.VIEW_TO_TABLE)
+        # Add edge: table_1 must be created before view_1 (view_1 depends on table_1)
+        graph.add_edge("table_1", "view_1", DependencyType.VIEW_TO_TABLE)
 
         # Check edge exists
         deps = graph.get_dependencies("view_1")
@@ -74,7 +74,7 @@ class TestDependencyGraphBasics:
         graph.add_node(node1)
 
         with pytest.raises(ValueError, match="not in graph"):
-            graph.add_edge("view_1", "nonexistent", DependencyType.VIEW_TO_TABLE)
+            graph.add_edge("nonexistent", "view_1", DependencyType.VIEW_TO_TABLE)
 
     def test_get_dependents(self):
         """Test getting all nodes that depend on a given node"""
@@ -89,8 +89,8 @@ class TestDependencyGraphBasics:
         graph.add_node(view1)
         graph.add_node(view2)
 
-        graph.add_edge("view_1", "table_1", DependencyType.VIEW_TO_TABLE)
-        graph.add_edge("view_2", "table_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_2", DependencyType.VIEW_TO_TABLE)
 
         # table_1 has two dependents
         dependents = graph.get_dependents("table_1")
@@ -112,7 +112,7 @@ class TestCycleDetection:
 
         graph.add_node(table)
         graph.add_node(view)
-        graph.add_edge("view_1", "table_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_1", DependencyType.VIEW_TO_TABLE)
 
         cycles = graph.detect_cycles()
         assert len(cycles) == 0
@@ -176,10 +176,10 @@ class TestCycleDetection:
         for node in [table, view1, view2, view3]:
             graph.add_node(node)
 
-        graph.add_edge("view_1", "view_2", DependencyType.VIEW_TO_VIEW)
-        graph.add_edge("view_1", "view_3", DependencyType.VIEW_TO_VIEW)
-        graph.add_edge("view_2", "table_1", DependencyType.VIEW_TO_TABLE)
-        graph.add_edge("view_3", "table_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("view_2", "view_1", DependencyType.VIEW_TO_VIEW)
+        graph.add_edge("view_3", "view_1", DependencyType.VIEW_TO_VIEW)
+        graph.add_edge("table_1", "view_2", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_3", DependencyType.VIEW_TO_TABLE)
 
         cycles = graph.detect_cycles()
         assert len(cycles) == 0
@@ -205,8 +205,8 @@ class TestTopologicalSort:
         graph.add_node(view2)
         graph.add_node(view1)
 
-        graph.add_edge("view_1", "view_2", DependencyType.VIEW_TO_VIEW)
-        graph.add_edge("view_2", "table_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("view_2", "view_1", DependencyType.VIEW_TO_VIEW)
+        graph.add_edge("table_1", "view_2", DependencyType.VIEW_TO_TABLE)
 
         # Topological sort should order: table_1, view_2, view_1
         sorted_ops = graph.topological_sort()
@@ -235,8 +235,8 @@ class TestTopologicalSort:
         graph.add_node(view1)
         graph.add_node(view2)
 
-        graph.add_edge("view_1", "view_2", DependencyType.VIEW_TO_VIEW)
         graph.add_edge("view_2", "view_1", DependencyType.VIEW_TO_VIEW)
+        graph.add_edge("view_1", "view_2", DependencyType.VIEW_TO_VIEW)
 
         # Should raise ValueError due to cycle
         with pytest.raises(ValueError, match="Circular dependencies"):
@@ -259,8 +259,8 @@ class TestTopologicalSort:
         graph.add_node(view1)
         graph.add_node(view2)
 
-        graph.add_edge("view_1", "table_1", DependencyType.VIEW_TO_TABLE)
-        graph.add_edge("view_2", "table_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_2", DependencyType.VIEW_TO_TABLE)
 
         sorted_ops = graph.topological_sort()
 
@@ -290,8 +290,8 @@ class TestBreakingChanges:
         graph.add_node(view1)
         graph.add_node(view2)
 
-        graph.add_edge("view_1", "table_1", DependencyType.VIEW_TO_TABLE)
-        graph.add_edge("view_2", "table_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_2", DependencyType.VIEW_TO_TABLE)
 
         # Dropping table_1 will affect view_1 and view_2
         affected = graph.get_breaking_changes("table_1")
@@ -311,7 +311,7 @@ class TestBreakingChanges:
         graph.add_node(table)
         graph.add_node(view)
 
-        graph.add_edge("view_1", "table_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_1", DependencyType.VIEW_TO_TABLE)
 
         # Dropping view_1 has no breaking changes (it's a leaf)
         affected = graph.get_breaking_changes("view_1")
@@ -331,7 +331,7 @@ class TestDependencyValidation:
 
         graph.add_node(table)
         graph.add_node(view)
-        graph.add_edge("view_1", "table_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_1", DependencyType.VIEW_TO_TABLE)
 
         warnings = graph.validate_dependencies()
         assert len(warnings) == 0
@@ -348,9 +348,9 @@ class TestDependencyValidation:
         graph.add_node(schema)
         graph.add_node(table)
 
-        # This is invalid - schema (higher in hierarchy) depending on table (lower in hierarchy)
-        # would require creating table before schema, which violates the hierarchy
-        graph.add_edge("schema_1", "table_1", DependencyType.CONSTRAINT)
+        # This is invalid - table must be created before schema
+        # (violates hierarchy: schema is level 1, table is level 2)
+        graph.add_edge("table_1", "schema_1", DependencyType.CONSTRAINT)
 
         warnings = graph.validate_dependencies()
         assert len(warnings) > 0
@@ -383,7 +383,7 @@ class TestHierarchicalSort:
         graph.add_node(view)
 
         # Add view depends on table
-        graph.add_edge("view_1", "table_1", DependencyType.VIEW_TO_TABLE)
+        graph.add_edge("table_1", "view_1", DependencyType.VIEW_TO_TABLE)
 
         # Group operations by level
         ops_by_level = {
@@ -419,7 +419,7 @@ class TestDependencyEnforcement:
         graph.add_node(view)
 
         graph.add_edge(
-            "view_1", "table_1", DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED
+            "table_1", "view_1", DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED
         )
 
         deps = graph.get_dependencies("view_1")
@@ -438,7 +438,7 @@ class TestDependencyEnforcement:
 
         # Foreign key (not enforced in Unity Catalog)
         graph.add_edge(
-            "table_1", "table_2", DependencyType.FOREIGN_KEY, DependencyEnforcement.WARNING
+            "table_2", "table_1", DependencyType.FOREIGN_KEY, DependencyEnforcement.WARNING
         )
 
         deps = graph.get_dependencies("table_1")

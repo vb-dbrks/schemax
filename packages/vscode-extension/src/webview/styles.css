@@ -621,6 +621,21 @@ body {
   height: 28px;
   padding: 0;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-item .actions vscode-button::part(content) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.tree-item .actions vscode-button .codicon {
+  margin: 0 !important;
+  display: block;
 }
 
 .tree-item .actions vscode-button svg {

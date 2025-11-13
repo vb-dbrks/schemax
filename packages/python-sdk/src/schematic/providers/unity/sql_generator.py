@@ -8,6 +8,7 @@ Migrated from TypeScript sql-generator.ts
 from typing import Any, TypedDict
 
 from schematic.providers.base.batching import BatchInfo
+from schematic.providers.base.dependency_graph import DependencyEnforcement, DependencyType
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.sql_generator import BaseSQLGenerator, SQLGenerationResult
 
@@ -553,6 +554,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 filtered.extend(target_ops)
 
         return filtered
+
+    def _extract_operation_dependencies(
+        self, op: Operation
+    ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
+        """
+        Extract dependencies from Unity Catalog operations.
+
+        Currently supports:
+        - View dependencies on tables/views (from add_view operation)
+
+        Args:
+            op: Operation to analyze
+
+        Returns:
+            List of tuples: (dependency_id, dependency_type, enforcement)
+        """
+        dependencies: list[tuple[str, DependencyType, DependencyEnforcement]] = []
+
+        # Extract view dependencies
+        if op.op == "unity.add_view":
+            # Dependencies field contains list of table/view IDs this view depends on
+            dep_ids = op.payload.get("dependencies", [])
+            if isinstance(dep_ids, list):
+                for dep_id in dep_ids:
+                    dependencies.append(
+                        (dep_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
+                    )
+
+        return dependencies
 
     def generate_sql(self, ops: list[Operation]) -> str:
         """
@@ -1296,8 +1326,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _add_view(self, op: Operation) -> str:
         """Generate CREATE VIEW statement"""
-        view_fqn = self.id_name_map.get(op.target, "unknown")
-        view_esc = self._build_fqn(*view_fqn.split("."))
+        # Get schema FQN and extract catalog/schema names
+        schema_fqn = self.id_name_map.get(op.payload["schemaId"], "unknown.unknown")
+        parts = schema_fqn.split(".")
+        catalog_name = parts[0]
+        schema_name = parts[1] if len(parts) > 1 else "unknown"
+        view_name = op.payload["name"]
+
+        # Build fully qualified view name
+        view_esc = self._build_fqn(catalog_name, schema_name, view_name)
         definition = op.payload.get("definition", "")
         comment = op.payload.get("comment")
 
@@ -1339,8 +1376,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         Uses the final definition from update_op and dependencies from update_op.
         This optimization squashes CREATE + UPDATE_VIEW into a single statement.
         """
-        view_fqn = self.id_name_map.get(create_op.target, "unknown")
-        view_esc = self._build_fqn(*view_fqn.split("."))
+        # Get schema FQN and extract catalog/schema names
+        schema_fqn = self.id_name_map.get(create_op.payload["schemaId"], "unknown.unknown")
+        parts = schema_fqn.split(".")
+        catalog_name = parts[0]
+        schema_name = parts[1] if len(parts) > 1 else "unknown"
+        view_name = create_op.payload["name"]
+
+        # Build fully qualified view name
+        view_esc = self._build_fqn(catalog_name, schema_name, view_name)
 
         # Use updated definition from update_op
         definition = update_op.payload.get("definition", "")

@@ -99,11 +99,15 @@ class DependencyGraph:
         enforcement: DependencyEnforcement = DependencyEnforcement.ENFORCED,
     ) -> None:
         """
-        Add an edge from from_id to to_id (from_id depends on to_id).
+        Add a dependency edge from from_id to to_id.
+
+        Edge direction: from_id must be created BEFORE to_id (to_id depends on from_id).
+        Example: add_edge("table_1", "view_1") means view_1 depends on table_1,
+                 so table_1 must be created first.
 
         Args:
-            from_id: ID of the dependent object
-            to_id: ID of the dependency object
+            from_id: ID of the dependency object (must be created first)
+            to_id: ID of the dependent object (depends on from_id)
             dep_type: Type of dependency
             enforcement: How strictly the dependency is enforced
         """
@@ -112,7 +116,7 @@ class DependencyGraph:
         if to_id not in self.nodes:
             raise ValueError(f"Target node {to_id} not in graph")
 
-        # NetworkX edge: from_id → to_id means from_id depends on to_id
+        # NetworkX edge: from_id → to_id means from_id must execute before to_id
         self.graph.add_edge(from_id, to_id, dep_type=dep_type.value, enforcement=enforcement.value)
 
     def get_node(self, node_id: str) -> DependencyNode | None:
@@ -120,17 +124,22 @@ class DependencyGraph:
         return self.nodes.get(node_id)
 
     def get_dependencies(self, node_id: str) -> list[DependencyEdge]:
-        """Get all edges where node_id is the dependent (outgoing edges)"""
+        """
+        Get all dependencies of node_id (what does node_id depend on?).
+
+        Since our edges are FROM dependency TO dependent (table -> view),
+        we need to get INCOMING edges (predecessors).
+        """
         if node_id not in self.graph:
             return []
 
         edges = []
-        for successor in self.graph.successors(node_id):
-            edge_data = self.graph[node_id][successor]
+        for predecessor in self.graph.predecessors(node_id):
+            edge_data = self.graph[predecessor][node_id]
             edges.append(
                 DependencyEdge(
                     from_id=node_id,
-                    to_id=successor,
+                    to_id=predecessor,
                     dep_type=DependencyType(edge_data["dep_type"]),
                     enforcement=DependencyEnforcement(edge_data["enforcement"]),
                 )
@@ -138,10 +147,15 @@ class DependencyGraph:
         return edges
 
     def get_dependents(self, node_id: str) -> list[str]:
-        """Get all nodes that depend on node_id (incoming edges)"""
+        """
+        Get all nodes that depend on node_id (who depends on this node?).
+
+        Since our edges are FROM dependency TO dependent (table -> view),
+        we need to get OUTGOING edges (successors).
+        """
         if node_id not in self.graph:
             return []
-        return list(self.graph.predecessors(node_id))
+        return list(self.graph.successors(node_id))
 
     def detect_cycles(self) -> list[list[str]]:
         """
@@ -160,7 +174,10 @@ class DependencyGraph:
 
     def topological_sort(self) -> list[Operation]:
         """
-        Perform topological sort using NetworkX.
+        Perform topological sort using NetworkX with timestamp-stable ordering.
+
+        For nodes at the same level with no dependencies between them,
+        they are ordered by timestamp (earliest first).
 
         Returns:
             List of operations in dependency order.
@@ -178,11 +195,34 @@ class DependencyGraph:
             raise ValueError(f"Circular dependencies detected:\n{cycle_str}")
 
         try:
-            # NetworkX topological sort
+            # Use lexicographical topological sort for stable ordering
+            # This ensures that for nodes at the same level (no dependencies),
+            # they are ordered by a key function (timestamp in our case)
+            def sort_key(node_id: str) -> tuple[int, str]:
+                """
+                Sort key: (hierarchy_level, timestamp)
+                This ensures hierarchical ordering first, then timestamp within each level
+                """
+                node = self.nodes.get(node_id)
+                if not node or not node.operation:
+                    return (999, "9999-99-99T99:99:99Z")  # Push to end if no operation
+
+                # Handle both Operation objects and dict (for tests)
+                if hasattr(node.operation, "ts"):
+                    timestamp = node.operation.ts
+                elif isinstance(node.operation, dict):
+                    timestamp = node.operation.get("ts", "9999-99-99T99:99:99Z")
+                else:
+                    timestamp = "9999-99-99T99:99:99Z"
+
+                # Use hierarchy level and timestamp as sort key
+                return (node.hierarchy_level, timestamp)
+
+            # NetworkX lexicographical_topological_sort sorts by key when there's no dependency
             # Note: NetworkX returns nodes such that for edge u -> v, u comes before v
-            # Since our edges are "depends on" (view -> table means view depends on table),
-            # we need to reverse the result so dependencies execute first
-            sorted_node_ids = list(reversed(list(nx.topological_sort(self.graph))))
+            # Our edges are FROM dependency TO dependent (table -> view),
+            # so the result is already in correct order (dependencies first)
+            sorted_node_ids = list(nx.lexicographical_topological_sort(self.graph, key=sort_key))
         except nx.NetworkXError as e:
             raise ValueError(f"Failed to perform topological sort: {e}")
 
@@ -193,8 +233,18 @@ class DependencyGraph:
 
         for node_id in sorted_node_ids:
             # If we have multiple operations for this object, add them all
+            # Sort them by timestamp to maintain temporal order
             if node_id in ops_by_target:
-                sorted_operations.extend(ops_by_target[node_id])
+                # Handle both Operation objects and dict (for tests)
+                def get_timestamp(op: Operation | dict) -> str:
+                    if hasattr(op, "ts"):
+                        return str(op.ts)
+                    elif isinstance(op, dict):
+                        return str(op.get("ts", ""))
+                    return ""
+
+                ops_for_node = sorted(ops_by_target[node_id], key=get_timestamp)
+                sorted_operations.extend(ops_for_node)
             else:
                 # Fallback: use single operation from node
                 node = self.nodes.get(node_id)
@@ -251,10 +301,15 @@ class DependencyGraph:
             subgraph.add_node(node)
 
         # Add edges between nodes in this level
+        # Note: get_dependencies returns edges with from_id=node, to_id=dependency
+        # But our graph stores edges as dependency -> dependent
+        # So we need to add edges in the correct direction: to_id -> from_id
         for from_id in level_node_ids:
             for edge in self.get_dependencies(from_id):
                 if edge.to_id in level_node_ids:
-                    subgraph.add_edge(edge.from_id, edge.to_id, edge.dep_type, edge.enforcement)
+                    # edge.from_id is the dependent, edge.to_id is the dependency
+                    # Add edge: dependency -> dependent
+                    subgraph.add_edge(edge.to_id, edge.from_id, edge.dep_type, edge.enforcement)
 
         return subgraph
 
