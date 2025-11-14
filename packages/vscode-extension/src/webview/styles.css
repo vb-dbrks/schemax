@@ -1145,10 +1145,10 @@ body {
 }
 
 .modal-field-group label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  margin-bottom: 4px;
 }
 
 .modal-surface vscode-text-field,

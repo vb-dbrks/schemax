@@ -1020,40 +1020,31 @@ export const Sidebar: React.FC = () => {
               </>
             )}
             
-            {/* Managed Location for Catalog and Schema */}
-            {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
-              <div className="modal-field-group">
-                <label htmlFor="managed-location-input">
-                  Managed Location Path (optional)
-                  <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
-                </label>
-                <VSCodeTextField
-                  id="managed-location-input"
-                  value={addManagedLocationName}
-                  placeholder="e.g., s3://bucket/path or abfss://container@account.dfs.core.windows.net/path"
-                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
-                    setAddManagedLocationName((event.target as HTMLInputElement).value);
-                  }}
-                />
-                <p className="field-help">
-                  Storage path where Unity Catalog stores data for managed tables in this {addDialog.type}. Leave empty to use Unity Catalog's default location.
-                </p>
-              </div>
-            )}
-            
             {/* Comment field for Catalog and Schema */}
             {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
               <div className="modal-field-group">
-                <label htmlFor="add-comment">
-                  Comment (optional)
-                </label>
-                <input
-                  type="text"
+                <label htmlFor="add-comment">Comment</label>
+                <VSCodeTextField
                   id="add-comment"
                   value={addComment}
-                  placeholder={`Enter ${addDialog.type} description`}
+                  placeholder="Optional description"
                   onInput={(event: React.FormEvent<HTMLInputElement>) => {
                     setAddComment((event.target as HTMLInputElement).value);
+                  }}
+                />
+              </div>
+            )}
+            
+            {/* Managed Location for Catalog and Schema */}
+            {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
+              <div className="modal-field-group">
+                <label htmlFor="managed-location-input">Managed Location</label>
+                <VSCodeTextField
+                  id="managed-location-input"
+                  value={addManagedLocationName}
+                  placeholder="s3://bucket/path or abfss://..."
+                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                    setAddManagedLocationName((event.target as HTMLInputElement).value);
                   }}
                 />
               </div>
@@ -1062,96 +1053,43 @@ export const Sidebar: React.FC = () => {
             {/* Tags field for Catalog and Schema */}
             {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
               <div className="modal-field-group">
-                <label>
-                  Tags (optional)
-                  <span className="info-icon" title="Key-value pairs for metadata and governance"> ℹ️</span>
-                </label>
-                
-                {/* Tag input form */}
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                  <input
-                    type="text"
-                    placeholder="Tag name"
+                <label>Tags</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <VSCodeTextField
+                    placeholder="Key"
                     value={addTagInput.tagName}
                     style={{ flex: '1' }}
-                    onInput={(e: React.FormEvent<HTMLInputElement>) => {
-                      setAddTagInput({...addTagInput, tagName: (e.target as HTMLInputElement).value});
-                    }}
-                    onKeyDown={(e: React.KeyboardEvent) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const tagValue = addTagInput.tagValue;
-                        const tagName = addTagInput.tagName;
-                        if (tagName && tagValue) {
-                          setAddTags({...addTags, [tagName]: tagValue});
-                          setAddTagInput({tagName: '', tagValue: ''});
-                        }
-                      }
+                    onInput={(e: Event) => {
+                      const target = e.target as HTMLInputElement;
+                      setAddTagInput({...addTagInput, tagName: target.value});
                     }}
                   />
-                  <input
-                    type="text"
-                    placeholder="Tag value"
+                  <VSCodeTextField
+                    placeholder="Value"
                     value={addTagInput.tagValue}
                     style={{ flex: '1' }}
-                    onInput={(e: React.FormEvent<HTMLInputElement>) => {
-                      setAddTagInput({...addTagInput, tagValue: (e.target as HTMLInputElement).value});
-                    }}
-                    onKeyDown={(e: React.KeyboardEvent) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const tagValue = addTagInput.tagValue;
-                        const tagName = addTagInput.tagName;
-                        if (tagName && tagValue) {
-                          setAddTags({...addTags, [tagName]: tagValue});
-                          setAddTagInput({tagName: '', tagValue: ''});
-                        }
-                      }
+                    onInput={(e: Event) => {
+                      const target = e.target as HTMLInputElement;
+                      setAddTagInput({...addTagInput, tagValue: target.value});
                     }}
                   />
-                  <button
-                    type="button"
+                  <VSCodeButton
+                    appearance="secondary"
                     onClick={() => {
                       if (addTagInput.tagName && addTagInput.tagValue) {
                         setAddTags({...addTags, [addTagInput.tagName]: addTagInput.tagValue});
                         setAddTagInput({tagName: '', tagValue: ''});
                       }
                     }}
-                    style={{
-                      padding: '0 12px',
-                      whiteSpace: 'nowrap'
-                    }}
                   >
-                    Add Tag
-                  </button>
+                    +
+                  </VSCodeButton>
                 </div>
-                
-                {/* Display added tags */}
                 {Object.keys(addTags).length > 0 && (
-                  <div style={{ 
-                    display: 'flex', 
-                    flexWrap: 'wrap', 
-                    gap: '4px',
-                    padding: '8px',
-                    background: 'var(--vscode-editor-background)',
-                    border: '1px solid var(--vscode-input-border)',
-                    borderRadius: '2px'
-                  }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '8px' }}>
                     {Object.entries(addTags).map(([tagName, tagValue]) => (
-                      <span 
-                        key={tagName}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '2px 6px',
-                          background: 'var(--vscode-badge-background)',
-                          color: 'var(--vscode-badge-foreground)',
-                          borderRadius: '2px',
-                          fontSize: '11px'
-                        }}
-                      >
-                        <strong>{tagName}:</strong> {tagValue}
+                      <span key={tagName} className="badge">
+                        {tagName}: {tagValue}
                         <button
                           type="button"
                           onClick={() => {
@@ -1164,10 +1102,9 @@ export const Sidebar: React.FC = () => {
                             border: 'none',
                             color: 'inherit',
                             cursor: 'pointer',
-                            padding: '0 2px',
-                            marginLeft: '2px',
-                            fontSize: '12px',
-                            lineHeight: '1'
+                            padding: '0',
+                            marginLeft: '4px',
+                            fontSize: '12px'
                           }}
                           title="Remove tag"
                         >
