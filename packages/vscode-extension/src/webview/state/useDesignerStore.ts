@@ -32,12 +32,12 @@ interface DesignerState {
   // Mutations (all emit ops)
   addCatalog: (name: string, options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;
   renameCatalog: (catalogId: string, newName: string) => void;
-  updateCatalog: (catalogId: string, updates: { managedLocationName?: string }) => void;
+  updateCatalog: (catalogId: string, updates: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;
   dropCatalog: (catalogId: string) => void;
   
   addSchema: (catalogId: string, name: string, options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;
   renameSchema: (schemaId: string, newName: string) => void;
-  updateSchema: (schemaId: string, updates: { managedLocationName?: string }) => void;
+  updateSchema: (schemaId: string, updates: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;
   dropSchema: (schemaId: string) => void;
   
   addTable: (

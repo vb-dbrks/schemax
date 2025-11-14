@@ -75,6 +75,10 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
             if catalog.id == target:
                 if "managedLocationName" in payload:
                     catalog.managed_location_name = payload.get("managedLocationName")
+                if "comment" in payload:
+                    catalog.comment = payload.get("comment")
+                if "tags" in payload:
+                    catalog.tags = payload.get("tags", {})
                 break
 
     elif op_type == "drop_catalog":
@@ -110,6 +114,10 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 if schema.id == op_dict["target"]:
                     if "managedLocationName" in op_dict["payload"]:
                         schema.managed_location_name = op_dict["payload"].get("managedLocationName")
+                    if "comment" in op_dict["payload"]:
+                        schema.comment = op_dict["payload"].get("comment")
+                    if "tags" in op_dict["payload"]:
+                        schema.tags = op_dict["payload"].get("tags", {})
                     return new_state
 
     elif op_type == "drop_schema":

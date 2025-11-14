@@ -54,6 +54,12 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         if ('managedLocationName' in op.payload) {
           catalog.managedLocationName = op.payload.managedLocationName;
         }
+        if ('comment' in op.payload) {
+          catalog.comment = op.payload.comment;
+        }
+        if ('tags' in op.payload) {
+          catalog.tags = op.payload.tags || {};
+        }
       }
       break;
     }
@@ -95,6 +101,12 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         if (schema) {
           if ('managedLocationName' in op.payload) {
             schema.managedLocationName = op.payload.managedLocationName;
+          }
+          if ('comment' in op.payload) {
+            schema.comment = op.payload.comment;
+          }
+          if ('tags' in op.payload) {
+            schema.tags = op.payload.tags || {};
           }
           break;
         }

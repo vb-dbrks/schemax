@@ -983,21 +983,45 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER CATALOG {old_esc} RENAME TO {new_esc}"
 
     def _update_catalog(self, op: Operation) -> str:
-        """Update catalog properties (e.g., managed location)"""
+        """Update catalog properties (managed location, comment, tags)"""
         name = self.id_name_map.get(op.target, op.target)
-        managed_location_name = op.payload.get("managedLocationName")
+        statements = []
 
-        if managed_location_name:
+        # Handle managed location
+        managed_location_name = op.payload.get("managedLocationName")
+        if managed_location_name is not None:
             location = self._resolve_managed_location(managed_location_name)
             if location:
-                return (
+                statements.append(
                     f"ALTER CATALOG {self.escape_identifier(name)} "
                     f"SET MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
                 )
+
+        # Handle comment
+        comment = op.payload.get("comment")
+        if comment is not None:
+            if comment:
+                statements.append(
+                    f"ALTER CATALOG {self.escape_identifier(name)} "
+                    f"SET COMMENT '{self.escape_string(comment)}'"
+                )
             else:
-                return f"-- Warning: Managed location '{managed_location_name}' not configured"
+                statements.append(f"ALTER CATALOG {self.escape_identifier(name)} UNSET COMMENT")
+
+        # Handle tags
+        tags = op.payload.get("tags")
+        if tags is not None and isinstance(tags, dict) and len(tags) > 0:
+            tag_entries = ", ".join(
+                f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
+            )
+            statements.append(
+                f"ALTER CATALOG {self.escape_identifier(name)} SET TAGS ({tag_entries})"
+            )
+
+        if statements:
+            return ";\n".join(statements)
         else:
-            return "-- Warning: No managed location specified for catalog update"
+            return "-- Warning: No updates specified for catalog"
 
     def _drop_catalog(self, op: Operation) -> str:
         name = self.id_name_map.get(op.target, op.target)
@@ -1113,26 +1137,46 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER SCHEMA {old_esc} RENAME TO {new_esc}"
 
     def _update_schema(self, op: Operation) -> str:
-        """Update schema properties (e.g., managed location)"""
+        """Update schema properties (managed location, comment, tags)"""
         fqn = self.id_name_map.get(op.target, "unknown.unknown")
         parts = fqn.split(".")
         catalog_name = parts[0]
         schema_name = parts[1] if len(parts) > 1 else "unknown"
+        fqn_esc = self._build_fqn(catalog_name, schema_name)
+        statements = []
 
+        # Handle managed location
         managed_location_name = op.payload.get("managedLocationName")
-
-        if managed_location_name:
+        if managed_location_name is not None:
             location = self._resolve_managed_location(managed_location_name)
             if location:
-                fqn_esc = self._build_fqn(catalog_name, schema_name)
-                return (
+                statements.append(
                     f"ALTER SCHEMA {fqn_esc} "
                     f"SET MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
                 )
+
+        # Handle comment
+        comment = op.payload.get("comment")
+        if comment is not None:
+            if comment:
+                statements.append(
+                    f"ALTER SCHEMA {fqn_esc} SET COMMENT '{self.escape_string(comment)}'"
+                )
             else:
-                return f"-- Warning: Managed location '{managed_location_name}' not configured"
+                statements.append(f"ALTER SCHEMA {fqn_esc} UNSET COMMENT")
+
+        # Handle tags
+        tags = op.payload.get("tags")
+        if tags is not None and isinstance(tags, dict) and len(tags) > 0:
+            tag_entries = ", ".join(
+                f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
+            )
+            statements.append(f"ALTER SCHEMA {fqn_esc} SET TAGS ({tag_entries})")
+
+        if statements:
+            return ";\n".join(statements)
         else:
-            return "-- Warning: No managed location specified for schema update"
+            return "-- Warning: No updates specified for schema"
 
     def _drop_schema(self, op: Operation) -> str:
         fqn = self.id_name_map.get(op.target, "unknown.unknown")

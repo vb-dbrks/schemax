@@ -4,6 +4,8 @@ import { useDesignerStore } from './state/useDesignerStore';
 import { Sidebar } from './components/Sidebar';
 import { TableDesigner } from './components/TableDesigner';
 import { ViewDetails } from './components/ViewDetails';
+import { CatalogDetails } from './components/CatalogDetails';
+import { SchemaDetails } from './components/SchemaDetails';
 import { SnapshotPanel } from './components/SnapshotPanel';
 import { getVsCodeApi } from './vscode-api';
 import { ProjectSettingsPanel } from './components/ProjectSettingsPanel';
@@ -21,7 +23,16 @@ const IconRefresh: React.FC<{ className?: string }> = ({ className = '' }) => (
 );
 
 export const App: React.FC = () => {
-  const { project, setProject, setProvider, provider, selectedTableId, findView } = useDesignerStore();
+  const { 
+    project, 
+    setProject, 
+    setProvider, 
+    provider, 
+    selectedCatalogId,
+    selectedSchemaId,
+    selectedTableId, 
+    findView 
+  } = useDesignerStore();
   const [loading, setLoading] = React.useState(true);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = React.useState(false);
   const [hasConflicts, setHasConflicts] = React.useState(false);
@@ -206,10 +217,25 @@ export const App: React.FC = () => {
           <Sidebar />
           <SnapshotPanel />
         </div>
-        {isViewSelected && selectedTableId ? (
-          <ViewDetails viewId={selectedTableId} />
+        {/* Right panel selection logic */}
+        {selectedTableId ? (
+          // Table or View selected
+          isViewSelected ? (
+            <ViewDetails viewId={selectedTableId} />
+          ) : (
+            <TableDesigner />
+          )
+        ) : selectedSchemaId ? (
+          // Schema selected (no table)
+          <SchemaDetails schemaId={selectedSchemaId} />
+        ) : selectedCatalogId ? (
+          // Catalog selected (no schema, no table)
+          <CatalogDetails catalogId={selectedCatalogId} />
         ) : (
-          <TableDesigner />
+          // Nothing selected
+          <div className="right-panel empty">
+            <p>Select a catalog, schema, table, or view to view details</p>
+          </div>
         )}
       </div>
 

@@ -1023,44 +1023,20 @@ export const Sidebar: React.FC = () => {
             {/* Managed Location for Catalog and Schema */}
             {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
               <div className="modal-field-group">
-                <label htmlFor="managed-location-select">
-                  Managed Location (optional)
+                <label htmlFor="managed-location-input">
+                  Managed Location Path (optional)
                   <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
                 </label>
-                <VSCodeDropdown
-                  id="managed-location-select"
+                <VSCodeTextField
+                  id="managed-location-input"
                   value={addManagedLocationName}
-                  onInput={(event: React.FormEvent<HTMLSelectElement>) => {
-                    setAddManagedLocationName((event.target as HTMLSelectElement).value);
+                  placeholder="e.g., s3://bucket/path or abfss://container@account.dfs.core.windows.net/path"
+                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                    setAddManagedLocationName((event.target as HTMLInputElement).value);
                   }}
-                >
-                  <VSCodeOption value="">-- Default --</VSCodeOption>
-                  {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
-                    <VSCodeOption key={name} value={name}>
-                      {name} {location.description && `(${location.description})`}
-                    </VSCodeOption>
-                  ))}
-                </VSCodeDropdown>
-
-                {addManagedLocationName && project?.managedLocations?.[addManagedLocationName] && (
-                  <div className="location-preview">
-                    <strong>Paths:</strong>
-                    <div className="env-paths-list">
-                      {Object.entries(project.managedLocations[addManagedLocationName].paths || {}).map(([env, path]) => (
-                        <div key={env} className="path-row">
-                          <span className="env-label">{env}:</span>
-                          <code className="path-value">{path}</code>
-                        </div>
-                      ))}
-                      {Object.keys(project.managedLocations[addManagedLocationName].paths || {}).length === 0 && (
-                        <div className="path-row muted">No paths configured</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
+                />
                 <p className="field-help">
-                  Specifies where Unity Catalog stores data for managed tables in this {addDialog.type}.
+                  Storage path where Unity Catalog stores data for managed tables in this {addDialog.type}. Leave empty to use Unity Catalog's default location.
                 </p>
               </div>
             )}
