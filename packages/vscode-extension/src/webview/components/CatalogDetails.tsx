@@ -15,6 +15,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const [tags, setTags] = useState<Record<string, string>>(catalog?.tags || {});
   const [tagInput, setTagInput] = useState({ tagName: '', tagValue: '' });
   const [hasChanges, setHasChanges] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   // Update local state when catalog changes
   useEffect(() => {
@@ -84,11 +85,37 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
     setTags(newTags);
   };
 
+  const handleCopyCatalogName = () => {
+    const fullName = catalog.name;
+    navigator.clipboard.writeText(fullName).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    });
+  };
+
   return (
     <div className="table-designer">
       <div className="table-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2>{catalog.name}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2>{catalog.name}</h2>
+            <button
+              onClick={handleCopyCatalogName}
+              title={copySuccess ? 'Copied!' : 'Copy catalog name'}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                color: copySuccess ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-foreground)',
+                opacity: copySuccess ? 1 : 0.7,
+              }}
+            >
+              <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '16px' }}></i>
+            </button>
+          </div>
           {hasChanges && (
             <VSCodeButton onClick={handleSaveChanges}>
               Save Changes

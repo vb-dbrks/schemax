@@ -15,6 +15,7 @@ const IconEditInline: React.FC = () => (
 export const TableDesigner: React.FC = () => {
   const { selectedTableId, findTable, setTableComment } = useDesignerStore();
   const [commentDialog, setCommentDialog] = React.useState<{tableId: string, comment: string} | null>(null);
+  const [copySuccess, setCopySuccess] = React.useState(false);
 
   if (!selectedTableId) {
     return (
@@ -44,12 +45,38 @@ export const TableDesigner: React.FC = () => {
     setCommentDialog({tableId: table.id, comment: table.comment || ''});
   };
 
+  const handleCopyTableName = () => {
+    const fullName = `${catalog.name}.${schema.name}.${table.name}`;
+    navigator.clipboard.writeText(fullName).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    });
+  };
+
   return (
     <div className="table-designer">
       <div className="table-header">
-        <h2>
-          {catalog.name}.{schema.name}.{table.name}
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h2>
+            {catalog.name}.{schema.name}.{table.name}
+          </h2>
+          <button
+            onClick={handleCopyTableName}
+            title={copySuccess ? 'Copied!' : 'Copy table name'}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              color: copySuccess ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-foreground)',
+              opacity: copySuccess ? 1 : 0.7,
+            }}
+          >
+            <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '16px' }}></i>
+          </button>
+        </div>
         <div className="table-metadata">
           <span className="badge">{table.format.toUpperCase()}</span>
           <span className="badge">{table.external ? 'External' : 'Managed'}</span>

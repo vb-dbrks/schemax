@@ -17,6 +17,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const [tags, setTags] = useState<Record<string, string>>(schema?.tags || {});
   const [tagInput, setTagInput] = useState({ tagName: '', tagValue: '' });
   const [hasChanges, setHasChanges] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   // Update local state when schema changes
   useEffect(() => {
@@ -86,11 +87,37 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
     setTags(newTags);
   };
 
+  const handleCopySchemaName = () => {
+    const fullName = `${catalog.name}.${schema.name}`;
+    navigator.clipboard.writeText(fullName).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    });
+  };
+
   return (
     <div className="table-designer">
       <div className="table-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2>{catalog.name}.{schema.name}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2>{catalog.name}.{schema.name}</h2>
+            <button
+              onClick={handleCopySchemaName}
+              title={copySuccess ? 'Copied!' : 'Copy schema name'}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                color: copySuccess ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-foreground)',
+                opacity: copySuccess ? 1 : 0.7,
+              }}
+            >
+              <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '16px' }}></i>
+            </button>
+          </div>
           {hasChanges && (
             <VSCodeButton onClick={handleSaveChanges}>
               Save Changes
