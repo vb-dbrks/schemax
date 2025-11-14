@@ -7,7 +7,7 @@ interface SchemaDetailsProps {
 }
 
 export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
-  const { project, findSchema, updateSchema } = useDesignerStore();
+  const { project, findSchema, updateSchema, renameSchema } = useDesignerStore();
   const schemaInfo = findSchema(schemaId);
   const schema = schemaInfo?.schema;
   const catalog = schemaInfo?.catalog;
@@ -18,6 +18,8 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const [tagInput, setTagInput] = useState({ tagName: '', tagValue: '' });
   const [hasChanges, setHasChanges] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [renameDialog, setRenameDialog] = useState(false);
+  const [newName, setNewName] = useState('');
 
   // Update local state when schema changes
   useEffect(() => {
@@ -95,6 +97,33 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
     });
   };
 
+  const handleOpenRenameDialog = () => {
+    setNewName(schema.name);
+    setRenameDialog(true);
+    // Auto-focus the input field after a short delay
+    setTimeout(() => {
+      const input = document.getElementById('rename-schema-input') as any;
+      if (input && input.shadowRoot) {
+        const inputElement = input.shadowRoot.querySelector('input');
+        if (inputElement) inputElement.focus();
+      }
+    }, 100);
+  };
+
+  const handleCloseRenameDialog = () => {
+    setRenameDialog(false);
+    setNewName('');
+  };
+
+  const handleConfirmRename = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = newName.trim();
+    if (trimmedName && trimmedName !== schema.name) {
+      renameSchema(schemaId, trimmedName);
+    }
+    handleCloseRenameDialog();
+  };
+
   return (
     <div className="table-designer">
       <div className="table-header">
@@ -119,6 +148,25 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
               }}
             >
               <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '14px' }}></i>
+            </button>
+            <button
+              onClick={handleOpenRenameDialog}
+              title="Edit schema name"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--vscode-foreground)',
+                opacity: 0.6,
+                height: '20px',
+                width: '20px',
+              }}
+            >
+              <i className="codicon codicon-edit" style={{ fontSize: '14px' }}></i>
             </button>
           </div>
           {hasChanges && (
@@ -249,6 +297,42 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
           </div>
         )}
       </div>
+
+      {/* Rename Dialog */}
+      {renameDialog && (
+        <div className="modal-overlay" onClick={handleCloseRenameDialog}>
+          <form
+            className="modal-content modal-surface"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={handleConfirmRename}
+          >
+            <h3>Rename Schema</h3>
+            
+            <div className="modal-field-group">
+              <label htmlFor="rename-schema-input">Name</label>
+              <VSCodeTextField
+                id="rename-schema-input"
+                value={newName}
+                placeholder="Schema name"
+                onInput={(e: Event) => {
+                  const target = e.target as HTMLInputElement;
+                  setNewName(target.value);
+                }}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            <div className="modal-actions">
+              <VSCodeButton type="button" appearance="secondary" onClick={handleCloseRenameDialog}>
+                Cancel
+              </VSCodeButton>
+              <VSCodeButton type="submit">
+                Rename
+              </VSCodeButton>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };
