@@ -211,6 +211,15 @@ export const Sidebar: React.FC = () => {
       setRenameValue(renameDialog.name);
       setRenameError(null);
       setEditManagedLocationName(renameDialog.managedLocationName || '');
+      
+      // Auto-focus the name field after a short delay
+      setTimeout(() => {
+        const nameInput = document.getElementById('rename-name-input') as any;
+        if (nameInput && nameInput.shadowRoot) {
+          const input = nameInput.shadowRoot.querySelector('input');
+          if (input) input.focus();
+        }
+      }, 100);
     }
   }, [renameDialog]);
 
@@ -237,6 +246,22 @@ export const Sidebar: React.FC = () => {
       if (addDialog.type === 'table' && !addDialog.objectType) {
         setAddDialog({...addDialog, objectType: 'table'});
       }
+      
+      // Auto-focus the appropriate field after a short delay
+      setTimeout(() => {
+        if (addDialog.objectType === 'view') {
+          // Focus on SQL textarea for views
+          const sqlTextarea = document.getElementById('view-sql') as HTMLTextAreaElement;
+          if (sqlTextarea) sqlTextarea.focus();
+        } else {
+          // Focus on name field for catalog/schema/table
+          const nameInput = document.getElementById('add-name-input') as any;
+          if (nameInput && nameInput.shadowRoot) {
+            const input = nameInput.shadowRoot.querySelector('input');
+            if (input) input.focus();
+          }
+        }
+      }, 100);
     }
   }, [addDialog]);
 
@@ -771,7 +796,6 @@ export const Sidebar: React.FC = () => {
                   setRenameValue((event.target as HTMLInputElement).value);
                   setRenameError(null);
                 }}
-                autoFocus
               />
               {renameError && <p className="form-error">{renameError}</p>}
             </div>
@@ -1009,9 +1033,9 @@ export const Sidebar: React.FC = () => {
             {addDialog.objectType !== 'view' && (
               <>
                 <VSCodeTextField
+                  id="add-name-input"
                   value={addNameInput}
                   placeholder={`Enter ${addDialog.type} name`}
-                  autoFocus={addDialog.objectType !== 'view'}
                   onInput={(event: React.FormEvent<HTMLInputElement>) => {
                     setAddNameInput((event.target as HTMLInputElement).value);
                     setAddError(null);
