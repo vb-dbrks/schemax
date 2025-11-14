@@ -97,8 +97,8 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
     <div className="table-designer">
       <div className="table-header">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h2>{catalog.name}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <h2 style={{ marginBottom: 0 }}>{catalog.name}</h2>
             <button
               onClick={handleCopyCatalogName}
               title={copySuccess ? 'Copied!' : 'Copy catalog name'}
@@ -106,14 +106,17 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                 background: 'transparent',
                 border: 'none',
                 cursor: 'pointer',
-                padding: '4px',
+                padding: '2px',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 color: copySuccess ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-foreground)',
-                opacity: copySuccess ? 1 : 0.7,
+                opacity: copySuccess ? 1 : 0.6,
+                height: '20px',
+                width: '20px',
               }}
             >
-              <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '16px' }}></i>
+              <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '14px' }}></i>
             </button>
           </div>
           {hasChanges && (
