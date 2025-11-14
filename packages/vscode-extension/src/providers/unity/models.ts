@@ -81,10 +81,29 @@ export interface UnityTable extends BaseObject {
   columnMasks?: UnityColumnMask[]; // Column-level masking
 }
 
+// View definition
+export interface UnityView extends BaseObject {
+  definition: string; // SQL query (SELECT statement)
+  comment?: string;
+  // Explicit dependencies (user-specified)
+  dependencies?: string[]; // IDs of tables/views this view depends on
+  // Extracted dependencies (from SQL parsing)
+  extractedDependencies?: {
+    tables: string[];
+    views: string[];
+    catalogs: string[];
+    schemas: string[];
+  };
+  // Metadata
+  tags: Record<string, string>; // VIEW TAGS (Unity Catalog governance)
+  properties: Record<string, string>; // View properties
+}
+
 // Schema definition
 export interface UnitySchema extends BaseObject {
   managedLocationName?: string; // Reference to env managedLocations
   tables: UnityTable[];
+  views: UnityView[]; // Views stored alongside tables in schema
 }
 
 // Catalog definition

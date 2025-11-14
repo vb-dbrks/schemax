@@ -526,7 +526,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
 
     try {
       const project = await storageV4.readProject(workspaceFolder.uri);
-      const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
+      const { state, changelog, provider, validationResult } = await storageV4.loadCurrentState(workspaceFolder.uri, true);
 
       // Check for conflicts
       const conflictsDir = vscode.Uri.joinPath(workspaceFolder.uri, '.schematic', 'conflicts');
@@ -550,12 +550,29 @@ async function openDesigner(context: vscode.ExtensionContext) {
         outputChannel.appendLine(`[Schematic] - Detected ${staleSnapshots.length} stale snapshot(s)`);
       }
 
+      // Log validation results
+      if (validationResult) {
+        if (validationResult.errors.length > 0) {
+          outputChannel.appendLine(`[Schematic] - Dependency validation ERRORS:`);
+          validationResult.errors.forEach((error) => {
+            outputChannel.appendLine(`  ✗ ${error}`);
+          });
+        }
+        if (validationResult.warnings.length > 0) {
+          outputChannel.appendLine(`[Schematic] - Dependency validation warnings:`);
+          validationResult.warnings.forEach((warning) => {
+            outputChannel.appendLine(`  ⚠️  ${warning}`);
+          });
+        }
+      }
+
       const payloadForWebview = {
         ...project,
         state,
         ops: changelog.ops,
         conflicts,
         staleSnapshots: staleSnapshots.length > 0 ? staleSnapshots : null,
+        validationResult,
         provider: {
           ...project.provider,
           id: provider.info.id,
@@ -658,7 +675,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             
             // Load v3: project metadata + current state (snapshot + changelog) + provider
             const project = await storageV4.readProject(workspaceFolder.uri);
-            const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
+            const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
             
             outputChannel.appendLine(`[Schematic] Project loaded successfully (v${project.version})`);
             outputChannel.appendLine(`[Schematic] - Provider: ${provider.info.name} v${provider.info.version}`);
@@ -820,7 +837,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             
             // Reload state and provider
             const project = await storageV4.readProject(workspaceFolder.uri);
-            const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
+            const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
             
             outputChannel.appendLine(`[Schematic] Operations appended successfully`);
             outputChannel.appendLine(`[Schematic] - Changelog ops: ${changelog.ops.length}`);
@@ -861,7 +878,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             
             // Reload state and provider
             const project = await storageV4.readProject(workspaceFolder.uri);
-            const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
+            const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
             
             outputChannel.appendLine(`[Schematic] Project configuration updated successfully`);
             
@@ -1111,7 +1128,7 @@ async function createSnapshotCommand_impl() {
         outputChannel.appendLine('[Schematic] Notifying webview of snapshot creation');
         
         // Reload state and provider for webview
-        const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
+        const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
         const payloadForWebview = {
           ...updatedProject,
           state,
@@ -1215,7 +1232,7 @@ async function generateSQLMigration() {
     
     // Load project and state
     const project = await storageV4.readProject(workspaceFolder.uri);
-    const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri);
+    const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
     
     outputChannel.appendLine(`[Schematic] Provider: ${provider.info.name} v${provider.info.version}`);
     outputChannel.appendLine(`[Schematic] Changelog operations: ${changelog.ops.length}`);

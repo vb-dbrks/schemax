@@ -390,12 +390,19 @@ export async function writeSnapshot(
 /**
  * Load current state (snapshot + changelog ops)
  */
+export interface ValidationResult {
+  errors: string[];
+  warnings: string[];
+}
+
 export async function loadCurrentState(
-  workspaceUri: vscode.Uri
+  workspaceUri: vscode.Uri,
+  validate: boolean = false
 ): Promise<{
   state: ProviderState;
   changelog: ChangelogFile;
   provider: Provider;
+  validationResult: ValidationResult | null;
 }> {
   const project = await readProject(workspaceUri);
   const changelog = await readChangelog(workspaceUri);
@@ -423,7 +430,64 @@ export async function loadCurrentState(
   // Apply changelog ops using provider's state reducer
   state = provider.applyOperations(state, changelog.ops);
 
-  return { state, changelog, provider };
+  // Optionally validate dependencies (calls Python SDK)
+  let validationResult: ValidationResult | null = null;
+  if (validate && changelog.ops.length > 0) {
+    validationResult = await validateDependenciesInternal(workspaceUri);
+  }
+
+  return { state, changelog, provider, validationResult };
+}
+
+/**
+ * Internal dependency validation helper - calls Python SDK
+ */
+async function validateDependenciesInternal(
+  workspaceUri: vscode.Uri
+): Promise<ValidationResult> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  try {
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+
+    // Call schematic validate with --json flag
+    const { stdout } = await execAsync('schematic validate --json', {
+      cwd: workspaceUri.fsPath,
+    });
+
+    // Parse JSON output (last non-empty line)
+    const lines = stdout.trim().split('\n').filter((line: string) => line.trim());
+    const jsonLine = lines[lines.length - 1];
+    const result = JSON.parse(jsonLine);
+
+    return {
+      errors: result.errors || [],
+      warnings: result.warnings || [],
+    };
+  } catch (error: any) {
+    // If validation fails, try to parse stdout
+    if (error.stdout) {
+      try {
+        const lines = error.stdout.trim().split('\n').filter((line: string) => line.trim());
+        const jsonLine = lines[lines.length - 1];
+        const result = JSON.parse(jsonLine);
+        return {
+          errors: result.errors || [],
+          warnings: result.warnings || [],
+        };
+      } catch {
+        // Fallback to error message
+        warnings.push(`Could not validate dependencies: ${error.message}`);
+      }
+    } else {
+      warnings.push(`Could not validate dependencies: ${error.message}`);
+    }
+  }
+
+  return { errors, warnings };
 }
 
 /**

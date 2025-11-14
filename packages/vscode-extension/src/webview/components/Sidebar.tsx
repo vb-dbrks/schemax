@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
+import { extractDependenciesFromView } from '../../providers/base/sql-parser';
 
 // Environment config type for tooltip
 interface EnvironmentConfig {
@@ -9,17 +10,49 @@ interface EnvironmentConfig {
   [key: string]: any;
 }
 
+// SQL parsing and validation helpers for views
+const parseViewSQL = (sql: string): { name: string | null; cleanSQL: string } => {
+  // Try to extract view name from CREATE VIEW statement
+  const createViewPattern = /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[\w.]+\.)?(\w+)\s+AS\s+([\s\S]+)/i;
+  const match = sql.match(createViewPattern);
+  
+  if (match) {
+    return {
+      name: match[1],
+      cleanSQL: match[2].trim()
+    };
+  }
+  
+  // If no CREATE VIEW found, return SQL as-is
+  return {
+    name: null,
+    cleanSQL: sql.trim()
+  };
+};
+
+const validateViewSQL = (sql: string): string | null => {
+  if (!sql.trim()) {
+    return 'SQL definition is required';
+  }
+  
+  if (!/SELECT/i.test(sql)) {
+    return 'View must contain a SELECT statement';
+  }
+  
+  return null;
+};
+
 // Codicon icons - theme-aware and vector-based
 const IconPlus: React.FC = () => (
-  <i slot="start" className="codicon codicon-add" aria-hidden="true"></i>
+  <i className="codicon codicon-add" aria-hidden="true"></i>
 );
 
 const IconEdit: React.FC = () => (
-  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
+  <i className="codicon codicon-edit" aria-hidden="true"></i>
 );
 
 const IconTrash: React.FC = () => (
-  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+  <i className="codicon codicon-trash" aria-hidden="true"></i>
 );
 
 // Tooltip component for showing logical → physical catalog name mappings
@@ -106,19 +139,28 @@ export const Sidebar: React.FC = () => {
     addCatalog,
     addSchema,
     addTable,
+    addView,
     renameCatalog,
     updateCatalog,
     renameSchema,
     updateSchema,
     renameTable,
+    renameView,
+    updateView,
     dropCatalog,
     dropSchema,
     dropTable,
+    dropView,
   } = useDesignerStore();
 
   const [expandedCatalogs, setExpandedCatalogs] = useState<Set<string>>(new Set());
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set());
-  const [addDialog, setAddDialog] = useState<{type: 'catalog'|'schema'|'table', catalogId?: string, schemaId?: string} | null>(null);
+  const [addDialog, setAddDialog] = useState<{
+    type: 'catalog'|'schema'|'table',
+    objectType?: 'table'|'view',
+    catalogId?: string,
+    schemaId?: string
+  } | null>(null);
   const [hoveredCatalogId, setHoveredCatalogId] = useState<string | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<HTMLElement | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -130,6 +172,12 @@ export const Sidebar: React.FC = () => {
   const [addExternalLocationName, setAddExternalLocationName] = useState('');
   const [addTablePath, setAddTablePath] = useState('');
   const [addManagedLocationName, setAddManagedLocationName] = useState('');
+  
+  // View-specific state
+  const [addViewSQL, setAddViewSQL] = useState('');
+  const [addViewName, setAddViewName] = useState('');
+  const [addViewNameManual, setAddViewNameManual] = useState(false);
+  const [addViewComment, setAddViewComment] = useState('');
 
   const toggleCatalog = (catalogId: string) => {
     const newExpanded = new Set(expandedCatalogs);
@@ -172,6 +220,17 @@ export const Sidebar: React.FC = () => {
       setAddExternalLocationName('');
       setAddTablePath('');
       setAddManagedLocationName('');
+      
+      // Initialize view-specific state
+      setAddViewSQL('');
+      setAddViewName('');
+      setAddViewNameManual(false);
+      setAddViewComment('');
+      
+      // Default to 'table' if objectType not specified (for schema-level additions)
+      if (addDialog.type === 'table' && !addDialog.objectType) {
+        setAddDialog({...addDialog, objectType: 'table'});
+      }
     }
   }, [addDialog]);
 
@@ -276,6 +335,12 @@ export const Sidebar: React.FC = () => {
         renameTable(renameDialog.id, trimmedName);
       }
     }
+    // Handle view rename
+    else if ((renameDialog.type as any) === 'view') {
+      if (nameChanged) {
+        renameView(renameDialog.id, trimmedName);
+      }
+    }
     setRenameError(null);
     closeRenameDialog();
   };
@@ -289,6 +354,8 @@ export const Sidebar: React.FC = () => {
       dropSchema(dropDialog.id);
     } else if (dropDialog.type === 'table') {
       dropTable(dropDialog.id);
+    } else if ((dropDialog.type as any) === 'view') {
+      dropView(dropDialog.id);
     }
     setDropDialog(null);
   };
@@ -312,14 +379,38 @@ export const Sidebar: React.FC = () => {
       addSchema(addDialog.catalogId, trimmedName, options);
       setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
     } else if (addDialog.type === 'table' && addDialog.schemaId) {
-      const options = addTableType === 'external' ? {
-        external: true,
-        externalLocationName: addExternalLocationName,
-        path: addTablePath || undefined
-      } : undefined;
-      
-      addTable(addDialog.schemaId, trimmedName, format || 'delta', options);
-      setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
+      if (addDialog.objectType === 'view') {
+        // VIEW CREATION
+        const sqlError = validateViewSQL(addViewSQL);
+        if (sqlError) {
+          setAddError(sqlError);
+          return;
+        }
+        
+        // Extract dependencies using sql-parser
+        const dependencies = extractDependenciesFromView(addViewSQL);
+        
+        // Clean SQL (remove CREATE VIEW if present)
+        const parsed = parseViewSQL(addViewSQL);
+        const cleanSQL = parsed.cleanSQL || addViewSQL;
+        
+        addView(addDialog.schemaId, trimmedName, cleanSQL, {
+          comment: addViewComment || undefined,
+          extractedDependencies: dependencies
+        });
+        
+        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
+      } else {
+        // TABLE CREATION
+        const options = addTableType === 'external' ? {
+          external: true,
+          externalLocationName: addExternalLocationName,
+          path: addTablePath || undefined
+        } : undefined;
+        
+        addTable(addDialog.schemaId, trimmedName, format || 'delta', options);
+        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
+      }
     }
     setAddError(null);
     closeAddDialog();
@@ -558,6 +649,58 @@ export const Sidebar: React.FC = () => {
                           </span>
                         </div>
                       ))}
+                      
+                      {/* VIEWS */}
+                      {schema.views && schema.views.length > 0 && schema.views.map((view: any) => (
+                        <div
+                          key={view.id}
+                          className={`tree-item ${selectedTableId === view.id ? 'selected' : ''}`}
+                          onClick={() => {
+                            selectCatalog(catalog.id);
+                            selectSchema(schema.id);
+                            selectTable(view.id);
+                          }}
+                        >
+                          <span className="icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="none" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                              <path fill="currentColor" fillRule="evenodd" d="M1.75 1a.75.75 0 0 0-.75.75v12.5c0 .414.336.75.75.75H4v-1.5H2.5V7H5v2h1.5V7h3v2H11V7h2.5v2H15V1.75a.75.75 0 0 0-.75-.75zM13.5 5.5v-3h-11v3z" clipRule="evenodd"></path>
+                              <path fill="currentColor" fillRule="evenodd" d="M11.75 10a.75.75 0 0 0-.707.5H9.957a.75.75 0 0 0-.708-.5H5.75a.75.75 0 0 0-.75.75v1.75a2.5 2.5 0 0 0 5 0V12h1v.5a2.5 2.5 0 0 0 5 0v-1.75a.75.75 0 0 0-.75-.75zm.75 2.5v-1h2v1a1 1 0 1 1-2 0m-6-1v1a1 1 0 1 0 2 0v-1z" clipRule="evenodd"></path>
+                            </svg>
+                          </span>
+                          <span className="name">{view.name}</span>
+                          <span className="badge" style={{background: 'var(--vscode-charts-blue)'}}>VIEW</span>
+                          <span className="actions">
+                            <VSCodeButton
+                              appearance="icon"
+                              aria-label="Rename view"
+                              onClick={(event: React.MouseEvent) => {
+                                event.stopPropagation();
+                                setRenameDialog({
+                                  type: 'view' as any,
+                                  id: view.id,
+                                  name: view.name
+                                });
+                              }}
+                            >
+                              <IconEdit />
+                            </VSCodeButton>
+                            <VSCodeButton
+                              appearance="icon"
+                              aria-label="Drop view"
+                              onClick={(event: React.MouseEvent) => {
+                                event.stopPropagation();
+                                setDropDialog({
+                                  type: 'view' as any,
+                                  id: view.id,
+                                  name: view.name
+                                });
+                              }}
+                            >
+                              <IconTrash />
+                            </VSCodeButton>
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -725,16 +868,145 @@ export const Sidebar: React.FC = () => {
               );
             }}
           >
-            <h3>Add {addDialog.type}</h3>
-            <VSCodeTextField
-              value={addNameInput}
-              placeholder={`Enter ${addDialog.type} name`}
-              autoFocus
-              onInput={(event: React.FormEvent<HTMLInputElement>) => {
-                setAddNameInput((event.target as HTMLInputElement).value);
-                setAddError(null);
-              }}
-            />
+            <h3>
+              Add {addDialog.type === 'catalog' ? topLevelName : 
+                   addDialog.type === 'schema' ? secondLevelName : 
+                   addDialog.objectType === 'view' ? 'View' : thirdLevelName}
+            </h3>
+            
+            {/* Object Type Selector - Only for schema-level additions */}
+            {addDialog.type === 'table' && (
+              <div className="modal-field-group">
+                <label htmlFor="object-type-selector" style={{ display: 'block', marginBottom: '8px' }}>
+                  OBJECT TYPE
+                </label>
+                <div className="radio-group" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="object-type"
+                      value="table"
+                      checked={addDialog.objectType === 'table'}
+                      onChange={() => setAddDialog({...addDialog, objectType: 'table'})}
+                      style={{ margin: 0, cursor: 'pointer' }}
+                    />
+                    <span>Table</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="object-type"
+                      value="view"
+                      checked={addDialog.objectType === 'view'}
+                      onChange={() => setAddDialog({...addDialog, objectType: 'view'})}
+                      style={{ margin: 0, cursor: 'pointer' }}
+                    />
+                    <span>View</span>
+                  </label>
+                </div>
+              </div>
+            )}
+            
+            {/* VIEW FIELDS */}
+            {addDialog.objectType === 'view' && (
+              <>
+                {/* SQL Definition */}
+                <div className="modal-field-group">
+                  <label htmlFor="view-sql">
+                    SQL Definition *
+                    <span className="info-icon" title="Paste CREATE VIEW...AS or just SELECT statement"> ℹ️</span>
+                  </label>
+                  <textarea
+                    id="view-sql"
+                    value={addViewSQL}
+                    placeholder="CREATE VIEW my_view AS SELECT... or just SELECT..."
+                    rows={8}
+                    style={{ 
+                      width: '100%', 
+                      fontFamily: 'var(--vscode-editor-font-family, monospace)',
+                      fontSize: '12px',
+                      padding: '8px',
+                      border: '1px solid var(--vscode-input-border)',
+                      background: 'var(--vscode-input-background)',
+                      color: 'var(--vscode-input-foreground)',
+                      resize: 'vertical'
+                    }}
+                    onInput={(e: React.FormEvent<HTMLTextAreaElement>) => {
+                      const sql = (e.target as HTMLTextAreaElement).value;
+                      setAddViewSQL(sql);
+                      setAddError(null);
+                      
+                      // Auto-extract view name if not manually set
+                      if (!addViewNameManual) {
+                        const parsed = parseViewSQL(sql);
+                        if (parsed.name) {
+                          setAddViewName(parsed.name);
+                          setAddNameInput(parsed.name);
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      // Validate on blur
+                      const error = validateViewSQL(addViewSQL);
+                      if (error) {
+                        setAddError(error);
+                      }
+                    }}
+                  />
+                </div>
+                
+                {/* View Name (auto-extracted or manual) */}
+                <div className="modal-field-group">
+                  <label htmlFor="view-name">
+                    View Name *
+                    <span className="info-icon" title="Auto-extracted from SQL or enter manually"> ℹ️</span>
+                  </label>
+                  <VSCodeTextField
+                    id="view-name"
+                    value={addNameInput}
+                    placeholder="Enter view name"
+                    onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                      setAddNameInput((event.target as HTMLInputElement).value);
+                      setAddViewNameManual(true); // Mark as manually edited
+                      setAddError(null);
+                    }}
+                  />
+                  {addViewName && !addViewNameManual && (
+                    <small style={{ color: 'var(--vscode-descriptionForeground)', display: 'block', marginTop: '4px' }}>
+                      ✓ Name auto-extracted from SQL
+                    </small>
+                  )}
+                </div>
+                
+                {/* Comment (optional) */}
+                <div className="modal-field-group">
+                  <label htmlFor="view-comment">Comment (optional)</label>
+                  <VSCodeTextField
+                    id="view-comment"
+                    value={addViewComment}
+                    placeholder="Describe this view"
+                    onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                      setAddViewComment((event.target as HTMLInputElement).value);
+                    }}
+                  />
+                </div>
+              </>
+            )}
+            
+            {/* TABLE/CATALOG/SCHEMA FIELDS */}
+            {addDialog.objectType !== 'view' && (
+              <>
+                <VSCodeTextField
+                  value={addNameInput}
+                  placeholder={`Enter ${addDialog.type} name`}
+                  autoFocus={addDialog.objectType !== 'view'}
+                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                    setAddNameInput((event.target as HTMLInputElement).value);
+                    setAddError(null);
+                  }}
+                />
+              </>
+            )}
             
             {/* Managed Location for Catalog and Schema */}
             {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
@@ -781,29 +1053,35 @@ export const Sidebar: React.FC = () => {
               </div>
             )}
             
-            {addDialog.type === 'table' && (
+            {addDialog.type === 'table' && addDialog.objectType === 'table' && (
               <>
                 {/* Table Type Selection */}
                 <div className="modal-field-group">
-                  <label>Table Type</label>
-                  <div className="radio-group">
-                    <label>
+                  <label htmlFor="table-type-selector" style={{ display: 'block', marginBottom: '8px' }}>
+                    Table Type
+                  </label>
+                  <div className="radio-group" style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                       <input
                         type="radio"
+                        name="table-type"
                         value="managed"
                         checked={addTableType === 'managed'}
                         onChange={() => setAddTableType('managed')}
+                        style={{ margin: 0, cursor: 'pointer' }}
                       />
-                      Managed (Recommended)
+                      <span>Managed (Recommended)</span>
                     </label>
-                    <label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                       <input
                         type="radio"
+                        name="table-type"
                         value="external"
                         checked={addTableType === 'external'}
                         onChange={() => setAddTableType('external')}
+                        style={{ margin: 0, cursor: 'pointer' }}
                       />
-                      External
+                      <span>External</span>
                     </label>
                   </div>
                 </div>

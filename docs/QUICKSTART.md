@@ -116,7 +116,26 @@ The visual designer opens!
    - **Comment**: `Primary key`
 4. Add more columns as needed
 
-**Step 9**: Create a Snapshot
+**Step 9**: Add a View (Optional)
+
+1. Select the `sales` schema
+2. Click **"+"** button → Choose **"View"**
+3. Enter SQL definition:
+   ```sql
+   SELECT customer_id, COUNT(*) as order_count
+   FROM customers
+   GROUP BY customer_id
+   ```
+4. View name will be auto-extracted
+5. Click OK
+
+**Note**: Schematic automatically:
+- Extracts dependencies from your view SQL
+- Qualifies table references with fully-qualified names (FQN)
+- Orders SQL generation so tables are created before views
+- Detects circular dependencies between views
+
+**Step 10**: Create a Snapshot
 
 1. Press `Cmd+Shift+P`
 2. Type: **Schematic: Create Snapshot**

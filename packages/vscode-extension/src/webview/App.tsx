@@ -3,6 +3,7 @@ import { VSCodeButton, VSCodeProgressRing } from '@vscode/webview-ui-toolkit/rea
 import { useDesignerStore } from './state/useDesignerStore';
 import { Sidebar } from './components/Sidebar';
 import { TableDesigner } from './components/TableDesigner';
+import { ViewDetails } from './components/ViewDetails';
 import { SnapshotPanel } from './components/SnapshotPanel';
 import { getVsCodeApi } from './vscode-api';
 import { ProjectSettingsPanel } from './components/ProjectSettingsPanel';
@@ -20,14 +21,18 @@ const IconRefresh: React.FC<{ className?: string }> = ({ className = '' }) => (
 );
 
 export const App: React.FC = () => {
-  const { project, setProject, setProvider, provider } = useDesignerStore();
+  const { project, setProject, setProvider, provider, selectedTableId, findView } = useDesignerStore();
   const [loading, setLoading] = React.useState(true);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = React.useState(false);
   const [hasConflicts, setHasConflicts] = React.useState(false);
   const [conflictInfo, setConflictInfo] = React.useState<any>(null);
   const [hasStaleSnapshots, setHasStaleSnapshots] = React.useState(false);
   const [staleSnapshotInfo, setStaleSnapshotInfo] = React.useState<any>(null);
+  const [validationResult, setValidationResult] = React.useState<{errors: string[], warnings: string[]} | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  
+  // Determine if selected object is a view
+  const isViewSelected = selectedTableId ? !!findView(selectedTableId) : false;
 
   useEffect(() => {
     // Set up message listener from extension
@@ -60,6 +65,13 @@ export const App: React.FC = () => {
           } else {
             setHasStaleSnapshots(false);
             setStaleSnapshotInfo(null);
+          }
+          
+          // Check for validation results
+          if (message.payload.validationResult) {
+            setValidationResult(message.payload.validationResult);
+          } else {
+            setValidationResult(null);
           }
           break;
       }
@@ -156,12 +168,49 @@ export const App: React.FC = () => {
           </button>
         </div>
       </header>
+
+      {/* Validation Results Banner */}
+      {validationResult && (validationResult.errors.length > 0 || validationResult.warnings.length > 0) && (
+        <div className="validation-banner">
+          {validationResult.errors.length > 0 && (
+            <div className="validation-error">
+              <i className="codicon codicon-error"></i>
+              <div className="validation-content">
+                <strong>Dependency Errors:</strong>
+                <ul>
+                  {validationResult.errors.map((error, i) => (
+                    <li key={i}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          {validationResult.warnings.length > 0 && (
+            <div className="validation-warning">
+              <i className="codicon codicon-warning"></i>
+              <div className="validation-content">
+                <strong>Dependency Warnings:</strong>
+                <ul>
+                  {validationResult.warnings.map((warning, i) => (
+                    <li key={i}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="content">
         <div className="left-panel">
           <Sidebar />
           <SnapshotPanel />
         </div>
-        <TableDesigner />
+        {isViewSelected && selectedTableId ? (
+          <ViewDetails viewId={selectedTableId} />
+        ) : (
+          <TableDesigner />
+        )}
       </div>
 
       {hasProjectSettings && isProjectSettingsOpen && project && (

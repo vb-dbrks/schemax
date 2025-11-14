@@ -839,6 +839,273 @@ class TestColumnMaskSQL:
         assert "DROP" in result.sql or "REMOVE" in result.sql
 
 
+class TestViewSQL:
+    """Test SQL generation for view operations and view dependencies"""
+
+    def test_add_view_simple(self, empty_unity_state, assert_sql):
+        """Test CREATE VIEW SQL generation"""
+        # Create state with a catalog, schema, and table
+        state = empty_unity_state.model_dump(by_alias=True)
+        state["catalogs"] = [
+            {
+                "id": "cat1",
+                "name": "production",
+                "schemas": [
+                    {
+                        "id": "schema1",
+                        "name": "sales",
+                        "tables": [
+                            {"id": "table1", "name": "customers", "format": "delta", "columns": []}
+                        ],
+                        "views": [],
+                    }
+                ],
+            }
+        ]
+
+        generator = UnitySQLGenerator(state)
+
+        # Add a view that selects from a table
+        op = Operation(
+            id="op_v1",
+            provider="unity",
+            op="unity.add_view",
+            target="view1",
+            payload={
+                "viewId": "view1",
+                "name": "customer_summary",
+                "schemaId": "schema1",
+                "definition": "SELECT * FROM customers",
+                "dependencies": ["table1"],  # Depends on a table
+            },
+            ts="2024-01-01T00:00:00Z",
+        )
+
+        sql = generator.generate_sql([op])
+        assert "CREATE VIEW IF NOT EXISTS" in sql
+        assert "`customer_summary`" in sql
+        assert "SELECT" in sql
+        assert "FROM" in sql
+        assert "`customers`" in sql  # Table name should appear (possibly qualified)
+
+        # Validate SQL syntax
+        assert_sql(sql)
+
+    def test_view_dependencies_ordered_correctly(self, empty_unity_state, assert_sql):
+        """Test that views depending on other views are created in correct order"""
+        # Create empty state with one catalog and schema
+        state = empty_unity_state.model_dump(by_alias=True)
+        state["catalogs"] = [
+            {
+                "id": "cat1",
+                "name": "sales_analytics",
+                "schemas": [
+                    {
+                        "id": "schema1",
+                        "name": "product_360",
+                        "tables": [
+                            {
+                                "id": "table1",
+                                "name": "products",
+                                "format": "delta",
+                                "columns": [],
+                            }
+                        ],
+                        "views": [],
+                    }
+                ],
+            }
+        ]
+
+        generator = UnitySQLGenerator(state)
+
+        # Create operations: view1 depends on table1, view2 depends on view1
+        # Add them in WRONG order intentionally to test sorting
+        op_view2 = Operation(
+            id="op_v2",
+            provider="unity",
+            op="unity.add_view",
+            target="view2",
+            payload={
+                "viewId": "view2",
+                "name": "view2",
+                "schemaId": "schema1",
+                "definition": "SELECT * FROM view1",
+                "dependencies": ["view1"],  # Depends on view1
+            },
+            ts="2024-01-01T00:00:02Z",
+        )
+
+        op_view1 = Operation(
+            id="op_v1",
+            provider="unity",
+            op="unity.add_view",
+            target="view1",
+            payload={
+                "viewId": "view1",
+                "name": "view1",
+                "schemaId": "schema1",
+                "definition": "SELECT * FROM products",
+                "dependencies": ["table1"],  # Depends on table1
+            },
+            ts="2024-01-01T00:00:01Z",
+        )
+
+        # Generate SQL with operations in wrong order
+        sql = generator.generate_sql([op_view2, op_view1])
+
+        # Debug: Print the generated SQL
+        print("\n=== Generated SQL ===")
+        print(sql)
+        print("=== End SQL ===\n")
+
+        # Validate SQL syntax
+        assert_sql(sql)
+
+        # Split SQL into individual statements (split by semicolon and filter for CREATE VIEW)
+        all_statements = [s.strip() for s in sql.split(";") if s.strip()]
+        view_statements = [s for s in all_statements if "CREATE VIEW" in s]
+
+        print(f"Found {len(view_statements)} view statements:")
+        for i, stmt in enumerate(view_statements):
+            print(f"  [{i}]: {stmt[:80]}...")
+
+        assert len(view_statements) == 2, (
+            f"Expected 2 view statements, found {len(view_statements)}"
+        )
+
+        # Find which statement creates view1 and which creates view2
+        view1_idx = None
+        view2_idx = None
+        for i, stmt in enumerate(view_statements):
+            if "`view1`" in stmt:
+                view1_idx = i
+                print(f"  view1 found at index {i}")
+            if "`view2`" in stmt:
+                view2_idx = i
+                print(f"  view2 found at index {i}")
+
+        # view1 MUST be created before view2 (despite wrong input order)
+        assert view1_idx is not None, "view1 CREATE statement not found"
+        assert view2_idx is not None, "view2 CREATE statement not found"
+        assert view1_idx < view2_idx, (
+            f"view1 (index {view1_idx}) must be created before view2 (index {view2_idx})"
+        )
+
+    def test_view_dependency_chain(self, empty_unity_state, assert_sql):
+        """Test complex view dependency chain: view3 → view2 → view1 → table"""
+        state = empty_unity_state.model_dump(by_alias=True)
+        state["catalogs"] = [
+            {
+                "id": "cat1",
+                "name": "analytics",
+                "schemas": [
+                    {
+                        "id": "schema1",
+                        "name": "reporting",
+                        "tables": [
+                            {"id": "table1", "name": "base_table", "format": "delta", "columns": []}
+                        ],
+                        "views": [],
+                    }
+                ],
+            }
+        ]
+
+        generator = UnitySQLGenerator(state)
+
+        # Create chain: view3 → view2 → view1 → table1
+        # Add in random order to test sorting
+        ops = [
+            Operation(
+                id="op_v3",
+                provider="unity",
+                op="unity.add_view",
+                target="view3",
+                payload={
+                    "viewId": "view3",
+                    "name": "view3",
+                    "schemaId": "schema1",
+                    "definition": "SELECT * FROM view2",
+                    "dependencies": ["view2"],
+                },
+                ts="2024-01-01T00:00:03Z",
+            ),
+            Operation(
+                id="op_v1",
+                provider="unity",
+                op="unity.add_view",
+                target="view1",
+                payload={
+                    "viewId": "view1",
+                    "name": "view1",
+                    "schemaId": "schema1",
+                    "definition": "SELECT * FROM base_table",
+                    "dependencies": ["table1"],
+                },
+                ts="2024-01-01T00:00:01Z",
+            ),
+            Operation(
+                id="op_v2",
+                provider="unity",
+                op="unity.add_view",
+                target="view2",
+                payload={
+                    "viewId": "view2",
+                    "name": "view2",
+                    "schemaId": "schema1",
+                    "definition": "SELECT * FROM view1",
+                    "dependencies": ["view1"],
+                },
+                ts="2024-01-01T00:00:02Z",
+            ),
+        ]
+
+        sql = generator.generate_sql(ops)
+
+        # Debug: Print the generated SQL
+        print("\n=== Generated SQL (chain test) ===")
+        print(sql)
+        print("=== End SQL ===\n")
+
+        # Validate SQL syntax
+        assert_sql(sql)
+
+        # Extract view creation statements
+        statements = [s.strip() for s in sql.split(";") if s.strip() and "CREATE VIEW" in s]
+
+        print(f"Found {len(statements)} view statements:")
+        for i, stmt in enumerate(statements):
+            print(f"  [{i}]: {stmt[:100]}...")
+
+        assert len(statements) == 3, f"Expected 3 view statements, found {len(statements)}"
+
+        # Find indices (need unique matching, not just contains)
+        view1_idx = next(
+            (
+                i
+                for i, s in enumerate(statements)
+                if "`view1`" in s and "`view" not in s.replace("`view1`", "")
+            ),
+            None,
+        )
+        view2_idx = next((i for i, s in enumerate(statements) if "`view2`" in s), None)
+        view3_idx = next((i for i, s in enumerate(statements) if "`view3`" in s), None)
+
+        print(f"  view1 found at index {view1_idx}")
+        print(f"  view2 found at index {view2_idx}")
+        print(f"  view3 found at index {view3_idx}")
+
+        # Assert correct ordering: view1 < view2 < view3
+        assert view1_idx is not None
+        assert view2_idx is not None
+        assert view3_idx is not None
+        assert view1_idx < view2_idx < view3_idx, (
+            f"Views must be created in dependency order: "
+            f"view1 (idx={view1_idx}), view2 (idx={view2_idx}), view3 (idx={view3_idx})"
+        )
+
+
 class TestSQLGeneration:
     """Test overall SQL generation functionality"""
 

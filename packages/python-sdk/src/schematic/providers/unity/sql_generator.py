@@ -8,6 +8,7 @@ Migrated from TypeScript sql-generator.ts
 from typing import Any, TypedDict
 
 from schematic.providers.base.batching import BatchInfo
+from schematic.providers.base.dependency_graph import DependencyEnforcement, DependencyType
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.sql_generator import BaseSQLGenerator, SQLGenerationResult
 
@@ -94,6 +95,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
                         col_name = column.name if hasattr(column, "name") else column["name"]
                         col_id = column.id if hasattr(column, "id") else column["id"]
                         id_map[col_id] = col_name
+
+                # Process views in this schema
+                views = schema.views if hasattr(schema, "views") else schema.get("views", [])
+                for view in views:
+                    view_name = view.name if hasattr(view, "name") else view["name"]
+                    view_id = view.id if hasattr(view, "id") else view["id"]
+                    view_fqn = f"{catalog_name}.{schema_name}.{view_name}"
+                    id_map[view_id] = view_fqn
 
         return id_map
 
@@ -223,7 +232,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _get_dependency_level(self, op: Operation) -> int:
         """
         Get dependency level for Unity operation ordering.
-        0 = catalog, 1 = schema, 2 = table, 3 = table modifications
+        0 = catalog, 1 = schema, 2 = table/view creation, 3 = table/view modifications
 
         Implements abstract method from BaseSQLGenerator.
         """
@@ -232,9 +241,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return 0
         if "schema" in op_type:
             return 1
-        if "add_table" in op_type:
+        if "add_table" in op_type or "add_view" in op_type:
             return 2
-        return 3  # All other table operations (columns, properties, etc.)
+        return 3  # All other table/view operations (columns, properties, updates, etc.)
 
     def _get_target_object_id(self, op: Operation) -> str | None:
         """
@@ -256,6 +265,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Table-level operations
         if op_type in ["add_table", "rename_table", "drop_table", "set_table_comment"]:
             return f"table:{op.target}"  # Add prefix for consistency
+
+        # View-level operations
+        if op_type in [
+            "add_view",
+            "rename_view",
+            "drop_view",
+            "update_view",
+            "set_view_comment",
+            "set_view_property",
+            "unset_view_property",
+        ]:
+            return f"view:{op.target}"  # Prefix to avoid ID collisions
 
         # Column and table property operations
         if op_type in [
@@ -292,7 +313,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Implements abstract method from BaseSQLGenerator.
         """
-        return op.op in ["unity.add_catalog", "unity.add_schema", "unity.add_table"]
+        return op.op in [
+            "unity.add_catalog",
+            "unity.add_schema",
+            "unity.add_table",
+            "unity.add_view",
+        ]
 
     def _is_drop_operation(self, op: Operation) -> bool:
         """
@@ -529,6 +555,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return filtered
 
+    def _extract_operation_dependencies(
+        self, op: Operation
+    ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
+        """
+        Extract dependencies from Unity Catalog operations.
+
+        Currently supports:
+        - View dependencies on tables/views (from add_view operation)
+
+        Args:
+            op: Operation to analyze
+
+        Returns:
+            List of tuples: (dependency_id, dependency_type, enforcement)
+        """
+        dependencies: list[tuple[str, DependencyType, DependencyEnforcement]] = []
+
+        # Extract view dependencies
+        if op.op == "unity.add_view":
+            # Dependencies field contains list of table/view IDs this view depends on
+            dep_ids = op.payload.get("dependencies", [])
+            if isinstance(dep_ids, list):
+                for dep_id in dep_ids:
+                    dependencies.append(
+                        (dep_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
+                    )
+
+        return dependencies
+
     def generate_sql(self, ops: list[Operation]) -> str:
         """
         Generate SQL statements with comprehensive batch optimizations.
@@ -547,6 +602,55 @@ class UnitySQLGenerator(BaseSQLGenerator):
         result = self.generate_sql_with_mapping(ops)
         return result.sql
 
+    def _topological_sort_with_fallback(
+        self, ops: list[Operation]
+    ) -> tuple[list[Operation], list[str]]:
+        """
+        Sort operations using topological sort based on dependencies.
+        Falls back to level-based sorting if cycles are detected.
+
+        Args:
+            ops: Operations to sort
+
+        Returns:
+            Tuple of (sorted operations, list of warning messages)
+        """
+        from ..base.exceptions import CircularDependencyError
+
+        warnings: list[str] = []
+
+        try:
+            # Build dependency graph
+            graph = self._build_dependency_graph(ops)
+
+            # Check for cycles
+            cycles = graph.detect_cycles()
+            if cycles:
+                # Format cycles for error message
+                cycle_paths: list[list[str]] = []
+                for cycle in cycles:
+                    # Get names from id_name_map
+                    cycle_names: list[str] = []
+                    for node_id in cycle:
+                        name = self.id_name_map.get(node_id, node_id)
+                        cycle_names.append(name)
+                    cycle_paths.append(cycle_names)  # Append list, not string
+
+                raise CircularDependencyError(cycle_paths)
+
+            # Use topological sort
+            return graph.topological_sort(), warnings
+
+        except CircularDependencyError:
+            # Re-raise to be handled by caller
+            raise
+        except Exception as e:
+            # Unexpected error - warn and fall back
+            warnings.append(
+                f"Dependency analysis failed: {e}. Falling back to level-based sorting."
+            )
+            return sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts)), warnings
+
     def generate_sql_with_mapping(self, ops: list[Operation]) -> "SQLGenerationResult":
         """
         Generate SQL with explicit operation-to-statement mapping.
@@ -557,18 +661,43 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """
         from ..base.sql_generator import SQLGenerationResult, StatementInfo
 
-        # Sort operations by:
-        # 1. Dependency level (catalog → schema → table) for correct order
-        # 2. Timestamp (chronological) to preserve order of operations within same object
-        sorted_ops = sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
+        # Use dependency-aware topological sorting for correct execution order
+        # This handles view dependencies, foreign keys, and hierarchy
+        global_warnings = []
 
-        # Filter out create+drop pairs that cancel each other
-        filtered_ops = self._filter_cancelled_operations(sorted_ops)
+        try:
+            # Build dependency graph and get topologically sorted operations
+            sorted_ops, sort_warnings = self._topological_sort_with_fallback(ops)
+            global_warnings.extend(sort_warnings)
+        except Exception as e:
+            # Handle circular dependencies with loud warning
+            from ..base.exceptions import CircularDependencyError
+
+            if isinstance(e, CircularDependencyError):
+                # Format critical warning
+                warning_msg = "\n" + "=" * 70 + "\n"
+                warning_msg += "⚠️  CRITICAL WARNING: CIRCULAR DEPENDENCIES DETECTED\n"
+                warning_msg += "=" * 70 + "\n"
+                warning_msg += str(e)
+                warning_msg += "\n→ Falling back to level-based sorting (dependencies IGNORED)"
+                warning_msg += "\n→ Run 'schematic validate' to see full details"
+                warning_msg += "\n→ SQL execution may FAIL if dependencies are not met"
+                warning_msg += "\n" + "=" * 70
+                print(warning_msg)
+                global_warnings.append("Circular dependencies detected - dependencies ignored")
+            else:
+                print(f"Warning: Dependency analysis failed ({e}), using level-based sort")
+                global_warnings.append(f"Dependency analysis failed: {e}")
+
+            sorted_ops = sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
+
+        # Filter out cancelled operations (CREATE + DROP for same object)
+        sorted_ops = self._filter_cancelled_operations(sorted_ops)
 
         # Separate DROP operations from CREATE/ALTER operations
         # DROP operations cannot be batched and must be processed individually
-        drop_ops = [op for op in filtered_ops if self._is_drop_operation(op)]
-        non_drop_ops = [op for op in filtered_ops if not self._is_drop_operation(op)]
+        drop_ops = [op for op in sorted_ops if self._is_drop_operation(op)]
+        non_drop_ops = [op for op in sorted_ops if not self._is_drop_operation(op)]
 
         # Use base class's generic batcher (no duplication!)
         # Only batch non-DROP operations
@@ -585,6 +714,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         catalog_stmts = []
         schema_stmts = []
         table_stmts = []
+        view_stmts = []
         other_ops = []
 
         # Process batched operations (CREATE and ALTER only)
@@ -592,13 +722,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
             op_ids = batch_info.op_ids
             processed_op_ids.update(op_ids)
 
-            # Determine object type from ID prefix (catalog:, schema:, table:)
+            # Determine object type from ID prefix (catalog:, schema:, table:, view:)
             if object_id.startswith("catalog:"):
                 object_type = "catalog"
             elif object_id.startswith("schema:"):
                 object_type = "schema"
             elif object_id.startswith("table:"):
                 object_type = "table"
+            elif object_id.startswith("view:"):
+                object_type = "view"
             else:
                 # Skip unknown object types
                 continue
@@ -615,6 +747,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 # Table operations can produce multiple statements
                 table_result = self._generate_table_sql_with_mapping(object_id, batch_info)
                 table_stmts.extend(table_result)  # List of (sql, op_ids) tuples
+            elif object_type == "view":
+                # View operations - simpler than tables
+                view_result = self._generate_view_sql_with_mapping(object_id, batch_info)
+                view_stmts.extend(view_result)  # List of (sql, op_ids) tuples
 
         # Process unbatched non-DROP operations
         for op in non_drop_ops:
@@ -641,6 +777,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
             )
 
         for sql, op_ids in table_stmts:
+            execution_order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
+            )
+
+        for sql, op_ids in view_stmts:
             execution_order += 1
             statement_infos.append(
                 StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
@@ -674,7 +816,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
             combined_sql += ";"
 
         return SQLGenerationResult(
-            sql=combined_sql, statements=statement_infos, warnings=[], is_idempotent=True
+            sql=combined_sql,
+            statements=statement_infos,
+            warnings=global_warnings,
+            is_idempotent=True,
         )
 
     def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
@@ -731,6 +876,22 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._set_table_tag(op)
         elif op_type == "unset_table_tag":
             return self._unset_table_tag(op)
+
+        # View operations
+        elif op_type == "add_view":
+            return self._add_view(op)
+        elif op_type == "rename_view":
+            return self._rename_view(op)
+        elif op_type == "drop_view":
+            return self._drop_view(op)
+        elif op_type == "update_view":
+            return self._update_view(op)
+        elif op_type == "set_view_comment":
+            return self._set_view_comment(op)
+        elif op_type == "set_view_property":
+            return self._set_view_property(op)
+        elif op_type == "unset_view_property":
+            return self._unset_view_property(op)
 
         # Column operations
         elif op_type == "add_column":
@@ -1088,6 +1249,313 @@ class UnitySQLGenerator(BaseSQLGenerator):
         tag_name = op.payload["tagName"]
         return f"ALTER TABLE {fqn_esc} UNSET TAGS ('{tag_name}')"
 
+    # View operations
+    def _qualify_view_definition(
+        self, definition: str, extracted_deps: dict[str, list[str]]
+    ) -> str:
+        """
+        Qualify unqualified table/view references in view SQL with fully-qualified names.
+
+        This ensures views work correctly even when the current catalog/schema context
+        is not set, which is the case with SQL Statement Execution API.
+
+        Args:
+            definition: Raw view SQL (may contain unqualified table names)
+            extracted_deps: Extracted dependencies with table/view names (from frontend)
+
+        Returns:
+            SQL with all table/view references fully qualified
+        """
+        import sqlglot
+        from sqlglot import expressions as exp
+
+        try:
+            # Parse the SQL
+            parsed = sqlglot.parse_one(definition, dialect="databricks")
+        except Exception:
+            # If parsing fails, return original (let Databricks handle the error)
+            return definition
+
+        # Build mapping from unqualified names to FQNs
+        # Note: extracted_deps contains table/view NAMES (not IDs) from frontend parsing
+        name_to_fqn: dict[str, str] = {}
+
+        # Build reverse map: name -> FQN from id_name_map
+        # id_name_map is like: {"tbl1": "catalog.schema.table1", ...}
+        for object_id, fqn in self.id_name_map.items():
+            if not fqn or "." not in fqn:
+                continue
+
+            parts = fqn.split(".")
+            if len(parts) == 3:
+                catalog, schema, name = parts
+                # Map: name -> catalog.schema.name (for unqualified refs)
+                name_to_fqn[name] = fqn
+                # Map: schema.name -> catalog.schema.name (for partially qualified refs)
+                name_to_fqn[f"{schema}.{name}"] = fqn
+
+        # Note: We don't need to filter by extracted_deps anymore since we built
+        # a comprehensive name->FQN map from all objects in id_name_map
+
+        # Replace table references with FQNs
+        for table_node in parsed.find_all(exp.Table):
+            # Build current reference string
+            current_ref_parts = []
+            if table_node.catalog:
+                current_ref_parts.append(table_node.catalog)
+            if table_node.db:  # schema
+                current_ref_parts.append(table_node.db)
+            if table_node.name:
+                current_ref_parts.append(table_node.name)
+
+            current_ref = ".".join(current_ref_parts)
+
+            # Look up FQN
+            if current_ref in name_to_fqn:
+                fqn = name_to_fqn[current_ref]
+                parts = fqn.split(".")
+                if len(parts) == 3:
+                    # Update the table node with qualified names (quoted for Databricks)
+                    table_node.set("catalog", exp.to_identifier(parts[0], quoted=True))
+                    table_node.set("db", exp.to_identifier(parts[1], quoted=True))  # schema
+                    table_node.set("this", exp.to_identifier(parts[2], quoted=True))  # table name
+            elif table_node.catalog:
+                # If catalog is explicitly specified but not in our map,
+                # check if it's a logical catalog name and map it to physical name
+                logical_catalog = table_node.catalog
+                if logical_catalog in self.catalog_name_mapping:
+                    physical_catalog = self.catalog_name_mapping[logical_catalog]
+                    table_node.set("catalog", exp.to_identifier(physical_catalog, quoted=True))
+                else:
+                    # External catalog - preserve name but add backticks
+                    table_node.set("catalog", exp.to_identifier(logical_catalog, quoted=True))
+
+                # Always add backticks to schema and table (even for external refs)
+                if table_node.db:
+                    table_node.set("db", exp.to_identifier(table_node.db, quoted=True))
+                if table_node.name:
+                    table_node.set("this", exp.to_identifier(table_node.name, quoted=True))
+
+        # Generate SQL with qualified names
+        qualified_sql = parsed.sql(dialect="databricks", pretty=True)
+        return qualified_sql
+
+    def _add_view(self, op: Operation) -> str:
+        """Generate CREATE VIEW statement"""
+        # Get schema FQN and extract catalog/schema names
+        schema_fqn = self.id_name_map.get(op.payload["schemaId"], "unknown.unknown")
+        parts = schema_fqn.split(".")
+        catalog_name = parts[0]
+        schema_name = parts[1] if len(parts) > 1 else "unknown"
+        view_name = op.payload["name"]
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+
+        # Build fully qualified view name
+        view_esc = self._build_fqn(catalog_name, schema_name, view_name)
+        definition = op.payload.get("definition", "")
+        comment = op.payload.get("comment")
+
+        # Always qualify table/view references in the definition
+        # (even if extractedDependencies is missing, we use all objects from id_name_map)
+        extracted_deps = op.payload.get("extractedDependencies", {})
+        definition = self._qualify_view_definition(definition, extracted_deps)
+
+        # Build CREATE VIEW statement
+        sql = f"CREATE VIEW IF NOT EXISTS {view_esc}"
+
+        # Add comment if provided
+        if comment:
+            sql += f" COMMENT '{comment}'"
+
+        # Add AS clause
+        sql += f" AS\n{definition}"
+
+        # Add dependency comment if extracted dependencies exist
+        tables = extracted_deps.get("tables", [])
+        views = extracted_deps.get("views", [])
+
+        dep_list = []
+        if tables:
+            dep_list.extend(tables)
+        if views:
+            dep_list.extend(views)
+
+        if dep_list:
+            deps_str = ", ".join(dep_list)
+            sql = f"-- View depends on: {deps_str}\n{sql}"
+
+        return sql
+
+    def _generate_create_or_replace_view(self, create_op: Operation, update_op: Operation) -> str:
+        """
+        Generate CREATE OR REPLACE VIEW statement by batching create + update.
+
+        Uses the final definition from update_op and dependencies from update_op.
+        This optimization squashes CREATE + UPDATE_VIEW into a single statement.
+        """
+        # Get schema FQN and extract catalog/schema names
+        schema_fqn = self.id_name_map.get(create_op.payload["schemaId"], "unknown.unknown")
+        parts = schema_fqn.split(".")
+        catalog_name = parts[0]
+        schema_name = parts[1] if len(parts) > 1 else "unknown"
+        view_name = create_op.payload["name"]
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+
+        # Build fully qualified view name
+        view_esc = self._build_fqn(catalog_name, schema_name, view_name)
+
+        # Use updated definition from update_op
+        definition = update_op.payload.get("definition", "")
+
+        # Always qualify table/view references in the definition
+        extracted_deps = update_op.payload.get("extractedDependencies", {})
+        definition = self._qualify_view_definition(definition, extracted_deps)
+
+        # Use comment from create_op (if any)
+        comment = create_op.payload.get("comment")
+
+        # Build CREATE OR REPLACE VIEW statement
+        sql = f"CREATE OR REPLACE VIEW {view_esc}"
+
+        # Add comment if provided
+        if comment:
+            sql += f" COMMENT '{comment}'"
+
+        # Add AS clause
+        sql += f" AS\n{definition}"
+
+        # Add dependency comment from update_op (most recent dependencies)
+        tables = extracted_deps.get("tables", [])
+        views = extracted_deps.get("views", [])
+
+        dep_list = []
+        if tables:
+            dep_list.extend(tables)
+        if views:
+            dep_list.extend(views)
+
+        if dep_list:
+            deps_str = ", ".join(dep_list)
+            sql = f"-- View depends on: {deps_str}\n{sql}"
+
+        return sql
+
+    def _rename_view(self, op: Operation) -> str:
+        """Generate ALTER VIEW RENAME statement"""
+        old_fqn = self.id_name_map.get(op.target, "unknown")
+        parts = old_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        old_esc = self._build_fqn(*parts)
+
+        # Build new FQN with new name
+        parts[-1] = op.payload["newName"]
+        new_esc = self._build_fqn(*parts)
+
+        return f"ALTER VIEW {old_esc} RENAME TO {new_esc}"
+
+    def _drop_view(self, op: Operation) -> str:
+        """Generate DROP VIEW statement"""
+        view_fqn = self.id_name_map.get(op.target, "unknown")
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
+        return f"DROP VIEW IF EXISTS {view_esc}"
+
+    def _update_view(self, op: Operation) -> str:
+        """Generate CREATE OR REPLACE VIEW statement to update definition"""
+        view_fqn = self.id_name_map.get(op.target, "unknown")
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+
+        # Reconstruct FQN with physical catalog name
+        parts[0] = catalog_name
+        view_esc = self._build_fqn(*parts)
+        definition = op.payload.get("definition", "")
+
+        # Always qualify table/view references in the definition
+        extracted_deps = op.payload.get("extractedDependencies", {})
+        definition = self._qualify_view_definition(definition, extracted_deps)
+
+        # Use CREATE OR REPLACE for updates
+        sql = f"CREATE OR REPLACE VIEW {view_esc} AS\n{definition}"
+
+        # Add dependency comment if provided
+        if extracted_deps:
+            tables = extracted_deps.get("tables", [])
+            views = extracted_deps.get("views", [])
+
+            dep_list = []
+            if tables:
+                dep_list.extend(tables)
+            if views:
+                dep_list.extend(views)
+
+            if dep_list:
+                deps_str = ", ".join(dep_list)
+                sql = f"-- View depends on: {deps_str}\n{sql}"
+
+        return sql
+
+    def _set_view_comment(self, op: Operation) -> str:
+        """Generate ALTER VIEW SET TBLPROPERTIES for comment"""
+        view_fqn = self.id_name_map.get(op.payload["viewId"], "unknown")
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
+        comment = op.payload["comment"].replace("'", "\\'")
+        return f"COMMENT ON VIEW {view_esc} IS '{comment}'"
+
+    def _set_view_property(self, op: Operation) -> str:
+        """Generate ALTER VIEW SET TBLPROPERTIES"""
+        view_fqn = self.id_name_map.get(op.payload["viewId"], "unknown")
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
+        key = op.payload["key"]
+        value = op.payload["value"].replace("'", "\\'")
+        return f"ALTER VIEW {view_esc} SET TBLPROPERTIES ('{key}' = '{value}')"
+
+    def _unset_view_property(self, op: Operation) -> str:
+        """Generate ALTER VIEW UNSET TBLPROPERTIES"""
+        view_fqn = self.id_name_map.get(op.payload["viewId"], "unknown")
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
+        key = op.payload["key"]
+        return f"ALTER VIEW {view_esc} UNSET TBLPROPERTIES ('{key}')"
+
     # Column operations
     def _add_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
@@ -1370,6 +1838,62 @@ class UnitySQLGenerator(BaseSQLGenerator):
             # For now, attribute all statements in this batch to all operations in the batch
             # This is conservative but correct - all operations contributed to this batch
             statements.append((stmt, batch_info.op_ids))
+
+        return statements
+
+    def _generate_view_sql_with_mapping(
+        self, view_id: str, batch_info: BatchInfo
+    ) -> list[tuple[str, list[str]]]:
+        """Generate SQL for view operations with explicit operation mapping.
+
+        Returns list of (sql, operation_ids) tuples.
+
+        Optimization: If there's a CREATE + UPDATE_VIEW in the same batch,
+        squash them into a single CREATE OR REPLACE VIEW with the final definition.
+        """
+        statements = []
+
+        # Check if we have both create and update_view operations
+        has_create = batch_info.create_op is not None
+        update_view_ops = [
+            op for op in batch_info.modify_ops if op.op.replace("unity.", "") == "update_view"
+        ]
+
+        # Optimization: Squash CREATE + UPDATE_VIEW into single statement
+        if has_create and update_view_ops and batch_info.create_op:
+            # Use the LAST update_view operation (most recent definition)
+            final_update_op = update_view_ops[-1]
+
+            # Generate CREATE OR REPLACE VIEW with final definition
+            sql = self._generate_create_or_replace_view(batch_info.create_op, final_update_op)
+            if sql:
+                # Track all operation IDs (create + all updates)
+                op_ids = [batch_info.create_op.id] + [op.id for op in update_view_ops]
+                statements.append((sql, op_ids))
+
+            # Process remaining modify operations (excluding update_view)
+            remaining_ops = [
+                op for op in batch_info.modify_ops if op.op.replace("unity.", "") != "update_view"
+            ]
+        else:
+            # No batching needed - process normally
+            if batch_info.create_op:
+                op = batch_info.create_op
+                sql = self._add_view(op)
+                if sql:
+                    statements.append((sql, [op.id]))
+
+            remaining_ops = batch_info.modify_ops
+
+        # Process remaining modify operations (rename, drop, set properties, etc.)
+        for op in remaining_ops:
+            op_type = op.op.replace("unity.", "")
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append((sql, [op.id]))
+            except Exception as e:
+                statements.append((f"-- Error generating SQL for {op.id}: {e}", [op.id]))
 
         return statements
 

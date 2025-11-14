@@ -134,7 +134,7 @@ def rebase_snapshot(
         # 8. Get provider for state reduction
         from schematic.core.storage import load_current_state
 
-        _, _, provider = load_current_state(workspace)
+        _, _, provider, _ = load_current_state(workspace, validate=False)
 
         # 9. Replay operations one by one
         console.print()

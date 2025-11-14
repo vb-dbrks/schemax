@@ -116,7 +116,7 @@ def rollback_partial(
         from_version = deployment.get("fromVersion")
 
     # 2. Load pre-deployment state (from the fromVersion snapshot, not current workspace state!)
-    _, _, provider = load_current_state(workspace)
+    _, _, provider, _ = load_current_state(workspace, validate=False)
 
     if from_version:
         from_snap = read_snapshot(workspace, from_version)
@@ -149,6 +149,66 @@ def rollback_partial(
     if not rollback_ops:
         console.print("   No rollback operations needed (state unchanged)")
         return RollbackResult(success=True, operations_rolled_back=0)
+
+    # 4.5. Check for CASCADE drops in partial rollback (common when reverting from empty state)
+    cascade_ops = [
+        op for op in rollback_ops if op.op in ["unity.drop_catalog", "unity.drop_schema"]
+    ]
+    if cascade_ops:
+        console.print()
+        console.print("[bold yellow]⚠️  WARNING: CASCADE drops detected[/bold yellow]")
+        console.print()
+        console.print("   Partial rollback will drop entire containers:")
+        for op in cascade_ops:
+            obj_name = "unknown"
+            try:
+                # Handle both dict and Pydantic models
+                catalogs = []
+                if isinstance(post_deployment_state, dict):
+                    catalogs = post_deployment_state.get("catalogs", [])
+                elif hasattr(post_deployment_state, "catalogs"):
+                    catalogs = post_deployment_state.catalogs or []
+
+                if op.op == "unity.drop_catalog":
+                    # Try to get catalog name from post-deployment state
+                    for cat in catalogs:
+                        cat_dict = cat if isinstance(cat, dict) else cat.model_dump()
+                        if cat_dict.get("id") == op.target:
+                            obj_name = cat_dict.get("name", op.target)
+                            break
+                    console.print(f"   • DROP CATALOG `{obj_name}` CASCADE")
+                    console.print(
+                        "     (This will delete ALL schemas, tables, views, and data inside)"
+                    )
+                elif op.op == "unity.drop_schema":
+                    # Try to get schema name
+                    for cat in catalogs:
+                        cat_dict = cat if isinstance(cat, dict) else cat.model_dump()
+                        for sch in cat_dict.get("schemas", []):
+                            sch_dict = sch if isinstance(sch, dict) else sch.model_dump()
+                            if sch_dict.get("id") == op.target:
+                                obj_name = f"{cat_dict.get('name', 'unknown')}.{sch_dict.get('name', op.target)}"
+                                break
+                    console.print(f"   • DROP SCHEMA `{obj_name}` CASCADE")
+                    console.print("     (This will delete ALL tables and views inside)")
+            except Exception:
+                # If we can't get the name, just show the operation
+                console.print(f"   • {op.op} {op.target}")
+
+        console.print()
+        console.print(
+            "[dim]This happens when pre-deployment state was empty (e.g., after manual drops).[/dim]"
+        )
+        console.print("[dim]Consider using --to-snapshot for a complete rollback instead.[/dim]")
+        console.print()
+
+        if not auto_triggered and not Confirm.ask(
+            "[bold red]Continue with CASCADE drops?[/bold red]", default=False
+        ):
+            console.print("[yellow]Rollback cancelled[/yellow]")
+            return RollbackResult(
+                success=False, operations_rolled_back=0, error_message="Cancelled by user"
+            )
 
     # 5. Validate safety of rollback operations
     validation_config = ExecutionConfig(
@@ -340,8 +400,19 @@ def rollback_partial(
             console.print(
                 f"[green]✓ Successfully rolled back {len(rollback_ops)} operations[/green]"
             )
-            for i, rollback_op in enumerate(rollback_ops, 1):
-                console.print(f"  [{i}/{len(rollback_ops)}] {rollback_op.op} {rollback_op.target}")
+            # Show the actual SQL that was executed for each operation
+            for i, stmt_result in enumerate(result.statement_results, 1):
+                # Extract first line of SQL for compact display (remove leading dashes/comments)
+                sql_lines = stmt_result.sql.strip().split("\n")
+                first_sql_line = next(
+                    (
+                        line
+                        for line in sql_lines
+                        if line.strip() and not line.strip().startswith("--")
+                    ),
+                    sql_lines[0] if sql_lines else "",
+                )
+                console.print(f"  [{i}/{len(result.statement_results)}] {first_sql_line[:80]}...")
             console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
             console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
@@ -457,7 +528,7 @@ def rollback_complete(
 
         # 4. Load current state and target snapshot state
         console.print("[cyan]Loading states...[/cyan]")
-        current_state, _, provider = load_current_state(workspace)
+        current_state, _, provider, _ = load_current_state(workspace, validate=False)
         target_state = target_snapshot["state"]
 
         console.print("  [green]✓[/green] Current state loaded")
@@ -665,6 +736,19 @@ def rollback_complete(
                 f"[green]✓ Rolled back to {to_snapshot} ({result.successful_statements} "
                 f"statements, {exec_time:.2f}s)[/green]"
             )
+            # Show the actual SQL that was executed for each operation
+            for i, stmt_result in enumerate(result.statement_results, 1):
+                # Extract first line of SQL for compact display (remove leading dashes/comments)
+                sql_lines = stmt_result.sql.strip().split("\n")
+                first_sql_line = next(
+                    (
+                        line
+                        for line in sql_lines
+                        if line.strip() and not line.strip().startswith("--")
+                    ),
+                    sql_lines[0] if sql_lines else "",
+                )
+                console.print(f"  [{i}/{len(result.statement_results)}] {first_sql_line[:80]}...")
             console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
             console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))

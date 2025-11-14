@@ -621,6 +621,21 @@ body {
   height: 28px;
   padding: 0;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-item .actions vscode-button::part(content) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.tree-item .actions vscode-button .codicon {
+  margin: 0 !important;
+  display: block;
 }
 
 .tree-item .actions vscode-button svg {
@@ -2443,5 +2458,78 @@ body {
   .info-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* === Validation Banner === */
+.validation-banner {
+  padding: 16px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editor-background);
+}
+
+.validation-error,
+.validation-warning {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.validation-error:last-child,
+.validation-warning:last-child {
+  margin-bottom: 0;
+}
+
+.validation-error {
+  background: var(--vscode-inputValidation-errorBackground);
+  border: 1px solid var(--vscode-inputValidation-errorBorder);
+}
+
+.validation-warning {
+  background: var(--vscode-inputValidation-warningBackground);
+  border: 1px solid var(--vscode-inputValidation-warningBorder);
+}
+
+.validation-error .codicon {
+  color: var(--vscode-inputValidation-errorForeground);
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.validation-warning .codicon {
+  color: var(--vscode-inputValidation-warningForeground);
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.validation-content {
+  flex: 1;
+}
+
+.validation-content strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.validation-error .validation-content strong {
+  color: var(--vscode-inputValidation-errorForeground);
+}
+
+.validation-warning .validation-content strong {
+  color: var(--vscode-inputValidation-warningForeground);
+}
+
+.validation-content ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.validation-content li {
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.4;
 }
 

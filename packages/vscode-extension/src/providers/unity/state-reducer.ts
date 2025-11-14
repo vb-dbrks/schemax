@@ -15,6 +15,7 @@ import {
   UnityConstraint,
   UnityRowFilter,
   UnityColumnMask,
+  UnityView,
 } from './models';
 import { UNITY_OPERATIONS } from './operations';
 
@@ -145,6 +146,78 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
     case 'set_table_comment': {
       const table = findTable(newState, op.payload.tableId);
       if (table) table.comment = op.payload.comment;
+      break;
+    }
+
+    // View operations
+    case 'add_view': {
+      for (const catalog of newState.catalogs) {
+        const schema = catalog.schemas.find(s => s.id === op.payload.schemaId);
+        if (schema) {
+          const view: UnityView = {
+            id: op.payload.viewId,
+            name: op.payload.name,
+            definition: op.payload.definition,
+            comment: op.payload.comment,
+            dependencies: op.payload.dependencies,
+            extractedDependencies: op.payload.extractedDependencies,
+            tags: {},
+            properties: {},
+          };
+          if (!schema.views) {
+            schema.views = [];
+          }
+          schema.views.push(view);
+          break;
+        }
+      }
+      break;
+    }
+    case 'rename_view': {
+      const view = findView(newState, op.target);
+      if (view) view.name = op.payload.newName;
+      break;
+    }
+    case 'drop_view': {
+      for (const catalog of newState.catalogs) {
+        for (const schema of catalog.schemas) {
+          if (schema.views) {
+            schema.views = schema.views.filter(v => v.id !== op.target);
+          }
+        }
+      }
+      break;
+    }
+    case 'update_view': {
+      const view = findView(newState, op.target);
+      if (view) {
+        if ('definition' in op.payload) {
+          view.definition = op.payload.definition;
+        }
+        if ('dependencies' in op.payload) {
+          view.dependencies = op.payload.dependencies;
+        }
+        if ('extractedDependencies' in op.payload) {
+          view.extractedDependencies = op.payload.extractedDependencies;
+        }
+      }
+      break;
+    }
+    case 'set_view_comment': {
+      const view = findView(newState, op.payload.viewId);
+      if (view) view.comment = op.payload.comment;
+      break;
+    }
+    case 'set_view_property': {
+      const view = findView(newState, op.payload.viewId);
+      if (view) view.properties[op.payload.key] = op.payload.value;
+      break;
+    }
+    case 'unset_view_property': {
+      const view = findView(newState, op.payload.viewId);
+      if (view && op.payload.key in view.properties) {
+        delete view.properties[op.payload.key];
+      }
       break;
     }
     case 'set_table_property': {
@@ -408,6 +481,21 @@ function findTable(state: UnityState, tableId: string): UnityTable | undefined {
     for (const schema of catalog.schemas) {
       const table = schema.tables.find(t => t.id === tableId);
       if (table) return table;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Find a view by ID across all catalogs and schemas
+ */
+function findView(state: UnityState, viewId: string): UnityView | undefined {
+  for (const catalog of state.catalogs) {
+    for (const schema of catalog.schemas) {
+      if (schema.views) {
+        const view = schema.views.find(v => v.id === viewId);
+        if (view) return view;
+      }
     }
   }
   return undefined;

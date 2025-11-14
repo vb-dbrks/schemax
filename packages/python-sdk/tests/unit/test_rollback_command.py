@@ -19,7 +19,7 @@ class TestRollbackPartial:
     @patch("schematic.commands.rollback.load_current_state")
     def test_no_operations_to_rollback(self, mock_load_state):
         """Test rollback with no operations"""
-        mock_load_state.return_value = ({}, None, None)
+        mock_load_state.return_value = ({}, None, None, None)
 
         result = rollback_partial(
             workspace=Path("/tmp"),
@@ -61,6 +61,7 @@ class TestRollbackPartial:
             {"catalogs": []},  # pre_deployment_state
             None,
             mock_provider,
+            None,  # validation_result
         )
 
         # Mock project and environment config
@@ -199,7 +200,7 @@ class TestRollbackPartial:
         mock_state_reducer = Mock()
         mock_state_differ = Mock()
 
-        mock_load_state.return_value = ({"catalogs": []}, None, mock_provider)
+        mock_load_state.return_value = ({"catalogs": []}, None, mock_provider, None)
 
         # Mock project and environment config
         mock_read_project.return_value = {
@@ -299,7 +300,7 @@ class TestRollbackPartial:
         mock_executor = Mock()
         mock_executor.client = Mock()
 
-        mock_load_state.return_value = ({"catalogs": []}, None, mock_provider)
+        mock_load_state.return_value = ({"catalogs": []}, None, mock_provider, None)
 
         # Mock project and environment config
         mock_read_project.return_value = {

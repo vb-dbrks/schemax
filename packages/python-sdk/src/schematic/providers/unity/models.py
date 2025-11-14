@@ -113,6 +113,26 @@ class UnityTable(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class UnityView(BaseModel):
+    """View definition"""
+
+    id: str
+    name: str
+    definition: str  # SQL query (SELECT statement)
+    comment: str | None = None
+    # Explicit dependencies (user-specified)
+    dependencies: list[str] | None = None  # IDs of tables/views this view depends on
+    # Extracted dependencies (from SQL parsing)
+    extracted_dependencies: dict[str, list[str]] | None = Field(
+        None, alias="extractedDependencies"
+    )  # tables, views, catalogs, schemas
+    # Metadata
+    tags: dict[str, str] = {}  # VIEW TAGS (Unity Catalog governance)
+    properties: dict[str, str] = {}  # View properties
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class UnitySchema(BaseModel):
     """Schema definition"""
 
@@ -122,6 +142,7 @@ class UnitySchema(BaseModel):
         None, alias="managedLocationName"
     )  # Reference to env managedLocations
     tables: list[UnityTable] = []
+    views: list[UnityView] = []  # Views stored alongside tables in schema
 
     model_config = ConfigDict(populate_by_name=True)
 

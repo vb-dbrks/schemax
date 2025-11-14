@@ -594,6 +594,146 @@ Use consistent payload structure:
 - **Operations:** `{provider}.{verb}_{noun}` (e.g., `unity.add_catalog`)
 - **IDs:** Prefixed by type (e.g., `cat_uuid`, `tbl_uuid`)
 
+### View Support and Dependency Extraction
+
+**Views** are a key feature that require special handling for dependency-aware SQL generation:
+
+#### View Model
+
+```typescript
+interface MyView {
+  id: string;
+  name: string;
+  definition: string;                    // SQL definition
+  comment?: string;
+  properties?: Record<string, string>;
+  extractedDependencies?: {              // Dependencies from SQL parsing
+    tables?: string[];                    // Table IDs this view depends on
+    views?: string[];                     // View IDs this view depends on
+  };
+}
+```
+
+#### View Operations
+
+Implement these view operations:
+
+```typescript
+export const MY_OPERATIONS = {
+  ADD_VIEW: 'myprovider.add_view',
+  UPDATE_VIEW: 'myprovider.update_view',
+  RENAME_VIEW: 'myprovider.rename_view',
+  DROP_VIEW: 'myprovider.drop_view',
+  SET_VIEW_COMMENT: 'myprovider.set_view_comment',
+} as const;
+```
+
+#### Dependency Extraction
+
+**Frontend (TypeScript)** - Extract dependencies when user creates/updates view:
+
+```typescript
+import { extractDependenciesFromView } from '@/providers/base/sql-parser';
+
+function handleViewCreate(viewSql: string, schemaId: string) {
+  // Extract dependencies using regex-based parser
+  const extractedDeps = extractDependenciesFromView(viewSql);
+  
+  // Create operation with dependencies
+  emitOps([{
+    id: `op_${uuidv4()}`,
+    ts: new Date().toISOString(),
+    provider: 'myprovider',
+    op: 'myprovider.add_view',
+    target: viewId,
+    payload: {
+      viewId,
+      name: viewName,
+      schemaId,
+      definition: viewSql,
+      extractedDependencies: extractedDeps,  // Store for backend
+    },
+  }]);
+}
+```
+
+#### SQL Generator - Dependency Graph
+
+**Backend (Python)** - Build dependency graph and topologically sort operations:
+
+```python
+from schematic.providers.base.dependency_graph import DependencyGraph
+
+class MyProviderSQLGenerator(BaseSQLGenerator):
+    def generate_sql_with_mapping(self, operations: list[Operation]) -> SQLGenerationResult:
+        # Build dependency graph
+        graph = self._build_dependency_graph(operations)
+        
+        # Topologically sort (dependencies first)
+        sorted_ops = self._topological_sort_with_fallback(operations, graph)
+        
+        # Generate SQL in correct order
+        statements = []
+        for op in sorted_ops:
+            result = self._generate_sql_for_operation(op)
+            statements.extend(result.statements)
+        
+        return SQLGenerationResult(statements=statements, warnings=[])
+    
+    def _extract_operation_dependencies(self, op: Operation) -> list[tuple[str, str]]:
+        """Extract dependencies from operation"""
+        deps = []
+        
+        # View dependencies
+        if op.op == 'myprovider.add_view':
+            extracted = op.payload.get('extractedDependencies', {})
+            for table_id in extracted.get('tables', []):
+                deps.append((table_id, 'table'))
+            for view_id in extracted.get('views', []):
+                deps.append((view_id, 'view'))
+        
+        return deps
+```
+
+#### Automatic FQN Qualification (Optional but Recommended)
+
+Use SQLGlot to automatically qualify unqualified table references in view definitions:
+
+```python
+import sqlglot
+from sqlglot import expressions as exp
+
+def _qualify_view_definition(self, definition: str) -> str:
+    """Qualify unqualified table/view references"""
+    parsed = sqlglot.parse_one(definition, dialect="databricks")
+    
+    # Build name → FQN mapping
+    name_to_fqn = {}
+    for object_id, fqn in self.id_name_map.items():
+        if "." in fqn:
+            parts = fqn.split(".")
+            name = parts[-1]
+            name_to_fqn[name] = fqn
+    
+    # Replace table references
+    for table_node in parsed.find_all(exp.Table):
+        table_name = str(table_node.name)
+        if table_name in name_to_fqn:
+            fqn = name_to_fqn[table_name]
+            # Update with qualified names
+            parts = fqn.split(".")
+            table_node.set("catalog", exp.to_identifier(parts[0], quoted=True))
+            table_node.set("db", exp.to_identifier(parts[1], quoted=True))
+            table_node.set("this", exp.to_identifier(parts[2], quoted=True))
+    
+    return parsed.sql(dialect="databricks", pretty=True)
+```
+
+**Benefits:**
+- ✅ Views work regardless of current catalog/schema context
+- ✅ Compatible with SQL Statement Execution API
+- ✅ Prevents `TABLE_OR_VIEW_NOT_FOUND` errors
+
 ## Examples
 
 See the Unity Catalog provider as a reference implementation:
