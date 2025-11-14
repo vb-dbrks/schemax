@@ -172,6 +172,9 @@ export const Sidebar: React.FC = () => {
   const [addExternalLocationName, setAddExternalLocationName] = useState('');
   const [addTablePath, setAddTablePath] = useState('');
   const [addManagedLocationName, setAddManagedLocationName] = useState('');
+  const [addComment, setAddComment] = useState('');
+  const [addTags, setAddTags] = useState<Record<string, string>>({});
+  const [addTagInput, setAddTagInput] = useState({tagName: '', tagValue: ''});
   
   // View-specific state
   const [addViewSQL, setAddViewSQL] = useState('');
@@ -220,6 +223,9 @@ export const Sidebar: React.FC = () => {
       setAddExternalLocationName('');
       setAddTablePath('');
       setAddManagedLocationName('');
+      setAddComment('');
+      setAddTags({});
+      setAddTagInput({tagName: '', tagValue: ''});
       
       // Initialize view-specific state
       setAddViewSQL('');
@@ -372,11 +378,17 @@ export const Sidebar: React.FC = () => {
     }
 
     if (addDialog.type === 'catalog') {
-      const options = addManagedLocationName ? { managedLocationName: addManagedLocationName } : undefined;
-      addCatalog(trimmedName, options);
+      const options: any = {};
+      if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
+      if (addComment) options.comment = addComment;
+      if (Object.keys(addTags).length > 0) options.tags = addTags;
+      addCatalog(trimmedName, Object.keys(options).length > 0 ? options : undefined);
     } else if (addDialog.type === 'schema' && addDialog.catalogId) {
-      const options = addManagedLocationName ? { managedLocationName: addManagedLocationName } : undefined;
-      addSchema(addDialog.catalogId, trimmedName, options);
+      const options: any = {};
+      if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
+      if (addComment) options.comment = addComment;
+      if (Object.keys(addTags).length > 0) options.tags = addTags;
+      addSchema(addDialog.catalogId, trimmedName, Object.keys(options).length > 0 ? options : undefined);
       setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
     } else if (addDialog.type === 'table' && addDialog.schemaId) {
       if (addDialog.objectType === 'view') {
@@ -1050,6 +1062,145 @@ export const Sidebar: React.FC = () => {
                 <p className="field-help">
                   Specifies where Unity Catalog stores data for managed tables in this {addDialog.type}.
                 </p>
+              </div>
+            )}
+            
+            {/* Comment field for Catalog and Schema */}
+            {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
+              <div className="modal-field-group">
+                <label htmlFor="add-comment">
+                  Comment (optional)
+                </label>
+                <input
+                  type="text"
+                  id="add-comment"
+                  value={addComment}
+                  placeholder={`Enter ${addDialog.type} description`}
+                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                    setAddComment((event.target as HTMLInputElement).value);
+                  }}
+                />
+              </div>
+            )}
+            
+            {/* Tags field for Catalog and Schema */}
+            {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
+              <div className="modal-field-group">
+                <label>
+                  Tags (optional)
+                  <span className="info-icon" title="Key-value pairs for metadata and governance"> ℹ️</span>
+                </label>
+                
+                {/* Tag input form */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Tag name"
+                    value={addTagInput.tagName}
+                    style={{ flex: '1' }}
+                    onInput={(e: React.FormEvent<HTMLInputElement>) => {
+                      setAddTagInput({...addTagInput, tagName: (e.target as HTMLInputElement).value});
+                    }}
+                    onKeyDown={(e: React.KeyboardEvent) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const tagValue = addTagInput.tagValue;
+                        const tagName = addTagInput.tagName;
+                        if (tagName && tagValue) {
+                          setAddTags({...addTags, [tagName]: tagValue});
+                          setAddTagInput({tagName: '', tagValue: ''});
+                        }
+                      }
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Tag value"
+                    value={addTagInput.tagValue}
+                    style={{ flex: '1' }}
+                    onInput={(e: React.FormEvent<HTMLInputElement>) => {
+                      setAddTagInput({...addTagInput, tagValue: (e.target as HTMLInputElement).value});
+                    }}
+                    onKeyDown={(e: React.KeyboardEvent) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const tagValue = addTagInput.tagValue;
+                        const tagName = addTagInput.tagName;
+                        if (tagName && tagValue) {
+                          setAddTags({...addTags, [tagName]: tagValue});
+                          setAddTagInput({tagName: '', tagValue: ''});
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (addTagInput.tagName && addTagInput.tagValue) {
+                        setAddTags({...addTags, [addTagInput.tagName]: addTagInput.tagValue});
+                        setAddTagInput({tagName: '', tagValue: ''});
+                      }
+                    }}
+                    style={{
+                      padding: '0 12px',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Add Tag
+                  </button>
+                </div>
+                
+                {/* Display added tags */}
+                {Object.keys(addTags).length > 0 && (
+                  <div style={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap', 
+                    gap: '4px',
+                    padding: '8px',
+                    background: 'var(--vscode-editor-background)',
+                    border: '1px solid var(--vscode-input-border)',
+                    borderRadius: '2px'
+                  }}>
+                    {Object.entries(addTags).map(([tagName, tagValue]) => (
+                      <span 
+                        key={tagName}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '2px 6px',
+                          background: 'var(--vscode-badge-background)',
+                          color: 'var(--vscode-badge-foreground)',
+                          borderRadius: '2px',
+                          fontSize: '11px'
+                        }}
+                      >
+                        <strong>{tagName}:</strong> {tagValue}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newTags = {...addTags};
+                            delete newTags[tagName];
+                            setAddTags(newTags);
+                          }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'inherit',
+                            cursor: 'pointer',
+                            padding: '0 2px',
+                            marginLeft: '2px',
+                            fontSize: '12px',
+                            lineHeight: '1'
+                          }}
+                          title="Remove tag"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             

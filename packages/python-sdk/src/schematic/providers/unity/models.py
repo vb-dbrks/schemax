@@ -141,6 +141,8 @@ class UnitySchema(BaseModel):
     managed_location_name: str | None = Field(
         None, alias="managedLocationName"
     )  # Reference to env managedLocations
+    comment: str | None = None  # Schema comment
+    tags: dict[str, str] = {}  # Schema tags (Unity Catalog governance)
     tables: list[UnityTable] = []
     views: list[UnityView] = []  # Views stored alongside tables in schema
 
@@ -155,6 +157,8 @@ class UnityCatalog(BaseModel):
     managed_location_name: str | None = Field(
         None, alias="managedLocationName"
     )  # Reference to env managedLocations
+    comment: str | None = None  # Catalog comment
+    tags: dict[str, str] = {}  # Catalog tags (Unity Catalog governance)
     schemas: list[UnitySchema] = []
 
     model_config = ConfigDict(populate_by_name=True)

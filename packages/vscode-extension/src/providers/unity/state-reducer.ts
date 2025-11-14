@@ -36,6 +36,8 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         id: op.payload.catalogId,
         name: op.payload.name,
         managedLocationName: op.payload.managedLocationName,
+        comment: op.payload.comment,
+        tags: op.payload.tags || {},
         schemas: [],
       };
       newState.catalogs.push(catalog);
@@ -68,7 +70,10 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
           id: op.payload.schemaId,
           name: op.payload.name,
           managedLocationName: op.payload.managedLocationName,
+          comment: op.payload.comment,
+          tags: op.payload.tags || {},
           tables: [],
+          views: [],
         };
         catalog.schemas.push(schema);
       }

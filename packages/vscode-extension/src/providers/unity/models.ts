@@ -102,6 +102,8 @@ export interface UnityView extends BaseObject {
 // Schema definition
 export interface UnitySchema extends BaseObject {
   managedLocationName?: string; // Reference to env managedLocations
+  comment?: string; // Schema comment
+  tags?: Record<string, string>; // Schema tags (Unity Catalog governance)
   tables: UnityTable[];
   views: UnityView[]; // Views stored alongside tables in schema
 }
@@ -109,6 +111,8 @@ export interface UnitySchema extends BaseObject {
 // Catalog definition
 export interface UnityCatalog extends BaseObject {
   managedLocationName?: string; // Reference to env managedLocations
+  comment?: string; // Catalog comment
+  tags?: Record<string, string>; // Catalog tags (Unity Catalog governance)
   schemas: UnitySchema[];
 }
 

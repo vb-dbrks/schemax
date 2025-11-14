@@ -481,6 +481,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     // Use mapped name from idNameMap (handles __implicit__ → physical catalog)
     const name = this.idNameMap[op.target] || op.payload.name;
     const managedLocationName = op.payload.managedLocationName;
+    const comment = op.payload.comment;
+    const tags = op.payload.tags;
     
     let sql = `CREATE CATALOG IF NOT EXISTS ${this.escapeIdentifier(name)}`;
     
@@ -491,7 +493,20 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       }
     }
     
-    return sql;
+    if (comment) {
+      sql += ` COMMENT '${this.escapeString(comment)}'`;
+    }
+    
+    // Tags need to be set via ALTER after creation
+    let result = sql;
+    if (tags && Object.keys(tags).length > 0) {
+      const tagEntries = Object.entries(tags).map(([key, value]) => 
+        `'${this.escapeString(key)}' = '${this.escapeString(value)}'`
+      ).join(', ');
+      result += `;\nALTER CATALOG ${this.escapeIdentifier(name)} SET TAGS (${tagEntries})`;
+    }
+    
+    return result;
   }
   
   private renameCatalog(op: Operation): string {
@@ -526,6 +541,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const catalogName = this.idNameMap[op.payload.catalogId] || 'unknown';
     const schemaName = op.payload.name;
     const managedLocationName = op.payload.managedLocationName;
+    const comment = op.payload.comment;
+    const tags = op.payload.tags;
     
     let sql = `CREATE SCHEMA IF NOT EXISTS ${this.buildFqn(catalogName, schemaName)}`;
     
@@ -536,7 +553,20 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       }
     }
     
-    return sql;
+    if (comment) {
+      sql += ` COMMENT '${this.escapeString(comment)}'`;
+    }
+    
+    // Tags need to be set via ALTER after creation
+    let result = sql;
+    if (tags && Object.keys(tags).length > 0) {
+      const tagEntries = Object.entries(tags).map(([key, value]) => 
+        `'${this.escapeString(key)}' = '${this.escapeString(value)}'`
+      ).join(', ');
+      result += `;\nALTER SCHEMA ${this.buildFqn(catalogName, schemaName)} SET TAGS (${tagEntries})`;
+    }
+    
+    return result;
   }
   
   private renameSchema(op: Operation): string {

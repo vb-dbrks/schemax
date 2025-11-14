@@ -54,6 +54,8 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
             id=payload["catalogId"],
             name=payload["name"],
             managed_location_name=payload.get("managedLocationName"),
+            comment=payload.get("comment"),
+            tags=payload.get("tags", {}),
             schemas=[],
         )
         new_state.catalogs.append(catalog)
@@ -87,6 +89,8 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     id=op_dict["payload"]["schemaId"],
                     name=op_dict["payload"]["name"],
                     managed_location_name=op_dict["payload"].get("managedLocationName"),
+                    comment=op_dict["payload"].get("comment"),
+                    tags=op_dict["payload"].get("tags", {}),
                     tables=[],
                     views=[],
                 )

@@ -959,7 +959,21 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if location:
                 sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
 
-        return sql
+        # Add comment if specified
+        comment = op.payload.get("comment")
+        if comment:
+            sql += f" COMMENT '{self.escape_string(comment)}'"
+
+        # Tags need to be set via ALTER after creation
+        result = sql
+        tags = op.payload.get("tags")
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            tag_entries = ", ".join(
+                f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
+            )
+            result += f";\nALTER CATALOG {self.escape_identifier(name)} SET TAGS ({tag_entries})"
+
+        return result
 
     def _rename_catalog(self, op: Operation) -> str:
         old_name = op.payload["oldName"]
@@ -1008,7 +1022,21 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if location:
                 sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
 
-        return sql
+        # Add comment if specified
+        comment = op.payload.get("comment")
+        if comment:
+            sql += f" COMMENT '{self.escape_string(comment)}'"
+
+        # Tags need to be set via ALTER after creation
+        result = sql
+        tags = op.payload.get("tags")
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            tag_entries = ", ".join(
+                f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
+            )
+            result += f";\nALTER SCHEMA {catalog_esc}.{schema_esc} SET TAGS ({tag_entries})"
+
+        return result
 
     def _generate_create_catalog_batched(self, object_id: str, batch_info: BatchInfo) -> str:
         """
