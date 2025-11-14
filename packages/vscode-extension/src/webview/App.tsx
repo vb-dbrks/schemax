@@ -233,8 +233,11 @@ export const App: React.FC = () => {
           <CatalogDetails catalogId={selectedCatalogId} />
         ) : (
           // Nothing selected
-          <div className="right-panel empty">
-            <p>Select a catalog, schema, table, or view to view details</p>
+          <div className="table-designer">
+            <div className="empty-state">
+              <h2>No selection</h2>
+              <p>Select a catalog, schema, table, or view to view details</p>
+            </div>
           </div>
         )}
       </div>

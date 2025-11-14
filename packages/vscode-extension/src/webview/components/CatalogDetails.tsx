@@ -37,7 +37,14 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   }, [comment, managedLocationName, tags, catalog]);
 
   if (!catalog) {
-    return <div className="right-panel empty">Select a catalog to view details</div>;
+    return (
+      <div className="table-designer">
+        <div className="empty-state">
+          <h2>Catalog not found</h2>
+          <p>The selected catalog could not be found.</p>
+        </div>
+      </div>
+    );
   }
 
   const handleSaveChanges = () => {
@@ -78,166 +85,137 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   };
 
   return (
-    <div className="right-panel">
-      <div className="panel-header">
-        <h2>Catalog Details</h2>
-        {hasChanges && (
-          <VSCodeButton onClick={handleSaveChanges}>
-            Save Changes
-          </VSCodeButton>
-        )}
-      </div>
-
-      <div className="panel-content">
-        {/* Catalog Name (Read-only) */}
-        <div className="field-group">
-          <label htmlFor="catalog-name">Catalog Name</label>
-          <VSCodeTextField
-            id="catalog-name"
-            value={catalog.name}
-            readOnly
-            disabled
-          />
-          <p className="field-help">Catalog name cannot be changed after creation</p>
-        </div>
-
-        {/* Comment */}
-        <div className="field-group">
-          <label htmlFor="catalog-comment">Comment</label>
-          <VSCodeTextField
-            id="catalog-comment"
-            value={comment}
-            placeholder="Enter catalog description"
-            onInput={(e: Event) => {
-              const target = e.target as HTMLInputElement;
-              setComment(target.value);
-            }}
-          />
-          <p className="field-help">Optional description for this catalog</p>
-        </div>
-
-        {/* Managed Location */}
-        <div className="field-group">
-          <label htmlFor="catalog-location">
-            Managed Location Path
-            <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
-          </label>
-          <VSCodeTextField
-            id="catalog-location"
-            value={managedLocationName}
-            placeholder="e.g., s3://bucket/catalog-data or abfss://container@account.dfs.core.windows.net/path"
-            onInput={(e: Event) => {
-              const target = e.target as HTMLInputElement;
-              setManagedLocationName(target.value);
-            }}
-          />
-          <p className="field-help">
-            Storage path where Unity Catalog stores data for managed tables in this catalog
-          </p>
-        </div>
-
-        {/* Tags */}
-        <div className="field-group">
-          <label>
-            Tags
-            <span className="info-icon" title="Key-value pairs for metadata and governance"> ℹ️</span>
-          </label>
-
-          {/* Tag input form */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-            <input
-              type="text"
-              placeholder="Tag name"
-              value={tagInput.tagName}
-              style={{ flex: '1' }}
-              onInput={(e: React.FormEvent<HTMLInputElement>) => {
-                setTagInput({ ...tagInput, tagName: (e.target as HTMLInputElement).value });
-              }}
-              onKeyDown={(e: React.KeyboardEvent) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddTag();
-                }
-              }}
-            />
-            <input
-              type="text"
-              placeholder="Tag value"
-              value={tagInput.tagValue}
-              style={{ flex: '1' }}
-              onInput={(e: React.FormEvent<HTMLInputElement>) => {
-                setTagInput({ ...tagInput, tagValue: (e.target as HTMLInputElement).value });
-              }}
-              onKeyDown={(e: React.KeyboardEvent) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddTag();
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={handleAddTag}
-              style={{ padding: '0 12px', whiteSpace: 'nowrap' }}
-            >
-              Add Tag
-            </button>
-          </div>
-
-          {/* Display tags */}
-          {Object.keys(tags).length > 0 ? (
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '4px',
-                padding: '8px',
-                background: 'var(--vscode-editor-background)',
-                border: '1px solid var(--vscode-input-border)',
-                borderRadius: '2px',
-              }}
-            >
-              {Object.entries(tags).map(([tagName, tagValue]) => (
-                <span
-                  key={tagName}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '2px 6px',
-                    background: 'var(--vscode-badge-background)',
-                    color: 'var(--vscode-badge-foreground)',
-                    borderRadius: '2px',
-                    fontSize: '11px',
-                  }}
-                >
-                  <strong>{tagName}:</strong> {tagValue}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTag(tagName)}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      padding: '0 2px',
-                      marginLeft: '2px',
-                      fontSize: '12px',
-                      lineHeight: '1',
-                    }}
-                    title="Remove tag"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="field-help" style={{ fontStyle: 'italic', color: 'var(--vscode-descriptionForeground)' }}>
-              No tags defined
-            </p>
+    <div className="table-designer">
+      <div className="table-header">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2>{catalog.name}</h2>
+          {hasChanges && (
+            <VSCodeButton onClick={handleSaveChanges}>
+              Save Changes
+            </VSCodeButton>
           )}
         </div>
+        <div className="table-metadata">
+          <span className="badge">CATALOG</span>
+        </div>
+      </div>
+
+      {/* Comment */}
+      <div className="table-properties">
+        <div className="property-row">
+          <label>Comment</label>
+          <div className="property-value">
+            <VSCodeTextField
+              value={comment}
+              placeholder="Enter catalog description"
+              style={{ width: '100%' }}
+              onInput={(e: Event) => {
+                const target = e.target as HTMLInputElement;
+                setComment(target.value);
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Managed Location */}
+      <div className="table-properties">
+        <div className="property-row">
+          <label>
+            Managed Location
+            <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
+          </label>
+          <div className="property-value">
+            <VSCodeTextField
+              value={managedLocationName}
+              placeholder="e.g., s3://bucket/catalog-data or abfss://..."
+              style={{ width: '100%' }}
+              onInput={(e: Event) => {
+                const target = e.target as HTMLInputElement;
+                setManagedLocationName(target.value);
+              }}
+            />
+          </div>
+        </div>
+        <div style={{ fontSize: '11px', color: 'var(--vscode-descriptionForeground)', marginTop: '4px' }}>
+          Storage path where Unity Catalog stores data for managed tables in this catalog
+        </div>
+      </div>
+
+      {/* Tags */}
+      <div className="table-properties">
+        <h3 style={{ marginBottom: '12px', fontSize: '14px', fontWeight: 600 }}>
+          Tags
+          <span className="info-icon" title="Key-value pairs for metadata and governance"> ℹ️</span>
+        </h3>
+        
+        {/* Tag input form */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <VSCodeTextField
+            placeholder="Tag name"
+            value={tagInput.tagName}
+            style={{ flex: '1' }}
+            onInput={(e: Event) => {
+              const target = e.target as HTMLInputElement;
+              setTagInput({ ...tagInput, tagName: target.value });
+            }}
+            onKeyDown={(e: any) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddTag();
+              }
+            }}
+          />
+          <VSCodeTextField
+            placeholder="Tag value"
+            value={tagInput.tagValue}
+            style={{ flex: '1' }}
+            onInput={(e: Event) => {
+              const target = e.target as HTMLInputElement;
+              setTagInput({ ...tagInput, tagValue: target.value });
+            }}
+            onKeyDown={(e: any) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddTag();
+              }
+            }}
+          />
+          <VSCodeButton onClick={handleAddTag}>
+            Add Tag
+          </VSCodeButton>
+        </div>
+
+        {/* Display tags */}
+        {Object.keys(tags).length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+            {Object.entries(tags).map(([tagName, tagValue]) => (
+              <span key={tagName} className="badge">
+                <strong>{tagName}:</strong> {tagValue}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTag(tagName)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    padding: '0 2px',
+                    marginLeft: '4px',
+                    fontSize: '12px',
+                  }}
+                  title="Remove tag"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontStyle: 'italic', color: 'var(--vscode-descriptionForeground)', fontSize: '12px' }}>
+            No tags defined
+          </div>
+        )}
       </div>
     </div>
   );
