@@ -330,14 +330,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 timeseries=op_dict["payload"].get("timeseries"),
                 parent_table=op_dict["payload"].get("parentTable"),
                 parent_columns=op_dict["payload"].get("parentColumns"),
-                match_full=op_dict["payload"].get("matchFull"),
-                on_update=op_dict["payload"].get("onUpdate"),
-                on_delete=op_dict["payload"].get("onDelete"),
                 expression=op_dict["payload"].get("expression"),
-                not_enforced=op_dict["payload"].get("notEnforced"),
-                deferrable=op_dict["payload"].get("deferrable"),
-                initially_deferred=op_dict["payload"].get("initiallyDeferred"),
-                rely=op_dict["payload"].get("rely"),
             )
             table_opt.constraints.append(constraint)
 

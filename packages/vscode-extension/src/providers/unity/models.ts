@@ -42,18 +42,12 @@ export interface UnityConstraint extends BaseObject {
   // For FOREIGN KEY
   parentTable?: string; // Reference to parent table ID
   parentColumns?: string[]; // Parent column IDs
-  matchFull?: boolean;
-  onUpdate?: 'NO_ACTION';
-  onDelete?: 'NO_ACTION';
   
   // For CHECK
   expression?: string; // CHECK expression
   
-  // Constraint options (all types)
-  notEnforced?: boolean;
-  deferrable?: boolean;
-  initiallyDeferred?: boolean;
-  rely?: boolean; // For query optimization (Photon)
+  // Note: Unity Catalog constraints are informational only (not enforced).
+  // They are used for query optimization and documentation purposes.
 }
 
 // Grant definition

@@ -657,7 +657,6 @@ class TestColumnTagSQL:
 class TestConstraintSQL:
     """Test SQL generation for constraint operations"""
 
-    @pytest.mark.skip(reason="NOT ENFORCED clause not implemented - see issue #20")
     def test_add_primary_key_constraint(self, sample_unity_state):
         """Test ALTER TABLE ADD PRIMARY KEY SQL generation"""
         builder = OperationBuilder()
@@ -669,7 +668,6 @@ class TestConstraintSQL:
             "primary_key",
             ["col_001"],
             name="pk_users",
-            notEnforced=True,
             op_id="op_020",
         )
 
@@ -679,7 +677,6 @@ class TestConstraintSQL:
         assert "`pk_users`" in result.sql
         assert "PRIMARY KEY" in result.sql
         assert "`user_id`" in result.sql
-        assert "NOT ENFORCED" in result.sql
 
     def test_add_foreign_key_constraint(self, sample_unity_state):
         """Test ALTER TABLE ADD FOREIGN KEY SQL generation"""
@@ -694,7 +691,6 @@ class TestConstraintSQL:
             name="fk_users_parent",
             parentTable="table_parent",
             parentColumns=["col_parent"],
-            notEnforced=True,
             op_id="op_021",
         )
 
@@ -716,7 +712,6 @@ class TestConstraintSQL:
             ["col_001"],
             name="chk_users_id",
             expression="user_id > 0",
-            notEnforced=True,
             op_id="op_022",
         )
 
@@ -727,22 +722,47 @@ class TestConstraintSQL:
         assert "user_id > 0" in result.sql
 
     def test_drop_constraint(self, sample_unity_state):
-        """Test ALTER TABLE DROP CONSTRAINT SQL generation"""
-        OperationBuilder()
-        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        """Test ALTER TABLE DROP CONSTRAINT SQL generation
 
-        op = Operation(
+        This test:
+        1. Adds a constraint to the state
+        2. Generates DROP CONSTRAINT SQL
+        3. Verifies the SQL is correct
+        """
+        builder = OperationBuilder()
+
+        # First, add a constraint to the state so it can be looked up
+        add_op = builder.add_constraint(
+            "constraint_001",
+            "table_789",
+            "primary_key",
+            ["col_001"],
+            name="pk_users",
+            op_id="op_020",
+        )
+
+        # Apply the add operation to state (pass Pydantic model, not dict)
+        from schematic.providers.unity.state_reducer import apply_operation
+
+        state_with_constraint = apply_operation(sample_unity_state, add_op)
+
+        # Now create generator with updated state (convert to dict for generator)
+        generator = UnitySQLGenerator(state_with_constraint.model_dump(by_alias=True))
+
+        # Create drop operation
+        drop_op = Operation(
             id="op_023",
             provider="unity",
             ts="2025-01-01T00:00:00Z",
             op="unity.drop_constraint",
             target="constraint_001",
-            payload={"tableId": "table_789", "constraintName": "pk_users"},
+            payload={"tableId": "table_789"},
         )
 
-        result = generator.generate_sql_for_operation(op)
+        result = generator.generate_sql_for_operation(drop_op)
         assert "ALTER TABLE" in result.sql
         assert "DROP CONSTRAINT" in result.sql
+        assert "`pk_users`" in result.sql
 
 
 @pytest.mark.skip(reason="Row filter SQL generation not implemented - see issue #19")

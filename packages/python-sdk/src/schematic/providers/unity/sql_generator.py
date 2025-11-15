@@ -2035,10 +2035,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._generate_alter_statements_for_table(table_id, batch_dict)
 
     def _generate_create_table_with_columns(self, table_id: str, batch_info: dict[str, Any]) -> str:
-        """Generate complete CREATE TABLE with columns and ALTER statements for tags"""
+        """Generate complete CREATE TABLE with columns and ALTER statements for constraints/tags"""
         table_op = batch_info["table_op"]
         column_ops = batch_info["column_ops"]
         property_ops = batch_info["property_ops"]
+        constraint_ops = batch_info.get("constraint_ops", [])
         reorder_ops = batch_info.get("reorder_ops", [])
         other_ops = batch_info.get("other_ops", [])
 
@@ -2178,12 +2179,33 @@ class UnitySQLGenerator(BaseSQLGenerator):
             )
 
         # Generate ALTER TABLE statements for operations that must happen after table creation
-        # (e.g., table tags, column tags)
+        # (e.g., table tags, column tags, constraints)
         # Skip set_table_comment since it's already included in CREATE TABLE
         statements = [create_sql]
 
+        # Temporarily add the new table and its columns to id_name_map so constraint operations can find them
+        # This is necessary because constraints reference the table and columns being created
+        table_id_from_op = table_op.payload.get("tableId") or table_op.target
+        if table_id_from_op:
+            self.id_name_map[table_id_from_op] = table_fqn
+            # Also add column mappings
+            for col_op in add_column_ops:
+                col_id = col_op.target
+                col_name = col_op.payload["name"]
+                self.id_name_map[col_id] = col_name
+
         # Process other column operations (like column tags) after table creation
         for op in other_column_ops:
+            op_type = op.op.replace("unity.", "")
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append(sql)
+            except Exception as e:
+                statements.append(f"-- Error generating SQL for {op.id}: {e}")
+
+        # Process constraint operations after table creation
+        for op in constraint_ops:
             op_type = op.op.replace("unity.", "")
             try:
                 sql = self._generate_sql_for_op_type(op_type, op)
@@ -2408,10 +2430,65 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return ""
 
     def _drop_constraint(self, op: Operation) -> str:
-        table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        """Generate ALTER TABLE DROP CONSTRAINT SQL
+
+        Looks up the constraint name from the current state using the constraint ID.
+        """
+        table_id = op.payload["tableId"]
+        constraint_id = op.target
+        table_fqn = self.id_name_map.get(table_id, "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
-        # Would need constraint name from state
-        return f"-- ALTER TABLE {table_esc} DROP CONSTRAINT (constraint name lookup needed)"
+
+        # Look up constraint name from state
+        constraint_name = self._find_constraint_name(table_id, constraint_id)
+
+        if not constraint_name:
+            return f"-- ERROR: Constraint {constraint_id} not found in table {table_id}"
+
+        constraint_name_esc = self.escape_identifier(constraint_name)
+        return f"ALTER TABLE {table_esc} DROP CONSTRAINT {constraint_name_esc}"
+
+    def _find_constraint_name(self, table_id: str, constraint_id: str) -> str | None:
+        """Find constraint name by ID in the current state
+
+        Args:
+            table_id: Table ID
+            constraint_id: Constraint ID
+
+        Returns:
+            Constraint name or None if not found
+        """
+        # Handle both dict and Pydantic model state
+        catalogs = (
+            self.state.catalogs
+            if hasattr(self.state, "catalogs")
+            else self.state.get("catalogs", [])
+        )
+
+        for catalog in catalogs:
+            schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
+            for schema in schemas:
+                tables = schema.tables if hasattr(schema, "tables") else schema.get("tables", [])
+                for table in tables:
+                    table_id_check = table.id if hasattr(table, "id") else table.get("id")
+                    if table_id_check == table_id:
+                        constraints = (
+                            table.constraints
+                            if hasattr(table, "constraints")
+                            else table.get("constraints", [])
+                        )
+                        for constraint in constraints:
+                            constraint_id_check = (
+                                constraint.id if hasattr(constraint, "id") else constraint.get("id")
+                            )
+                            if constraint_id_check == constraint_id:
+                                name = (
+                                    constraint.name
+                                    if hasattr(constraint, "name")
+                                    else constraint.get("name")
+                                )
+                                return str(name) if name else None
+        return None
 
     # Row filter operations
     def _add_row_filter(self, op: Operation) -> str:

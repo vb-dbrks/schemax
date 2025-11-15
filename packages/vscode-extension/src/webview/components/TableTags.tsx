@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
+
+// Codicon icons - theme-aware and vector-based
+const IconEdit: React.FC = () => (
+  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
+);
+
+const IconTrash: React.FC = () => (
+  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+);
 
 interface TableTagsProps {
   tableId: string;
@@ -12,6 +22,8 @@ export function TableTags({ tableId }: TableTagsProps) {
   const [newTagValue, setNewTagValue] = useState('');
   const [error, setError] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
+  const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editTagValue, setEditTagValue] = useState('');
 
   // Find the table
   const table = React.useMemo(() => {
@@ -66,6 +78,31 @@ export function TableTags({ tableId }: TableTagsProps) {
     }
   };
 
+  const handleStartEdit = (tagName: string, tagValue: string) => {
+    setEditingTag(tagName);
+    setEditTagValue(tagValue);
+    setError('');
+  };
+
+  const handleSaveEdit = (oldTagName: string) => {
+    if (!editTagValue.trim()) {
+      setError('Tag value cannot be empty');
+      return;
+    }
+
+    // Update the tag value
+    setTableTag(tableId, oldTagName, editTagValue);
+    setEditingTag(null);
+    setEditTagValue('');
+    setError('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTag(null);
+    setEditTagValue('');
+    setError('');
+  };
+
   return (
     <div className="table-properties-section">
       <h3>Table Tags (Unity Catalog)</h3>
@@ -92,14 +129,54 @@ export function TableTags({ tableId }: TableTagsProps) {
             {tagEntries.map(([tagName, tagValue]) => (
               <tr key={tagName}>
                 <td><code>{tagName}</code></td>
-                <td>{String(tagValue)}</td>
+                <td>
+                  {editingTag === tagName ? (
+                    <input
+                      type="text"
+                      value={editTagValue}
+                      onChange={(e) => setEditTagValue(e.target.value)}
+                      autoFocus
+                    />
+                  ) : (
+                    String(tagValue)
+                  )}
+                </td>
                 <td className="actions-cell">
-                  <button 
-                    onClick={() => setDeleteDialog(tagName)}
-                    style={{ color: 'var(--vscode-errorForeground)' }}
-                  >
-                    🗑️ Delete
-                  </button>
+                  {editingTag === tagName ? (
+                    <>
+                      <button 
+                        className="action-button-save"
+                        onClick={() => handleSaveEdit(tagName)}
+                        title="Save"
+                      >
+                        ✓
+                      </button>
+                      <button 
+                        className="action-button-cancel"
+                        onClick={handleCancelEdit}
+                        title="Cancel"
+                      >
+                        ✕
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <VSCodeButton
+                        appearance="icon"
+                        onClick={() => handleStartEdit(tagName, String(tagValue))}
+                        title="Edit tag"
+                      >
+                        <IconEdit />
+                      </VSCodeButton>
+                      <VSCodeButton
+                        appearance="icon"
+                        onClick={() => setDeleteDialog(tagName)}
+                        title="Delete tag"
+                      >
+                        <IconTrash />
+                      </VSCodeButton>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -124,8 +201,20 @@ export function TableTags({ tableId }: TableTagsProps) {
                   />
                 </td>
                 <td className="actions-cell">
-                  <button onClick={handleAddTag}>✓ Add</button>
-                  <button onClick={handleCancelAdd}>✕ Cancel</button>
+                  <button 
+                    className="action-button-save"
+                    onClick={handleAddTag}
+                    title="Add tag"
+                  >
+                    ✓
+                  </button>
+                  <button 
+                    className="action-button-cancel"
+                    onClick={handleCancelAdd}
+                    title="Cancel"
+                  >
+                    ✕
+                  </button>
                 </td>
               </tr>
             )}

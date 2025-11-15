@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
-import { VSCodeButton, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
+import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
+
+// Codicon icons - theme-aware and vector-based
+const IconEditInline: React.FC = () => (
+  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
+);
+
+const IconEdit: React.FC = () => (
+  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
+);
+
+const IconTrash: React.FC = () => (
+  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+);
 
 interface SchemaDetailsProps {
   schemaId: string;
@@ -12,34 +25,30 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const schema = schemaInfo?.schema;
   const catalog = schemaInfo?.catalog;
 
-  const [comment, setComment] = useState(schema?.comment || '');
+  // Check if project has been snapshotted or deployed (makes managed location immutable)
+  const hasBeenDeployed = (project?.snapshots && project.snapshots.length > 0) || 
+                          (project?.deployments && project.deployments.length > 0);
+
   const [managedLocationName, setManagedLocationName] = useState(schema?.managedLocationName || '');
   const [tags, setTags] = useState<Record<string, string>>(schema?.tags || {});
-  const [tagInput, setTagInput] = useState({ tagName: '', tagValue: '' });
-  const [hasChanges, setHasChanges] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [renameDialog, setRenameDialog] = useState(false);
   const [newName, setNewName] = useState('');
+  const [commentDialog, setCommentDialog] = useState<{schemaId: string, comment: string} | null>(null);
+  const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editTagValue, setEditTagValue] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagValue, setNewTagValue] = useState('');
+  const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
 
   // Update local state when schema changes
   useEffect(() => {
     if (schema) {
-      setComment(schema.comment || '');
       setManagedLocationName(schema.managedLocationName || '');
       setTags(schema.tags || {});
-      setHasChanges(false);
     }
   }, [schema]);
-
-  // Detect changes
-  useEffect(() => {
-    if (schema) {
-      const commentChanged = comment !== (schema.comment || '');
-      const locationChanged = managedLocationName !== (schema.managedLocationName || '');
-      const tagsChanged = JSON.stringify(tags) !== JSON.stringify(schema.tags || {});
-      setHasChanges(commentChanged || locationChanged || tagsChanged);
-    }
-  }, [comment, managedLocationName, tags, schema]);
 
   if (!schema || !catalog) {
     return (
@@ -52,41 +61,65 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
     );
   }
 
-  const handleSaveChanges = () => {
-    // Build the updates object
-    const updates: any = {};
-    
-    if (managedLocationName !== (schema.managedLocationName || '')) {
-      updates.managedLocationName = managedLocationName || undefined;
+  const handleManagedLocationChange = (newLocation: string) => {
+    // Only allow changes if not yet deployed/snapshotted
+    if (!hasBeenDeployed) {
+      setManagedLocationName(newLocation);
+      // Immediately persist the change
+      updateSchema(schemaId, { managedLocationName: newLocation || undefined });
     }
-    
-    if (comment !== (schema.comment || '')) {
-      updates.comment = comment || undefined;
-    }
-    
-    if (JSON.stringify(tags) !== JSON.stringify(schema.tags || {})) {
-      updates.tags = tags;
-    }
-    
-    // Apply all updates in a single operation
-    if (Object.keys(updates).length > 0) {
-      updateSchema(schemaId, updates);
-    }
-    
-    setHasChanges(false);
+  };
+
+  const handleSetComment = () => {
+    setCommentDialog({schemaId: schema.id, comment: schema.comment || ''});
   };
 
   const handleAddTag = () => {
-    if (tagInput.tagName && tagInput.tagValue) {
-      setTags({ ...tags, [tagInput.tagName]: tagInput.tagValue });
-      setTagInput({ tagName: '', tagValue: '' });
+    if (newTagName.trim() && newTagValue.trim()) {
+      // Immediately persist the tag via operation
+      const updatedTags = { ...tags, [newTagName]: newTagValue };
+      updateSchema(schemaId, { tags: updatedTags });
+      setTags(updatedTags);
+      setNewTagName('');
+      setNewTagValue('');
+      setIsAdding(false);
     }
+  };
+
+  const handleCancelAdd = () => {
+    setIsAdding(false);
+    setNewTagName('');
+    setNewTagValue('');
   };
 
   const handleRemoveTag = (tagName: string) => {
     const newTags = { ...tags };
     delete newTags[tagName];
+    // Immediately persist the removal via operation
+    updateSchema(schemaId, { tags: newTags });
     setTags(newTags);
+    setDeleteDialog(null);
+  };
+
+  const handleStartEditTag = (tagName: string, tagValue: string) => {
+    setEditingTag(tagName);
+    setEditTagValue(tagValue);
+  };
+
+  const handleSaveEditTag = (oldTagName: string) => {
+    if (!editTagValue.trim()) return;
+    const newTags = { ...tags };
+    newTags[oldTagName] = editTagValue;
+    // Immediately persist the tag update via operation
+    updateSchema(schemaId, { tags: newTags });
+    setTags(newTags);
+    setEditingTag(null);
+    setEditTagValue('');
+  };
+
+  const handleCancelEditTag = () => {
+    setEditingTag(null);
+    setEditTagValue('');
   };
 
   const handleCopySchemaName = () => {
@@ -169,11 +202,6 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
               <i className="codicon codicon-edit" style={{ fontSize: '14px' }}></i>
             </button>
           </div>
-          {hasChanges && (
-            <VSCodeButton onClick={handleSaveChanges}>
-              Save Changes
-            </VSCodeButton>
-          )}
         </div>
         <div className="table-metadata">
           <span className="badge">SCHEMA</span>
@@ -183,117 +211,199 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
       {/* Comment */}
       <div className="table-properties">
         <div className="property-row">
-          <label>Comment</label>
+          <label>Comment:</label>
           <div className="property-value">
-            <VSCodeTextField
-              value={comment}
-              placeholder="Enter schema description"
-              style={{ width: '100%' }}
-              onInput={(e: Event) => {
-                const target = e.target as HTMLInputElement;
-                setComment(target.value);
-              }}
-            />
+            {schema.comment ? (
+              <span>{schema.comment}</span>
+            ) : (
+              <span className="inline-warning">
+                <span className="inline-warning__dot" aria-hidden="true" />
+                Comment recommended
+              </span>
+            )}
+            <VSCodeButton appearance="icon" type="button" onClick={handleSetComment}>
+              <IconEditInline />
+            </VSCodeButton>
           </div>
         </div>
       </div>
 
-      {/* Managed Location */}
+      {/* Managed Location (Immutable after snapshot/deployment) */}
       <div className="table-properties">
         <div className="property-row">
           <label>
             Managed Location
-            <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
+            <span className="info-icon" title={hasBeenDeployed ? "Cannot be changed after deployment/snapshot" : "Storage location for managed tables"}> ℹ️</span>
           </label>
           <div className="property-value">
-            <VSCodeTextField
+            <VSCodeDropdown
               value={managedLocationName}
-              placeholder="e.g., s3://bucket/schema-data or abfss://..."
-              style={{ width: '100%' }}
-              onInput={(e: Event) => {
-                const target = e.target as HTMLInputElement;
-                setManagedLocationName(target.value);
+              style={{ width: '100%', opacity: hasBeenDeployed ? 0.6 : 1 }}
+              disabled={hasBeenDeployed}
+              onInput={hasBeenDeployed ? undefined : (e: Event) => {
+                const target = e.target as HTMLSelectElement;
+                handleManagedLocationChange(target.value);
               }}
-            />
+            >
+              <VSCodeOption value="">-- Default --</VSCodeOption>
+              {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
+                <VSCodeOption key={name} value={name}>
+                  {name} {location.description && `(${location.description})`}
+                </VSCodeOption>
+              ))}
+            </VSCodeDropdown>
           </div>
         </div>
-        <div style={{ fontSize: '11px', color: 'var(--vscode-descriptionForeground)', marginTop: '4px' }}>
-          Storage path where Unity Catalog stores data for managed tables in this schema
-        </div>
+        {managedLocationName && project?.managedLocations?.[managedLocationName] && (
+          <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
+            <strong>Paths:</strong>
+            <div style={{ marginTop: '4px' }}>
+              {Object.entries(project.managedLocations[managedLocationName].paths || {}).map(([env, path]) => (
+                <div key={env} style={{ marginLeft: '8px' }}>
+                  <span style={{ fontWeight: 500 }}>{env}:</span> <code>{path}</code>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tags */}
-      <div className="table-properties">
-        <h3 style={{ marginBottom: '12px', fontSize: '14px', fontWeight: 600 }}>
-          Tags
-          <span className="info-icon" title="Key-value pairs for metadata and governance"> ℹ️</span>
-        </h3>
+      <div className="table-properties-section">
+        <h3>Schema Tags (Unity Catalog)</h3>
         
-        {/* Tag input form */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-          <VSCodeTextField
-            placeholder="Tag name"
-            value={tagInput.tagName}
-            style={{ flex: '1' }}
-            onInput={(e: Event) => {
-              const target = e.target as HTMLInputElement;
-              setTagInput({ ...tagInput, tagName: target.value });
-            }}
-            onKeyDown={(e: any) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleAddTag();
-              }
-            }}
-          />
-          <VSCodeTextField
-            placeholder="Tag value"
-            value={tagInput.tagValue}
-            style={{ flex: '1' }}
-            onInput={(e: Event) => {
-              const target = e.target as HTMLInputElement;
-              setTagInput({ ...tagInput, tagValue: target.value });
-            }}
-            onKeyDown={(e: any) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleAddTag();
-              }
-            }}
-          />
-          <VSCodeButton onClick={handleAddTag}>
-            Add Tag
-          </VSCodeButton>
-        </div>
-
-        {/* Display tags */}
-        {Object.keys(tags).length > 0 ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-            {Object.entries(tags).map(([tagName, tagValue]) => (
-              <span key={tagName} className="badge">
-                <strong>{tagName}:</strong> {tagValue}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveTag(tagName)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'inherit',
-                    cursor: 'pointer',
-                    padding: '0 2px',
-                    marginLeft: '4px',
-                    fontSize: '12px',
-                  }}
-                  title="Remove tag"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
+        {Object.keys(tags).length === 0 && !isAdding ? (
+          <div className="empty-properties">
+            <p>No schema tags defined</p>
           </div>
         ) : (
-          <div style={{ fontStyle: 'italic', color: 'var(--vscode-descriptionForeground)', fontSize: '12px' }}>
-            No tags defined
+          <table className="properties-table">
+            <thead>
+              <tr>
+                <th>Tag Name</th>
+                <th>Value</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(tags).map(([tagName, tagValue]) => (
+                <tr key={tagName}>
+                  <td><code>{tagName}</code></td>
+                  <td>
+                    {editingTag === tagName ? (
+                      <input
+                        type="text"
+                        value={editTagValue}
+                        onChange={(e) => setEditTagValue(e.target.value)}
+                        autoFocus
+                      />
+                    ) : (
+                      String(tagValue)
+                    )}
+                  </td>
+                  <td className="actions-cell">
+                    {editingTag === tagName ? (
+                      <>
+                        <button 
+                          className="action-button-save"
+                          onClick={() => handleSaveEditTag(tagName)}
+                          title="Save"
+                        >
+                          ✓
+                        </button>
+                        <button 
+                          className="action-button-cancel"
+                          onClick={handleCancelEditTag}
+                          title="Cancel"
+                        >
+                          ✕
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <VSCodeButton
+                          appearance="icon"
+                          onClick={() => handleStartEditTag(tagName, String(tagValue))}
+                          title="Edit tag"
+                        >
+                          <IconEdit />
+                        </VSCodeButton>
+                        <VSCodeButton
+                          appearance="icon"
+                          onClick={() => setDeleteDialog(tagName)}
+                          title="Delete tag"
+                        >
+                          <IconTrash />
+                        </VSCodeButton>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              
+              {isAdding && (
+                <tr className="adding-row">
+                  <td>
+                    <input
+                      type="text"
+                      value={newTagName}
+                      onChange={(e) => setNewTagName(e.target.value)}
+                      placeholder="e.g., data_classification"
+                      autoFocus
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      value={newTagValue}
+                      onChange={(e) => setNewTagValue(e.target.value)}
+                      placeholder="e.g., confidential"
+                    />
+                  </td>
+                  <td className="actions-cell">
+                    <button 
+                      className="action-button-save"
+                      onClick={handleAddTag}
+                      title="Add tag"
+                    >
+                      ✓
+                    </button>
+                    <button 
+                      className="action-button-cancel"
+                      onClick={handleCancelAdd}
+                      title="Cancel"
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+        
+        {!isAdding && (
+          <button 
+            className="add-property-btn"
+            onClick={() => setIsAdding(true)}
+          >
+            + Add Tag
+          </button>
+        )}
+
+        {deleteDialog && (
+          <div className="modal-overlay" onClick={() => setDeleteDialog(null)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>Delete Schema Tag</h3>
+              <p>Are you sure you want to delete tag <code>{deleteDialog}</code>?</p>
+              <p className="warning-text">This will generate an UNSET TAGS operation.</p>
+              <div className="modal-buttons">
+                <button onClick={() => handleRemoveTag(deleteDialog)} style={{ backgroundColor: 'var(--vscode-errorForeground)' }}>
+                  Delete
+                </button>
+                <button onClick={() => setDeleteDialog(null)}>Cancel</button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -331,6 +441,37 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
               </VSCodeButton>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Comment Dialog */}
+      {commentDialog && (
+        <div className="modal" onClick={() => setCommentDialog(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Set Schema Comment</h3>
+            <input
+              type="text"
+              defaultValue={commentDialog.comment}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  updateSchema(commentDialog.schemaId, { comment: (e.target as HTMLInputElement).value });
+                  setCommentDialog(null);
+                } else if (e.key === 'Escape') {
+                  setCommentDialog(null);
+                }
+              }}
+              id="schema-comment-input"
+            />
+            <div className="modal-buttons">
+              <button onClick={() => {
+                const input = document.getElementById('schema-comment-input') as HTMLInputElement;
+                updateSchema(commentDialog.schemaId, { comment: input.value });
+                setCommentDialog(null);
+              }}>Set</button>
+              <button onClick={() => setCommentDialog(null)}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

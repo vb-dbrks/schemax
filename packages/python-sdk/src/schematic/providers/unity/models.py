@@ -49,7 +49,11 @@ class UnityColumnMask(BaseModel):
 
 
 class UnityConstraint(BaseModel):
-    """Table constraint (PRIMARY KEY, FOREIGN KEY, or CHECK)"""
+    """Table constraint (PRIMARY KEY, FOREIGN KEY, or CHECK)
+
+    Note: Unity Catalog constraints are informational only (not enforced).
+    They are used for query optimization and documentation purposes.
+    """
 
     id: str
     type: Literal["primary_key", "foreign_key", "check"]
@@ -62,18 +66,9 @@ class UnityConstraint(BaseModel):
     # For FOREIGN KEY
     parent_table: str | None = Field(None, alias="parentTable")  # Parent table ID
     parent_columns: list[str] | None = Field(None, alias="parentColumns")  # Parent column IDs
-    match_full: bool | None = Field(None, alias="matchFull")
-    on_update: Literal["NO_ACTION"] | None = Field(None, alias="onUpdate")
-    on_delete: Literal["NO_ACTION"] | None = Field(None, alias="onDelete")
 
     # For CHECK
     expression: str | None = None  # CHECK expression
-
-    # Constraint options (all types)
-    not_enforced: bool | None = Field(None, alias="notEnforced")
-    deferrable: bool | None = None
-    initially_deferred: bool | None = Field(None, alias="initiallyDeferred")
-    rely: bool | None = None  # For query optimization (Photon)
 
     model_config = ConfigDict(populate_by_name=True)
 

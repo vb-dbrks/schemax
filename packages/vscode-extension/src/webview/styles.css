@@ -820,6 +820,13 @@ body {
   flex: 1;
 }
 
+.info-icon {
+  cursor: help;
+  user-select: none;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
 .inline-warning {
   display: inline-flex;
   align-items: center;
@@ -1437,6 +1444,23 @@ body {
   border-collapse: collapse;
   background-color: var(--vscode-editor-background);
   margin-bottom: 12px;
+  table-layout: fixed; /* Fixed layout prevents column jumping */
+}
+
+/* Define column widths for tag tables */
+.properties-table th:first-child,
+.properties-table td:first-child {
+  width: 30%; /* TAG NAME column */
+}
+
+.properties-table th:nth-child(2),
+.properties-table td:nth-child(2) {
+  width: 50%; /* VALUE column - wider for content */
+}
+
+.properties-table th:last-child,
+.properties-table td:last-child {
+  width: 120px; /* ACTIONS column - fixed width */
 }
 
 .properties-table thead {
@@ -1448,6 +1472,8 @@ body {
   padding: 8px 12px;
   text-align: left;
   border-bottom: 1px solid var(--vscode-panel-border);
+  line-height: 20px; /* Fixed line height to prevent jumping */
+  vertical-align: middle;
 }
 
 .properties-table th {
@@ -1477,12 +1503,16 @@ body {
 
 .properties-table input {
   width: 100%;
-  padding: 4px 8px;
+  padding: 2px 8px;
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border);
   border-radius: 2px;
   font-size: 12px;
+  line-height: 20px; /* Match td line-height */
+  height: 28px; /* Fixed height to prevent jumping */
+  box-sizing: border-box;
+  max-width: 100%; /* Prevent overflow */
 }
 
 .properties-table input:focus {
@@ -1491,6 +1521,7 @@ body {
 
 .properties-table .actions-cell {
   white-space: nowrap;
+  width: 120px; /* Fixed width to prevent jumping */
 }
 
 .properties-table .actions-cell button {
@@ -1502,10 +1533,51 @@ body {
   border-radius: 2px;
   cursor: pointer;
   font-size: 11px;
+  min-width: 32px; /* Ensure minimum width for consistency */
+  height: 28px; /* Match input height */
+  vertical-align: middle;
 }
 
 .properties-table .actions-cell button:hover {
   background-color: var(--vscode-button-hoverBackground);
+}
+
+/* Action button variants for inline editing */
+.action-button-save {
+  padding: 4px 8px;
+  margin-right: 4px;
+  background-color: var(--vscode-button-background);
+  color: #00ff00; /* Bright green for high visibility against blue button background */
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  min-width: 32px;
+  height: 28px;
+  vertical-align: middle;
+}
+
+.action-button-save:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.action-button-cancel {
+  padding: 4px 8px;
+  margin-right: 4px;
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 11px;
+  min-width: 32px;
+  height: 28px;
+  vertical-align: middle;
+}
+
+.action-button-cancel:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
 .add-property-btn {

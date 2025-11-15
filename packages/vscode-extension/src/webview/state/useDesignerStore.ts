@@ -438,7 +438,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   // Constraint operations
   addConstraint: (tableId, constraint) => {
     const constraintId = `const_${uuidv4()}`;
-    const op = createOperation(get(), 'add_constraint', tableId, { 
+    const op = createOperation(get(), 'add_constraint', constraintId, { 
       tableId, 
       constraintId,
       ...constraint 

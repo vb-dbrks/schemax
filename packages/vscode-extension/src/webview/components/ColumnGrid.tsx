@@ -42,7 +42,11 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
   const [addColumnTags, setAddColumnTags] = useState<Record<string, string>>({});
   const [addTagInput, setAddTagInput] = useState({tagName: '', tagValue: ''});
   const [tagsDialog, setTagsDialog] = useState<{colId: string, name: string} | null>(null);
-  const [tagForm, setTagForm] = useState({tagName: '', tagValue: ''});
+  const [editingColumnTag, setEditingColumnTag] = useState<string | null>(null);
+  const [editColumnTagValue, setEditColumnTagValue] = useState('');
+  const [isAddingColumnTag, setIsAddingColumnTag] = useState(false);
+  const [newColumnTagName, setNewColumnTagName] = useState('');
+  const [newColumnTagValue, setNewColumnTagValue] = useState('');
 
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
@@ -249,13 +253,13 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                         <span className="no-tags">—</span>
                       )}
                       {isEditing && (
-                        <button 
-                          onClick={() => setTagsDialog({colId: col.id, name: col.name})} 
+                        <VSCodeButton
+                          appearance="icon"
+                          onClick={() => setTagsDialog({colId: col.id, name: col.name})}
                           title="Manage tags"
-                          style={{padding: '2px 6px', fontSize: '11px', whiteSpace: 'nowrap'}}
                         >
-                          🏷️ Manage
-                        </button>
+                          <IconEdit />
+                        </VSCodeButton>
                       )}
                     </div>
                   </td>
@@ -277,11 +281,19 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                   <td className="actions-cell">
                     {isEditing ? (
                       <>
-                        <button onClick={() => handleSaveColumn(col.id)} title="Save changes">
-                          ✓ Save
+                        <button 
+                          className="action-button-save"
+                          onClick={() => handleSaveColumn(col.id)} 
+                          title="Save changes"
+                        >
+                          ✓
                         </button>
-                        <button onClick={handleCancelEdit} title="Cancel">
-                          ✕ Cancel
+                        <button 
+                          className="action-button-cancel"
+                          onClick={handleCancelEdit} 
+                          title="Cancel"
+                        >
+                          ✕
                         </button>
                       </>
                     ) : (
@@ -453,86 +465,176 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
         const col = columns.find(c => c.id === tagsDialog.colId);
         const tags = col?.tags || {};
         return (
-          <div className="modal-overlay" onClick={() => setTagsDialog(null)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h2>Manage Tags: {tagsDialog.name}</h2>
+          <div className="modal-overlay" onClick={() => {
+            setTagsDialog(null);
+            setIsAddingColumnTag(false);
+            setNewColumnTagName('');
+            setNewColumnTagValue('');
+            setEditingColumnTag(null);
+          }}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ minWidth: '600px' }}>
+              <h2>Column Tags: {tagsDialog.name}</h2>
+              <p style={{ color: 'var(--vscode-descriptionForeground)', fontSize: '12px', marginBottom: '16px' }}>
+                Tags are used for governance, discovery, and attribute-based access control (ABAC)
+              </p>
+              
               <div className="modal-body">
-                <div className="tags-list">
-                  {Object.entries(tags).length === 0 ? (
-                    <p className="no-tags-msg">No tags defined.</p>
-                  ) : (
-                    <table className="tags-table">
-                      <thead>
-                        <tr>
-                          <th>Tag Name</th>
-                          <th>Tag Value</th>
-                          <th style={{width: '80px'}}>Actions</th>
+                {Object.entries(tags).length === 0 && !isAddingColumnTag ? (
+                  <div className="empty-properties" style={{ padding: '20px', textAlign: 'center' }}>
+                    <p>No column tags defined</p>
+                  </div>
+                ) : (
+                  <table className="properties-table">
+                    <thead>
+                      <tr>
+                        <th>Tag Name</th>
+                        <th>Value</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(tags).map(([tagName, tagValue]) => (
+                        <tr key={tagName}>
+                          <td><code>{tagName}</code></td>
+                          <td>
+                            {editingColumnTag === tagName ? (
+                              <input
+                                type="text"
+                                value={editColumnTagValue}
+                                onChange={(e) => setEditColumnTagValue(e.target.value)}
+                                autoFocus
+                              />
+                            ) : (
+                              String(tagValue)
+                            )}
+                          </td>
+                          <td className="actions-cell">
+                            {editingColumnTag === tagName ? (
+                              <>
+                                <button 
+                                  className="action-button-save"
+                                  onClick={() => {
+                                    if (editColumnTagValue.trim()) {
+                                      setColumnTag(tableId, tagsDialog.colId, tagName, editColumnTagValue);
+                                      setEditingColumnTag(null);
+                                      setEditColumnTagValue('');
+                                    }
+                                  }}
+                                  title="Save"
+                                >
+                                  ✓
+                                </button>
+                                <button 
+                                  className="action-button-cancel"
+                                  onClick={() => {
+                                    setEditingColumnTag(null);
+                                    setEditColumnTagValue('');
+                                  }}
+                                  title="Cancel"
+                                >
+                                  ✕
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <VSCodeButton
+                                  appearance="icon"
+                                  onClick={() => {
+                                    setEditingColumnTag(tagName);
+                                    setEditColumnTagValue(String(tagValue));
+                                  }}
+                                  title="Edit tag"
+                                >
+                                  <IconEdit />
+                                </VSCodeButton>
+                                <VSCodeButton
+                                  appearance="icon"
+                                  onClick={() => {
+                                    unsetColumnTag(tableId, tagsDialog.colId, tagName);
+                                  }}
+                                  title="Remove tag"
+                                >
+                                  <IconTrash />
+                                </VSCodeButton>
+                              </>
+                            )}
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(tags).map(([tagName, tagValue]) => (
-                          <tr key={tagName}>
-                            <td>{tagName}</td>
-                            <td>{String(tagValue)}</td>
-                            <td>
-                              <button
-                                className="delete-btn-small"
-                                onClick={() => {
-                                  unsetColumnTag(tableId, tagsDialog.colId, tagName);
-                                }}
-                                title="Remove tag"
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+                      ))}
+                      
+                      {isAddingColumnTag && (
+                        <tr className="adding-row">
+                          <td>
+                            <input
+                              type="text"
+                              value={newColumnTagName}
+                              onChange={(e) => setNewColumnTagName(e.target.value)}
+                              placeholder="e.g., PII"
+                              autoFocus
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              value={newColumnTagValue}
+                              onChange={(e) => setNewColumnTagValue(e.target.value)}
+                              placeholder="e.g., sensitive"
+                            />
+                          </td>
+                          <td className="actions-cell">
+                            <button 
+                              className="action-button-save"
+                              onClick={() => {
+                                if (newColumnTagName.trim() && newColumnTagValue.trim()) {
+                                  setColumnTag(tableId, tagsDialog.colId, newColumnTagName, newColumnTagValue);
+                                  setNewColumnTagName('');
+                                  setNewColumnTagValue('');
+                                  setIsAddingColumnTag(false);
+                                }
+                              }}
+                              title="Add tag"
+                            >
+                              ✓
+                            </button>
+                            <button 
+                              className="action-button-cancel"
+                              onClick={() => {
+                                setIsAddingColumnTag(false);
+                                setNewColumnTagName('');
+                                setNewColumnTagValue('');
+                              }}
+                              title="Cancel"
+                            >
+                              ✕
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
                 
-                <div className="add-tag-form">
-                  <h4>Add New Tag</h4>
-                  <label>
-                    Tag Name:
-                    <input
-                      type="text"
-                      value={tagForm.tagName}
-                      onChange={(e) => setTagForm({...tagForm, tagName: e.target.value})}
-                      placeholder="e.g., PII"
-                    />
-                  </label>
-                  <label>
-                    Tag Value:
-                    <input
-                      type="text"
-                      value={tagForm.tagValue}
-                      onChange={(e) => setTagForm({...tagForm, tagValue: e.target.value})}
-                      placeholder="e.g., sensitive"
-                    />
-                  </label>
-                  <button
-                    className="add-tag-btn"
-                    onClick={() => {
-                      if (tagForm.tagName && tagForm.tagValue) {
-                        setColumnTag(tableId, tagsDialog.colId, tagForm.tagName, tagForm.tagValue);
-                        setTagForm({tagName: '', tagValue: ''});
-                      }
-                    }}
-                    disabled={!tagForm.tagName || !tagForm.tagValue}
+                {!isAddingColumnTag && (
+                  <button 
+                    className="add-property-btn"
+                    onClick={() => setIsAddingColumnTag(true)}
+                    style={{ marginTop: '12px' }}
                   >
-                    Add Tag
+                    + Add Tag
                   </button>
-                </div>
+                )}
               </div>
+              
               <div className="modal-actions">
-                <button className="confirm-btn" onClick={() => {
+                <VSCodeButton onClick={() => {
                   setTagsDialog(null);
-                  setTagForm({tagName: '', tagValue: ''});
+                  setIsAddingColumnTag(false);
+                  setNewColumnTagName('');
+                  setNewColumnTagValue('');
+                  setEditingColumnTag(null);
                 }}>
                   Close
-                </button>
+                </VSCodeButton>
               </div>
             </div>
           </div>

@@ -483,7 +483,17 @@ async function validateDependenciesInternal(
         warnings.push(`Could not validate dependencies: ${error.message}`);
       }
     } else {
-      warnings.push(`Could not validate dependencies: ${error.message}`);
+      // Check if it's just CLI not installed (common case - not an error)
+      const errorMsg = error.message || '';
+      if (errorMsg.includes('command not found') || 
+          errorMsg.includes('schematic: command not found') ||
+          errorMsg.includes('ENOENT')) {
+        // Silently skip - CLI validation is optional
+        // User can install Python SDK later if they want validation features
+      } else {
+        // Actual validation error - show warning
+        warnings.push(`Could not validate dependencies: ${error.message}`);
+      }
     }
   }
 

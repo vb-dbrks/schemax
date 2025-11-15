@@ -369,14 +369,7 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         if (op.payload.timeseries !== undefined) constraint.timeseries = op.payload.timeseries;
         if (op.payload.parentTable) constraint.parentTable = op.payload.parentTable;
         if (op.payload.parentColumns) constraint.parentColumns = op.payload.parentColumns;
-        if (op.payload.matchFull !== undefined) constraint.matchFull = op.payload.matchFull;
-        if (op.payload.onUpdate) constraint.onUpdate = op.payload.onUpdate;
-        if (op.payload.onDelete) constraint.onDelete = op.payload.onDelete;
         if (op.payload.expression) constraint.expression = op.payload.expression;
-        if (op.payload.notEnforced !== undefined) constraint.notEnforced = op.payload.notEnforced;
-        if (op.payload.deferrable !== undefined) constraint.deferrable = op.payload.deferrable;
-        if (op.payload.initiallyDeferred !== undefined) constraint.initiallyDeferred = op.payload.initiallyDeferred;
-        if (op.payload.rely !== undefined) constraint.rely = op.payload.rely;
         
         table.constraints.push(constraint);
       }
