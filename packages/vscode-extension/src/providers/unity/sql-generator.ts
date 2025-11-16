@@ -283,7 +283,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     // Group operations by target object
     const byTarget: Record<string, Operation[]> = {};
     for (const op of ops) {
-      const targetId = this.getTargetObjectId(op);
+      const targetId = this._getTargetObjectId(op);
       if (targetId) {
         if (!byTarget[targetId]) {
           byTarget[targetId] = [];
@@ -383,8 +383,13 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     // Filter out create+drop pairs that cancel each other
     const filteredOps = this.filterCancelledOperations(sortedOps);
 
-    // Pre-process: batch operations by object (catalog, schema, table)
-    const batches = this.batchOperations(filteredOps);
+    // Separate DROP operations from other operations
+    // DROP operations cannot be batched and must be processed individually
+    const dropOps = filteredOps.filter(op => this.isDropOperation(op));
+    const nonDropOps = filteredOps.filter(op => !this.isDropOperation(op));
+
+    // Pre-process: batch non-DROP operations by object (catalog, schema, table)
+    const batches = this.batchOperations(nonDropOps);
     const processedOpIds = new Set<string>();
     const statements: string[] = [];
 
@@ -424,8 +429,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       }
     }
 
-    // Collect remaining (non-batched) operations
-    for (const op of sortedOps) {
+    // Collect remaining (non-batched, non-DROP) operations
+    for (const op of nonDropOps) {
       if (processedOpIds.has(op.id)) {
         continue; // Skip already processed operations
       }
@@ -452,8 +457,33 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         : '';
       statements.push(`${header}${warningsComment}\n${result.sql};`);
     }
+
+    // Process DROP operations last (in reverse dependency order)
+    // This ensures we drop dependent objects before their parents
+    const sortedDropOps = [...dropOps].sort((a, b) => {
+      const levelA = this.getOperationLevel(a.op);
+      const levelB = this.getOperationLevel(b.op);
+      return levelB - levelA; // Reverse order for drops
+    });
+
+    for (const op of sortedDropOps) {
+      const result = this.generateSQLForOperation(op);
+      const header = `-- Operation: ${op.id} (${op.ts})\n-- Type: ${op.op}`;
+      const warningsComment = result.warnings.length > 0
+        ? `\n-- Warnings: ${result.warnings.join(', ')}`
+        : '';
+      statements.push(`${header}${warningsComment}\n${result.sql};`);
+    }
     
     return statements.join('\n\n');
+  }
+  
+  private isDropOperation(op: Operation): boolean {
+    // Note: drop_column and drop_constraint are NOT included here because they are
+    // table modifications (processed in order with other table operations), not object drops.
+    return op.op === 'unity.drop_catalog' ||
+           op.op === 'unity.drop_schema' ||
+           op.op === 'unity.drop_table';
   }
   
   generateSQLForOperation(op: Operation): SQLGenerationResult {
@@ -736,12 +766,22 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const colName = op.payload.name;
     const colType = op.payload.type;
     const comment = op.payload.comment || '';
+    const nullable = op.payload.nullable !== undefined ? op.payload.nullable : true;
     
     // Note: NOT NULL is not supported in ALTER TABLE ADD COLUMN for Delta tables
-    // New columns added to existing tables must be nullable
+    // New columns added to existing tables must be nullable initially
+    // Then we use ALTER COLUMN SET NOT NULL as a second statement
     const commentClause = comment ? ` COMMENT '${this.escapeString(comment)}'` : '';
+    const colEscaped = this.escapeIdentifier(colName);
     
-    return `ALTER TABLE ${tableEscaped} ADD COLUMN ${this.escapeIdentifier(colName)} ${colType}${commentClause}`;
+    let sql = `ALTER TABLE ${tableEscaped} ADD COLUMN ${colEscaped} ${colType}${commentClause}`;
+    
+    // If column should be NOT NULL, add a second statement to set it
+    if (!nullable) {
+      sql += `;\nALTER TABLE ${tableEscaped} ALTER COLUMN ${colEscaped} SET NOT NULL`;
+    }
+    
+    return sql;
   }
   
   private renameColumn(op: Operation): string {
@@ -1175,12 +1215,14 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     tableOp: Operation | null;
     columnOps: Operation[];
     propertyOps: Operation[];
+    constraintOps?: Operation[];
     reorderOps: Operation[];
     otherOps: Operation[];
   }): string {
     const tableOp = batchInfo.tableOp;
     const columnOps = batchInfo.columnOps;
     const propertyOps = batchInfo.propertyOps;
+    const constraintOps = batchInfo.constraintOps || [];
     const reorderOps = batchInfo.reorderOps;
     const otherOps = batchInfo.otherOps;
     
@@ -1308,16 +1350,43 @@ ${columnsSql}
     }
     
     // Generate ALTER TABLE statements for operations that must happen after table creation
-    // (e.g., table tags, column tags)
+    // (e.g., table tags, column tags, constraints)
     // Skip set_table_comment since it's already included in CREATE TABLE
     const statements: string[] = [createSql];
     
+    // Temporarily add the new table and its columns to idNameMap so constraint operations can find them
+    // This is necessary because constraints reference the table and columns being created
+    const tableIdFromOp = tableOp.payload.tableId || tableOp.target;
+    if (tableIdFromOp) {
+      this.idNameMap[tableIdFromOp] = tableFqn;
+      // Also add column mappings
+      for (const colOp of columnOps) {
+        const colId = colOp.payload.colId;
+        const colName = colOp.payload.name;
+        this.idNameMap[colId] = colName;
+      }
+    }
+    
+    // Process other column operations (like column tags) after table creation
     for (const op of otherOps) {
       const opType = op.op.replace('unity.', '');
       // Skip set_table_comment as it's already in CREATE TABLE
       if (opType === 'set_table_comment') {
         continue;
       }
+      try {
+        const sql = this.generateSQLForOpType(opType, op);
+        if (sql && !sql.startsWith('--')) {
+          statements.push(sql);
+        }
+      } catch (e) {
+        statements.push(`-- Error generating SQL for ${op.id}: ${e}`);
+      }
+    }
+    
+    // Process constraint operations after table creation
+    for (const op of constraintOps) {
+      const opType = op.op.replace('unity.', '');
       try {
         const sql = this.generateSQLForOpType(opType, op);
         if (sql && !sql.startsWith('--')) {
@@ -1647,8 +1716,35 @@ ${columnsSql}
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
     const tableParts = tableFqn.split('.');
     const tableEscaped = this.buildFqn(...tableParts);
-    // Would need constraint name from state
-    return `-- ALTER TABLE ${tableEscaped} DROP CONSTRAINT (constraint name lookup needed)`;
+    
+    // Get constraint name from payload (if provided) or look it up from state
+    let constraintName = op.payload.name;
+    if (!constraintName) {
+      // Fallback: look up constraint name from state (for backward compatibility)
+      constraintName = this.findConstraintName(op.payload.tableId, op.target);
+    }
+    
+    if (!constraintName) {
+      return `-- ERROR: Constraint ${op.target} not found in table ${op.payload.tableId}`;
+    }
+    
+    const constraintNameEscaped = this.escapeIdentifier(constraintName);
+    return `ALTER TABLE ${tableEscaped} DROP CONSTRAINT ${constraintNameEscaped}`;
+  }
+  
+  private findConstraintName(tableId: string, constraintId: string): string | undefined {
+    // Look up constraint name by ID from the current state
+    for (const catalog of this.state.catalogs) {
+      for (const schema of catalog.schemas) {
+        for (const table of schema.tables) {
+          if (table.id === tableId) {
+            const constraint = table.constraints.find(c => c.id === constraintId);
+            return constraint?.name;
+          }
+        }
+      }
+    }
+    return undefined;
   }
   
   // Row filter operations

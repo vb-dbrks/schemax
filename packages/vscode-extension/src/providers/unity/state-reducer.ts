@@ -371,7 +371,12 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         if (op.payload.parentColumns) constraint.parentColumns = op.payload.parentColumns;
         if (op.payload.expression) constraint.expression = op.payload.expression;
         
-        table.constraints.push(constraint);
+        // Insert at specific position if provided (for updates), otherwise append
+        if (op.payload.insertAt !== undefined && op.payload.insertAt >= 0) {
+          table.constraints.splice(op.payload.insertAt, 0, constraint);
+        } else {
+          table.constraints.push(constraint);
+        }
       }
       break;
     }

@@ -531,7 +531,7 @@ class TestColumnSQL:
     """Test SQL generation for column operations"""
 
     def test_add_column(self, sample_unity_state):
-        """Test ALTER TABLE ADD COLUMN SQL generation"""
+        """Test ALTER TABLE ADD COLUMN SQL generation with NOT NULL constraint"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
@@ -550,8 +550,9 @@ class TestColumnSQL:
         assert "ADD COLUMN" in result.sql
         assert "`created_at`" in result.sql
         assert "TIMESTAMP" in result.sql
-        # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMN for Delta tables
-        assert "NOT NULL" not in result.sql
+        # NOT NULL constraint is handled via separate ALTER COLUMN SET NOT NULL statement
+        assert "SET NOT NULL" in result.sql
+        assert "ALTER COLUMN" in result.sql
         assert "COMMENT 'Creation timestamp'" in result.sql
 
     def test_add_column_nullable(self, sample_unity_state):
@@ -1315,17 +1316,23 @@ class TestSQLOptimization:
         generator = UnitySQLGenerator(state_with_table.model_dump(by_alias=True))
         sql = generator.generate_sql(column_ops)
 
-        # Should have only ONE ALTER TABLE statement (batched)
-        assert sql.count("ALTER TABLE") == 1, (
-            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
+        # Should have TWO ALTER TABLE statements:
+        # 1. Batched ADD COLUMNS
+        # 2. ALTER COLUMN SET NOT NULL for col2
+        assert sql.count("ALTER TABLE") == 2, (
+            f"Expected 2 ALTER TABLE, found {sql.count('ALTER TABLE')}"
         )
 
         # Should use ADD COLUMNS (plural) syntax with parentheses
         assert "ADD COLUMNS (" in sql
         assert "`col1` STRING," in sql
         # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
+        # So col2 is added as nullable, then SET NOT NULL via separate statement
         assert "`col2` INT," in sql or "`col2` INT\n" in sql
         assert "`col3` DOUBLE COMMENT 'Test comment'" in sql
+
+        # Verify SET NOT NULL statement for col2
+        assert "ALTER COLUMN `col2` SET NOT NULL" in sql
 
         # Verify correct format with closing parenthesis and semicolon
         assert ");" in sql or sql.strip().endswith(")")
@@ -1561,14 +1568,20 @@ class TestSQLOptimization:
         generator = UnitySQLGenerator(state_with_tables.model_dump(by_alias=True))
         sql = generator.generate_sql(column_ops)
 
-        # Should have TWO separate ALTER TABLE statements
-        assert sql.count("ALTER TABLE") == 2, (
-            f"Expected 2 ALTER TABLE statements, found {sql.count('ALTER TABLE')}"
+        # Should have THREE separate ALTER TABLE statements:
+        # 1. ALTER TABLE table1 ADD COLUMN col1
+        # 2. ALTER TABLE table2 ADD COLUMN col2
+        # 3. ALTER TABLE table2 ALTER COLUMN col2 SET NOT NULL
+        assert sql.count("ALTER TABLE") == 3, (
+            f"Expected 3 ALTER TABLE statements, found {sql.count('ALTER TABLE')}"
         )
 
         # Each should be for different table (with full qualification)
         assert "table1" in sql
         assert "table2" in sql
+
+        # Verify SET NOT NULL for col2
+        assert "ALTER COLUMN `col2` SET NOT NULL" in sql
 
     def test_mixed_operations_partial_batching(self, empty_unity_state):
         """Test that mixed operations (ADD + DROP) are handled correctly"""
@@ -1607,17 +1620,19 @@ class TestSQLOptimization:
         generator = UnitySQLGenerator(state_with_table.model_dump(by_alias=True))
         sql = generator.generate_sql(mixed_ops)
 
-        # Should have batched ADD COLUMNS and separate DROP COLUMN
-        assert sql.count("ALTER TABLE") >= 2, (
-            "Should have separate statements for batched ADD and DROP"
+        # Should have batched ADD COLUMNS, SET NOT NULL for col2, and separate DROP COLUMN
+        # Minimum: ADD COLUMNS + SET NOT NULL + DROP = 3 ALTER TABLE statements
+        assert sql.count("ALTER TABLE") >= 3, (
+            "Should have separate statements for batched ADD, SET NOT NULL, and DROP"
         )
 
         # Batched ADD COLUMNS should use proper syntax
         assert "ADD COLUMNS (" in sql
         assert "`col1` STRING," in sql
         # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
+        # So col2 is added as nullable, then SET NOT NULL via separate statement
         assert "`col2` INT" in sql
-        assert "NOT NULL" not in sql  # Explicitly verify NOT NULL is absent
+        assert "ALTER COLUMN `col2` SET NOT NULL" in sql
 
         # DROP should be separate
         assert "DROP COLUMN" in sql

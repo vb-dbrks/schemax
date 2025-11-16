@@ -332,7 +332,12 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 parent_columns=op_dict["payload"].get("parentColumns"),
                 expression=op_dict["payload"].get("expression"),
             )
-            table_opt.constraints.append(constraint)
+            # Insert at specific position if provided (for updates), otherwise append
+            insert_at = op_dict["payload"].get("insertAt")
+            if insert_at is not None and insert_at >= 0:
+                table_opt.constraints.insert(insert_at, constraint)
+            else:
+                table_opt.constraints.append(constraint)
 
     elif op_type == "drop_constraint":
         table_opt = _find_table(new_state, op_dict["payload"]["tableId"])

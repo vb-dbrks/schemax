@@ -8,7 +8,11 @@ Migrated from TypeScript sql-generator.ts
 from typing import Any, TypedDict
 
 from schematic.providers.base.batching import BatchInfo
-from schematic.providers.base.dependency_graph import DependencyEnforcement, DependencyType
+from schematic.providers.base.dependency_graph import (
+    DependencyEnforcement,
+    DependencyGraph,
+    DependencyType,
+)
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.sql_generator import BaseSQLGenerator, SQLGenerationResult
 
@@ -326,8 +330,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Implements abstract method from BaseSQLGenerator.
         DROP operations cannot be batched with CREATE/ALTER and must be handled separately.
+
+        Note: drop_column and drop_constraint are NOT included here because they are
+        table modifications (processed in order with other table operations), not object drops.
         """
-        return op.op in ["unity.drop_catalog", "unity.drop_schema", "unity.drop_table"]
+        return op.op in [
+            "unity.drop_catalog",
+            "unity.drop_schema",
+            "unity.drop_table",
+        ]
 
     def _generate_batched_create_sql(self, object_id: str, batch_info: BatchInfo) -> str:
         """
@@ -563,6 +574,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Currently supports:
         - View dependencies on tables/views (from add_view operation)
+        - Foreign key dependencies (from add_constraint operation with type=foreign_key)
+        - Constraint modification dependencies (add_constraint depends on prior drop_constraint)
 
         Args:
             op: Operation to analyze
@@ -582,7 +595,71 @@ class UnitySQLGenerator(BaseSQLGenerator):
                         (dep_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
                     )
 
+        # Extract foreign key dependencies
+        elif op.op == "unity.add_constraint":
+            constraint_type = op.payload.get("type")
+            if constraint_type == "foreign_key":
+                # Foreign key creates a dependency on the parent table
+                parent_table_id = op.payload.get("parentTable")
+                if parent_table_id:
+                    # Add table: prefix to match the format used by _get_target_object_id
+                    parent_table_node_id = f"table:{parent_table_id}"
+                    dependencies.append(
+                        (
+                            parent_table_node_id,
+                            DependencyType.FOREIGN_KEY,
+                            DependencyEnforcement.ENFORCED,
+                        )
+                    )
+
         return dependencies
+
+    def _build_dependency_graph(self, ops: list[Operation]) -> DependencyGraph:
+        """
+        Build a dependency graph from operations, including constraint ordering.
+
+        Overrides base class to add special handling for constraint modifications:
+        - When add_constraint follows drop_constraint on the same table,
+          create a dependency so DROP executes before ADD
+        """
+        # Call parent implementation
+        graph = super()._build_dependency_graph(ops)
+
+        # Additional constraint-specific dependency handling
+        # Group operations by table for constraint analysis
+        table_ops: dict[str, list[Operation]] = {}
+        for op in ops:
+            if op.op in ("unity.add_constraint", "unity.drop_constraint"):
+                table_id = op.payload.get("tableId")
+                if table_id:
+                    if table_id not in table_ops:
+                        table_ops[table_id] = []
+                    table_ops[table_id].append(op)
+
+        # For each table, ensure ALL drop_constraint operations come before ALL add_constraint
+        # This handles constraint modifications regardless of timestamp order
+        for table_id, table_constraint_ops in table_ops.items():
+            drop_ops = [op for op in table_constraint_ops if op.op == "unity.drop_constraint"]
+            add_ops = [op for op in table_constraint_ops if op.op == "unity.add_constraint"]
+
+            # Create dependencies: ALL add_constraint operations depend on ALL drop_constraint operations
+            # on the same table. This ensures DROP always executes before ADD.
+            for drop_op in drop_ops:
+                for add_op in add_ops:
+                    # Add edge: add_op depends on drop_op (drop_op must execute first)
+                    # The dependency graph will handle the correct execution order
+                    try:
+                        graph.add_edge(
+                            drop_op.id,
+                            add_op.id,
+                            DependencyType.CONSTRAINT_ORDERING,
+                            DependencyEnforcement.ENFORCED,
+                        )
+                    except Exception:
+                        # Ignore if nodes don't exist or other errors
+                        pass
+
+        return graph
 
     def generate_sql(self, ops: list[Operation]) -> str:
         """
@@ -1635,14 +1712,21 @@ class UnitySQLGenerator(BaseSQLGenerator):
         col_name = op.payload["name"]
         col_type = op.payload["type"]
         comment = op.payload.get("comment", "")
+        nullable = op.payload.get("nullable", True)
 
         # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMN for Delta tables
-        # New columns added to existing tables must be nullable
+        # New columns added to existing tables must be nullable initially
+        # Then we use ALTER COLUMN SET NOT NULL as a second statement
         comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
         col_esc = self.escape_identifier(col_name)
 
-        sql = f"ALTER TABLE {table_esc} ADD COLUMN {col_esc} {col_type}"
-        return f"{sql}{comment_clause}"
+        sql = f"ALTER TABLE {table_esc} ADD COLUMN {col_esc} {col_type}{comment_clause}"
+
+        # If column should be NOT NULL, add a second statement to set it
+        if not nullable:
+            sql += f";\nALTER TABLE {table_esc} ALTER COLUMN {col_esc} SET NOT NULL"
+
+        return sql
 
     def _rename_column(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
@@ -2010,12 +2094,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 ]:
                     other_ops.append(op)
 
+            # Sort constraint operations to ensure DROP comes before ADD
+            constraint_ops = [op for op in batch_info.modify_ops if "constraint" in op.op]
+            constraint_ops_sorted = sorted(
+                constraint_ops, key=lambda op: (0 if op.op == "unity.drop_constraint" else 1, op.ts)
+            )
+
             batch_dict = {
                 "is_new_table": batch_info.is_new,
                 "table_op": batch_info.create_op,
                 "column_ops": column_ops,
                 "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
-                "constraint_ops": [op for op in batch_info.modify_ops if "constraint" in op.op],
+                "constraint_ops": constraint_ops_sorted,  # Use sorted list with DROP before ADD
                 "reorder_ops": [op for op in batch_info.modify_ops if "reorder" in op.op],
                 "governance_ops": [
                     op for op in batch_info.modify_ops if "filter" in op.op or "mask" in op.op
@@ -2261,23 +2351,34 @@ class UnitySQLGenerator(BaseSQLGenerator):
             table_fqn = self.id_name_map.get(add_column_ops[0].payload["tableId"], "unknown")
             table_esc = self._build_fqn(*table_fqn.split("."))
             column_defs = []
+            not_null_columns = []  # Track columns that need SET NOT NULL
 
             for op in add_column_ops:
                 col_name = op.payload["name"]
                 col_type = op.payload["type"]
                 comment = op.payload.get("comment", "")
+                nullable = op.payload.get("nullable", True)
 
                 # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
-                # New columns added to existing tables must be nullable
+                # New columns added to existing tables must be nullable initially
                 comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
                 col_esc = self.escape_identifier(col_name)
 
                 column_defs.append(f"    {col_esc} {col_type}{comment_clause}")
 
+                # If column should be NOT NULL, track it for follow-up statements
+                if not nullable:
+                    not_null_columns.append(col_name)
+
             batched_sql = (
                 f"ALTER TABLE {table_esc}\nADD COLUMNS (\n" + ",\n".join(column_defs) + "\n)"
             )
             statements.append(batched_sql)
+
+            # Add ALTER COLUMN SET NOT NULL statements for non-nullable columns
+            for col_name in not_null_columns:
+                col_esc = self.escape_identifier(col_name)
+                statements.append(f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} SET NOT NULL")
         elif len(add_column_ops) == 1:
             # Single ADD COLUMN - use existing method
             try:
@@ -2320,11 +2421,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if not op.op.endswith("add_column") and not op.op.endswith("drop_column")
         ]
 
+        # Sort constraint operations to ensure DROP comes before ADD
+        # This is necessary because operations batched to the same table
+        # are processed together, and we need to ensure correct order within the batch
+        constraint_ops_sorted = sorted(
+            batch_info["constraint_ops"],
+            key=lambda op: (0 if op.op == "unity.drop_constraint" else 1, op.ts),
+        )
+
         # Handle all other operations normally
         for op in (
             other_column_ops
             + batch_info["property_ops"]
-            + batch_info["constraint_ops"]
+            + constraint_ops_sorted  # Use sorted list with DROP before ADD
             + batch_info["governance_ops"]
             + batch_info["other_ops"]
         ):
@@ -2432,15 +2541,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _drop_constraint(self, op: Operation) -> str:
         """Generate ALTER TABLE DROP CONSTRAINT SQL
 
-        Looks up the constraint name from the current state using the constraint ID.
+        Gets the constraint name from the operation payload (preferred) or
+        looks it up from the current state (fallback for backward compatibility).
         """
         table_id = op.payload["tableId"]
         constraint_id = op.target
         table_fqn = self.id_name_map.get(table_id, "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
 
-        # Look up constraint name from state
-        constraint_name = self._find_constraint_name(table_id, constraint_id)
+        # Get constraint name from payload (if provided) or look it up from state
+        constraint_name = op.payload.get("name")
+        if not constraint_name:
+            # Fallback: look up constraint name from state (for backward compatibility)
+            constraint_name = self._find_constraint_name(table_id, constraint_id)
 
         if not constraint_name:
             return f"-- ERROR: Constraint {constraint_id} not found in table {table_id}"

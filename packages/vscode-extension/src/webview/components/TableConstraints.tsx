@@ -17,10 +17,11 @@ interface TableConstraintsProps {
 }
 
 export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) => {
-  const { project, addConstraint, dropConstraint } = useDesignerStore();
+  const { project, addConstraint, updateConstraint, dropConstraint } = useDesignerStore();
   const [addDialog, setAddDialog] = useState(false);
   const [editDialog, setEditDialog] = useState<{constraintId: string, constraint: Constraint} | null>(null);
   const [dropDialog, setDropDialog] = useState<{constraintId: string, name?: string} | null>(null);
+  const [pkWarningDialog, setPkWarningDialog] = useState(false);
 
   // Form state for adding/editing constraints (including type selection)
   const [formData, setFormData] = useState<any>({ type: 'primary_key' });
@@ -63,8 +64,26 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
 
   const constraints = table.constraints || [];
 
+  // Check if PRIMARY KEY already exists
+  const hasPrimaryKey = constraints.some(c => c.type === 'primary_key');
+
+  // Handle add constraint button click - just open dialog, no validation yet
+  const handleAddConstraintClick = () => {
+    setFormData({ type: 'primary_key' });
+    setAddDialog(true);
+  };
+
   const handleAddConstraint = () => {
     if (!addDialog || !formData.type) return;
+
+    // Validate PRIMARY KEY: if user is trying to add a PRIMARY KEY and one already exists
+    if (formData.type === 'primary_key' && hasPrimaryKey) {
+      // Close add dialog and show warning
+      setAddDialog(false);
+      setPkWarningDialog(true);
+      setFormData({ type: 'primary_key' });
+      return;
+    }
 
     const constraint: Omit<Constraint, 'id'> = {
       type: formData.type,
@@ -117,9 +136,6 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
   const handleSaveEdit = () => {
     if (!editDialog) return;
 
-    // Drop old constraint and add new one
-    dropConstraint(tableId, editDialog.constraintId);
-
     const constraint: Omit<Constraint, 'id'> = {
       type: formData.type,
       name: formData.name || undefined,
@@ -136,7 +152,9 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
       constraint.expression = formData.expression;
     }
 
-    addConstraint(tableId, constraint);
+    // Use updateConstraint which batches drop and add as a single atomic operation
+    updateConstraint(tableId, editDialog.constraintId, constraint);
+
     setEditDialog(null);
     setFormData({ type: 'primary_key' });
   };
@@ -232,7 +250,7 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
       <div className="constraint-actions">
         <button
           className="add-constraint-btn"
-          onClick={() => setAddDialog(true)}
+          onClick={handleAddConstraintClick}
         >
           + Add Constraint
         </button>
@@ -534,6 +552,34 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
               </VSCodeButton>
               <VSCodeButton appearance="secondary" onClick={() => setDropDialog(null)}>
                 Cancel
+              </VSCodeButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRIMARY KEY Warning Dialog */}
+      {pkWarningDialog && (
+        <div className="modal-overlay" onClick={() => setPkWarningDialog(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Primary Key Already Exists</h2>
+            <p style={{ lineHeight: '1.6', marginBottom: '16px' }}>
+              This table already has a PRIMARY KEY constraint. 
+              Databricks allows only one PRIMARY KEY per table.
+            </p>
+            <p style={{ lineHeight: '1.6', marginBottom: '16px' }}>
+              To add more columns to the existing PRIMARY KEY, use the edit button (
+              <i className="codicon codicon-edit" style={{ fontSize: '12px' }}></i>
+              ) next to the constraint.
+            </p>
+            <p style={{ lineHeight: '1.6' }}>
+              To create a new PRIMARY KEY with different columns, first drop the existing constraint using the delete button (
+              <i className="codicon codicon-trash" style={{ fontSize: '12px' }}></i>
+              ).
+            </p>
+            <div className="modal-buttons">
+              <VSCodeButton onClick={() => setPkWarningDialog(false)}>
+                OK
               </VSCodeButton>
             </div>
           </div>

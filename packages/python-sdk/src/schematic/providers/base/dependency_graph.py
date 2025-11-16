@@ -28,6 +28,7 @@ class DependencyType(str, Enum):
     VIEW_TO_VIEW = "view_to_view"  # View depends on another view
     FOREIGN_KEY = "foreign_key"  # Foreign key reference (informational in Unity)
     CONSTRAINT = "constraint"  # Generic constraint dependency
+    CONSTRAINT_ORDERING = "constraint_ordering"  # ADD constraint depends on DROP constraint
     LOCATION = "location"  # External/managed location dependency
 
 
