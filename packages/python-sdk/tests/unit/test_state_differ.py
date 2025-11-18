@@ -517,6 +517,114 @@ class TestUnityStateDiffer:
         assert ops[0].target == "col_1"
         assert ops[0].payload["nullable"] is False
 
+    def test_diff_column_reorder(self) -> None:
+        """Should generate reorder_columns operation when column order changes"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "format": "delta",
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "id",
+                                            "type": "INT",
+                                            "nullable": False,
+                                        },
+                                        {
+                                            "id": "col_2",
+                                            "name": "name",
+                                            "type": "STRING",
+                                            "nullable": True,
+                                        },
+                                        {
+                                            "id": "col_3",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": True,
+                                        },
+                                        {
+                                            "id": "col_4",
+                                            "name": "created_at",
+                                            "type": "TIMESTAMP",
+                                            "nullable": True,
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        # Reorder columns: move created_at before email
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [
+                                {
+                                    "id": "tbl_1",
+                                    "name": "customers",
+                                    "format": "delta",
+                                    "columns": [
+                                        {
+                                            "id": "col_1",
+                                            "name": "id",
+                                            "type": "INT",
+                                            "nullable": False,
+                                        },
+                                        {
+                                            "id": "col_2",
+                                            "name": "name",
+                                            "type": "STRING",
+                                            "nullable": True,
+                                        },
+                                        {
+                                            "id": "col_4",
+                                            "name": "created_at",
+                                            "type": "TIMESTAMP",
+                                            "nullable": True,
+                                        },
+                                        {
+                                            "id": "col_3",
+                                            "name": "email",
+                                            "type": "STRING",
+                                            "nullable": True,
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) == 1
+        assert ops[0].op == "unity.reorder_columns"
+        assert ops[0].target == "tbl_1"
+        assert ops[0].payload["tableId"] == "tbl_1"
+        assert ops[0].payload["order"] == ["col_1", "col_2", "col_4", "col_3"]
+        assert ops[0].payload["previousOrder"] == ["col_1", "col_2", "col_3", "col_4"]
+
     def test_diff_multiple_changes(self) -> None:
         """Should generate operations for multiple changes"""
         old_state = {

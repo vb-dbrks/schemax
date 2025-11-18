@@ -2325,6 +2325,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """Generate optimized ALTER statements for existing table modifications"""
         statements = []
 
+        # Strip "table:" prefix if present (from batching algorithm)
+        # The id_name_map uses raw IDs without prefixes
+        actual_table_id = table_id.removeprefix("table:")
+
         # Handle column reordering first (using existing optimization)
         # For existing tables, reorder_columns generates ALTER statements
         if batch_info["reorder_ops"]:
@@ -2335,10 +2339,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if not original_order:
                 # Fallback: derive from current state
                 # (for backward compatibility with old operations)
-                original_order = self._get_table_column_order(table_id)
+                original_order = self._get_table_column_order(actual_table_id)
             final_order = last_reorder_op.payload["order"]
             reorder_sql = self._generate_optimized_reorder_sql(
-                table_id, original_order, final_order, [op.id for op in batch_info["reorder_ops"]]
+                actual_table_id,
+                original_order,
+                final_order,
+                [op.id for op in batch_info["reorder_ops"]],
             )
             if reorder_sql and not reorder_sql.startswith("--"):
                 statements.append(reorder_sql)

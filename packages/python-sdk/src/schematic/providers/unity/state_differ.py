@@ -296,6 +296,24 @@ class UnityStateDiffer(StateDiffer):
             if col_id not in new_columns:
                 ops.append(self._create_drop_column_op(col, table_id))
 
+        # Check for column order changes
+        # Only generate reorder operation if:
+        # 1. Both states have columns
+        # 2. Same columns exist in both (no adds/removes in this diff cycle)
+        # 3. Order is different
+        old_column_order = [col["id"] for col in old_table.get("columns", [])]
+        new_column_order = [col["id"] for col in new_table.get("columns", [])]
+
+        if (
+            old_column_order
+            and new_column_order
+            and set(old_column_order) == set(new_column_order)
+            and old_column_order != new_column_order
+        ):
+            ops.append(
+                self._create_reorder_columns_op(table_id, new_column_order, old_column_order)
+            )
+
         return ops
 
     def _diff_table_properties(
@@ -844,6 +862,23 @@ class UnityStateDiffer(StateDiffer):
             op="unity.drop_column",
             target=column["id"],
             payload={"tableId": table_id, "name": column["name"]},
+        )
+
+    def _create_reorder_columns_op(
+        self, table_id: str, new_order: list[str], previous_order: list[str]
+    ) -> Operation:
+        """Create reorder_columns operation for state differ"""
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.reorder_columns",
+            target=table_id,
+            payload={
+                "tableId": table_id,
+                "order": new_order,
+                "previousOrder": previous_order,
+            },
         )
 
     def _create_set_table_comment_op(self, table_id: str, comment: str | None) -> Operation:
