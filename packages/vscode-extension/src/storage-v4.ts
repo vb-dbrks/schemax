@@ -430,9 +430,9 @@ export async function loadCurrentState(
   // Apply changelog ops using provider's state reducer
   state = provider.applyOperations(state, changelog.ops);
 
-  // Optionally validate dependencies (calls Python SDK)
+  // Optionally validate state and dependencies (calls Python SDK: schematic validate --json)
   let validationResult: ValidationResult | null = null;
-  if (validate && changelog.ops.length > 0) {
+  if (validate) {
     validationResult = await validateDependenciesInternal(workspaceUri);
   }
 

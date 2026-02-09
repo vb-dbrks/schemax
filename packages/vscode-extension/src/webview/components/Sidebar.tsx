@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { extractDependenciesFromView } from '../../providers/base/sql-parser';
+import { validateUnityCatalogObjectName } from '../utils/unityNames';
 
 // Environment config type for tooltip
 interface EnvironmentConfig {
@@ -313,8 +314,9 @@ export const Sidebar: React.FC = () => {
     }
 
     const trimmedName = newName.trim();
-    if (!trimmedName) {
-      setRenameError('Name is required.');
+    const nameError = validateUnityCatalogObjectName(trimmedName);
+    if (nameError) {
+      setRenameError(nameError);
       return;
     }
 
@@ -359,8 +361,9 @@ export const Sidebar: React.FC = () => {
     }
 
     const trimmedName = name.trim();
-    if (!trimmedName) {
-      setAddError('Name is required.');
+    const nameError = validateUnityCatalogObjectName(trimmedName);
+    if (nameError) {
+      setAddError(nameError);
       return;
     }
 

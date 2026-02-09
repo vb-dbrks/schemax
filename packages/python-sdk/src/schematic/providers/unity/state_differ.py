@@ -581,13 +581,17 @@ class UnityStateDiffer(StateDiffer):
     # Operation creation helpers
 
     def _create_add_catalog_op(self, catalog: dict[str, Any]) -> Operation:
+        payload: dict[str, Any] = {"catalogId": catalog["id"], "name": catalog["name"]}
+        managed_loc = catalog.get("managedLocationName") or catalog.get("managed_location_name")
+        if managed_loc is not None:
+            payload["managedLocationName"] = managed_loc
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.add_catalog",
             target=catalog["id"],
-            payload={"catalogId": catalog["id"], "name": catalog["name"]},
+            payload=payload,
         )
 
     def _create_rename_catalog_op(self, catalog_id: str, old_name: str, new_name: str) -> Operation:

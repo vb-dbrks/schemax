@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
+import { validateUnityCatalogObjectName } from '../utils/unityNames';
 
 // Codicon icons - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -37,6 +38,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const [copySuccess, setCopySuccess] = useState(false);
   const [renameDialog, setRenameDialog] = useState(false);
   const [newName, setNewName] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [commentDialog, setCommentDialog] = useState<{schemaId: string, comment: string} | null>(null);
   const [editingTag, setEditingTag] = useState<string | null>(null);
   const [editTagValue, setEditTagValue] = useState('');
@@ -67,8 +69,9 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const handleManagedLocationChange = (newLocation: string) => {
     // Only allow changes if not yet deployed/snapshotted
     if (!hasBeenDeployed) {
-      const value = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === '' ? undefined : newLocation;
-      setManagedLocationName(value ?? MANAGED_LOCATION_DEFAULT);
+      const isDefault = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === '';
+      const value = isDefault ? null : newLocation; // null survives JSON so reducer can clear
+      setManagedLocationName(isDefault ? MANAGED_LOCATION_DEFAULT : newLocation);
       updateSchema(schemaId, { managedLocationName: value });
     }
   };
@@ -149,11 +152,17 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const handleCloseRenameDialog = () => {
     setRenameDialog(false);
     setNewName('');
+    setRenameError(null);
   };
 
   const handleConfirmRename = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = newName.trim();
+    const nameError = validateUnityCatalogObjectName(trimmedName);
+    if (nameError) {
+      setRenameError(nameError);
+      return;
+    }
     if (trimmedName && trimmedName !== schema.name) {
       renameSchema(schemaId, trimmedName);
     }
@@ -430,9 +439,11 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
                 onInput={(e: Event) => {
                   const target = e.target as HTMLInputElement;
                   setNewName(target.value);
+                  setRenameError(null);
                 }}
                 style={{ width: '100%' }}
               />
+              {renameError && <p className="form-error">{renameError}</p>}
             </div>
 
             <div className="modal-actions">

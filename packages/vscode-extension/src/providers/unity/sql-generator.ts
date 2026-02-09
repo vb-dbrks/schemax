@@ -1166,6 +1166,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const constraintOps: Operation[] = [];
     const governanceOps: Operation[] = [];
     const tagOps: Operation[] = [];
+    const tableTagOps: Operation[] = [];
     const otherOps: Operation[] = [];
 
     for (const op of batchInfo.modifyOps) {
@@ -1185,6 +1186,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         governanceOps.push(op);
       } else if (opType === 'set_column_tag' || opType === 'unset_column_tag') {
         tagOps.push(op);
+      } else if (opType === 'set_table_tag' || opType === 'unset_table_tag') {
+        tableTagOps.push(op);
       } else {
         otherOps.push(op);
       }
@@ -1198,6 +1201,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       constraintOps,
       governanceOps,
       tagOps,
+      tableTagOps,
       otherOps,
       opIds: batchInfo.opIds,
       operationTypes: batchInfo.operationTypes
@@ -1222,6 +1226,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     constraintOps?: Operation[];
     reorderOps: Operation[];
     tagOps?: Operation[];
+    tableTagOps?: Operation[];
     otherOps: Operation[];
   }): string {
     const tableOp = batchInfo.tableOp;
@@ -1379,11 +1384,22 @@ ${columnsSql}
       statements.push(batchedTagSql);
     }
 
+    // Batched table tags (one SET TAGS / UNSET TAGS per table)
+    const tableTagOps = batchInfo.tableTagOps || [];
+    const batchedTableTagSql = this.generateBatchedTableTagSQL(tableTagOps);
+    if (batchedTableTagSql) {
+      statements.push(batchedTableTagSql);
+    }
+
     // Process other column operations (e.g. set_table_comment) after table creation
     for (const op of otherOps) {
       const opType = op.op.replace('unity.', '');
       // Skip set_table_comment as it's already in CREATE TABLE
       if (opType === 'set_table_comment') {
+        continue;
+      }
+      // Skip table tag operations (batched above)
+      if (opType === 'set_table_tag' || opType === 'unset_table_tag') {
         continue;
       }
       try {
@@ -1422,6 +1438,7 @@ ${columnsSql}
     constraintOps: Operation[];
     governanceOps: Operation[];
     tagOps?: Operation[];
+    tableTagOps?: Operation[];
     otherOps: Operation[];
   }): string {
     const statements: string[] = [];
@@ -1524,6 +1541,13 @@ ${columnsSql}
       statements.push(batchedTagSql);
     }
 
+    // Batched table tags (one SET TAGS / UNSET TAGS per table)
+    const tableTagOps = batchInfo.tableTagOps || [];
+    const batchedTableTagSql = this.generateBatchedTableTagSQL(tableTagOps);
+    if (batchedTableTagSql) {
+      statements.push(batchedTableTagSql);
+    }
+
     // Handle all other operations normally (exclude tag ops; they're batched above)
     const allOtherOps = [
       ...otherColumnOps,
@@ -1538,6 +1562,10 @@ ${columnsSql}
       
       // Skip reorder operations (already handled)
       if (opType === 'reorder_columns') {
+        continue;
+      }
+      // Skip table tag operations (batched above)
+      if (opType === 'set_table_tag' || opType === 'unset_table_tag') {
         continue;
       }
       
@@ -1735,6 +1763,54 @@ ${columnsSql}
         statements.push(
           `ALTER TABLE ${tableEscaped} ALTER COLUMN ${colName} SET TAGS (${list})`
         );
+      }
+    }
+    return statements.join(';\n');
+  }
+
+  /**
+   * Batch table tag ops by tableId: one SET TAGS and one UNSET TAGS per table.
+   */
+  private generateBatchedTableTagSQL(tableTagOps: Operation[]): string {
+    if (tableTagOps.length === 0) return '';
+
+    const setByTable = new Map<string, Record<string, string>>();
+    const unsetByTable = new Map<string, Set<string>>();
+
+    for (const op of tableTagOps) {
+      const tableId = op.payload.tableId;
+      const opType = op.op.replace('unity.', '');
+      if (opType === 'set_table_tag') {
+        const tagName = op.payload.tagName;
+        const tagValue = this.escapeString(op.payload.tagValue);
+        if (!setByTable.has(tableId)) setByTable.set(tableId, {});
+        setByTable.get(tableId)![tagName] = tagValue;
+        unsetByTable.get(tableId)?.delete(tagName);
+      } else if (opType === 'unset_table_tag') {
+        const tagName = op.payload.tagName;
+        if (!unsetByTable.has(tableId)) unsetByTable.set(tableId, new Set());
+        unsetByTable.get(tableId)!.add(tagName);
+        setByTable.get(tableId)?.delete(tagName);
+      }
+    }
+
+    const allTableIds = new Set([...setByTable.keys(), ...unsetByTable.keys()]);
+    const statements: string[] = [];
+    for (const tid of allTableIds) {
+      const tableFqn = this.idNameMap[tid] || 'unknown';
+      const tableEscaped = this.buildFqn(...tableFqn.split('.'));
+
+      const unsetTags = unsetByTable.get(tid);
+      if (unsetTags && unsetTags.size > 0) {
+        const list = [...unsetTags].map(t => `'${this.escapeString(t)}'`).join(', ');
+        statements.push(`ALTER TABLE ${tableEscaped} UNSET TAGS (${list})`);
+      }
+      const setTags = setByTable.get(tid);
+      if (setTags && Object.keys(setTags).length > 0) {
+        const list = Object.entries(setTags)
+          .map(([k, v]) => `'${this.escapeString(k)}' = '${v}'`)
+          .join(', ');
+        statements.push(`ALTER TABLE ${tableEscaped} SET TAGS (${list})`);
       }
     }
     return statements.join(';\n');

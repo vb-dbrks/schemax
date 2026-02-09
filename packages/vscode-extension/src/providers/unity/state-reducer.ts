@@ -52,7 +52,9 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
       const catalog = newState.catalogs.find(c => c.id === op.target);
       if (catalog) {
         if ('managedLocationName' in op.payload) {
-          catalog.managedLocationName = op.payload.managedLocationName;
+          catalog.managedLocationName = op.payload.managedLocationName == null
+            ? undefined
+            : op.payload.managedLocationName;
         }
         if ('comment' in op.payload) {
           catalog.comment = op.payload.comment;
@@ -100,7 +102,9 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         const schema = catalog.schemas.find(s => s.id === op.target);
         if (schema) {
           if ('managedLocationName' in op.payload) {
-            schema.managedLocationName = op.payload.managedLocationName;
+            schema.managedLocationName = op.payload.managedLocationName == null
+              ? undefined
+              : op.payload.managedLocationName;
           }
           if ('comment' in op.payload) {
             schema.comment = op.payload.comment;

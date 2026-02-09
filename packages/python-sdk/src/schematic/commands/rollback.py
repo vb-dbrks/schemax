@@ -97,32 +97,59 @@ def rollback_partial(
     env_config = get_environment_config(project, target_env)
     deployment_catalog = env_config["topLevelName"]
 
-    # 1. Determine pre-deployment version
+    # 1. Get deployment record and optionally previous deployment (for correct pre-deployment state)
     from schematic.core.storage import read_snapshot
 
-    # If from_version not provided, look it up from deployment record in database
-    if from_version is None:
-        # Query database for deployment (source of truth)
-        tracker = DeploymentTracker(
-            cast(UnitySQLExecutor, executor).client, deployment_catalog, warehouse_id
+    tracker = DeploymentTracker(
+        cast(UnitySQLExecutor, executor).client, deployment_catalog, warehouse_id
+    )
+    deployment = tracker.get_deployment_by_id(deployment_id)
+    if not deployment:
+        raise RollbackError(
+            f"Deployment '{deployment_id}' not found in {deployment_catalog}.schematic"
         )
-        deployment = tracker.get_deployment_by_id(deployment_id)
-
-        if not deployment:
-            raise RollbackError(
-                f"Deployment '{deployment_id}' not found in {deployment_catalog}.schematic"
-            )
-
+    if from_version is None:
         from_version = deployment.get("fromVersion")
 
-    # 2. Load pre-deployment state (from the fromVersion snapshot, not current workspace state!)
     _, _, provider, _ = load_current_state(workspace, validate=False)
 
-    if from_version:
-        from_snap = read_snapshot(workspace, from_version)
-        pre_deployment_state = from_snap["state"]
+    # 2. Pre-deployment state = state that existed before *this* deployment ran.
+    # Use previous_deployment_id from the deployment record when set (recorded at apply time);
+    # otherwise fall back to timestamp-based lookup.
+    previous_deployment = None
+    prev_id = deployment.get("previousDeploymentId")
+    if prev_id:
+        previous_deployment = tracker.get_deployment_by_id(prev_id)
+    if not previous_deployment:
+        previous_deployment = tracker.get_previous_deployment(target_env, deployment_id)
+    if previous_deployment and isinstance(previous_deployment, dict) and "opsDetails" in previous_deployment:
+        # State after previous deployment = previous's from_version state + previous's successful ops
+        prev_from = previous_deployment.get("fromVersion")
+        prev_from_state = (
+            read_snapshot(workspace, prev_from)["state"]
+            if isinstance(prev_from, str) and prev_from
+            else provider.create_initial_state()
+        )
+        ops_details = previous_deployment.get("opsDetails", [])
+        successful_details = [
+            d for d in ops_details if d.get("status") == "success"
+        ]
+        successful_details.sort(key=lambda d: d.get("executionOrder", 0))
+        prev_ops: list[Operation] = []
+        for i, d in enumerate(successful_details):
+            prev_ops.append(
+                Operation(
+                    id=d.get("id", f"op_prev_{i}"),
+                    ts=f"1970-01-01T00:00:{i:02d}.000Z",
+                    provider="unity",
+                    op=d.get("type", ""),
+                    target=d.get("target", ""),
+                    payload=d.get("payload") or {},
+                )
+            )
+        pre_deployment_state = provider.apply_operations(prev_from_state.copy(), prev_ops)
     else:
-        # First deployment - pre-deployment state is empty
+        # No previous deployment (or query failed): use empty so we get rollback ops (undo everything)
         pre_deployment_state = provider.create_initial_state()
 
     # 3. Calculate post-deployment state (after successful operations)
@@ -157,6 +184,11 @@ def rollback_partial(
     if cascade_ops:
         console.print()
         console.print("[bold yellow]⚠️  WARNING: CASCADE drops detected[/bold yellow]")
+        console.print()
+        console.print(
+            "   [dim]Partial rollback undoes only deployment "
+            f"[cyan]{deployment_id}[/cyan] — but that deployment created the whole catalog.[/dim]"
+        )
         console.print()
         console.print("   Partial rollback will drop entire containers:")
         for op in cascade_ops:
@@ -197,9 +229,16 @@ def rollback_partial(
 
         console.print()
         console.print(
-            "[dim]This happens when pre-deployment state was empty (e.g., after manual drops).[/dim]"
+            "[dim]Partial rollback undoes only this deployment (no other deployments are touched).[/dim]"
         )
-        console.print("[dim]Consider using --to-snapshot for a complete rollback instead.[/dim]")
+        console.print(
+            "[dim]This deployment's pre-deployment state was empty (first deployment), so undoing "
+            "it removes everything it created — hence DROP CATALOG/SCHEMA CASCADE.[/dim]"
+        )
+        console.print(
+            "[dim]To roll back to a specific snapshot version instead, use "
+            "[cyan]schematic rollback --to-snapshot VERSION[/cyan].[/dim]"
+        )
         console.print()
 
         if not auto_triggered and not Confirm.ask(
@@ -472,6 +511,7 @@ def rollback_complete(
     create_clone: str | None = None,
     safe_only: bool = False,
     dry_run: bool = False,
+    no_interaction: bool = False,
 ) -> RollbackResult:
     """Complete rollback to a previous snapshot
 
@@ -487,6 +527,7 @@ def rollback_complete(
         create_clone: Optional name for backup SHALLOW CLONE (not yet implemented)
         safe_only: Only execute safe operations (skip destructive)
         dry_run: Preview impact without executing
+        no_interaction: If True, skip confirmation prompt
 
     Returns:
         RollbackResult with success status
@@ -691,7 +732,9 @@ def rollback_complete(
                     console.print(f"  ... and {len(destructive_ops) - 3} more")
                 console.print()
 
-            if not Confirm.ask(f"Execute complete rollback to {to_snapshot}?", default=False):
+            if not no_interaction and not Confirm.ask(
+                f"Execute complete rollback to {to_snapshot}?", default=False
+            ):
                 console.print("[yellow]Rollback cancelled[/yellow]")
                 return RollbackResult(
                     success=False, operations_rolled_back=0, error_message="Cancelled by user"

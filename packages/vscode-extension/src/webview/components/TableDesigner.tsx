@@ -1,6 +1,7 @@
 import React from 'react';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
+import { validateUnityCatalogObjectName } from '../utils/unityNames';
 import { ColumnGrid } from './ColumnGrid';
 import { TableProperties } from './TableProperties';
 import { TableTags } from './TableTags';
@@ -18,6 +19,7 @@ export const TableDesigner: React.FC = () => {
   const [copySuccess, setCopySuccess] = React.useState(false);
   const [renameDialog, setRenameDialog] = React.useState(false);
   const [newName, setNewName] = React.useState('');
+  const [renameError, setRenameError] = React.useState<string | null>(null);
 
   if (!selectedTableId) {
     return (
@@ -71,11 +73,17 @@ export const TableDesigner: React.FC = () => {
   const handleCloseRenameDialog = () => {
     setRenameDialog(false);
     setNewName('');
+    setRenameError(null);
   };
 
   const handleConfirmRename = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = newName.trim();
+    const nameError = validateUnityCatalogObjectName(trimmedName);
+    if (nameError) {
+      setRenameError(nameError);
+      return;
+    }
     if (trimmedName && trimmedName !== table.name) {
       renameTable(selectedTableId, trimmedName);
     }
@@ -255,10 +263,14 @@ export const TableDesigner: React.FC = () => {
                   type="text"
                   id="rename-table-input"
                   value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  onChange={(e) => {
+                    setNewName(e.target.value);
+                    setRenameError(null);
+                  }}
                   placeholder="Enter new table name"
                   autoFocus
                 />
+                {renameError && <p className="form-error">{renameError}</p>}
               </div>
               <div className="modal-buttons">
                 <button type="submit">Rename</button>

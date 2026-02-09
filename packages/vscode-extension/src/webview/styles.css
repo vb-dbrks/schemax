@@ -1067,6 +1067,7 @@ body {
   color: var(--vscode-foreground);
 }
 
+.modal-content h2,
 .modal-content h3 {
   font-size: 16px;
   font-weight: 600;
@@ -2037,6 +2038,133 @@ body {
   color: var(--vscode-descriptionForeground);
   margin-top: 4px;
   font-style: italic;
+}
+
+/* Add/Edit Constraint form — clear labels and controls */
+.constraint-form-field {
+  margin-bottom: 14px;
+}
+
+.constraint-form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin-bottom: 6px;
+}
+
+.constraint-columns-list {
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  padding: 8px 10px;
+  margin-top: 4px;
+}
+
+.constraint-columns-list-actions {
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.constraint-list-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  font-size: 11px;
+  text-decoration: underline;
+}
+
+.constraint-list-link:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
+.constraint-list-sep {
+  margin: 0 6px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.constraint-columns-checkbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.constraint-columns-checkbox-list li {
+  margin: 4px 0;
+}
+
+.constraint-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+}
+
+.constraint-checkbox-label input[type="checkbox"] {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* Add Column dialog — tags list and inputs (matches constraint form look) */
+.add-column-tags-list {
+  list-style: none;
+  margin: 0 0 10px 0;
+  padding: 0;
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  overflow: hidden;
+}
+
+.add-column-tag-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  font-size: 12px;
+}
+
+.add-column-tag-item:last-child {
+  border-bottom: none;
+}
+
+.add-column-tag-item code {
+  flex: 1;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+}
+
+.add-column-tag-remove {
+  flex-shrink: 0;
+  color: var(--vscode-errorForeground);
+}
+
+.add-column-tag-remove:hover {
+  color: var(--vscode-errorForeground);
+}
+
+.add-column-tag-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.add-column-tag-input-row vscode-text-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-column-tag-input-row vscode-button {
+  flex-shrink: 0;
 }
 
 /* ===================================

@@ -238,7 +238,13 @@ def apply_to_environment(
         console.print("[blue]Generating SQL...[/blue]")
 
         catalog_mapping = _build_catalog_mapping(latest_state, env_config)
-        generator = provider.get_sql_generator(latest_state, catalog_mapping)
+        generator = provider.get_sql_generator(
+            latest_state,
+            catalog_mapping,
+            managed_locations=project.get("managedLocations"),
+            external_locations=project.get("externalLocations"),
+            environment_name=target_env,
+        )
 
         # Generate SQL with structured mapping (no comment parsing needed!)
         sql_result = generator.generate_sql_with_mapping(diff_operations)
@@ -330,7 +336,9 @@ def apply_to_environment(
         )
         console.print("[green]✓[/green] Tracking schema ready")
 
-        # Start and complete deployment tracking
+        # Start and complete deployment tracking (reference previous deployment for partial rollback)
+        # Use most recent deployment by time (any status) so partial deployments are linked
+        previous_deployment_id = tracker.get_most_recent_deployment_id(target_env)
         tracker.start_deployment(
             deployment_id=deployment_id,
             environment=target_env,
@@ -340,6 +348,7 @@ def apply_to_environment(
             provider_version=provider.info.version,
             schematic_version="0.2.0",
             from_snapshot_version=deployed_version,
+            previous_deployment_id=previous_deployment_id,
         )
 
         # Track individual operations using explicit mapping

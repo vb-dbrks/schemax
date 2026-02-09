@@ -207,6 +207,31 @@ class UnityProvider(BaseProvider):
                             code="INVALID_TABLE_STRUCTURE",
                         )
                     )
+                    continue
+
+                # Validate each table: no duplicate column names
+                for k, table in enumerate(schema["tables"]):
+                    if "columns" not in table or not isinstance(table["columns"], list):
+                        continue
+                    seen: dict[str, int] = {}
+                    for col in table["columns"]:
+                        name = col.get("name") if isinstance(col, dict) else None
+                        if not name:
+                            continue
+                        if name in seen:
+                            table_name = table.get("name", "?")
+                            errors.append(
+                                ValidationError(
+                                    field=f"catalogs[{i}].schemas[{j}].tables[{k}].columns",
+                                    message=(
+                                        f"Table '{table_name}' has duplicate column name '{name}'. "
+                                        "Column names must be unique within a table."
+                                    ),
+                                    code="DUPLICATE_COLUMN_NAME",
+                                )
+                            )
+                            break
+                        seen[name] = 1
 
         return ValidationResult(valid=len(errors) == 0, errors=errors)
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
+import { validateUnityCatalogObjectName } from '../utils/unityNames';
 
 // Codicon icons - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -27,11 +28,15 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const hasBeenDeployed = (project?.snapshots && project.snapshots.length > 0) || 
                           (project?.deployments && project.deployments.length > 0);
 
-  const [managedLocationName, setManagedLocationName] = useState(catalog?.managedLocationName || '');
+  const MANAGED_LOCATION_DEFAULT = '__default__';
+  const [managedLocationName, setManagedLocationName] = useState(
+    catalog?.managedLocationName ? catalog.managedLocationName : MANAGED_LOCATION_DEFAULT
+  );
   const [tags, setTags] = useState<Record<string, string>>(catalog?.tags || {});
   const [copySuccess, setCopySuccess] = useState(false);
   const [renameDialog, setRenameDialog] = useState(false);
   const [newName, setNewName] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [commentDialog, setCommentDialog] = useState<{catalogId: string, comment: string} | null>(null);
   const [editingTag, setEditingTag] = useState<string | null>(null);
   const [editTagValue, setEditTagValue] = useState('');
@@ -43,7 +48,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   // Update local state when catalog changes
   useEffect(() => {
     if (catalog) {
-      setManagedLocationName(catalog.managedLocationName || '');
+      setManagedLocationName(catalog.managedLocationName ? catalog.managedLocationName : MANAGED_LOCATION_DEFAULT);
       setTags(catalog.tags || {});
     }
   }, [catalog]);
@@ -62,9 +67,10 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const handleManagedLocationChange = (newLocation: string) => {
     // Only allow changes if not yet deployed/snapshotted
     if (!hasBeenDeployed) {
-      setManagedLocationName(newLocation);
-      // Immediately persist the change
-      updateCatalog(catalogId, { managedLocationName: newLocation || undefined });
+      const isDefault = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === '';
+      const value = isDefault ? null : newLocation; // null survives JSON so reducer can clear
+      setManagedLocationName(isDefault ? MANAGED_LOCATION_DEFAULT : newLocation);
+      updateCatalog(catalogId, { managedLocationName: value });
     }
   };
 
@@ -144,11 +150,17 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const handleCloseRenameDialog = () => {
     setRenameDialog(false);
     setNewName('');
+    setRenameError(null);
   };
 
   const handleConfirmRename = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = newName.trim();
+    const nameError = validateUnityCatalogObjectName(trimmedName);
+    if (nameError) {
+      setRenameError(nameError);
+      return;
+    }
     if (trimmedName && trimmedName !== catalog.name) {
       renameCatalog(catalogId, trimmedName);
     }
@@ -243,7 +255,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                 handleManagedLocationChange(target.value);
               }}
             >
-              <VSCodeOption value="">-- Default --</VSCodeOption>
+              <VSCodeOption value={MANAGED_LOCATION_DEFAULT}>— Default —</VSCodeOption>
               {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
                 <VSCodeOption key={name} value={name}>
                   {name} {location.description && `(${location.description})`}
@@ -252,7 +264,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
             </VSCodeDropdown>
           </div>
         </div>
-        {managedLocationName && project?.managedLocations?.[managedLocationName] && (
+        {managedLocationName !== MANAGED_LOCATION_DEFAULT && managedLocationName && project?.managedLocations?.[managedLocationName] && (
           <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
             <strong>Paths:</strong>
             <div style={{ marginTop: '4px' }}>
@@ -425,9 +437,11 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                 onInput={(e: Event) => {
                   const target = e.target as HTMLInputElement;
                   setNewName(target.value);
+                  setRenameError(null);
                 }}
                 style={{ width: '100%' }}
               />
+              {renameError && <p className="form-error">{renameError}</p>}
             </div>
 
             <div className="modal-actions">

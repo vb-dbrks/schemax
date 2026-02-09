@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
+import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { Constraint, Table } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
 
@@ -263,51 +263,79 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
             <h2>Add Constraint</h2>
             
             <div className="modal-body">
-              <label>
-                Constraint Type:
-                <select
+              <div className="constraint-form-field">
+                <label className="constraint-form-label">Constraint type</label>
+                <VSCodeDropdown
                   value={formData.type || 'primary_key'}
-                  onChange={(e) => setFormData({...formData, type: e.target.value as 'primary_key' | 'foreign_key' | 'check'})}
-                  style={{ width: '100%', padding: '6px', marginTop: '4px' }}
+                  style={{ width: '100%' }}
+                  onInput={(e) => setFormData({
+                    ...formData,
+                    type: (e.target as HTMLSelectElement).value as 'primary_key' | 'foreign_key' | 'check'
+                  })}
                 >
-                  <option value="primary_key">PRIMARY KEY</option>
-                  <option value="foreign_key">FOREIGN KEY</option>
-                  <option value="check">CHECK</option>
-                </select>
-              </label>
+                  <VSCodeOption value="primary_key">PRIMARY KEY</VSCodeOption>
+                  <VSCodeOption value="foreign_key">FOREIGN KEY</VSCodeOption>
+                  <VSCodeOption value="check">CHECK</VSCodeOption>
+                </VSCodeDropdown>
+              </div>
 
-              <label>
-                Constraint Name (optional):
-                <input
-                  type="text"
+              <div className="constraint-form-field">
+                <label className="constraint-form-label">Constraint name (optional)</label>
+                <VSCodeTextField
                   value={formData.name || ''}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
                   placeholder="e.g., orders_pk"
+                  style={{ width: '100%' }}
+                  onInput={(e) => setFormData({...formData, name: (e.target as HTMLInputElement).value})}
                 />
-              </label>
+              </div>
 
               {formData.type !== 'check' && (
-                <label>
-                  Columns:
-                  <select
-                    multiple
-                    value={formData.columns || []}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions, option => option.value);
-                      setFormData({...formData, columns: selected});
-                    }}
-                    size={Math.min(table.columns.length, 5)}
-                  >
-                    {table.columns.map(col => (
-                      <option key={col.id} value={col.id}>{col.name} ({col.type})</option>
-                    ))}
-                  </select>
-                  <p className="hint">Hold Cmd/Ctrl to select multiple columns</p>
-                </label>
+                <div className="constraint-form-field">
+                  <label className="constraint-form-label">Columns — select one or more</label>
+                  <div className="constraint-columns-list" role="group" aria-label="Select columns">
+                    <div className="constraint-columns-list-actions">
+                      <button
+                        type="button"
+                        className="constraint-list-link"
+                        onClick={() => setFormData({...formData, columns: table.columns.map(c => c.id)})}
+                      >
+                        Select all
+                      </button>
+                      <span className="constraint-list-sep">·</span>
+                      <button
+                        type="button"
+                        className="constraint-list-link"
+                        onClick={() => setFormData({...formData, columns: []})}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <ul className="constraint-columns-checkbox-list">
+                      {table.columns.map(col => (
+                        <li key={col.id}>
+                          <label className="constraint-checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={(formData.columns || []).includes(col.id)}
+                              onChange={(e) => {
+                                const current = formData.columns || [];
+                                const next = e.target.checked
+                                  ? [...current, col.id]
+                                  : current.filter((id: string) => id !== col.id);
+                                setFormData({...formData, columns: next});
+                              }}
+                            />
+                            <span>{col.name} ({col.type})</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               )}
 
               {formData.type === 'primary_key' && (
-                <label className="checkbox-label">
+                <label className="checkbox-label constraint-form-field">
                   <input
                     type="checkbox"
                     checked={formData.timeseries || false}
@@ -319,55 +347,87 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
 
               {formData.type === 'foreign_key' && (
                 <>
-                  <label>
-                    References Table:
-                    <select
+                  <div className="constraint-form-field">
+                    <label className="constraint-form-label">References table</label>
+                    <VSCodeDropdown
                       value={formData.parentTable || ''}
-                      onChange={(e) => setFormData({...formData, parentTable: e.target.value, parentColumns: []})}
-                      style={{ width: '100%', padding: '6px', marginTop: '4px' }}
+                      style={{ width: '100%' }}
+                      onInput={(e) => setFormData({
+                        ...formData,
+                        parentTable: (e.target as HTMLSelectElement).value,
+                        parentColumns: []
+                      })}
                     >
-                      <option value="">-- Select Parent Table --</option>
+                      <VSCodeOption value="">— Select table —</VSCodeOption>
                       {allTables.map(t => (
-                        <option key={t.id} value={t.id}>
+                        <VSCodeOption key={t.id} value={t.id}>
                           {t.catalogName}.{t.schemaName}.{t.name}
-                        </option>
+                        </VSCodeOption>
                       ))}
-                    </select>
-                  </label>
+                    </VSCodeDropdown>
+                  </div>
 
                   {formData.parentTable && (
-                    <label>
-                      Parent Columns:
-                      <select
-                        multiple
-                        value={formData.parentColumns || []}
-                        onChange={(e) => {
-                          const selected = Array.from(e.target.selectedOptions, option => option.value);
-                          setFormData({...formData, parentColumns: selected});
-                        }}
-                        size={Math.min(allTables.find(t => t.id === formData.parentTable)?.columns?.length || 5, 5)}
-                      >
-                        {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: any) => (
-                          <option key={col.id} value={col.id}>{col.name} ({col.type})</option>
-                        ))}
-                      </select>
-                      <p className="hint">Hold Cmd/Ctrl to select multiple columns</p>
-                    </label>
+                    <div className="constraint-form-field">
+                      <label className="constraint-form-label">Parent columns — select one or more</label>
+                      <div className="constraint-columns-list" role="group" aria-label="Select parent columns">
+                        <div className="constraint-columns-list-actions">
+                          <button
+                            type="button"
+                            className="constraint-list-link"
+                            onClick={() => {
+                              const parentCols = allTables.find(t => t.id === formData.parentTable)?.columns || [];
+                              setFormData({...formData, parentColumns: parentCols.map((c: any) => c.id)});
+                            }}
+                          >
+                            Select all
+                          </button>
+                          <span className="constraint-list-sep">·</span>
+                          <button
+                            type="button"
+                            className="constraint-list-link"
+                            onClick={() => setFormData({...formData, parentColumns: []})}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <ul className="constraint-columns-checkbox-list">
+                          {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: any) => (
+                            <li key={col.id}>
+                              <label className="constraint-checkbox-label">
+                                <input
+                                  type="checkbox"
+                                  checked={(formData.parentColumns || []).includes(col.id)}
+                                  onChange={(e) => {
+                                    const current = formData.parentColumns || [];
+                                    const next = e.target.checked
+                                      ? [...current, col.id]
+                                      : current.filter((id: string) => id !== col.id);
+                                    setFormData({...formData, parentColumns: next});
+                                  }}
+                                />
+                                <span>{col.name} ({col.type})</span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
                   )}
                 </>
               )}
 
               {formData.type === 'check' && (
-                <label>
-                  CHECK Expression:
-                  <input
-                    type="text"
+                <div className="constraint-form-field">
+                  <label className="constraint-form-label">CHECK expression</label>
+                  <VSCodeTextField
                     value={formData.expression || ''}
-                    onChange={(e) => setFormData({...formData, expression: e.target.value})}
                     placeholder="e.g., age > 0"
+                    style={{ width: '100%' }}
+                    onInput={(e) => setFormData({...formData, expression: (e.target as HTMLInputElement).value})}
                   />
                   <p className="hint">SQL expression that must be true</p>
-                </label>
+                </div>
               )}
 
               <p className="hint" style={{ marginTop: '16px', fontStyle: 'italic' }}>
@@ -404,51 +464,79 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
             <h2>Edit Constraint</h2>
             
             <div className="modal-body">
-              <label>
-                Constraint Type:
-                <select
+              <div className="constraint-form-field">
+                <label className="constraint-form-label">Constraint type</label>
+                <VSCodeDropdown
                   value={formData.type || 'primary_key'}
-                  onChange={(e) => setFormData({...formData, type: e.target.value as 'primary_key' | 'foreign_key' | 'check'})}
-                  style={{ width: '100%', padding: '6px', marginTop: '4px' }}
+                  style={{ width: '100%' }}
+                  onInput={(e) => setFormData({
+                    ...formData,
+                    type: (e.target as HTMLSelectElement).value as 'primary_key' | 'foreign_key' | 'check'
+                  })}
                 >
-                  <option value="primary_key">PRIMARY KEY</option>
-                  <option value="foreign_key">FOREIGN KEY</option>
-                  <option value="check">CHECK</option>
-                </select>
-              </label>
+                  <VSCodeOption value="primary_key">PRIMARY KEY</VSCodeOption>
+                  <VSCodeOption value="foreign_key">FOREIGN KEY</VSCodeOption>
+                  <VSCodeOption value="check">CHECK</VSCodeOption>
+                </VSCodeDropdown>
+              </div>
 
-              <label>
-                Constraint Name (optional):
-                <input
-                  type="text"
+              <div className="constraint-form-field">
+                <label className="constraint-form-label">Constraint name (optional)</label>
+                <VSCodeTextField
                   value={formData.name || ''}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
                   placeholder="e.g., orders_pk"
+                  style={{ width: '100%' }}
+                  onInput={(e) => setFormData({...formData, name: (e.target as HTMLInputElement).value})}
                 />
-              </label>
+              </div>
 
               {formData.type !== 'check' && (
-                <label>
-                  Columns:
-                  <select
-                    multiple
-                    value={formData.columns || []}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions, option => option.value);
-                      setFormData({...formData, columns: selected});
-                    }}
-                    size={Math.min(table.columns.length, 5)}
-                  >
-                    {table.columns.map(col => (
-                      <option key={col.id} value={col.id}>{col.name} ({col.type})</option>
-                    ))}
-                  </select>
-                  <p className="hint">Hold Cmd/Ctrl to select multiple columns</p>
-                </label>
+                <div className="constraint-form-field">
+                  <label className="constraint-form-label">Columns — select one or more</label>
+                  <div className="constraint-columns-list" role="group" aria-label="Select columns">
+                    <div className="constraint-columns-list-actions">
+                      <button
+                        type="button"
+                        className="constraint-list-link"
+                        onClick={() => setFormData({...formData, columns: table.columns.map(c => c.id)})}
+                      >
+                        Select all
+                      </button>
+                      <span className="constraint-list-sep">·</span>
+                      <button
+                        type="button"
+                        className="constraint-list-link"
+                        onClick={() => setFormData({...formData, columns: []})}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <ul className="constraint-columns-checkbox-list">
+                      {table.columns.map(col => (
+                        <li key={col.id}>
+                          <label className="constraint-checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={(formData.columns || []).includes(col.id)}
+                              onChange={(e) => {
+                                const current = formData.columns || [];
+                                const next = e.target.checked
+                                  ? [...current, col.id]
+                                  : current.filter((id: string) => id !== col.id);
+                                setFormData({...formData, columns: next});
+                              }}
+                            />
+                            <span>{col.name} ({col.type})</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               )}
 
               {formData.type === 'primary_key' && (
-                <label className="checkbox-label">
+                <label className="checkbox-label constraint-form-field">
                   <input
                     type="checkbox"
                     checked={formData.timeseries || false}
@@ -460,55 +548,87 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
 
               {formData.type === 'foreign_key' && (
                 <>
-                  <label>
-                    References Table:
-                    <select
+                  <div className="constraint-form-field">
+                    <label className="constraint-form-label">References table</label>
+                    <VSCodeDropdown
                       value={formData.parentTable || ''}
-                      onChange={(e) => setFormData({...formData, parentTable: e.target.value, parentColumns: []})}
-                      style={{ width: '100%', padding: '6px', marginTop: '4px' }}
+                      style={{ width: '100%' }}
+                      onInput={(e) => setFormData({
+                        ...formData,
+                        parentTable: (e.target as HTMLSelectElement).value,
+                        parentColumns: []
+                      })}
                     >
-                      <option value="">-- Select Parent Table --</option>
+                      <VSCodeOption value="">— Select table —</VSCodeOption>
                       {allTables.map(t => (
-                        <option key={t.id} value={t.id}>
+                        <VSCodeOption key={t.id} value={t.id}>
                           {t.catalogName}.{t.schemaName}.{t.name}
-                        </option>
+                        </VSCodeOption>
                       ))}
-                    </select>
-                  </label>
+                    </VSCodeDropdown>
+                  </div>
 
                   {formData.parentTable && (
-                    <label>
-                      Parent Columns:
-                      <select
-                        multiple
-                        value={formData.parentColumns || []}
-                        onChange={(e) => {
-                          const selected = Array.from(e.target.selectedOptions, option => option.value);
-                          setFormData({...formData, parentColumns: selected});
-                        }}
-                        size={Math.min(allTables.find(t => t.id === formData.parentTable)?.columns?.length || 5, 5)}
-                      >
-                        {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: any) => (
-                          <option key={col.id} value={col.id}>{col.name} ({col.type})</option>
-                        ))}
-                      </select>
-                      <p className="hint">Hold Cmd/Ctrl to select multiple columns</p>
-                    </label>
+                    <div className="constraint-form-field">
+                      <label className="constraint-form-label">Parent columns — select one or more</label>
+                      <div className="constraint-columns-list" role="group" aria-label="Select parent columns">
+                        <div className="constraint-columns-list-actions">
+                          <button
+                            type="button"
+                            className="constraint-list-link"
+                            onClick={() => {
+                              const parentCols = allTables.find(t => t.id === formData.parentTable)?.columns || [];
+                              setFormData({...formData, parentColumns: parentCols.map((c: any) => c.id)});
+                            }}
+                          >
+                            Select all
+                          </button>
+                          <span className="constraint-list-sep">·</span>
+                          <button
+                            type="button"
+                            className="constraint-list-link"
+                            onClick={() => setFormData({...formData, parentColumns: []})}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <ul className="constraint-columns-checkbox-list">
+                          {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: any) => (
+                            <li key={col.id}>
+                              <label className="constraint-checkbox-label">
+                                <input
+                                  type="checkbox"
+                                  checked={(formData.parentColumns || []).includes(col.id)}
+                                  onChange={(e) => {
+                                    const current = formData.parentColumns || [];
+                                    const next = e.target.checked
+                                      ? [...current, col.id]
+                                      : current.filter((id: string) => id !== col.id);
+                                    setFormData({...formData, parentColumns: next});
+                                  }}
+                                />
+                                <span>{col.name} ({col.type})</span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
                   )}
                 </>
               )}
 
               {formData.type === 'check' && (
-                <label>
-                  CHECK Expression:
-                  <input
-                    type="text"
+                <div className="constraint-form-field">
+                  <label className="constraint-form-label">CHECK expression</label>
+                  <VSCodeTextField
                     value={formData.expression || ''}
-                    onChange={(e) => setFormData({...formData, expression: e.target.value})}
                     placeholder="e.g., age > 0"
+                    style={{ width: '100%' }}
+                    onInput={(e) => setFormData({...formData, expression: (e.target as HTMLInputElement).value})}
                   />
                   <p className="hint">SQL expression that must be true</p>
-                </label>
+                </div>
               )}
 
               <p className="hint" style={{ marginTop: '16px', fontStyle: 'italic' }}>

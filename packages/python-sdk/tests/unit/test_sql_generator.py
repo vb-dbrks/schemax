@@ -670,6 +670,22 @@ class TestColumnTagSQL:
         assert batched.count("ALTER TABLE") == 1
         assert batched.count("SET TAGS") == 1
 
+    def test_batched_table_tags_same_table(self, sample_unity_state):
+        """Multiple set_table_tag on same table produce one SET TAGS with multiple key=value."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        table_tag_ops = [
+            builder.set_table_tag("table_789", "k1", "v1", op_id="tag_1"),
+            builder.set_table_tag("table_789", "k2", "v2", op_id="tag_2"),
+        ]
+        batched = generator._generate_batched_table_tag_sql(table_tag_ops)
+        assert "SET TAGS" in batched
+        assert "k1" in batched and "v1" in batched
+        assert "k2" in batched and "v2" in batched
+        assert batched.count("ALTER TABLE") == 1
+        assert batched.count("SET TAGS") == 1
+
 
 class TestConstraintSQL:
     """Test SQL generation for constraint operations"""
@@ -1455,11 +1471,13 @@ class TestSQLOptimization:
         # Should have CREATE TABLE
         assert sql.count("CREATE TABLE") == 1
 
-        # Should have ALTER TABLE SET TAGS statements (table tags must be set after creation)
+        # Should have one batched ALTER TABLE SET TAGS (table tags after creation)
         assert "ALTER TABLE" in sql
         assert "SET TAGS" in sql
         assert "'department' = 'engineering'" in sql
         assert "'owner' = 'data-team'" in sql
+        # Batched: one SET TAGS statement for the table, not one per tag
+        assert sql.count("SET TAGS") == 1
 
     def test_create_table_with_column_tags_generates_alter_statements(self, empty_unity_state):
         """Test that columns with tags generate ALTER TABLE ALTER COLUMN SET TAGS statements"""

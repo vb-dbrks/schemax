@@ -431,6 +431,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         governance_ops = []
         other_ops = []
 
+        table_tag_ops = []
         for op in batch_info.modify_ops:
             op_type = op.op.replace("unity.", "")
             if op_type in [
@@ -459,8 +460,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 "remove_column_mask",
             ]:
                 governance_ops.append(op)
+            elif op_type in ["set_table_tag", "unset_table_tag"]:
+                table_tag_ops.append(op)
             else:
-                # Everything else goes to other_ops (includes set_table_tag, set_table_comment, etc.)
+                # Everything else goes to other_ops (set_table_comment, etc.)
                 other_ops.append(op)
 
         batch_dict = {
@@ -469,6 +472,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "constraint_ops": constraint_ops,
             "reorder_ops": reorder_ops,
             "governance_ops": governance_ops,
+            "table_tag_ops": table_tag_ops,
             "other_ops": other_ops,
             "op_ids": batch_info.op_ids,
             "operation_types": list(batch_info.operation_types),
@@ -1385,6 +1389,49 @@ class UnitySQLGenerator(BaseSQLGenerator):
         key = op.payload["key"]
         return f"ALTER TABLE {fqn_esc} UNSET TBLPROPERTIES ('{key}')"
 
+    def _generate_batched_table_tag_sql(self, table_tag_ops: list[Operation]) -> str:
+        """Batch table tag ops by table_id: one SET TAGS and one UNSET TAGS per table."""
+        if not table_tag_ops:
+            return ""
+
+        set_by_table: dict[str, dict[str, str]] = {}
+        unset_by_table: dict[str, set[str]] = {}
+
+        for op in table_tag_ops:
+            table_id = op.payload.get("tableId", "")
+            op_type = op.op.replace("unity.", "")
+            if op_type == "set_table_tag":
+                tag_name = op.payload["tagName"]
+                tag_value = self.escape_string(op.payload["tagValue"])
+                if table_id not in set_by_table:
+                    set_by_table[table_id] = {}
+                set_by_table[table_id][tag_name] = tag_value
+                if table_id in unset_by_table:
+                    unset_by_table[table_id].discard(tag_name)
+            elif op_type == "unset_table_tag":
+                tag_name = op.payload["tagName"]
+                if table_id not in unset_by_table:
+                    unset_by_table[table_id] = set()
+                unset_by_table[table_id].add(tag_name)
+                if table_id in set_by_table:
+                    set_by_table[table_id].pop(tag_name, None)
+
+        parts: list[str] = []
+        for tid in set(set_by_table.keys()) | set(unset_by_table.keys()):
+            table_fqn = self.id_name_map.get(tid, "unknown")
+            table_esc = self._build_fqn(*table_fqn.split("."))
+            unset_tags = unset_by_table.get(tid)
+            if unset_tags:
+                tag_list = ", ".join(f"'{self.escape_string(t)}'" for t in unset_tags)
+                parts.append(f"ALTER TABLE {table_esc} UNSET TAGS ({tag_list})")
+            set_tags = set_by_table.get(tid)
+            if set_tags:
+                tag_list = ", ".join(
+                    f"'{self.escape_string(k)}' = '{v}'" for k, v in set_tags.items()
+                )
+                parts.append(f"ALTER TABLE {table_esc} SET TAGS ({tag_list})")
+        return ";\n".join(parts) if parts else ""
+
     def _set_table_tag(self, op: Operation) -> str:
         fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         fqn_esc = self._build_fqn(*fqn.split("."))
@@ -2064,6 +2111,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             # Categorize all modify operations
             column_ops = []
             tag_ops = []
+            table_tag_ops = []
             other_ops = []
             for op in batch_info.modify_ops:
                 op_type = op.op.replace("unity.", "")
@@ -2078,6 +2126,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     column_ops.append(op)
                 elif op_type in ["set_column_tag", "unset_column_tag"]:
                     tag_ops.append(op)
+                elif op_type in ["set_table_tag", "unset_table_tag"]:
+                    table_tag_ops.append(op)
                 # Exclude operations that will be handled by dedicated lists below
                 # (property_ops, constraint_ops, reorder_ops, governance_ops)
                 elif op_type not in [
@@ -2106,6 +2156,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 "table_op": batch_info.create_op,
                 "column_ops": column_ops,
                 "tag_ops": tag_ops,
+                "table_tag_ops": table_tag_ops,
                 "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
                 "constraint_ops": constraint_ops_sorted,  # Use sorted list with DROP before ADD
                 "reorder_ops": [op for op in batch_info.modify_ops if "reorder" in op.op],
@@ -2304,6 +2355,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 if stmt.strip():
                     statements.append(stmt.strip())
 
+        # Batched table tags (one SET TAGS / UNSET TAGS per table)
+        table_tag_ops = batch_info.get("table_tag_ops") or [
+            op
+            for op in batch_info.get("other_ops", [])
+            if op.op.endswith("set_table_tag") or op.op.endswith("unset_table_tag")
+        ]
+        batched_table_tag_sql = self._generate_batched_table_tag_sql(table_tag_ops)
+        if batched_table_tag_sql:
+            for stmt in batched_table_tag_sql.split(";\n"):
+                if stmt.strip():
+                    statements.append(stmt.strip())
+
         # Process other column operations (non-tag; tags are batched above)
         for op in other_column_ops:
             op_type = op.op.replace("unity.", "")
@@ -2324,11 +2387,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {op.id}: {e}")
 
-        # Process other operations (like table tags)
+        # Process other operations (skip table tags — batched above; skip set_table_comment — in CREATE)
         for op in other_ops:
             op_type = op.op.replace("unity.", "")
-            # Skip set_table_comment as it's already in CREATE TABLE
             if op_type == "set_table_comment":
+                continue
+            if op_type in ["set_table_tag", "unset_table_tag"]:
                 continue
             try:
                 sql = self._generate_sql_for_op_type(op_type, op)
@@ -2453,6 +2517,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 if stmt.strip():
                     statements.append(stmt.strip())
 
+        # Batched table tags (one SET TAGS / UNSET TAGS per table)
+        table_tag_ops = batch_info.get("table_tag_ops", [])
+        batched_table_tag_sql = self._generate_batched_table_tag_sql(table_tag_ops)
+        if batched_table_tag_sql:
+            for stmt in batched_table_tag_sql.split(";\n"):
+                if stmt.strip():
+                    statements.append(stmt.strip())
+
         # Handle other column operations (non-ADD/DROP, non-tag; tags are batched above)
         other_column_ops = [
             op
@@ -2483,6 +2555,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
             # Skip reorder operations (already handled)
             if op_type == "reorder_columns":
+                continue
+            # Skip table tag operations (batched above)
+            if op_type in ["set_table_tag", "unset_table_tag"]:
                 continue
 
             # Generate SQL for individual operation
