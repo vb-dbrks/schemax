@@ -1754,10 +1754,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     # Column operations
     def _add_column(self, op: Operation) -> str:
-        table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
+        table_fqn = self.id_name_map.get(op.payload.get("tableId", op.target), "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
-        col_name = op.payload["name"]
-        col_type = op.payload["type"]
+        col_name = op.payload.get("name", op.target)
+        col_type = op.payload.get("type", "STRING")
         comment = op.payload.get("comment", "")
         nullable = op.payload.get("nullable", True)
 
@@ -2212,8 +2212,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
         columns_dict = {}
         for col_op in add_column_ops:
             col_id = col_op.target  # Column ID is in op.target for add_column operations
-            col_name = self.escape_identifier(col_op.payload["name"])
-            col_type = col_op.payload["type"]
+            col_name = self.escape_identifier(col_op.payload.get("name", col_id))
+            col_type = col_op.payload.get("type", "STRING")
             nullable = "" if col_op.payload.get("nullable", True) else " NOT NULL"
             comment = (
                 f" COMMENT '{self.escape_string(col_op.payload['comment'])}'"
@@ -2340,7 +2340,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             # Also add column mappings
             for col_op in add_column_ops:
                 col_id = col_op.target
-                col_name = col_op.payload["name"]
+                col_name = col_op.payload.get("name", col_id)
                 self.id_name_map[col_id] = col_name
 
         # Batched column tags after table creation (one SET TAGS / UNSET TAGS per column)
@@ -2445,8 +2445,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
             not_null_columns = []  # Track columns that need SET NOT NULL
 
             for op in add_column_ops:
-                col_name = op.payload["name"]
-                col_type = op.payload["type"]
+                col_name = op.payload.get("name", op.target)
+                col_type = op.payload.get("type", "STRING")
                 comment = op.payload.get("comment", "")
                 nullable = op.payload.get("nullable", True)
 

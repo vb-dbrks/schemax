@@ -13,15 +13,15 @@ Key features:
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
-import networkx as nx  # type: ignore[import-untyped]
+import networkx as nx
 
 from schematic.providers.base.operations import Operation
 
 
-class DependencyType(str, Enum):
+class DependencyType(StrEnum):
     """Type of dependency between objects"""
 
     VIEW_TO_TABLE = "view_to_table"  # View depends on table
@@ -32,7 +32,7 @@ class DependencyType(str, Enum):
     LOCATION = "location"  # External/managed location dependency
 
 
-class DependencyEnforcement(str, Enum):
+class DependencyEnforcement(StrEnum):
     """How strictly a dependency is enforced"""
 
     ENFORCED = "enforced"  # Hard dependency - must be satisfied
@@ -72,7 +72,7 @@ class DependencyGraph:
 
     def __init__(self) -> None:
         # Use NetworkX directed graph
-        self.graph = nx.DiGraph()
+        self.graph: nx.DiGraph = nx.DiGraph()
         # Keep node metadata separate for easy access
         self.nodes: dict[str, DependencyNode] = {}
         # Graph-level metadata (for operations tracking, etc.)

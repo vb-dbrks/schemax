@@ -7,13 +7,13 @@ Operations represent user actions that modify the schema state.
 import random
 import string
 import time
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel
 
 
-class OperationCategory(str, Enum):
+class OperationCategory(StrEnum):
     """Operation category for grouping"""
 
     CATALOG = "catalog"

@@ -6,11 +6,11 @@ Used by SafetyValidator to classify data impact of rollback operations.
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class SafetyLevel(str, Enum):
+class SafetyLevel(StrEnum):
     """Safety classification for rollback operations"""
 
     SAFE = "SAFE"  # No data loss, fully reversible
