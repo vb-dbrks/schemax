@@ -390,7 +390,9 @@ def rollback_partial(
             )
 
             # Track individual rollback operations
-            for i, (rollback_op, stmt_result) in enumerate(zip(rollback_ops, result.statement_results)):
+            for i, (rollback_op, stmt_result) in enumerate(
+                zip(rollback_ops, result.statement_results)
+            ):
                 tracker.record_operation(
                     deployment_id=rollback_deployment_id,
                     op=rollback_op,
@@ -422,7 +424,9 @@ def rollback_partial(
                 )
                 console.print(f"  [{i}/{len(result.statement_results)}] {first_sql_line[:80]}...")
             if not dropped_tracking_catalog and rollback_deployment_id:
-                console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
+                console.print(
+                    f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]"
+                )
                 console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
             else:
                 console.print(
@@ -438,7 +442,9 @@ def rollback_partial(
                 console.print(f"[red]Error: {result.error_message}[/red]")
             schema_loc = f"{deployment_catalog}.schematic"
             if rollback_deployment_id:
-                console.print(f"[dim]  Tracked in {schema_loc} (ID: {rollback_deployment_id})[/dim]")
+                console.print(
+                    f"[dim]  Tracked in {schema_loc} (ID: {rollback_deployment_id})[/dim]"
+                )
             else:
                 console.print(f"[dim]  Tracking schema: {schema_loc}[/dim]")
 
@@ -753,9 +759,7 @@ def rollback_complete(
                     execution_order=i + 1,
                 )
 
-            tracker.complete_deployment(
-                rollback_deployment_id, result, result.error_message
-            )
+            tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
 
         # 15. Report results
         console.print()

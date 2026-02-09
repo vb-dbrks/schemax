@@ -661,9 +661,7 @@ class TestColumnTagSQL:
 
         tag_ops = [
             builder.set_column_tag("col_002", "table_789", "pii", "true", op_id="tag_1"),
-            builder.set_column_tag(
-                "col_002", "table_789", "category", "contact", op_id="tag_2"
-            ),
+            builder.set_column_tag("col_002", "table_789", "category", "contact", op_id="tag_2"),
         ]
         batched = generator._generate_batched_column_tag_sql(tag_ops)
         assert "SET TAGS" in batched
