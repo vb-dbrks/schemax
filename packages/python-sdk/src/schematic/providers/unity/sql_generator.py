@@ -11,6 +11,7 @@ from schematic.providers.base.batching import BatchInfo
 from schematic.providers.base.dependency_graph import (
     DependencyEnforcement,
     DependencyGraph,
+    DependencyNode,
     DependencyType,
 )
 from schematic.providers.base.operations import Operation
@@ -624,44 +625,79 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Overrides base class to add special handling for constraint modifications:
         - When add_constraint follows drop_constraint on the same table,
-          create a dependency so DROP executes before ADD
+          create a dependency so DROP executes before ADD.
+        - Graph nodes are object IDs (e.g. table:xyz); we add per-operation nodes
+          for constraint ops so we can order DROP before ADD.
         """
         # Call parent implementation
         graph = super()._build_dependency_graph(ops)
+        ops_by_target = graph.metadata.get("ops_by_target", {})
 
-        # Additional constraint-specific dependency handling
-        # Group operations by table for constraint analysis
+        # Group constraint operations by table (use same target ID format as base)
         table_ops: dict[str, list[Operation]] = {}
         for op in ops:
             if op.op in ("unity.add_constraint", "unity.drop_constraint"):
                 table_id = op.payload.get("tableId")
                 if table_id:
-                    if table_id not in table_ops:
-                        table_ops[table_id] = []
-                    table_ops[table_id].append(op)
+                    target_id = f"table:{table_id}"
+                    if target_id not in table_ops:
+                        table_ops[target_id] = []
+                    table_ops[target_id].append(op)
 
-        # For each table, ensure ALL drop_constraint operations come before ALL add_constraint
-        # This handles constraint modifications regardless of timestamp order
-        for table_id, table_constraint_ops in table_ops.items():
+        # For each table with both drop and add constraint ops, add per-op nodes
+        # and edges so DROP executes before ADD (graph uses object IDs as nodes).
+        for table_node_id, table_constraint_ops in table_ops.items():
             drop_ops = [op for op in table_constraint_ops if op.op == "unity.drop_constraint"]
             add_ops = [op for op in table_constraint_ops if op.op == "unity.add_constraint"]
+            if not drop_ops or not add_ops:
+                continue
 
-            # Create dependencies: ALL add_constraint operations depend on ALL drop_constraint operations
-            # on the same table. This ensures DROP always executes before ADD.
+            # Remove these ops from the table node so we don't duplicate them
+            if table_node_id in ops_by_target:
+                remaining = [
+                    o
+                    for o in ops_by_target[table_node_id]
+                    if o not in drop_ops and o not in add_ops
+                ]
+                ops_by_target[table_node_id] = remaining
+
+            level = self._get_dependency_level(drop_ops[0])
+            # Add a node per constraint operation so we can order drop before add
             for drop_op in drop_ops:
-                for add_op in add_ops:
-                    # Add edge: add_op depends on drop_op (drop_op must execute first)
-                    # The dependency graph will handle the correct execution order
-                    try:
-                        graph.add_edge(
-                            drop_op.id,
-                            add_op.id,
-                            DependencyType.CONSTRAINT_ORDERING,
-                            DependencyEnforcement.ENFORCED,
-                        )
-                    except Exception:
-                        # Ignore if nodes don't exist or other errors
-                        pass
+                if drop_op.id not in graph.nodes:
+                    node = DependencyNode(
+                        id=drop_op.id,
+                        type="constraint",
+                        hierarchy_level=level,
+                        operation=drop_op,
+                        metadata={"op_type": drop_op.op},
+                    )
+                    graph.add_node(node)
+                    ops_by_target[drop_op.id] = [drop_op]
+                graph.add_edge(
+                    table_node_id,
+                    drop_op.id,
+                    DependencyType.CONSTRAINT_ORDERING,
+                    DependencyEnforcement.ENFORCED,
+                )
+            for add_op in add_ops:
+                if add_op.id not in graph.nodes:
+                    node = DependencyNode(
+                        id=add_op.id,
+                        type="constraint",
+                        hierarchy_level=level,
+                        operation=add_op,
+                        metadata={"op_type": add_op.op},
+                    )
+                    graph.add_node(node)
+                    ops_by_target[add_op.id] = [add_op]
+                for drop_op in drop_ops:
+                    graph.add_edge(
+                        drop_op.id,
+                        add_op.id,
+                        DependencyType.CONSTRAINT_ORDERING,
+                        DependencyEnforcement.ENFORCED,
+                    )
 
         return graph
 
@@ -731,6 +767,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 f"Dependency analysis failed: {e}. Falling back to level-based sorting."
             )
             return sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts)), warnings
+
+    @staticmethod
+    def _split_sql_statements(sql: str) -> list[str]:
+        """Split a possibly multi-statement SQL string into single statements.
+
+        Handles generators that return ';\\n'-separated statements (e.g. _update_catalog,
+        _update_schema, _add_column with NOT NULL). Ensures each StatementInfo has one
+        statement so the final join does not produce double semicolons.
+        """
+        if not sql or not sql.strip():
+            return []
+        parts = [p.strip() for p in sql.split(";\n") if p.strip()]
+        return parts if parts else [sql.strip()]
 
     def generate_sql_with_mapping(self, ops: list[Operation]) -> "SQLGenerationResult":
         """
@@ -872,24 +921,30 @@ class UnitySQLGenerator(BaseSQLGenerator):
         for op in other_ops:
             result = self.generate_sql_for_operation(op)
             if result.sql and not result.sql.startswith("--"):
-                execution_order += 1
-                statement_infos.append(
-                    StatementInfo(
-                        sql=result.sql, operation_ids=[op.id], execution_order=execution_order
+                for sql_part in self._split_sql_statements(result.sql):
+                    execution_order += 1
+                    statement_infos.append(
+                        StatementInfo(
+                            sql=sql_part,
+                            operation_ids=[op.id],
+                            execution_order=execution_order,
+                        )
                     )
-                )
 
         # Process DROP operations last (in reverse dependency order: table → schema → catalog)
         # This ensures we drop dependent objects before their parents
         for op in sorted(drop_ops, key=lambda op: -self._get_dependency_level(op)):
             result = self.generate_sql_for_operation(op)
             if result.sql and not result.sql.startswith("--"):
-                execution_order += 1
-                statement_infos.append(
-                    StatementInfo(
-                        sql=result.sql, operation_ids=[op.id], execution_order=execution_order
+                for sql_part in self._split_sql_statements(result.sql):
+                    execution_order += 1
+                    statement_infos.append(
+                        StatementInfo(
+                            sql=sql_part,
+                            operation_ids=[op.id],
+                            execution_order=execution_order,
+                        )
                     )
-                )
 
         # Build combined SQL script
         combined_sql = ";\n\n".join(stmt.sql for stmt in statement_infos)

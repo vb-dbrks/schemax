@@ -598,7 +598,7 @@ def rollback(
                 warehouse_id=warehouse_id,
                 executor=executor,
                 catalog_mapping=catalog_mapping,
-                auto_triggered=no_interaction,
+                auto_triggered=False,  # Manual rollback: allow risky ops; --no-interaction only skips prompts
                 from_version=from_version,
                 dry_run=dry_run,
             )

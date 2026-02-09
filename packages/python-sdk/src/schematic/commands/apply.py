@@ -395,9 +395,19 @@ def apply_to_environment(
                 # Import rollback function and error here to avoid circular imports
                 from .rollback import RollbackError, rollback_partial
 
-                # Get successful operations (those that executed before failure)
+                # Get successful operations from statement-to-operation mapping.
+                # Statement index != operation index when one op generates multiple statements
+                # (e.g. add_column with NOT NULL → ADD COLUMN + SET NOT NULL).
                 failed_idx = result.failed_statement_index or 0
-                successful_ops = diff_operations[:failed_idx]
+                successful_op_ids = set()
+                for i in range(failed_idx):
+                    if i < len(sql_result.statements):
+                        for op_id in sql_result.statements[i].operation_ids:
+                            successful_op_ids.add(op_id)
+                if failed_idx < len(sql_result.statements):
+                    for op_id in sql_result.statements[failed_idx].operation_ids:
+                        successful_op_ids.discard(op_id)
+                successful_ops = [op for op in diff_operations if op.id in successful_op_ids]
 
                 # Trigger partial rollback automatically
                 # Pass the failed deployment_id so rollback can query the database

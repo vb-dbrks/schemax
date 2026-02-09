@@ -139,10 +139,12 @@ def rollback_partial(
         successful_details.sort(key=lambda d: d.get("executionOrder", 0))
         prev_ops: list[Operation] = []
         for i, d in enumerate(successful_details):
+            # Valid ISO 8601: use HH:MM:SS so i>=60 does not produce invalid :60
+            ts = f"1970-01-01T{i // 3600:02d}:{(i // 60) % 60:02d}:{i % 60:02d}.000Z"
             prev_ops.append(
                 Operation(
                     id=d.get("id", f"op_prev_{i}"),
-                    ts=f"1970-01-01T00:00:{i:02d}.000Z",
+                    ts=ts,
                     provider="unity",
                     op=d.get("type", ""),
                     target=d.get("target", ""),

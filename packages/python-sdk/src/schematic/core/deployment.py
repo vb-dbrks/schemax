@@ -324,10 +324,11 @@ class DeploymentTracker:
         """
         from databricks.sdk.service.sql import StatementState
 
+        env_esc = environment.replace("'", "''")
         sql = f"""
         SELECT id
         FROM {self.schema}.deployments
-        WHERE environment = '{environment}'
+        WHERE environment = '{env_esc}'
         ORDER BY deployed_at DESC
         LIMIT 1
         """
