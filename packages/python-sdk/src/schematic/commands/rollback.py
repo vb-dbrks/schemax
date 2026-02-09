@@ -122,7 +122,11 @@ def rollback_partial(
         previous_deployment = tracker.get_deployment_by_id(prev_id)
     if not previous_deployment:
         previous_deployment = tracker.get_previous_deployment(target_env, deployment_id)
-    if previous_deployment and isinstance(previous_deployment, dict) and "opsDetails" in previous_deployment:
+    if (
+        previous_deployment
+        and isinstance(previous_deployment, dict)
+        and "opsDetails" in previous_deployment
+    ):
         # State after previous deployment = previous's from_version state + previous's successful ops
         prev_from = previous_deployment.get("fromVersion")
         prev_from_state = (
@@ -131,9 +135,7 @@ def rollback_partial(
             else provider.create_initial_state()
         )
         ops_details = previous_deployment.get("opsDetails", [])
-        successful_details = [
-            d for d in ops_details if d.get("status") == "success"
-        ]
+        successful_details = [d for d in ops_details if d.get("status") == "success"]
         successful_details.sort(key=lambda d: d.get("executionOrder", 0))
         prev_ops: list[Operation] = []
         for i, d in enumerate(successful_details):

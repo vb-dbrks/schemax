@@ -106,7 +106,7 @@ class DeploymentTracker:
         """
         from_version_sql = f"'{from_snapshot_version}'" if from_snapshot_version else "NULL"
         prev_deploy_sql = (
-            f"'{previous_deployment_id.replace(chr(39), chr(39)+chr(39))}'"
+            f"'{previous_deployment_id.replace(chr(39), chr(39) + chr(39))}'"
             if previous_deployment_id
             else "NULL"
         )
@@ -255,13 +255,12 @@ class DeploymentTracker:
                 # Check error message to distinguish catalog-not-found from real errors
                 error_msg = ""
                 if response.status and response.status.error:
-                    error_msg = str(
-                        getattr(response.status.error, "message", None) or ""
-                    ).strip()
+                    error_msg = str(getattr(response.status.error, "message", None) or "").strip()
+                state_obj = getattr(response.status, "state", None) if response.status else None
                 state_str = (
-                    getattr(response.status, "state", None).name
-                    if response.status and hasattr(response.status.state, "name")
-                    else str(response.status.state) if response.status else "unknown"
+                    getattr(state_obj, "name", None) or str(state_obj)
+                    if state_obj is not None
+                    else "unknown"
                 )
 
                 # Expected errors on first deployment (catalog/schema doesn't exist)
@@ -343,13 +342,12 @@ class DeploymentTracker:
             if not response.status or response.status.state != StatementState.SUCCEEDED:
                 error_msg = ""
                 if response.status and response.status.error:
-                    error_msg = str(
-                        getattr(response.status.error, "message", None) or ""
-                    ).strip()
+                    error_msg = str(getattr(response.status.error, "message", None) or "").strip()
+                state_obj = getattr(response.status, "state", None) if response.status else None
                 state_str = (
-                    getattr(response.status, "state", None).name
-                    if response.status and hasattr(response.status.state, "name")
-                    else str(response.status.state) if response.status else "unknown"
+                    getattr(state_obj, "name", None) or str(state_obj)
+                    if state_obj is not None
+                    else "unknown"
                 )
                 if any(
                     pattern in error_msg.lower()
@@ -366,7 +364,11 @@ class DeploymentTracker:
                     f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
                 )
 
-            if response.result and response.result.data_array and len(response.result.data_array) > 0:
+            if (
+                response.result
+                and response.result.data_array
+                and len(response.result.data_array) > 0
+            ):
                 return response.result.data_array[0][0]
             return None
 
@@ -440,13 +442,12 @@ class DeploymentTracker:
                 # Check error message to distinguish catalog-not-found from real errors
                 error_msg = ""
                 if response.status and response.status.error:
-                    error_msg = str(
-                        getattr(response.status.error, "message", None) or ""
-                    ).strip()
+                    error_msg = str(getattr(response.status.error, "message", None) or "").strip()
+                state_obj = getattr(response.status, "state", None) if response.status else None
                 state_str = (
-                    getattr(response.status, "state", None).name
-                    if response.status and hasattr(response.status.state, "name")
-                    else str(response.status.state) if response.status else "unknown"
+                    getattr(state_obj, "name", None) or str(state_obj)
+                    if state_obj is not None
+                    else "unknown"
                 )
 
                 # Expected errors (catalog/schema doesn't exist)
@@ -625,9 +626,7 @@ class DeploymentTracker:
             )
             if not response.status or response.status.state != StatementState.SUCCEEDED:
                 if response.status and response.status.error:
-                    msg = str(
-                        getattr(response.status.error, "message", None) or ""
-                    ).lower()
+                    msg = str(getattr(response.status.error, "message", None) or "").lower()
                     if any(
                         p in msg
                         for p in [
