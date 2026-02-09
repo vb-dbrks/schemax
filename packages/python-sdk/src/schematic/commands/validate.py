@@ -107,7 +107,11 @@ def validate_project(workspace: Path, json_output: bool = False) -> bool:
         # Validate state using provider
         validation = provider.validate_state(state)
         if not validation.valid:
-            if not json_output:
+            if json_output:
+                # Output JSON so callers (e.g. VS Code extension refresh) can parse errors
+                state_errors = [f"{e.field}: {e.message}" for e in validation.errors]
+                print(json.dumps({"valid": False, "errors": state_errors, "warnings": []}))
+            else:
                 console.print("[red]✗ State validation failed:[/red]")
                 for error in validation.errors:
                     console.print(f"  - {error.field}: {error.message}")
@@ -123,7 +127,9 @@ def validate_project(workspace: Path, json_output: bool = False) -> bool:
         dep_errors, dep_warnings = validate_dependencies(state, changelog["ops"], provider)
 
         if dep_errors:
-            if not json_output:
+            if json_output:
+                print(json.dumps({"valid": False, "errors": dep_errors, "warnings": dep_warnings}))
+            else:
                 console.print("[red]✗ Dependency validation failed:[/red]")
                 for error_msg in dep_errors:
                     console.print(f"  [red]•[/red] {error_msg}")

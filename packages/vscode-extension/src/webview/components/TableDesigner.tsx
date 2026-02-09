@@ -1,6 +1,7 @@
 import React from 'react';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
+import { validateUnityCatalogObjectName } from '../utils/unityNames';
 import { ColumnGrid } from './ColumnGrid';
 import { TableProperties } from './TableProperties';
 import { TableTags } from './TableTags';
@@ -13,8 +14,12 @@ const IconEditInline: React.FC = () => (
 );
 
 export const TableDesigner: React.FC = () => {
-  const { selectedTableId, findTable, setTableComment } = useDesignerStore();
+  const { selectedTableId, findTable, setTableComment, renameTable } = useDesignerStore();
   const [commentDialog, setCommentDialog] = React.useState<{tableId: string, comment: string} | null>(null);
+  const [copySuccess, setCopySuccess] = React.useState(false);
+  const [renameDialog, setRenameDialog] = React.useState(false);
+  const [newName, setNewName] = React.useState('');
+  const [renameError, setRenameError] = React.useState<string | null>(null);
 
   if (!selectedTableId) {
     return (
@@ -44,12 +49,93 @@ export const TableDesigner: React.FC = () => {
     setCommentDialog({tableId: table.id, comment: table.comment || ''});
   };
 
+  const handleCopyTableName = () => {
+    const fullName = `${catalog.name}.${schema.name}.${table.name}`;
+    navigator.clipboard.writeText(fullName).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    });
+  };
+
+  const handleOpenRenameDialog = () => {
+    setNewName(table.name);
+    setRenameDialog(true);
+    // Auto-focus the input field after a short delay
+    setTimeout(() => {
+      const input = document.getElementById('rename-table-input') as any;
+      if (input && input.shadowRoot) {
+        const inputElement = input.shadowRoot.querySelector('input');
+        if (inputElement) inputElement.focus();
+      }
+    }, 100);
+  };
+
+  const handleCloseRenameDialog = () => {
+    setRenameDialog(false);
+    setNewName('');
+    setRenameError(null);
+  };
+
+  const handleConfirmRename = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = newName.trim();
+    const nameError = validateUnityCatalogObjectName(trimmedName);
+    if (nameError) {
+      setRenameError(nameError);
+      return;
+    }
+    if (trimmedName && trimmedName !== table.name) {
+      renameTable(selectedTableId, trimmedName);
+    }
+    handleCloseRenameDialog();
+  };
+
   return (
     <div className="table-designer">
       <div className="table-header">
-        <h2>
-          {catalog.name}.{schema.name}.{table.name}
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+          <h2 style={{ marginBottom: 0 }}>
+            {catalog.name}.{schema.name}.{table.name}
+          </h2>
+          <button
+            onClick={handleCopyTableName}
+            title={copySuccess ? 'Copied!' : 'Copy table name'}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: copySuccess ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-foreground)',
+              opacity: copySuccess ? 1 : 0.6,
+              height: '20px',
+              width: '20px',
+            }}
+          >
+            <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '14px' }}></i>
+          </button>
+          <button
+            onClick={handleOpenRenameDialog}
+            title="Edit table name"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--vscode-foreground)',
+              opacity: 0.6,
+              height: '20px',
+              width: '20px',
+            }}
+          >
+            <i className="codicon codicon-edit" style={{ fontSize: '14px' }}></i>
+          </button>
+        </div>
         <div className="table-metadata">
           <span className="badge">{table.format.toUpperCase()}</span>
           <span className="badge">{table.external ? 'External' : 'Managed'}</span>
@@ -108,9 +194,8 @@ export const TableDesigner: React.FC = () => {
                 Comment recommended
               </span>
             )}
-            <VSCodeButton appearance="secondary" type="button" onClick={handleSetComment}>
+            <VSCodeButton appearance="icon" type="button" onClick={handleSetComment}>
               <IconEditInline />
-              Edit
             </VSCodeButton>
           </div>
         </div>
@@ -163,6 +248,35 @@ export const TableDesigner: React.FC = () => {
               }}>Set</button>
               <button onClick={() => setCommentDialog(null)}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {renameDialog && (
+        <div className="modal-overlay" onClick={handleCloseRenameDialog}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Rename Table</h3>
+            <form onSubmit={handleConfirmRename}>
+              <div className="modal-field-group">
+                <label htmlFor="rename-table-input">Table Name</label>
+                <input
+                  type="text"
+                  id="rename-table-input"
+                  value={newName}
+                  onChange={(e) => {
+                    setNewName(e.target.value);
+                    setRenameError(null);
+                  }}
+                  placeholder="Enter new table name"
+                  autoFocus
+                />
+                {renameError && <p className="form-error">{renameError}</p>}
+              </div>
+              <div className="modal-buttons">
+                <button type="submit">Rename</button>
+                <button type="button" onClick={handleCloseRenameDialog}>Cancel</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -134,6 +134,10 @@ class UnityStateDiffer(StateDiffer):
                 ops.append(self._create_add_table_op(tbl, schema_id))
                 # Add all columns in this new table
                 ops.extend(self._add_all_columns_in_table(tbl_id, tbl))
+                # Add all tags for this table
+                ops.extend(self._add_all_tags_for_table(tbl_id, tbl))
+                # Add all constraints for this table
+                ops.extend(self._add_all_constraints_for_table(tbl_id, tbl))
             else:
                 # Table exists in both - check for changes
                 old_tbl = old_tables[tbl_id]
@@ -165,6 +169,13 @@ class UnityStateDiffer(StateDiffer):
 
                 # Compare columns within table
                 ops.extend(self._diff_columns(tbl_id, old_tbl, tbl))
+
+                # Compare constraints within table
+                ops.extend(
+                    self._diff_constraints(
+                        tbl_id, old_tbl.get("constraints", []), tbl.get("constraints", [])
+                    )
+                )
 
         # Detect removed tables
         for tbl_id, tbl in old_tables.items():
@@ -285,6 +296,24 @@ class UnityStateDiffer(StateDiffer):
             if col_id not in new_columns:
                 ops.append(self._create_drop_column_op(col, table_id))
 
+        # Check for column order changes
+        # Only generate reorder operation if:
+        # 1. Both states have columns
+        # 2. Same columns exist in both (no adds/removes in this diff cycle)
+        # 3. Order is different
+        old_column_order = [col["id"] for col in old_table.get("columns", [])]
+        new_column_order = [col["id"] for col in new_table.get("columns", [])]
+
+        if (
+            old_column_order
+            and new_column_order
+            and set(old_column_order) == set(new_column_order)
+            and old_column_order != new_column_order
+        ):
+            ops.append(
+                self._create_reorder_columns_op(table_id, new_column_order, old_column_order)
+            )
+
         return ops
 
     def _diff_table_properties(
@@ -330,6 +359,93 @@ class UnityStateDiffer(StateDiffer):
                 ops.append(self._create_unset_table_tag_op(table_id, tag_name))
 
         return ops
+
+    def _diff_constraints(
+        self,
+        table_id: str,
+        old_constraints: list[dict[str, Any]],
+        new_constraints: list[dict[str, Any]],
+    ) -> list[Operation]:
+        """Compare table constraints (PRIMARY KEY, FOREIGN KEY, CHECK)"""
+        ops: list[Operation] = []
+
+        # Handle None values - treat as empty list
+        old_constraints = old_constraints or []
+        new_constraints = new_constraints or []
+
+        # Build ID maps for comparison
+        old_constraint_map = {c["id"]: c for c in old_constraints}
+        new_constraint_map = {c["id"]: c for c in new_constraints}
+
+        # Added constraints
+        for constraint_id, constraint in new_constraint_map.items():
+            if constraint_id not in old_constraint_map:
+                ops.append(self._create_add_constraint_op(constraint, table_id))
+
+        # Removed constraints
+        for constraint_id, constraint in old_constraint_map.items():
+            if constraint_id not in new_constraint_map:
+                ops.append(self._create_drop_constraint_op(constraint, table_id))
+
+        # Modified constraints (Unity Catalog doesn't support ALTER CONSTRAINT,
+        # so we must DROP and re-ADD to modify)
+        for constraint_id, new_constraint in new_constraint_map.items():
+            if constraint_id in old_constraint_map:
+                old_constraint = old_constraint_map[constraint_id]
+                # Check if constraint definition has changed
+                if self._constraint_has_changed(old_constraint, new_constraint):
+                    # Generate DROP then ADD operations
+                    # The SQL generator will sort by timestamp to ensure DROP comes before ADD
+                    ops.append(self._create_drop_constraint_op(old_constraint, table_id))
+                    ops.append(self._create_add_constraint_op(new_constraint, table_id))
+
+        return ops
+
+    def _constraint_has_changed(
+        self, old_constraint: dict[str, Any], new_constraint: dict[str, Any]
+    ) -> bool:
+        """Check if constraint definition has changed (requires DROP + ADD)
+
+        Compares all relevant fields:
+        - type (primary_key, foreign_key, check)
+        - columns (list of column IDs)
+        - name (constraint name)
+        - timeseries (for PRIMARY KEY)
+        - parentTable, parentColumns (for FOREIGN KEY)
+        - expression (for CHECK)
+        """
+        # Check core fields
+        if old_constraint.get("type") != new_constraint.get("type"):
+            return True
+        if old_constraint.get("name") != new_constraint.get("name"):
+            return True
+
+        # Check columns (order matters for PRIMARY KEY)
+        old_cols = old_constraint.get("columns", [])
+        new_cols = new_constraint.get("columns", [])
+        if old_cols != new_cols:
+            return True
+
+        # Type-specific checks
+        constraint_type = old_constraint.get("type")
+
+        if constraint_type == "primary_key":
+            if old_constraint.get("timeseries") != new_constraint.get("timeseries"):
+                return True
+
+        elif constraint_type == "foreign_key":
+            if old_constraint.get("parentTable") != new_constraint.get("parentTable"):
+                return True
+            old_parent_cols = old_constraint.get("parentColumns", [])
+            new_parent_cols = new_constraint.get("parentColumns", [])
+            if old_parent_cols != new_parent_cols:
+                return True
+
+        elif constraint_type == "check":
+            if old_constraint.get("expression") != new_constraint.get("expression"):
+                return True
+
+        return False
 
     def _diff_column_tags(
         self,
@@ -399,6 +515,8 @@ class UnityStateDiffer(StateDiffer):
             ops.extend(self._add_all_columns_in_table(table["id"], table))
             # Add all tags for this table
             ops.extend(self._add_all_tags_for_table(table["id"], table))
+            # Add all constraints for this table
+            ops.extend(self._add_all_constraints_for_table(table["id"], table))
 
         return ops
 
@@ -445,16 +563,35 @@ class UnityStateDiffer(StateDiffer):
 
         return ops
 
+    def _add_all_constraints_for_table(
+        self, table_id: str, table: dict[str, Any]
+    ) -> list[Operation]:
+        """Add all constraints for a newly created table"""
+        ops: list[Operation] = []
+
+        for constraint in table.get("constraints", []):
+            # Safety check - skip constraints missing required fields
+            if not all(key in constraint for key in ["id", "type", "columns"]):
+                continue
+
+            ops.append(self._create_add_constraint_op(constraint, table_id))
+
+        return ops
+
     # Operation creation helpers
 
     def _create_add_catalog_op(self, catalog: dict[str, Any]) -> Operation:
+        payload: dict[str, Any] = {"catalogId": catalog["id"], "name": catalog["name"]}
+        managed_loc = catalog.get("managedLocationName") or catalog.get("managed_location_name")
+        if managed_loc is not None:
+            payload["managedLocationName"] = managed_loc
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.add_catalog",
             target=catalog["id"],
-            payload={"catalogId": catalog["id"], "name": catalog["name"]},
+            payload=payload,
         )
 
     def _create_rename_catalog_op(self, catalog_id: str, old_name: str, new_name: str) -> Operation:
@@ -731,6 +868,23 @@ class UnityStateDiffer(StateDiffer):
             payload={"tableId": table_id, "name": column["name"]},
         )
 
+    def _create_reorder_columns_op(
+        self, table_id: str, new_order: list[str], previous_order: list[str]
+    ) -> Operation:
+        """Create reorder_columns operation for state differ"""
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.reorder_columns",
+            target=table_id,
+            payload={
+                "tableId": table_id,
+                "order": new_order,
+                "previousOrder": previous_order,
+            },
+        )
+
     def _create_set_table_comment_op(self, table_id: str, comment: str | None) -> Operation:
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
@@ -828,5 +982,59 @@ class UnityStateDiffer(StateDiffer):
                 "tableId": table_id,
                 "name": column_name,  # Include for SQL generation fallback
                 "tagName": tag_name,
+            },
+        )
+
+    def _create_add_constraint_op(self, constraint: dict[str, Any], table_id: str) -> Operation:
+        """Create add_constraint operation
+
+        Args:
+            constraint: Constraint definition
+            table_id: Table ID
+        """
+        payload: dict[str, Any] = {
+            "tableId": table_id,
+            "constraintId": constraint["id"],
+            "type": constraint["type"],
+            "columns": constraint["columns"],
+        }
+
+        # Add optional fields
+        if "name" in constraint and constraint["name"]:
+            payload["name"] = constraint["name"]
+        if "timeseries" in constraint:
+            payload["timeseries"] = constraint["timeseries"]
+        if "parentTable" in constraint:
+            payload["parentTable"] = constraint["parentTable"]
+        if "parentColumns" in constraint:
+            payload["parentColumns"] = constraint["parentColumns"]
+        if "expression" in constraint:
+            payload["expression"] = constraint["expression"]
+
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.add_constraint",
+            target=constraint["id"],
+            payload=payload,
+        )
+
+    def _create_drop_constraint_op(self, constraint: dict[str, Any], table_id: str) -> Operation:
+        """Create drop_constraint operation
+
+        Args:
+            constraint: Constraint definition (from old state)
+            table_id: Table ID
+        """
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.drop_constraint",
+            target=constraint["id"],
+            payload={
+                "tableId": table_id,
+                "name": constraint.get("name"),  # Include name for SQL generation
             },
         )

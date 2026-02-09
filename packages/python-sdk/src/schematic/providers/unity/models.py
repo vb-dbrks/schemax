@@ -49,7 +49,11 @@ class UnityColumnMask(BaseModel):
 
 
 class UnityConstraint(BaseModel):
-    """Table constraint (PRIMARY KEY, FOREIGN KEY, or CHECK)"""
+    """Table constraint (PRIMARY KEY, FOREIGN KEY, or CHECK)
+
+    Note: Unity Catalog constraints are informational only (not enforced).
+    They are used for query optimization and documentation purposes.
+    """
 
     id: str
     type: Literal["primary_key", "foreign_key", "check"]
@@ -69,7 +73,7 @@ class UnityConstraint(BaseModel):
     # For CHECK
     expression: str | None = None  # CHECK expression
 
-    # Constraint options (all types)
+    # Constraint options (all types) — kept for backward compatibility when loading project files
     not_enforced: bool | None = Field(None, alias="notEnforced")
     deferrable: bool | None = None
     initially_deferred: bool | None = Field(None, alias="initiallyDeferred")
@@ -141,6 +145,8 @@ class UnitySchema(BaseModel):
     managed_location_name: str | None = Field(
         None, alias="managedLocationName"
     )  # Reference to env managedLocations
+    comment: str | None = None  # Schema comment
+    tags: dict[str, str] = {}  # Schema tags (Unity Catalog governance)
     tables: list[UnityTable] = []
     views: list[UnityView] = []  # Views stored alongside tables in schema
 
@@ -155,6 +161,8 @@ class UnityCatalog(BaseModel):
     managed_location_name: str | None = Field(
         None, alias="managedLocationName"
     )  # Reference to env managedLocations
+    comment: str | None = None  # Catalog comment
+    tags: dict[str, str] = {}  # Catalog tags (Unity Catalog governance)
     schemas: list[UnitySchema] = []
 
     model_config = ConfigDict(populate_by_name=True)

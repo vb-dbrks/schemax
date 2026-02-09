@@ -416,3 +416,124 @@ class TestRollbackPartial:
         mock_tracker.ensure_tracking_schema.assert_called_once()
         mock_tracker.start_deployment.assert_called_once()
         mock_tracker.complete_deployment.assert_called_once()
+
+    @patch("schematic.commands.rollback.DeploymentTracker")
+    @patch("schematic.commands.rollback.get_environment_config")
+    @patch("schematic.commands.rollback.read_project")
+    @patch("schematic.commands.rollback.load_current_state")
+    def test_rollback_skips_recording_when_deployment_catalog_dropped(
+        self,
+        mock_load_state,
+        mock_read_project,
+        mock_get_env_config,
+        mock_tracker_class,
+    ):
+        """When partial rollback successfully drops the deployment catalog, skip DB recording."""
+        mock_provider = Mock()
+        mock_provider.info.id = "unity"
+        mock_provider.info.version = "1.0.0"
+        mock_state_reducer = Mock()
+        mock_state_differ = Mock()
+        mock_sql_generator = Mock()
+        mock_executor = Mock()
+        mock_executor.client = Mock()
+
+        mock_load_state.return_value = ({"catalogs": []}, None, mock_provider, None)
+        mock_read_project.return_value = {
+            "name": "test_project",
+            "deployments": [{"id": "test_deploy", "fromVersion": None, "version": "v0.1.0"}],
+        }
+        mock_get_env_config.return_value = {
+            "topLevelName": "dev_catalog",
+            "autoCreateSchematicSchema": True,
+        }
+
+        mock_tracker = Mock()
+        mock_tracker_class.return_value = mock_tracker
+        mock_tracker.get_deployment_by_id.return_value = {
+            "id": "test_deploy",
+            "fromVersion": None,
+            "version": "v0.1.0",
+        }
+
+        mock_provider.get_state_reducer.return_value = mock_state_reducer
+        mock_provider.get_state_differ.return_value = mock_state_differ
+        mock_provider.get_sql_generator.return_value = mock_sql_generator
+        mock_state_reducer.apply_operations.return_value = {"catalogs": []}
+
+        rollback_op = Operation(
+            id="rollback_1",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.drop_catalog",
+            target="catalog_1",
+            payload={},
+        )
+        mock_state_differ.generate_diff_operations.return_value = [rollback_op]
+
+        from schematic.providers.base.sql_generator import SQLGenerationResult, StatementInfo
+
+        mock_sql_generator.generate_sql_with_mapping.return_value = SQLGenerationResult(
+            sql="DROP CATALOG dev_catalog;",
+            statements=[
+                StatementInfo(
+                    sql="DROP CATALOG IF EXISTS `dev_catalog` CASCADE",
+                    operation_ids=["rollback_1"],
+                    execution_order=1,
+                )
+            ],
+        )
+
+        from schematic.providers.base.executor import StatementResult
+
+        mock_executor.execute_statements.return_value = ExecutionResult(
+            deployment_id="test_deploy",
+            total_statements=1,
+            successful_statements=1,
+            failed_statement_index=None,
+            statement_results=[
+                StatementResult(
+                    statement_id="stmt_1",
+                    sql="DROP CATALOG IF EXISTS `dev_catalog` CASCADE",
+                    status="success",
+                    execution_time_ms=100,
+                    error_message=None,
+                )
+            ],
+            total_execution_time_ms=100,
+            status="success",
+            error_message=None,
+        )
+
+        with patch("schematic.commands.rollback.SafetyValidator") as mock_validator_class:
+            mock_validator_class.return_value.validate.return_value = SafetyReport(
+                level=SafetyLevel.SAFE, reason="Safe", data_at_risk=0
+            )
+            result = rollback_partial(
+                workspace=Path("/tmp"),
+                deployment_id="test_deploy",
+                successful_ops=[
+                    Operation(
+                        id="op_1",
+                        ts="2025-01-01T00:00:00Z",
+                        provider="unity",
+                        op="unity.add_catalog",
+                        target="catalog_1",
+                        payload={"name": "dev_catalog"},
+                    )
+                ],
+                target_env="dev",
+                profile="DEFAULT",
+                warehouse_id="abc123",
+                executor=mock_executor,
+                catalog_mapping={"catalog_1": "dev_catalog"},
+                auto_triggered=True,
+                from_version=None,
+            )
+
+        assert result.success is True
+        assert result.operations_rolled_back == 1
+        mock_tracker.ensure_tracking_schema.assert_not_called()
+        mock_tracker.start_deployment.assert_not_called()
+        mock_tracker.record_operation.assert_not_called()
+        mock_tracker.complete_deployment.assert_not_called()

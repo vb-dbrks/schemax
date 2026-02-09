@@ -58,8 +58,26 @@ class DeploymentTracker:
         # Create deployments table
         self._execute_ddl(self._get_deployments_table_ddl())
 
+        # Migration: add previous_deployment_id to existing tables (no-op if column exists)
+        self._migrate_deployments_add_previous_deployment_id()
+
         # Create deployment_ops table
         self._execute_ddl(self._get_deployment_ops_table_ddl())
+
+    def _migrate_deployments_add_previous_deployment_id(self) -> None:
+        """Add previous_deployment_id column to deployments table if missing (for existing DBs)."""
+        try:
+            self._execute_ddl(
+                f"ALTER TABLE {self.schema}.deployments "
+                "ADD COLUMN previous_deployment_id STRING "
+                "COMMENT 'Deployment that was current before this one (for partial rollback)'"
+            )
+        except Exception as e:
+            err = str(e).lower()
+            if "already exists" in err or "duplicate column" in err or "redefinition" in err:
+                pass  # Column already present (new schema or already migrated)
+            else:
+                raise
 
     def start_deployment(
         self,
@@ -71,6 +89,7 @@ class DeploymentTracker:
         provider_version: str,
         schematic_version: str = "0.2.0",
         from_snapshot_version: str | None = None,
+        previous_deployment_id: str | None = None,
     ) -> None:
         """Record deployment start (status: pending)
 
@@ -83,18 +102,26 @@ class DeploymentTracker:
             provider_version: Provider version
             schematic_version: Schematic CLI version
             from_snapshot_version: Previous snapshot version (for diff tracking)
+            previous_deployment_id: Deployment that was current before this one (for partial rollback)
         """
         from_version_sql = f"'{from_snapshot_version}'" if from_snapshot_version else "NULL"
+        prev_deploy_sql = (
+            f"'{previous_deployment_id.replace(chr(39), chr(39) + chr(39))}'"
+            if previous_deployment_id
+            else "NULL"
+        )
 
         sql = f"""
         INSERT INTO {self.schema}.deployments
-        (id, environment, snapshot_version, from_snapshot_version, deployed_at, deployed_by,
-         project_name, provider_type, provider_version, status, schematic_version)
+        (id, environment, snapshot_version, from_snapshot_version, previous_deployment_id,
+         deployed_at, deployed_by, project_name, provider_type, provider_version,
+         status, schematic_version)
         VALUES (
             '{deployment_id}',
             '{environment}',
             '{snapshot_version}',
             {from_version_sql},
+            {prev_deploy_sql},
             current_timestamp(),
             current_user(),
             '{project_name}',
@@ -228,7 +255,13 @@ class DeploymentTracker:
                 # Check error message to distinguish catalog-not-found from real errors
                 error_msg = ""
                 if response.status and response.status.error:
-                    error_msg = str(response.status.error.message or "")
+                    error_msg = str(getattr(response.status.error, "message", None) or "").strip()
+                state_obj = getattr(response.status, "state", None) if response.status else None
+                state_str = (
+                    getattr(state_obj, "name", None) or str(state_obj)
+                    if state_obj is not None
+                    else "unknown"
+                )
 
                 # Expected errors on first deployment (catalog/schema doesn't exist)
                 if any(
@@ -243,8 +276,10 @@ class DeploymentTracker:
                 ):
                     return None
 
-                # Real error - raise it
-                raise Exception(f"Database query failed: {error_msg}")
+                # Real error - raise with state and message (avoid empty message)
+                raise Exception(
+                    f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
+                )
 
             # Parse results
             if response.result and response.result.data_array:
@@ -272,6 +307,85 @@ class DeploymentTracker:
                 return None
 
             # Real error (connection, auth, timeout, etc.) - re-raise
+            raise
+
+    def get_most_recent_deployment_id(self, environment: str) -> str | None:
+        """Get the ID of the most recent deployment for an environment (any status)
+
+        Used when starting a new deployment to set previous_deployment_id.
+        Returns None if no deployments exist (first deployment) or on expected
+        errors (catalog/schema not found).
+
+        Args:
+            environment: Target environment name (dev/test/prod)
+
+        Returns:
+            Deployment ID string, or None
+        """
+        from databricks.sdk.service.sql import StatementState
+
+        env_esc = environment.replace("'", "''")
+        sql = f"""
+        SELECT id
+        FROM {self.schema}.deployments
+        WHERE environment = '{env_esc}'
+        ORDER BY deployed_at DESC
+        LIMIT 1
+        """
+
+        try:
+            response = self.client.statement_execution.execute_statement(
+                warehouse_id=self.warehouse_id,
+                statement=sql,
+                wait_timeout="10s",
+            )
+
+            if not response.status or response.status.state != StatementState.SUCCEEDED:
+                error_msg = ""
+                if response.status and response.status.error:
+                    error_msg = str(getattr(response.status.error, "message", None) or "").strip()
+                state_obj = getattr(response.status, "state", None) if response.status else None
+                state_str = (
+                    getattr(state_obj, "name", None) or str(state_obj)
+                    if state_obj is not None
+                    else "unknown"
+                )
+                if any(
+                    pattern in error_msg.lower()
+                    for pattern in [
+                        "catalog",
+                        "schema",
+                        "not found",
+                        "does not exist",
+                        "table_or_view_not_found",
+                    ]
+                ):
+                    return None
+                raise Exception(
+                    f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
+                )
+
+            if (
+                response.result
+                and response.result.data_array
+                and len(response.result.data_array) > 0
+            ):
+                return response.result.data_array[0][0]
+            return None
+
+        except Exception as e:
+            error_str = str(e).lower()
+            if any(
+                pattern in error_str
+                for pattern in [
+                    "catalog",
+                    "schema",
+                    "not found",
+                    "does not exist",
+                    "table_or_view_not_found",
+                ]
+            ):
+                return None
             raise
 
     def get_deployment_by_id(self, deployment_id: str) -> dict[str, Any] | None:
@@ -305,6 +419,7 @@ class DeploymentTracker:
             environment,
             snapshot_version,
             from_snapshot_version,
+            previous_deployment_id,
             deployed_at,
             deployed_by,
             status,
@@ -328,7 +443,13 @@ class DeploymentTracker:
                 # Check error message to distinguish catalog-not-found from real errors
                 error_msg = ""
                 if response.status and response.status.error:
-                    error_msg = str(response.status.error.message or "")
+                    error_msg = str(getattr(response.status.error, "message", None) or "").strip()
+                state_obj = getattr(response.status, "state", None) if response.status else None
+                state_str = (
+                    getattr(state_obj, "name", None) or str(state_obj)
+                    if state_obj is not None
+                    else "unknown"
+                )
 
                 # Expected errors (catalog/schema doesn't exist)
                 if any(
@@ -343,8 +464,10 @@ class DeploymentTracker:
                 ):
                     return None
 
-                # Real error - raise it
-                raise Exception(f"Database query failed: {error_msg}")
+                # Real error - raise with state and message (avoid empty message)
+                raise Exception(
+                    f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
+                )
 
             # Parse deployment record
             deployment: dict[str, Any] | None = None
@@ -355,13 +478,14 @@ class DeploymentTracker:
                         "id": row[0],
                         "environment": row[1],
                         "version": row[2],
-                        "fromVersion": row[3],  # Can be NULL
-                        "deployedAt": row[4],
-                        "deployedBy": row[5],
-                        "status": row[6],
-                        "statementCount": row[7],
-                        "errorMessage": row[8],
-                        "executionTimeMs": row[9],
+                        "fromVersion": row[3],
+                        "previousDeploymentId": row[4],
+                        "deployedAt": row[5],
+                        "deployedBy": row[6],
+                        "status": row[7],
+                        "statementCount": row[8],
+                        "errorMessage": row[9],
+                        "executionTimeMs": row[10],
                     }
 
             if not deployment:
@@ -454,6 +578,92 @@ class DeploymentTracker:
             # Real error (connection, auth, timeout, etc.) - re-raise
             raise
 
+    def get_previous_deployment(
+        self, environment: str, current_deployment_id: str
+    ) -> dict[str, Any] | None:
+        """Get the deployment that ran immediately before the given deployment (same environment).
+
+        Used for partial rollback to compute "state before this deployment" when a prior
+        deployment (e.g. failed) already created objects (e.g. catalog).
+
+        Returns:
+            Full deployment record with opsDetails, or None if no previous deployment exists.
+        """
+        from databricks.sdk.service.sql import StatementState
+
+        try:
+            current = self.get_deployment_by_id(current_deployment_id)
+            if not current:
+                return None
+            deployed_at = current.get("deployedAt")
+            if deployed_at is None:
+                return None
+            if hasattr(deployed_at, "isoformat"):
+                deployed_at_str = deployed_at.isoformat()
+            else:
+                deployed_at_str = str(deployed_at)
+            # Normalize to Spark/Databricks-friendly format: 'yyyy-MM-dd HH:mm:ss.SSS' (no T, no TZ)
+            deployed_at_str = deployed_at_str.replace("T", " ").split("+")[0].split("Z")[0].strip()
+            if "." in deployed_at_str:
+                # Keep fractional seconds; ensure at most 6 digits
+                base, frac = deployed_at_str.split(".", 1)
+                frac = (frac + "000000")[:6]
+                deployed_at_str = f"{base}.{frac}"
+            deployed_at_str = deployed_at_str.replace("'", "''")
+            env_esc = environment.replace("'", "''")
+
+            sql = f"""
+            SELECT id
+            FROM {self.schema}.deployments
+            WHERE environment = '{env_esc}'
+              AND deployed_at < CAST('{deployed_at_str}' AS TIMESTAMP)
+            ORDER BY deployed_at DESC
+            LIMIT 1
+            """
+            response = self.client.statement_execution.execute_statement(
+                warehouse_id=self.warehouse_id,
+                statement=sql,
+                wait_timeout="10s",
+            )
+            if not response.status or response.status.state != StatementState.SUCCEEDED:
+                if response.status and response.status.error:
+                    msg = str(getattr(response.status.error, "message", None) or "").lower()
+                    if any(
+                        p in msg
+                        for p in [
+                            "catalog",
+                            "schema",
+                            "not found",
+                            "table_or_view_not_found",
+                        ]
+                    ):
+                        return None
+                # Don't raise: fall back so partial rollback can proceed without previous
+                return None
+            if (
+                response.result
+                and response.result.data_array
+                and len(response.result.data_array) > 0
+            ):
+                prev_id = response.result.data_array[0][0]
+                return self.get_deployment_by_id(prev_id)
+            return None
+        except Exception as e:
+            err = str(e).lower()
+            if any(
+                p in err
+                for p in [
+                    "catalog",
+                    "schema",
+                    "not found",
+                    "does not exist",
+                    "table_or_view",
+                ]
+            ):
+                return None
+            # Don't re-raise: allow rollback to proceed with from_version/empty pre-state
+            return None
+
     def _execute_ddl(self, sql: str) -> None:
         """Execute DDL statement and wait for completion
 
@@ -507,6 +717,7 @@ class DeploymentTracker:
             environment STRING COMMENT 'Target environment (dev/test/prod)',
             snapshot_version STRING COMMENT 'Snapshot version deployed (e.g., v1.0.0 or changelog)',
             from_snapshot_version STRING COMMENT 'Previous snapshot version (source of diff)',
+            previous_deployment_id STRING COMMENT 'Deployment that was current before this one (for partial rollback)',
             snapshot_id STRING COMMENT 'Snapshot UUID',
             deployed_at TIMESTAMP COMMENT 'Deployment timestamp',
             deployed_by STRING COMMENT 'User/system that deployed',

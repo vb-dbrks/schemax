@@ -531,7 +531,7 @@ class TestColumnSQL:
     """Test SQL generation for column operations"""
 
     def test_add_column(self, sample_unity_state):
-        """Test ALTER TABLE ADD COLUMN SQL generation"""
+        """Test ALTER TABLE ADD COLUMN SQL generation with NOT NULL constraint"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
@@ -550,8 +550,9 @@ class TestColumnSQL:
         assert "ADD COLUMN" in result.sql
         assert "`created_at`" in result.sql
         assert "TIMESTAMP" in result.sql
-        # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMN for Delta tables
-        assert "NOT NULL" not in result.sql
+        # NOT NULL constraint is handled via separate ALTER COLUMN SET NOT NULL statement
+        assert "SET NOT NULL" in result.sql
+        assert "ALTER COLUMN" in result.sql
         assert "COMMENT 'Creation timestamp'" in result.sql
 
     def test_add_column_nullable(self, sample_unity_state):
@@ -653,11 +654,42 @@ class TestColumnTagSQL:
         assert "UNSET TAGS" in result.sql
         assert "'PII'" in result.sql
 
+    def test_batched_column_tags_same_column(self, sample_unity_state):
+        """Multiple set_column_tag on same column produce one SET TAGS with multiple key=value."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        tag_ops = [
+            builder.set_column_tag("col_002", "table_789", "pii", "true", op_id="tag_1"),
+            builder.set_column_tag("col_002", "table_789", "category", "contact", op_id="tag_2"),
+        ]
+        batched = generator._generate_batched_column_tag_sql(tag_ops)
+        assert "SET TAGS" in batched
+        assert "pii" in batched and "true" in batched
+        assert "category" in batched and "contact" in batched
+        assert batched.count("ALTER TABLE") == 1
+        assert batched.count("SET TAGS") == 1
+
+    def test_batched_table_tags_same_table(self, sample_unity_state):
+        """Multiple set_table_tag on same table produce one SET TAGS with multiple key=value."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        table_tag_ops = [
+            builder.set_table_tag("table_789", "k1", "v1", op_id="tag_1"),
+            builder.set_table_tag("table_789", "k2", "v2", op_id="tag_2"),
+        ]
+        batched = generator._generate_batched_table_tag_sql(table_tag_ops)
+        assert "SET TAGS" in batched
+        assert "k1" in batched and "v1" in batched
+        assert "k2" in batched and "v2" in batched
+        assert batched.count("ALTER TABLE") == 1
+        assert batched.count("SET TAGS") == 1
+
 
 class TestConstraintSQL:
     """Test SQL generation for constraint operations"""
 
-    @pytest.mark.skip(reason="NOT ENFORCED clause not implemented - see issue #20")
     def test_add_primary_key_constraint(self, sample_unity_state):
         """Test ALTER TABLE ADD PRIMARY KEY SQL generation"""
         builder = OperationBuilder()
@@ -669,7 +701,6 @@ class TestConstraintSQL:
             "primary_key",
             ["col_001"],
             name="pk_users",
-            notEnforced=True,
             op_id="op_020",
         )
 
@@ -679,7 +710,27 @@ class TestConstraintSQL:
         assert "`pk_users`" in result.sql
         assert "PRIMARY KEY" in result.sql
         assert "`user_id`" in result.sql
-        assert "NOT ENFORCED" in result.sql
+
+    def test_add_primary_key_constraint_timeseries_multi_column(self, sample_unity_state):
+        """PRIMARY KEY with timeseries and multiple columns: TIMESERIES after first column only."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        op = builder.add_constraint(
+            "constraint_001",
+            "table_789",
+            "primary_key",
+            ["col_001", "col_002"],
+            name="pk_users",
+            timeseries=True,
+            op_id="op_020",
+        )
+
+        result = generator.generate_sql_for_operation(op)
+        assert "PRIMARY KEY" in result.sql
+        assert "TIMESERIES" in result.sql
+        assert "user_id TIMESERIES" in result.sql or "`user_id` TIMESERIES" in result.sql
+        assert ") TIMESERIES" not in result.sql
 
     def test_add_foreign_key_constraint(self, sample_unity_state):
         """Test ALTER TABLE ADD FOREIGN KEY SQL generation"""
@@ -694,7 +745,6 @@ class TestConstraintSQL:
             name="fk_users_parent",
             parentTable="table_parent",
             parentColumns=["col_parent"],
-            notEnforced=True,
             op_id="op_021",
         )
 
@@ -716,7 +766,6 @@ class TestConstraintSQL:
             ["col_001"],
             name="chk_users_id",
             expression="user_id > 0",
-            notEnforced=True,
             op_id="op_022",
         )
 
@@ -727,22 +776,47 @@ class TestConstraintSQL:
         assert "user_id > 0" in result.sql
 
     def test_drop_constraint(self, sample_unity_state):
-        """Test ALTER TABLE DROP CONSTRAINT SQL generation"""
-        OperationBuilder()
-        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        """Test ALTER TABLE DROP CONSTRAINT SQL generation
 
-        op = Operation(
+        This test:
+        1. Adds a constraint to the state
+        2. Generates DROP CONSTRAINT SQL
+        3. Verifies the SQL is correct
+        """
+        builder = OperationBuilder()
+
+        # First, add a constraint to the state so it can be looked up
+        add_op = builder.add_constraint(
+            "constraint_001",
+            "table_789",
+            "primary_key",
+            ["col_001"],
+            name="pk_users",
+            op_id="op_020",
+        )
+
+        # Apply the add operation to state (pass Pydantic model, not dict)
+        from schematic.providers.unity.state_reducer import apply_operation
+
+        state_with_constraint = apply_operation(sample_unity_state, add_op)
+
+        # Now create generator with updated state (convert to dict for generator)
+        generator = UnitySQLGenerator(state_with_constraint.model_dump(by_alias=True))
+
+        # Create drop operation
+        drop_op = Operation(
             id="op_023",
             provider="unity",
             ts="2025-01-01T00:00:00Z",
             op="unity.drop_constraint",
             target="constraint_001",
-            payload={"tableId": "table_789", "constraintName": "pk_users"},
+            payload={"tableId": "table_789"},
         )
 
-        result = generator.generate_sql_for_operation(op)
+        result = generator.generate_sql_for_operation(drop_op)
         assert "ALTER TABLE" in result.sql
         assert "DROP CONSTRAINT" in result.sql
+        assert "`pk_users`" in result.sql
 
 
 @pytest.mark.skip(reason="Row filter SQL generation not implemented - see issue #19")
@@ -1295,17 +1369,23 @@ class TestSQLOptimization:
         generator = UnitySQLGenerator(state_with_table.model_dump(by_alias=True))
         sql = generator.generate_sql(column_ops)
 
-        # Should have only ONE ALTER TABLE statement (batched)
-        assert sql.count("ALTER TABLE") == 1, (
-            f"Expected 1 ALTER TABLE, found {sql.count('ALTER TABLE')}"
+        # Should have TWO ALTER TABLE statements:
+        # 1. Batched ADD COLUMNS
+        # 2. ALTER COLUMN SET NOT NULL for col2
+        assert sql.count("ALTER TABLE") == 2, (
+            f"Expected 2 ALTER TABLE, found {sql.count('ALTER TABLE')}"
         )
 
         # Should use ADD COLUMNS (plural) syntax with parentheses
         assert "ADD COLUMNS (" in sql
         assert "`col1` STRING," in sql
         # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
+        # So col2 is added as nullable, then SET NOT NULL via separate statement
         assert "`col2` INT," in sql or "`col2` INT\n" in sql
         assert "`col3` DOUBLE COMMENT 'Test comment'" in sql
+
+        # Verify SET NOT NULL statement for col2
+        assert "ALTER COLUMN `col2` SET NOT NULL" in sql
 
         # Verify correct format with closing parenthesis and semicolon
         assert ");" in sql or sql.strip().endswith(")")
@@ -1391,11 +1471,13 @@ class TestSQLOptimization:
         # Should have CREATE TABLE
         assert sql.count("CREATE TABLE") == 1
 
-        # Should have ALTER TABLE SET TAGS statements (table tags must be set after creation)
+        # Should have one batched ALTER TABLE SET TAGS (table tags after creation)
         assert "ALTER TABLE" in sql
         assert "SET TAGS" in sql
         assert "'department' = 'engineering'" in sql
         assert "'owner' = 'data-team'" in sql
+        # Batched: one SET TAGS statement for the table, not one per tag
+        assert sql.count("SET TAGS") == 1
 
     def test_create_table_with_column_tags_generates_alter_statements(self, empty_unity_state):
         """Test that columns with tags generate ALTER TABLE ALTER COLUMN SET TAGS statements"""
@@ -1477,13 +1559,14 @@ class TestSQLOptimization:
             assert "tagName" in op.payload
             assert "tagValue" in op.payload
 
-        # Generate SQL and verify
+        # Generate SQL and verify (tags are batched per column)
         generator = UnitySQLGenerator(new_state.model_dump(by_alias=True))
         sql = generator.generate_sql(diff_ops)
 
-        # Should generate ALTER COLUMN SET TAGS statements
-        assert "ALTER COLUMN `email` SET TAGS ('pii' = 'true')" in sql
-        assert "ALTER COLUMN `email` SET TAGS ('category' = 'contact')" in sql
+        # Should generate one ALTER COLUMN SET TAGS with both tags batched
+        assert "ALTER COLUMN `email` SET TAGS" in sql
+        assert "pii" in sql and "true" in sql
+        assert "category" in sql and "contact" in sql
 
     def test_single_add_column_not_batched(self, empty_unity_state):
         """Test that single ADD COLUMN operation works normally (no regression)"""
@@ -1541,14 +1624,20 @@ class TestSQLOptimization:
         generator = UnitySQLGenerator(state_with_tables.model_dump(by_alias=True))
         sql = generator.generate_sql(column_ops)
 
-        # Should have TWO separate ALTER TABLE statements
-        assert sql.count("ALTER TABLE") == 2, (
-            f"Expected 2 ALTER TABLE statements, found {sql.count('ALTER TABLE')}"
+        # Should have THREE separate ALTER TABLE statements:
+        # 1. ALTER TABLE table1 ADD COLUMN col1
+        # 2. ALTER TABLE table2 ADD COLUMN col2
+        # 3. ALTER TABLE table2 ALTER COLUMN col2 SET NOT NULL
+        assert sql.count("ALTER TABLE") == 3, (
+            f"Expected 3 ALTER TABLE statements, found {sql.count('ALTER TABLE')}"
         )
 
         # Each should be for different table (with full qualification)
         assert "table1" in sql
         assert "table2" in sql
+
+        # Verify SET NOT NULL for col2
+        assert "ALTER COLUMN `col2` SET NOT NULL" in sql
 
     def test_mixed_operations_partial_batching(self, empty_unity_state):
         """Test that mixed operations (ADD + DROP) are handled correctly"""
@@ -1587,17 +1676,19 @@ class TestSQLOptimization:
         generator = UnitySQLGenerator(state_with_table.model_dump(by_alias=True))
         sql = generator.generate_sql(mixed_ops)
 
-        # Should have batched ADD COLUMNS and separate DROP COLUMN
-        assert sql.count("ALTER TABLE") >= 2, (
-            "Should have separate statements for batched ADD and DROP"
+        # Should have batched ADD COLUMNS, SET NOT NULL for col2, and separate DROP COLUMN
+        # Minimum: ADD COLUMNS + SET NOT NULL + DROP = 3 ALTER TABLE statements
+        assert sql.count("ALTER TABLE") >= 3, (
+            "Should have separate statements for batched ADD, SET NOT NULL, and DROP"
         )
 
         # Batched ADD COLUMNS should use proper syntax
         assert "ADD COLUMNS (" in sql
         assert "`col1` STRING," in sql
         # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
+        # So col2 is added as nullable, then SET NOT NULL via separate statement
         assert "`col2` INT" in sql
-        assert "NOT NULL" not in sql  # Explicitly verify NOT NULL is absent
+        assert "ALTER COLUMN `col2` SET NOT NULL" in sql
 
         # DROP should be separate
         assert "DROP COLUMN" in sql

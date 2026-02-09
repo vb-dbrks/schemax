@@ -45,6 +45,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
     name: string;
   } | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [locationNameError, setLocationNameError] = useState<string | null>(null);
 
   const activeEnv = project.activeEnvironment || 'dev';
   const environments = editedProject.provider?.environments || {};
@@ -113,6 +114,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
       description: '',
       paths: initialPaths
     });
+    setLocationNameError(null);
     setShowLocationModal(true);
   };
 
@@ -151,14 +153,16 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
 
     // Validation
     if (!name.trim()) {
-      alert('Location name is required');
+      setLocationNameError('Location name is required');
       return;
     }
 
+    // Unity Catalog identifiers: letters, numbers, underscores only (no hyphens)
     if (!/^[a-z][a-z0-9_]*$/.test(name)) {
-      alert('Location name must start with lowercase letter and contain only lowercase letters, numbers, and underscores');
+      setLocationNameError('Use only lowercase letters, numbers, and underscores (e.g. my_location). Hyphens are not allowed.');
       return;
     }
+    setLocationNameError(null);
 
     // Check for at least one path
     const hasPath = Object.values(paths).some(p => p.trim());
@@ -206,6 +210,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
     setIsDirty(true);
     setShowLocationModal(false);
     setLocationModalData(null);
+    setLocationNameError(null);
   };
 
   // Delete Location
@@ -448,11 +453,23 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                   value={locationModalData.name}
                   placeholder="location_name"
                   disabled={locationModalData.mode === 'edit'}
-                  onInput={(e: any) => setLocationModalData({
-                    ...locationModalData,
-                    name: e.target.value
-                  })}
+                  onInput={(e: any) => {
+                    const value = (e.target as HTMLInputElement).value;
+                    setLocationModalData({ ...locationModalData, name: value });
+                    if (!value.trim()) {
+                      setLocationNameError(null);
+                    } else if (!/^[a-z][a-z0-9_]*$/.test(value)) {
+                      setLocationNameError('Use only lowercase letters, numbers, and underscores (e.g. my_location). Hyphens are not allowed.');
+                    } else {
+                      setLocationNameError(null);
+                    }
+                  }}
                 />
+                {locationNameError && (
+                  <p className="field-error" style={{ color: 'var(--vscode-errorForeground)', marginTop: '4px', fontSize: '12px' }}>
+                    {locationNameError}
+                  </p>
+                )}
                 <p className="field-help">Lowercase with underscores. Must be unique across all locations.</p>
               </div>
 

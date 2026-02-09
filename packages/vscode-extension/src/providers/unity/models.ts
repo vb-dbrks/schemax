@@ -42,18 +42,12 @@ export interface UnityConstraint extends BaseObject {
   // For FOREIGN KEY
   parentTable?: string; // Reference to parent table ID
   parentColumns?: string[]; // Parent column IDs
-  matchFull?: boolean;
-  onUpdate?: 'NO_ACTION';
-  onDelete?: 'NO_ACTION';
   
   // For CHECK
   expression?: string; // CHECK expression
   
-  // Constraint options (all types)
-  notEnforced?: boolean;
-  deferrable?: boolean;
-  initiallyDeferred?: boolean;
-  rely?: boolean; // For query optimization (Photon)
+  // Note: Unity Catalog constraints are informational only (not enforced).
+  // They are used for query optimization and documentation purposes.
 }
 
 // Grant definition
@@ -102,6 +96,8 @@ export interface UnityView extends BaseObject {
 // Schema definition
 export interface UnitySchema extends BaseObject {
   managedLocationName?: string; // Reference to env managedLocations
+  comment?: string; // Schema comment
+  tags?: Record<string, string>; // Schema tags (Unity Catalog governance)
   tables: UnityTable[];
   views: UnityView[]; // Views stored alongside tables in schema
 }
@@ -109,6 +105,8 @@ export interface UnitySchema extends BaseObject {
 // Catalog definition
 export interface UnityCatalog extends BaseObject {
   managedLocationName?: string; // Reference to env managedLocations
+  comment?: string; // Catalog comment
+  tags?: Record<string, string>; // Catalog tags (Unity Catalog governance)
   schemas: UnitySchema[];
 }
 

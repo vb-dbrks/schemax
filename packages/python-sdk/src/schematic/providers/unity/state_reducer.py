@@ -54,6 +54,8 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
             id=payload["catalogId"],
             name=payload["name"],
             managed_location_name=payload.get("managedLocationName"),
+            comment=payload.get("comment"),
+            tags=payload.get("tags", {}),
             schemas=[],
         )
         new_state.catalogs.append(catalog)
@@ -73,6 +75,10 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
             if catalog.id == target:
                 if "managedLocationName" in payload:
                     catalog.managed_location_name = payload.get("managedLocationName")
+                if "comment" in payload:
+                    catalog.comment = payload.get("comment")
+                if "tags" in payload:
+                    catalog.tags = payload.get("tags", {})
                 break
 
     elif op_type == "drop_catalog":
@@ -87,6 +93,8 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     id=op_dict["payload"]["schemaId"],
                     name=op_dict["payload"]["name"],
                     managed_location_name=op_dict["payload"].get("managedLocationName"),
+                    comment=op_dict["payload"].get("comment"),
+                    tags=op_dict["payload"].get("tags", {}),
                     tables=[],
                     views=[],
                 )
@@ -106,6 +114,10 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 if schema.id == op_dict["target"]:
                     if "managedLocationName" in op_dict["payload"]:
                         schema.managed_location_name = op_dict["payload"].get("managedLocationName")
+                    if "comment" in op_dict["payload"]:
+                        schema.comment = op_dict["payload"].get("comment")
+                    if "tags" in op_dict["payload"]:
+                        schema.tags = op_dict["payload"].get("tags", {})
                     return new_state
 
     elif op_type == "drop_schema":
@@ -318,16 +330,14 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 timeseries=op_dict["payload"].get("timeseries"),
                 parent_table=op_dict["payload"].get("parentTable"),
                 parent_columns=op_dict["payload"].get("parentColumns"),
-                match_full=op_dict["payload"].get("matchFull"),
-                on_update=op_dict["payload"].get("onUpdate"),
-                on_delete=op_dict["payload"].get("onDelete"),
                 expression=op_dict["payload"].get("expression"),
-                not_enforced=op_dict["payload"].get("notEnforced"),
-                deferrable=op_dict["payload"].get("deferrable"),
-                initially_deferred=op_dict["payload"].get("initiallyDeferred"),
-                rely=op_dict["payload"].get("rely"),
             )
-            table_opt.constraints.append(constraint)
+            # Insert at specific position if provided (for updates), otherwise append
+            insert_at = op_dict["payload"].get("insertAt")
+            if insert_at is not None and insert_at >= 0:
+                table_opt.constraints.insert(insert_at, constraint)
+            else:
+                table_opt.constraints.append(constraint)
 
     elif op_type == "drop_constraint":
         table_opt = _find_table(new_state, op_dict["payload"]["tableId"])

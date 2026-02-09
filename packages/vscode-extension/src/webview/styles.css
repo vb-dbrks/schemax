@@ -820,6 +820,13 @@ body {
   flex: 1;
 }
 
+.info-icon {
+  cursor: help;
+  user-select: none;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
 .inline-warning {
   display: inline-flex;
   align-items: center;
@@ -1060,6 +1067,7 @@ body {
   color: var(--vscode-foreground);
 }
 
+.modal-content h2,
 .modal-content h3 {
   font-size: 16px;
   font-weight: 600;
@@ -1145,10 +1153,10 @@ body {
 }
 
 .modal-field-group label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  margin-bottom: 4px;
 }
 
 .modal-surface vscode-text-field,
@@ -1437,6 +1445,23 @@ body {
   border-collapse: collapse;
   background-color: var(--vscode-editor-background);
   margin-bottom: 12px;
+  table-layout: fixed; /* Fixed layout prevents column jumping */
+}
+
+/* Define column widths for tag tables */
+.properties-table th:first-child,
+.properties-table td:first-child {
+  width: 30%; /* TAG NAME column */
+}
+
+.properties-table th:nth-child(2),
+.properties-table td:nth-child(2) {
+  width: 50%; /* VALUE column - wider for content */
+}
+
+.properties-table th:last-child,
+.properties-table td:last-child {
+  width: 120px; /* ACTIONS column - fixed width */
 }
 
 .properties-table thead {
@@ -1448,6 +1473,8 @@ body {
   padding: 8px 12px;
   text-align: left;
   border-bottom: 1px solid var(--vscode-panel-border);
+  line-height: 20px; /* Fixed line height to prevent jumping */
+  vertical-align: middle;
 }
 
 .properties-table th {
@@ -1477,12 +1504,16 @@ body {
 
 .properties-table input {
   width: 100%;
-  padding: 4px 8px;
+  padding: 2px 8px;
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border);
   border-radius: 2px;
   font-size: 12px;
+  line-height: 20px; /* Match td line-height */
+  height: 28px; /* Fixed height to prevent jumping */
+  box-sizing: border-box;
+  max-width: 100%; /* Prevent overflow */
 }
 
 .properties-table input:focus {
@@ -1491,6 +1522,7 @@ body {
 
 .properties-table .actions-cell {
   white-space: nowrap;
+  width: 120px; /* Fixed width to prevent jumping */
 }
 
 .properties-table .actions-cell button {
@@ -1502,10 +1534,51 @@ body {
   border-radius: 2px;
   cursor: pointer;
   font-size: 11px;
+  min-width: 32px; /* Ensure minimum width for consistency */
+  height: 28px; /* Match input height */
+  vertical-align: middle;
 }
 
 .properties-table .actions-cell button:hover {
   background-color: var(--vscode-button-hoverBackground);
+}
+
+/* Action button variants for inline editing */
+.action-button-save {
+  padding: 4px 8px;
+  margin-right: 4px;
+  background-color: var(--vscode-button-background);
+  color: #00ff00; /* Bright green for high visibility against blue button background */
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  min-width: 32px;
+  height: 28px;
+  vertical-align: middle;
+}
+
+.action-button-save:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.action-button-cancel {
+  padding: 4px 8px;
+  margin-right: 4px;
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 11px;
+  min-width: 32px;
+  height: 28px;
+  vertical-align: middle;
+}
+
+.action-button-cancel:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
 .add-property-btn {
@@ -1965,6 +2038,133 @@ body {
   color: var(--vscode-descriptionForeground);
   margin-top: 4px;
   font-style: italic;
+}
+
+/* Add/Edit Constraint form — clear labels and controls */
+.constraint-form-field {
+  margin-bottom: 14px;
+}
+
+.constraint-form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin-bottom: 6px;
+}
+
+.constraint-columns-list {
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  padding: 8px 10px;
+  margin-top: 4px;
+}
+
+.constraint-columns-list-actions {
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.constraint-list-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  font-size: 11px;
+  text-decoration: underline;
+}
+
+.constraint-list-link:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
+.constraint-list-sep {
+  margin: 0 6px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.constraint-columns-checkbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.constraint-columns-checkbox-list li {
+  margin: 4px 0;
+}
+
+.constraint-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+}
+
+.constraint-checkbox-label input[type="checkbox"] {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* Add Column dialog — tags list and inputs (matches constraint form look) */
+.add-column-tags-list {
+  list-style: none;
+  margin: 0 0 10px 0;
+  padding: 0;
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  overflow: hidden;
+}
+
+.add-column-tag-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  font-size: 12px;
+}
+
+.add-column-tag-item:last-child {
+  border-bottom: none;
+}
+
+.add-column-tag-item code {
+  flex: 1;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+}
+
+.add-column-tag-remove {
+  flex-shrink: 0;
+  color: var(--vscode-errorForeground);
+}
+
+.add-column-tag-remove:hover {
+  color: var(--vscode-errorForeground);
+}
+
+.add-column-tag-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.add-column-tag-input-row vscode-text-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-column-tag-input-row vscode-button {
+  flex-shrink: 0;
 }
 
 /* ===================================

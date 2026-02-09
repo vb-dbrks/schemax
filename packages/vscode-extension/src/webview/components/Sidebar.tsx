@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { extractDependenciesFromView } from '../../providers/base/sql-parser';
+import { validateUnityCatalogObjectName } from '../utils/unityNames';
 
 // Environment config type for tooltip
 interface EnvironmentConfig {
@@ -172,6 +173,9 @@ export const Sidebar: React.FC = () => {
   const [addExternalLocationName, setAddExternalLocationName] = useState('');
   const [addTablePath, setAddTablePath] = useState('');
   const [addManagedLocationName, setAddManagedLocationName] = useState('');
+  const [addComment, setAddComment] = useState('');
+  const [addTags, setAddTags] = useState<Record<string, string>>({});
+  const [addTagInput, setAddTagInput] = useState({tagName: '', tagValue: ''});
   
   // View-specific state
   const [addViewSQL, setAddViewSQL] = useState('');
@@ -199,15 +203,22 @@ export const Sidebar: React.FC = () => {
     setExpandedSchemas(newExpanded);
   };
 
-  const [renameDialog, setRenameDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string, managedLocationName?: string} | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
   const [dropDialog, setDropDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
-  const [editManagedLocationName, setEditManagedLocationName] = useState('');
 
   useEffect(() => {
     if (renameDialog) {
       setRenameValue(renameDialog.name);
       setRenameError(null);
-      setEditManagedLocationName(renameDialog.managedLocationName || '');
+      
+      // Auto-focus the name field after a short delay
+      setTimeout(() => {
+        const nameInput = document.getElementById('rename-name-input') as any;
+        if (nameInput && nameInput.shadowRoot) {
+          const input = nameInput.shadowRoot.querySelector('input');
+          if (input) input.focus();
+        }
+      }, 100);
     }
   }, [renameDialog]);
 
@@ -220,6 +231,9 @@ export const Sidebar: React.FC = () => {
       setAddExternalLocationName('');
       setAddTablePath('');
       setAddManagedLocationName('');
+      setAddComment('');
+      setAddTags({});
+      setAddTagInput({tagName: '', tagValue: ''});
       
       // Initialize view-specific state
       setAddViewSQL('');
@@ -231,32 +245,38 @@ export const Sidebar: React.FC = () => {
       if (addDialog.type === 'table' && !addDialog.objectType) {
         setAddDialog({...addDialog, objectType: 'table'});
       }
+      
+      // Auto-focus the appropriate field after a short delay
+      setTimeout(() => {
+        if (addDialog.objectType === 'view') {
+          // Focus on SQL textarea for views
+          const sqlTextarea = document.getElementById('view-sql') as HTMLTextAreaElement;
+          if (sqlTextarea) sqlTextarea.focus();
+        } else {
+          // Focus on name field for catalog/schema/table
+          const nameInput = document.getElementById('add-name-input') as any;
+          if (nameInput && nameInput.shadowRoot) {
+            const input = nameInput.shadowRoot.querySelector('input');
+            if (input) input.focus();
+          }
+        }
+      }, 100);
     }
   }, [addDialog]);
 
   const handleRenameCatalog = (catalogId: string, currentName: string) => {
-    // Find the catalog to get its current managed location
-    const catalog = project?.state?.catalogs?.find((c: any) => c.id === catalogId);
     setRenameDialog({
       type: 'catalog', 
       id: catalogId, 
-      name: currentName,
-      managedLocationName: catalog?.managedLocationName
+      name: currentName
     });
   };
 
   const handleRenameSchema = (schemaId: string, currentName: string) => {
-    // Find the schema to get its current managed location
-    let schema: any = null;
-    for (const catalog of (project?.state?.catalogs || [])) {
-      schema = catalog.schemas?.find((s: any) => s.id === schemaId);
-      if (schema) break;
-    }
     setRenameDialog({
       type: 'schema', 
       id: schemaId, 
-      name: currentName,
-      managedLocationName: schema?.managedLocationName
+      name: currentName
     });
   };
 
@@ -294,53 +314,28 @@ export const Sidebar: React.FC = () => {
     }
 
     const trimmedName = newName.trim();
-    if (!trimmedName) {
-      setRenameError('Name is required.');
+    const nameError = validateUnityCatalogObjectName(trimmedName);
+    if (nameError) {
+      setRenameError(nameError);
       return;
     }
 
-    const nameChanged = trimmedName !== renameDialog.name;
-    const locationChanged = editManagedLocationName !== (renameDialog.managedLocationName || '');
-
-    if (!nameChanged && !locationChanged) {
+    if (trimmedName === renameDialog.name) {
       closeRenameDialog();
       return;
     }
     
-    // Handle catalog updates
+    // Handle rename based on type
     if (renameDialog.type === 'catalog') {
-      if (nameChanged) {
-        renameCatalog(renameDialog.id, trimmedName);
-      }
-      if (locationChanged) {
-        updateCatalog(renameDialog.id, {
-          managedLocationName: editManagedLocationName || undefined
-        });
-      }
-    } 
-    // Handle schema updates
-    else if (renameDialog.type === 'schema') {
-      if (nameChanged) {
-        renameSchema(renameDialog.id, trimmedName);
-      }
-      if (locationChanged) {
-        updateSchema(renameDialog.id, {
-          managedLocationName: editManagedLocationName || undefined
-        });
-      }
-    } 
-    // Handle table rename (no location for tables)
-    else if (renameDialog.type === 'table') {
-      if (nameChanged) {
-        renameTable(renameDialog.id, trimmedName);
-      }
+      renameCatalog(renameDialog.id, trimmedName);
+    } else if (renameDialog.type === 'schema') {
+      renameSchema(renameDialog.id, trimmedName);
+    } else if (renameDialog.type === 'table') {
+      renameTable(renameDialog.id, trimmedName);
+    } else if ((renameDialog.type as any) === 'view') {
+      renameView(renameDialog.id, trimmedName);
     }
-    // Handle view rename
-    else if ((renameDialog.type as any) === 'view') {
-      if (nameChanged) {
-        renameView(renameDialog.id, trimmedName);
-      }
-    }
+    
     setRenameError(null);
     closeRenameDialog();
   };
@@ -366,19 +361,59 @@ export const Sidebar: React.FC = () => {
     }
 
     const trimmedName = name.trim();
-    if (!trimmedName) {
-      setAddError('Name is required.');
+    const nameError = validateUnityCatalogObjectName(trimmedName);
+    if (nameError) {
+      setAddError(nameError);
       return;
     }
 
     if (addDialog.type === 'catalog') {
-      const options = addManagedLocationName ? { managedLocationName: addManagedLocationName } : undefined;
-      addCatalog(trimmedName, options);
+      // Check for duplicate catalog name
+      const catalogExists = (project?.state as any)?.catalogs?.some((c: any) => c.name.toLowerCase() === trimmedName.toLowerCase());
+      if (catalogExists) {
+        setAddError(`Catalog "${trimmedName}" already exists.`);
+        return;
+      }
+
+      const options: any = {};
+      if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
+      if (addComment) options.comment = addComment;
+      if (Object.keys(addTags).length > 0) options.tags = addTags;
+      addCatalog(trimmedName, Object.keys(options).length > 0 ? options : undefined);
     } else if (addDialog.type === 'schema' && addDialog.catalogId) {
-      const options = addManagedLocationName ? { managedLocationName: addManagedLocationName } : undefined;
-      addSchema(addDialog.catalogId, trimmedName, options);
+      // Check for duplicate schema name within the same catalog
+      const catalog = (project?.state as any)?.catalogs?.find((c: any) => c.id === addDialog.catalogId);
+      if (catalog) {
+        const schemaExists = catalog.schemas?.some((s: any) => s.name.toLowerCase() === trimmedName.toLowerCase());
+        if (schemaExists) {
+          setAddError(`Schema "${trimmedName}" already exists in this catalog.`);
+          return;
+        }
+      }
+
+      const options: any = {};
+      if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
+      if (addComment) options.comment = addComment;
+      if (Object.keys(addTags).length > 0) options.tags = addTags;
+      addSchema(addDialog.catalogId, trimmedName, Object.keys(options).length > 0 ? options : undefined);
       setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
     } else if (addDialog.type === 'table' && addDialog.schemaId) {
+      // Find the schema to check for duplicate table/view names
+      let schema: any = null;
+      for (const catalog of ((project?.state as any)?.catalogs || [])) {
+        schema = catalog.schemas?.find((s: any) => s.id === addDialog.schemaId);
+        if (schema) break;
+      }
+
+      if (schema) {
+        // Check for duplicate table or view name within the same schema
+        const tableExists = schema.tables?.some((t: any) => t.name.toLowerCase() === trimmedName.toLowerCase());
+        if (tableExists) {
+          setAddError(`Table or view "${trimmedName}" already exists in this schema.`);
+          return;
+        }
+      }
+
       if (addDialog.objectType === 'view') {
         // VIEW CREATION
         const sqlError = validateViewSQL(addViewSQL);
@@ -759,55 +794,9 @@ export const Sidebar: React.FC = () => {
                   setRenameValue((event.target as HTMLInputElement).value);
                   setRenameError(null);
                 }}
-                autoFocus
               />
               {renameError && <p className="form-error">{renameError}</p>}
             </div>
-
-            {/* Managed Location for Catalog and Schema */}
-            {(renameDialog.type === 'catalog' || renameDialog.type === 'schema') && (
-              <div className="modal-field-group">
-                <label htmlFor="edit-managed-location-select">
-                  Managed Location (optional)
-                  <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
-                </label>
-                <VSCodeDropdown
-                  id="edit-managed-location-select"
-                  value={editManagedLocationName}
-                  onInput={(event: React.FormEvent<HTMLSelectElement>) => {
-                    setEditManagedLocationName((event.target as HTMLSelectElement).value);
-                  }}
-                >
-                  <VSCodeOption value="">-- Default --</VSCodeOption>
-                  {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
-                    <VSCodeOption key={name} value={name}>
-                      {name} {location.description && `(${location.description})`}
-                    </VSCodeOption>
-                  ))}
-                </VSCodeDropdown>
-
-                {editManagedLocationName && project?.managedLocations?.[editManagedLocationName] && (
-                  <div className="location-preview">
-                    <strong>Paths:</strong>
-                    <div className="env-paths-list">
-                      {Object.entries(project.managedLocations[editManagedLocationName].paths || {}).map(([env, path]) => (
-                        <div key={env} className="path-row">
-                          <span className="env-label">{env}:</span>
-                          <code className="path-value">{path}</code>
-                        </div>
-                      ))}
-                      {Object.keys(project.managedLocations[editManagedLocationName].paths || {}).length === 0 && (
-                        <div className="path-row muted">No paths configured</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                <p className="field-help">
-                  Specifies where Unity Catalog stores data for managed tables in this {renameDialog.type}.
-                </p>
-              </div>
-            )}
 
             <div className="modal-buttons">
               <VSCodeButton type="submit">Save</VSCodeButton>
@@ -997,9 +986,9 @@ export const Sidebar: React.FC = () => {
             {addDialog.objectType !== 'view' && (
               <>
                 <VSCodeTextField
+                  id="add-name-input"
                   value={addNameInput}
                   placeholder={`Enter ${addDialog.type} name`}
-                  autoFocus={addDialog.objectType !== 'view'}
                   onInput={(event: React.FormEvent<HTMLInputElement>) => {
                     setAddNameInput((event.target as HTMLInputElement).value);
                     setAddError(null);
@@ -1008,11 +997,26 @@ export const Sidebar: React.FC = () => {
               </>
             )}
             
+            {/* Comment field for Catalog and Schema */}
+            {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
+              <div className="modal-field-group">
+                <label htmlFor="add-comment">Comment</label>
+                <VSCodeTextField
+                  id="add-comment"
+                  value={addComment}
+                  placeholder="Optional description"
+                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                    setAddComment((event.target as HTMLInputElement).value);
+                  }}
+                />
+              </div>
+            )}
+            
             {/* Managed Location for Catalog and Schema */}
             {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
               <div className="modal-field-group">
                 <label htmlFor="managed-location-select">
-                  Managed Location (optional)
+                  Managed Location
                   <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
                 </label>
                 <VSCodeDropdown
@@ -1031,9 +1035,9 @@ export const Sidebar: React.FC = () => {
                 </VSCodeDropdown>
 
                 {addManagedLocationName && project?.managedLocations?.[addManagedLocationName] && (
-                  <div className="location-preview">
+                  <div className="location-preview" style={{ marginTop: '8px', fontSize: '11px' }}>
                     <strong>Paths:</strong>
-                    <div className="env-paths-list">
+                    <div className="env-paths-list" style={{ marginTop: '4px', marginLeft: '8px' }}>
                       {Object.entries(project.managedLocations[addManagedLocationName].paths || {}).map(([env, path]) => (
                         <div key={env} className="path-row">
                           <span className="env-label">{env}:</span>
@@ -1046,10 +1050,73 @@ export const Sidebar: React.FC = () => {
                     </div>
                   </div>
                 )}
-                
-                <p className="field-help">
-                  Specifies where Unity Catalog stores data for managed tables in this {addDialog.type}.
-                </p>
+              </div>
+            )}
+            
+            {/* Tags field for Catalog and Schema */}
+            {(addDialog.type === 'catalog' || addDialog.type === 'schema') && (
+              <div className="modal-field-group">
+                <label>Tags</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <VSCodeTextField
+                    placeholder="Key"
+                    value={addTagInput.tagName}
+                    style={{ flex: '1' }}
+                    onInput={(e: Event) => {
+                      const target = e.target as HTMLInputElement;
+                      setAddTagInput({...addTagInput, tagName: target.value});
+                    }}
+                  />
+                  <VSCodeTextField
+                    placeholder="Value"
+                    value={addTagInput.tagValue}
+                    style={{ flex: '1' }}
+                    onInput={(e: Event) => {
+                      const target = e.target as HTMLInputElement;
+                      setAddTagInput({...addTagInput, tagValue: target.value});
+                    }}
+                  />
+                  <VSCodeButton
+                    appearance="secondary"
+                    onClick={() => {
+                      if (addTagInput.tagName && addTagInput.tagValue) {
+                        setAddTags({...addTags, [addTagInput.tagName]: addTagInput.tagValue});
+                        setAddTagInput({tagName: '', tagValue: ''});
+                      }
+                    }}
+                  >
+                    +
+                  </VSCodeButton>
+                </div>
+                {Object.keys(addTags).length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '8px' }}>
+                    {Object.entries(addTags).map(([tagName, tagValue]) => (
+                      <span key={tagName} className="badge">
+                        {tagName}: {tagValue}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newTags = {...addTags};
+                            delete newTags[tagName];
+                            setAddTags(newTags);
+                          }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'inherit',
+                            cursor: 'pointer',
+                            padding: '0',
+                            marginLeft: '4px',
+                            fontSize: '12px'
+                          }}
+                          title="Remove tag"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             

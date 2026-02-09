@@ -238,7 +238,13 @@ def apply_to_environment(
         console.print("[blue]Generating SQL...[/blue]")
 
         catalog_mapping = _build_catalog_mapping(latest_state, env_config)
-        generator = provider.get_sql_generator(latest_state, catalog_mapping)
+        generator = provider.get_sql_generator(
+            latest_state,
+            catalog_mapping,
+            managed_locations=project.get("managedLocations"),
+            external_locations=project.get("externalLocations"),
+            environment_name=target_env,
+        )
 
         # Generate SQL with structured mapping (no comment parsing needed!)
         sql_result = generator.generate_sql_with_mapping(diff_operations)
@@ -330,7 +336,9 @@ def apply_to_environment(
         )
         console.print("[green]✓[/green] Tracking schema ready")
 
-        # Start and complete deployment tracking
+        # Start and complete deployment tracking (reference previous deployment for partial rollback)
+        # Use most recent deployment by time (any status) so partial deployments are linked
+        previous_deployment_id = tracker.get_most_recent_deployment_id(target_env)
         tracker.start_deployment(
             deployment_id=deployment_id,
             environment=target_env,
@@ -340,6 +348,7 @@ def apply_to_environment(
             provider_version=provider.info.version,
             schematic_version="0.2.0",
             from_snapshot_version=deployed_version,
+            previous_deployment_id=previous_deployment_id,
         )
 
         # Track individual operations using explicit mapping
@@ -386,9 +395,19 @@ def apply_to_environment(
                 # Import rollback function and error here to avoid circular imports
                 from .rollback import RollbackError, rollback_partial
 
-                # Get successful operations (those that executed before failure)
+                # Get successful operations from statement-to-operation mapping.
+                # Statement index != operation index when one op generates multiple statements
+                # (e.g. add_column with NOT NULL → ADD COLUMN + SET NOT NULL).
                 failed_idx = result.failed_statement_index or 0
-                successful_ops = diff_operations[:failed_idx]
+                successful_op_ids = set()
+                for i in range(failed_idx):
+                    if i < len(sql_result.statements):
+                        for op_id in sql_result.statements[i].operation_ids:
+                            successful_op_ids.add(op_id)
+                if failed_idx < len(sql_result.statements):
+                    for op_id in sql_result.statements[failed_idx].operation_ids:
+                        successful_op_ids.discard(op_id)
+                successful_ops = [op for op in diff_operations if op.id in successful_op_ids]
 
                 # Trigger partial rollback automatically
                 # Pass the failed deployment_id so rollback can query the database

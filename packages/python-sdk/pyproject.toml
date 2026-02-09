@@ -41,6 +41,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "types-networkx>=3.0.0",  # Type stubs for networkx (mypy)
     "sqlglot>=20.0.0",  # SQL validation in tests
     "pre-commit>=3.0.0",  # Pre-commit hooks for code quality
 ]
@@ -97,5 +98,9 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "databricks.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "networkx"
 ignore_missing_imports = true
 

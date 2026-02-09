@@ -1,18 +1,30 @@
 import React, { useState } from 'react';
+import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { Constraint, Table } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
+
+// Codicon icons - theme-aware and vector-based
+const IconEdit: React.FC = () => (
+  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
+);
+
+const IconTrash: React.FC = () => (
+  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+);
 
 interface TableConstraintsProps {
   tableId: string;
 }
 
 export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) => {
-  const { project, addConstraint, dropConstraint } = useDesignerStore();
-  const [addDialog, setAddDialog] = useState<{type: 'primary_key' | 'foreign_key' | 'check'} | null>(null);
+  const { project, addConstraint, updateConstraint, dropConstraint } = useDesignerStore();
+  const [addDialog, setAddDialog] = useState(false);
+  const [editDialog, setEditDialog] = useState<{constraintId: string, constraint: Constraint} | null>(null);
   const [dropDialog, setDropDialog] = useState<{constraintId: string, name?: string} | null>(null);
+  const [pkWarningDialog, setPkWarningDialog] = useState(false);
 
-  // Form state for adding constraints
-  const [formData, setFormData] = useState<any>({});
+  // Form state for adding/editing constraints (including type selection)
+  const [formData, setFormData] = useState<any>({ type: 'primary_key' });
 
   // Find the table
   const table = React.useMemo(() => {
@@ -26,47 +38,125 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
     return null;
   }, [project, tableId]);
 
+  // Get all tables for foreign key reference (excluding current table)
+  const allTables = React.useMemo(() => {
+    if (!project) return [];
+    const tables: Array<{id: string, name: string, catalogName: string, schemaName: string, columns: any[]}> = [];
+    for (const catalog of (project as any).state.catalogs) {
+      for (const schema of catalog.schemas) {
+        for (const t of schema.tables) {
+          if (t.id !== tableId) { // Exclude current table
+            tables.push({
+              id: t.id,
+              name: t.name,
+              catalogName: catalog.name,
+              schemaName: schema.name,
+              columns: t.columns || []
+            });
+          }
+        }
+      }
+    }
+    return tables;
+  }, [project, tableId]);
+
   if (!table) return null;
 
   const constraints = table.constraints || [];
 
+  // Check if PRIMARY KEY already exists
+  const hasPrimaryKey = constraints.some(c => c.type === 'primary_key');
+
+  // Handle add constraint button click - just open dialog, no validation yet
+  const handleAddConstraintClick = () => {
+    setFormData({ type: 'primary_key' });
+    setAddDialog(true);
+  };
+
   const handleAddConstraint = () => {
-    if (!addDialog) return;
+    if (!addDialog || !formData.type) return;
+
+    // Validate PRIMARY KEY: if user is trying to add a PRIMARY KEY and one already exists
+    if (formData.type === 'primary_key' && hasPrimaryKey) {
+      // Close add dialog and show warning
+      setAddDialog(false);
+      setPkWarningDialog(true);
+      setFormData({ type: 'primary_key' });
+      return;
+    }
 
     const constraint: Omit<Constraint, 'id'> = {
-      type: addDialog.type,
+      type: formData.type,
       name: formData.name || undefined,
       columns: formData.columns || [],
     };
 
     // Add type-specific fields
-    if (addDialog.type === 'primary_key') {
+    if (formData.type === 'primary_key') {
       if (formData.timeseries) constraint.timeseries = true;
-    } else if (addDialog.type === 'foreign_key') {
+    } else if (formData.type === 'foreign_key') {
       constraint.parentTable = formData.parentTable;
       constraint.parentColumns = formData.parentColumns;
-      if (formData.matchFull) constraint.matchFull = true;
-      if (formData.onUpdate) constraint.onUpdate = 'NO_ACTION';
-      if (formData.onDelete) constraint.onDelete = 'NO_ACTION';
-    } else if (addDialog.type === 'check') {
+    } else if (formData.type === 'check') {
       constraint.expression = formData.expression;
     }
 
-    // Add constraint options
-    if (formData.notEnforced) constraint.notEnforced = true;
-    if (formData.deferrable) constraint.deferrable = true;
-    if (formData.initiallyDeferred) constraint.initiallyDeferred = true;
-    if (formData.rely) constraint.rely = true;
-
     addConstraint(tableId, constraint);
-    setAddDialog(null);
-    setFormData({});
+    setAddDialog(false);
+    setFormData({ type: 'primary_key' });
   };
 
   const handleDropConstraint = () => {
     if (!dropDialog) return;
     dropConstraint(tableId, dropDialog.constraintId);
     setDropDialog(null);
+  };
+
+  const handleOpenEditDialog = (constraint: Constraint) => {
+    // Populate form data from existing constraint
+    const editFormData: any = {
+      type: constraint.type,
+      name: constraint.name || '',
+      columns: constraint.columns || [],
+    };
+
+    if (constraint.type === 'primary_key') {
+      editFormData.timeseries = constraint.timeseries || false;
+    } else if (constraint.type === 'foreign_key') {
+      editFormData.parentTable = constraint.parentTable || '';
+      editFormData.parentColumns = constraint.parentColumns || [];
+    } else if (constraint.type === 'check') {
+      editFormData.expression = constraint.expression || '';
+    }
+
+    setFormData(editFormData);
+    setEditDialog({ constraintId: constraint.id, constraint });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editDialog) return;
+
+    const constraint: Omit<Constraint, 'id'> = {
+      type: formData.type,
+      name: formData.name || undefined,
+      columns: formData.columns || [],
+    };
+
+    // Add type-specific fields
+    if (formData.type === 'primary_key') {
+      if (formData.timeseries) constraint.timeseries = true;
+    } else if (formData.type === 'foreign_key') {
+      constraint.parentTable = formData.parentTable;
+      constraint.parentColumns = formData.parentColumns;
+    } else if (formData.type === 'check') {
+      constraint.expression = formData.expression;
+    }
+
+    // Use updateConstraint which batches drop and add as a single atomic operation
+    updateConstraint(tableId, editDialog.constraintId, constraint);
+
+    setEditDialog(null);
+    setFormData({ type: 'primary_key' });
   };
 
   const getConstraintDisplay = (constraint: Constraint): string => {
@@ -76,11 +166,29 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
           const col = table.columns.find(c => c.id === colId);
           return col?.name || colId;
         }).join(', ')})${constraint.timeseries ? ' TIMESERIES' : ''}`;
-      case 'foreign_key':
-        return `FOREIGN KEY (${constraint.columns.map(colId => {
+      case 'foreign_key': {
+        const childColumns = constraint.columns.map(colId => {
           const col = table.columns.find(c => c.id === colId);
           return col?.name || colId;
-        }).join(', ')}) REFERENCES ${constraint.parentTable || '?'}`;
+        }).join(', ');
+        
+        // Look up parent table name from ID
+        const parentTableInfo = allTables.find(t => t.id === constraint.parentTable);
+        const parentTableName = parentTableInfo 
+          ? `${parentTableInfo.catalogName}.${parentTableInfo.schemaName}.${parentTableInfo.name}`
+          : constraint.parentTable || '?';
+        
+        // Look up parent column names from IDs
+        const parentColumns = (constraint.parentColumns || []).map(colId => {
+          if (parentTableInfo) {
+            const col = parentTableInfo.columns.find((c: any) => c.id === colId);
+            return col?.name || colId;
+          }
+          return colId;
+        }).join(', ');
+        
+        return `FOREIGN KEY (${childColumns}) REFERENCES ${parentTableName}${parentColumns ? ` (${parentColumns})` : ''}`;
+      }
       case 'check':
         return `CHECK (${constraint.expression || ''})`;
       default:
@@ -95,17 +203,16 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
       {constraints.length === 0 ? (
         <div className="empty-constraints">
           <p>No constraints defined.</p>
-          <p className="hint">Add PRIMARY KEY, FOREIGN KEY, or CHECK constraints for data integrity.</p>
+          <p className="hint">Add PRIMARY KEY, FOREIGN KEY, or CHECK constraints (informational only in Unity Catalog).</p>
         </div>
       ) : (
         <table className="constraints-table">
           <thead>
             <tr>
-              <th>Type</th>
-              <th>Name</th>
-              <th>Definition</th>
-              <th>Options</th>
-              <th style={{ width: '100px' }}>Actions</th>
+              <th>TYPE</th>
+              <th>NAME</th>
+              <th>DEFINITION</th>
+              <th style={{ width: '120px' }}>ACTIONS</th>
             </tr>
           </thead>
           <tbody>
@@ -118,19 +225,21 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
                 </td>
                 <td>{constraint.name || <span className="unnamed">unnamed</span>}</td>
                 <td className="constraint-def">{getConstraintDisplay(constraint)}</td>
-                <td>
-                  {constraint.rely && <span className="option-badge">RELY</span>}
-                  {constraint.notEnforced && <span className="option-badge">NOT ENFORCED</span>}
-                  {constraint.deferrable && <span className="option-badge">DEFERRABLE</span>}
-                </td>
-                <td>
-                  <button
-                    className="delete-btn"
-                    onClick={() => setDropDialog({constraintId: constraint.id, name: constraint.name})}
-                    title="Drop Constraint"
+                <td className="actions-cell">
+                  <VSCodeButton
+                    appearance="icon"
+                    onClick={() => handleOpenEditDialog(constraint)}
+                    title="Edit constraint"
                   >
-                    Drop
-                  </button>
+                    <IconEdit />
+                  </VSCodeButton>
+                  <VSCodeButton
+                    appearance="icon"
+                    onClick={() => setDropDialog({constraintId: constraint.id, name: constraint.name})}
+                    title="Drop constraint"
+                  >
+                    <IconTrash />
+                  </VSCodeButton>
                 </td>
               </tr>
             ))}
@@ -141,61 +250,92 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
       <div className="constraint-actions">
         <button
           className="add-constraint-btn"
-          onClick={() => setAddDialog({type: 'primary_key'})}
+          onClick={handleAddConstraintClick}
         >
-          + PRIMARY KEY
-        </button>
-        <button
-          className="add-constraint-btn"
-          onClick={() => setAddDialog({type: 'foreign_key'})}
-        >
-          + FOREIGN KEY
-        </button>
-        <button
-          className="add-constraint-btn"
-          onClick={() => setAddDialog({type: 'check'})}
-        >
-          + CHECK
+          + Add Constraint
         </button>
       </div>
 
       {/* Add Constraint Dialog */}
       {addDialog && (
-        <div className="modal-overlay" onClick={() => setAddDialog(null)}>
+        <div className="modal-overlay" onClick={() => setAddDialog(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Add {addDialog.type.replace('_', ' ').toUpperCase()} Constraint</h2>
+            <h2>Add Constraint</h2>
             
             <div className="modal-body">
-              <label>
-                Constraint Name (optional):
-                <input
-                  type="text"
-                  value={formData.name || ''}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  placeholder="e.g., orders_pk"
-                />
-              </label>
-
-              <label>
-                Columns:
-                <select
-                  multiple
-                  value={formData.columns || []}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.selectedOptions, option => option.value);
-                    setFormData({...formData, columns: selected});
-                  }}
-                  size={Math.min(table.columns.length, 5)}
+              <div className="constraint-form-field">
+                <label className="constraint-form-label">Constraint type</label>
+                <VSCodeDropdown
+                  value={formData.type || 'primary_key'}
+                  style={{ width: '100%' }}
+                  onInput={(e) => setFormData({
+                    ...formData,
+                    type: (e.target as HTMLSelectElement).value as 'primary_key' | 'foreign_key' | 'check'
+                  })}
                 >
-                  {table.columns.map(col => (
-                    <option key={col.id} value={col.id}>{col.name} ({col.type})</option>
-                  ))}
-                </select>
-                <p className="hint">Hold Cmd/Ctrl to select multiple columns</p>
-              </label>
+                  <VSCodeOption value="primary_key">PRIMARY KEY</VSCodeOption>
+                  <VSCodeOption value="foreign_key">FOREIGN KEY</VSCodeOption>
+                  <VSCodeOption value="check">CHECK</VSCodeOption>
+                </VSCodeDropdown>
+              </div>
 
-              {addDialog.type === 'primary_key' && (
-                <label className="checkbox-label">
+              <div className="constraint-form-field">
+                <label className="constraint-form-label">Constraint name (optional)</label>
+                <VSCodeTextField
+                  value={formData.name || ''}
+                  placeholder="e.g., orders_pk"
+                  style={{ width: '100%' }}
+                  onInput={(e) => setFormData({...formData, name: (e.target as HTMLInputElement).value})}
+                />
+              </div>
+
+              {formData.type !== 'check' && (
+                <div className="constraint-form-field">
+                  <label className="constraint-form-label">Columns — select one or more</label>
+                  <div className="constraint-columns-list" role="group" aria-label="Select columns">
+                    <div className="constraint-columns-list-actions">
+                      <button
+                        type="button"
+                        className="constraint-list-link"
+                        onClick={() => setFormData({...formData, columns: table.columns.map(c => c.id)})}
+                      >
+                        Select all
+                      </button>
+                      <span className="constraint-list-sep">·</span>
+                      <button
+                        type="button"
+                        className="constraint-list-link"
+                        onClick={() => setFormData({...formData, columns: []})}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <ul className="constraint-columns-checkbox-list">
+                      {table.columns.map(col => (
+                        <li key={col.id}>
+                          <label className="constraint-checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={(formData.columns || []).includes(col.id)}
+                              onChange={(e) => {
+                                const current = formData.columns || [];
+                                const next = e.target.checked
+                                  ? [...current, col.id]
+                                  : current.filter((id: string) => id !== col.id);
+                                setFormData({...formData, columns: next});
+                              }}
+                            />
+                            <span>{col.name} ({col.type})</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {formData.type === 'primary_key' && (
+                <label className="checkbox-label constraint-form-field">
                   <input
                     type="checkbox"
                     checked={formData.timeseries || false}
@@ -205,107 +345,314 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
                 </label>
               )}
 
-              {addDialog.type === 'foreign_key' && (
+              {formData.type === 'foreign_key' && (
                 <>
-                  <label>
-                    Parent Table ID:
-                    <input
-                      type="text"
+                  <div className="constraint-form-field">
+                    <label className="constraint-form-label">References table</label>
+                    <VSCodeDropdown
                       value={formData.parentTable || ''}
-                      onChange={(e) => setFormData({...formData, parentTable: e.target.value})}
-                      placeholder="tbl_..."
-                    />
-                    <p className="hint">Reference to parent table ID</p>
-                  </label>
+                      style={{ width: '100%' }}
+                      onInput={(e) => setFormData({
+                        ...formData,
+                        parentTable: (e.target as HTMLSelectElement).value,
+                        parentColumns: []
+                      })}
+                    >
+                      <VSCodeOption value="">— Select table —</VSCodeOption>
+                      {allTables.map(t => (
+                        <VSCodeOption key={t.id} value={t.id}>
+                          {t.catalogName}.{t.schemaName}.{t.name}
+                        </VSCodeOption>
+                      ))}
+                    </VSCodeDropdown>
+                  </div>
 
-                  <label>
-                    Parent Columns (comma-separated IDs):
-                    <input
-                      type="text"
-                      value={formData.parentColumnsStr || ''}
-                      onChange={(e) => {
-                        setFormData({
-                          ...formData,
-                          parentColumnsStr: e.target.value,
-                          parentColumns: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-                        });
-                      }}
-                      placeholder="col_..., col_..."
-                    />
-                  </label>
-
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={formData.matchFull || false}
-                      onChange={(e) => setFormData({...formData, matchFull: e.target.checked})}
-                    />
-                    <span>MATCH FULL</span>
-                  </label>
+                  {formData.parentTable && (
+                    <div className="constraint-form-field">
+                      <label className="constraint-form-label">Parent columns — select one or more</label>
+                      <div className="constraint-columns-list" role="group" aria-label="Select parent columns">
+                        <div className="constraint-columns-list-actions">
+                          <button
+                            type="button"
+                            className="constraint-list-link"
+                            onClick={() => {
+                              const parentCols = allTables.find(t => t.id === formData.parentTable)?.columns || [];
+                              setFormData({...formData, parentColumns: parentCols.map((c: any) => c.id)});
+                            }}
+                          >
+                            Select all
+                          </button>
+                          <span className="constraint-list-sep">·</span>
+                          <button
+                            type="button"
+                            className="constraint-list-link"
+                            onClick={() => setFormData({...formData, parentColumns: []})}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <ul className="constraint-columns-checkbox-list">
+                          {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: any) => (
+                            <li key={col.id}>
+                              <label className="constraint-checkbox-label">
+                                <input
+                                  type="checkbox"
+                                  checked={(formData.parentColumns || []).includes(col.id)}
+                                  onChange={(e) => {
+                                    const current = formData.parentColumns || [];
+                                    const next = e.target.checked
+                                      ? [...current, col.id]
+                                      : current.filter((id: string) => id !== col.id);
+                                    setFormData({...formData, parentColumns: next});
+                                  }}
+                                />
+                                <span>{col.name} ({col.type})</span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
-              {addDialog.type === 'check' && (
-                <label>
-                  CHECK Expression:
-                  <input
-                    type="text"
+              {formData.type === 'check' && (
+                <div className="constraint-form-field">
+                  <label className="constraint-form-label">CHECK expression</label>
+                  <VSCodeTextField
                     value={formData.expression || ''}
-                    onChange={(e) => setFormData({...formData, expression: e.target.value})}
                     placeholder="e.g., age > 0"
+                    style={{ width: '100%' }}
+                    onInput={(e) => setFormData({...formData, expression: (e.target as HTMLInputElement).value})}
                   />
                   <p className="hint">SQL expression that must be true</p>
+                </div>
+              )}
+
+              <p className="hint" style={{ marginTop: '16px', fontStyle: 'italic' }}>
+                Note: Unity Catalog constraints are informational only (not enforced). They are used for query optimization and documentation purposes.
+              </p>
+            </div>
+
+            <div className="modal-buttons">
+              <VSCodeButton
+                onClick={handleAddConstraint}
+                disabled={
+                  (formData.type !== 'check' && (!formData.columns || formData.columns.length === 0)) ||
+                  (formData.type === 'check' && !formData.expression) ||
+                  (formData.type === 'foreign_key' && !formData.parentTable)
+                }
+              >
+                Add Constraint
+              </VSCodeButton>
+              <VSCodeButton
+                appearance="secondary"
+                onClick={() => { setAddDialog(false); setFormData({ type: 'primary_key' }); }}
+              >
+                Cancel
+              </VSCodeButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Constraint Dialog */}
+      {editDialog && (
+        <div className="modal-overlay" onClick={() => { setEditDialog(null); setFormData({ type: 'primary_key' }); }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Edit Constraint</h2>
+            
+            <div className="modal-body">
+              <div className="constraint-form-field">
+                <label className="constraint-form-label">Constraint type</label>
+                <VSCodeDropdown
+                  value={formData.type || 'primary_key'}
+                  style={{ width: '100%' }}
+                  onInput={(e) => setFormData({
+                    ...formData,
+                    type: (e.target as HTMLSelectElement).value as 'primary_key' | 'foreign_key' | 'check'
+                  })}
+                >
+                  <VSCodeOption value="primary_key">PRIMARY KEY</VSCodeOption>
+                  <VSCodeOption value="foreign_key">FOREIGN KEY</VSCodeOption>
+                  <VSCodeOption value="check">CHECK</VSCodeOption>
+                </VSCodeDropdown>
+              </div>
+
+              <div className="constraint-form-field">
+                <label className="constraint-form-label">Constraint name (optional)</label>
+                <VSCodeTextField
+                  value={formData.name || ''}
+                  placeholder="e.g., orders_pk"
+                  style={{ width: '100%' }}
+                  onInput={(e) => setFormData({...formData, name: (e.target as HTMLInputElement).value})}
+                />
+              </div>
+
+              {formData.type !== 'check' && (
+                <div className="constraint-form-field">
+                  <label className="constraint-form-label">Columns — select one or more</label>
+                  <div className="constraint-columns-list" role="group" aria-label="Select columns">
+                    <div className="constraint-columns-list-actions">
+                      <button
+                        type="button"
+                        className="constraint-list-link"
+                        onClick={() => setFormData({...formData, columns: table.columns.map(c => c.id)})}
+                      >
+                        Select all
+                      </button>
+                      <span className="constraint-list-sep">·</span>
+                      <button
+                        type="button"
+                        className="constraint-list-link"
+                        onClick={() => setFormData({...formData, columns: []})}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <ul className="constraint-columns-checkbox-list">
+                      {table.columns.map(col => (
+                        <li key={col.id}>
+                          <label className="constraint-checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={(formData.columns || []).includes(col.id)}
+                              onChange={(e) => {
+                                const current = formData.columns || [];
+                                const next = e.target.checked
+                                  ? [...current, col.id]
+                                  : current.filter((id: string) => id !== col.id);
+                                setFormData({...formData, columns: next});
+                              }}
+                            />
+                            <span>{col.name} ({col.type})</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {formData.type === 'primary_key' && (
+                <label className="checkbox-label constraint-form-field">
+                  <input
+                    type="checkbox"
+                    checked={formData.timeseries || false}
+                    onChange={(e) => setFormData({...formData, timeseries: e.target.checked})}
+                  />
+                  <span>TIMESERIES (for time-series data)</span>
                 </label>
               )}
 
-              <div className="constraint-options">
-                <h4>Constraint Options</h4>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.notEnforced || false}
-                    onChange={(e) => setFormData({...formData, notEnforced: e.target.checked})}
+              {formData.type === 'foreign_key' && (
+                <>
+                  <div className="constraint-form-field">
+                    <label className="constraint-form-label">References table</label>
+                    <VSCodeDropdown
+                      value={formData.parentTable || ''}
+                      style={{ width: '100%' }}
+                      onInput={(e) => setFormData({
+                        ...formData,
+                        parentTable: (e.target as HTMLSelectElement).value,
+                        parentColumns: []
+                      })}
+                    >
+                      <VSCodeOption value="">— Select table —</VSCodeOption>
+                      {allTables.map(t => (
+                        <VSCodeOption key={t.id} value={t.id}>
+                          {t.catalogName}.{t.schemaName}.{t.name}
+                        </VSCodeOption>
+                      ))}
+                    </VSCodeDropdown>
+                  </div>
+
+                  {formData.parentTable && (
+                    <div className="constraint-form-field">
+                      <label className="constraint-form-label">Parent columns — select one or more</label>
+                      <div className="constraint-columns-list" role="group" aria-label="Select parent columns">
+                        <div className="constraint-columns-list-actions">
+                          <button
+                            type="button"
+                            className="constraint-list-link"
+                            onClick={() => {
+                              const parentCols = allTables.find(t => t.id === formData.parentTable)?.columns || [];
+                              setFormData({...formData, parentColumns: parentCols.map((c: any) => c.id)});
+                            }}
+                          >
+                            Select all
+                          </button>
+                          <span className="constraint-list-sep">·</span>
+                          <button
+                            type="button"
+                            className="constraint-list-link"
+                            onClick={() => setFormData({...formData, parentColumns: []})}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <ul className="constraint-columns-checkbox-list">
+                          {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: any) => (
+                            <li key={col.id}>
+                              <label className="constraint-checkbox-label">
+                                <input
+                                  type="checkbox"
+                                  checked={(formData.parentColumns || []).includes(col.id)}
+                                  onChange={(e) => {
+                                    const current = formData.parentColumns || [];
+                                    const next = e.target.checked
+                                      ? [...current, col.id]
+                                      : current.filter((id: string) => id !== col.id);
+                                    setFormData({...formData, parentColumns: next});
+                                  }}
+                                />
+                                <span>{col.name} ({col.type})</span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {formData.type === 'check' && (
+                <div className="constraint-form-field">
+                  <label className="constraint-form-label">CHECK expression</label>
+                  <VSCodeTextField
+                    value={formData.expression || ''}
+                    placeholder="e.g., age > 0"
+                    style={{ width: '100%' }}
+                    onInput={(e) => setFormData({...formData, expression: (e.target as HTMLInputElement).value})}
                   />
-                  <span>NOT ENFORCED</span>
-                </label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.deferrable || false}
-                    onChange={(e) => setFormData({...formData, deferrable: e.target.checked})}
-                  />
-                  <span>DEFERRABLE</span>
-                </label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.initiallyDeferred || false}
-                    onChange={(e) => setFormData({...formData, initiallyDeferred: e.target.checked})}
-                  />
-                  <span>INITIALLY DEFERRED</span>
-                </label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.rely || false}
-                    onChange={(e) => setFormData({...formData, rely: e.target.checked})}
-                  />
-                  <span>RELY (for query optimization)</span>
-                </label>
-              </div>
+                  <p className="hint">SQL expression that must be true</p>
+                </div>
+              )}
+
+              <p className="hint" style={{ marginTop: '16px', fontStyle: 'italic' }}>
+                Note: Unity Catalog constraints are informational only (not enforced). They are used for query optimization and documentation purposes.
+              </p>
             </div>
 
-            <div className="modal-actions">
-              <button className="cancel-btn" onClick={() => { setAddDialog(null); setFormData({}); }}>
-                Cancel
-              </button>
-              <button
-                className="confirm-btn"
-                onClick={handleAddConstraint}
-                disabled={!formData.columns || formData.columns.length === 0 || (addDialog.type === 'check' && !formData.expression)}
+            <div className="modal-buttons">
+              <VSCodeButton
+                onClick={handleSaveEdit}
+                disabled={
+                  (formData.type !== 'check' && (!formData.columns || formData.columns.length === 0)) ||
+                  (formData.type === 'check' && !formData.expression) ||
+                  (formData.type === 'foreign_key' && !formData.parentTable)
+                }
               >
-                Add Constraint
-              </button>
+                Save Changes
+              </VSCodeButton>
+              <VSCodeButton
+                appearance="secondary"
+                onClick={() => { setEditDialog(null); setFormData({ type: 'primary_key' }); }}
+              >
+                Cancel
+              </VSCodeButton>
             </div>
           </div>
         </div>
@@ -319,13 +666,41 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
             <p className="warning-text">
               Are you sure you want to drop constraint <strong>{dropDialog.name || 'unnamed'}</strong>?
             </p>
-            <div className="modal-actions">
-              <button className="cancel-btn" onClick={() => setDropDialog(null)}>
-                Cancel
-              </button>
-              <button className="confirm-btn delete" onClick={handleDropConstraint}>
+            <div className="modal-buttons">
+              <VSCodeButton onClick={handleDropConstraint}>
                 Drop
-              </button>
+              </VSCodeButton>
+              <VSCodeButton appearance="secondary" onClick={() => setDropDialog(null)}>
+                Cancel
+              </VSCodeButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRIMARY KEY Warning Dialog */}
+      {pkWarningDialog && (
+        <div className="modal-overlay" onClick={() => setPkWarningDialog(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Primary Key Already Exists</h2>
+            <p style={{ lineHeight: '1.6', marginBottom: '16px' }}>
+              This table already has a PRIMARY KEY constraint. 
+              Databricks allows only one PRIMARY KEY per table.
+            </p>
+            <p style={{ lineHeight: '1.6', marginBottom: '16px' }}>
+              To add more columns to the existing PRIMARY KEY, use the edit button (
+              <i className="codicon codicon-edit" style={{ fontSize: '12px' }}></i>
+              ) next to the constraint.
+            </p>
+            <p style={{ lineHeight: '1.6' }}>
+              To create a new PRIMARY KEY with different columns, first drop the existing constraint using the delete button (
+              <i className="codicon codicon-trash" style={{ fontSize: '12px' }}></i>
+              ).
+            </p>
+            <div className="modal-buttons">
+              <VSCodeButton onClick={() => setPkWarningDialog(false)}>
+                OK
+              </VSCodeButton>
             </div>
           </div>
         </div>

@@ -343,7 +343,7 @@ class OperationBuilder:
         For FOREIGN KEY: requires parentTable, parentColumns
         For CHECK: requires expression
 
-        All types support: notEnforced, deferrable, initiallyDeferred, rely
+        Note: Unity Catalog constraints are informational only (not enforced).
         """
         payload = {
             "tableId": table_id,

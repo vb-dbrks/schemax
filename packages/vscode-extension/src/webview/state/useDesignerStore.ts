@@ -30,14 +30,14 @@ interface DesignerState {
   selectTable: (tableId: string | null) => void;
   
   // Mutations (all emit ops)
-  addCatalog: (name: string, options?: { managedLocationName?: string; comment?: string }) => void;
+  addCatalog: (name: string, options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;
   renameCatalog: (catalogId: string, newName: string) => void;
-  updateCatalog: (catalogId: string, updates: { managedLocationName?: string }) => void;
+  updateCatalog: (catalogId: string, updates: { managedLocationName?: string | null; comment?: string; tags?: Record<string, string> }) => void;
   dropCatalog: (catalogId: string) => void;
   
-  addSchema: (catalogId: string, name: string, options?: { managedLocationName?: string; comment?: string }) => void;
+  addSchema: (catalogId: string, name: string, options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;
   renameSchema: (schemaId: string, newName: string) => void;
-  updateSchema: (schemaId: string, updates: { managedLocationName?: string }) => void;
+  updateSchema: (schemaId: string, updates: { managedLocationName?: string | null; comment?: string; tags?: Record<string, string> }) => void;
   dropSchema: (schemaId: string) => void;
   
   addTable: (
@@ -98,6 +98,7 @@ interface DesignerState {
   
   // Constraint operations (NEW)
   addConstraint: (tableId: string, constraint: Omit<Constraint, 'id'>) => void;
+  updateConstraint: (tableId: string, constraintId: string, constraint: Omit<Constraint, 'id'>) => void;
   dropConstraint: (tableId: string, constraintId: string) => void;
   
   // Row filter operations (NEW)
@@ -438,7 +439,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   // Constraint operations
   addConstraint: (tableId, constraint) => {
     const constraintId = `const_${uuidv4()}`;
-    const op = createOperation(get(), 'add_constraint', tableId, { 
+    const op = createOperation(get(), 'add_constraint', constraintId, { 
       tableId, 
       constraintId,
       ...constraint 
@@ -446,8 +447,78 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     emitOps([op]);
   },
 
+  updateConstraint: (tableId, constraintId, constraint) => {
+    // Find the table, position, and name of the old constraint
+    const state = get();
+    let insertAt: number | undefined;
+    let constraintName: string | undefined;
+    
+    if (state.project) {
+      for (const catalog of state.project.state.catalogs) {
+        for (const schema of catalog.schemas) {
+          const table = schema.tables.find(t => t.id === tableId);
+          if (table) {
+            const existingConstraint = table.constraints.find(c => c.id === constraintId);
+            if (existingConstraint) {
+              const index = table.constraints.findIndex(c => c.id === constraintId);
+              insertAt = index;
+              constraintName = existingConstraint.name;
+            }
+            break;
+          }
+        }
+      }
+    }
+    
+    // Batch drop and add operations together to ensure atomic update
+    // Include the constraint name in the drop operation payload for SQL generation
+    // Create drop operation with an earlier timestamp to ensure correct SQL order
+    const now = new Date();
+    const dropOp = createOperation(get(), 'drop_constraint', constraintId, { 
+      tableId,
+      name: constraintName // Include name so SQL generator doesn't need to look it up
+    });
+    // Override timestamp to be 1ms earlier to guarantee sort order
+    dropOp.ts = new Date(now.getTime() - 1).toISOString();
+    
+    const newConstraintId = `const_${uuidv4()}`;
+    const addOp = createOperation(get(), 'add_constraint', newConstraintId, {
+      tableId,
+      constraintId: newConstraintId,
+      insertAt, // Pass the original position
+      ...constraint
+    });
+    // Ensure add operation has a later timestamp
+    addOp.ts = new Date(now.getTime() + 1).toISOString();
+    
+    // Emit both operations as a single batch
+    emitOps([dropOp, addOp]);
+  },
+
   dropConstraint: (tableId, constraintId) => {
-    const op = createOperation(get(), 'drop_constraint', constraintId, { tableId });
+    // Find the constraint name for SQL generation
+    const state = get();
+    let constraintName: string | undefined;
+    
+    if (state.project) {
+      for (const catalog of state.project.state.catalogs) {
+        for (const schema of catalog.schemas) {
+          const table = schema.tables.find(t => t.id === tableId);
+          if (table) {
+            const constraint = table.constraints.find(c => c.id === constraintId);
+            if (constraint) {
+              constraintName = constraint.name;
+            }
+            break;
+          }
+        }
+      }
+    }
+    
+    const op = createOperation(get(), 'drop_constraint', constraintId, { 
+      tableId,
+      name: constraintName // Include name for SQL generation
+    });
     emitOps([op]);
   },
 

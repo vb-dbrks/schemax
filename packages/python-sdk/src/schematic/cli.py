@@ -351,6 +351,7 @@ def apply(
 @click.option("--create-clone", help="Create backup SHALLOW CLONE before rollback")
 @click.option("--safe-only", is_flag=True, help="Only execute safe operations (skip destructive)")
 @click.option("--dry-run", is_flag=True, help="Preview impact without executing")
+@click.option("--no-interaction", is_flag=True, help="Skip confirmation prompts (for CI/CD)")
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def rollback(
     deployment: str | None,
@@ -362,6 +363,7 @@ def rollback(
     create_clone: str | None,
     safe_only: bool,
     dry_run: bool,
+    no_interaction: bool,
     workspace: str,
 ) -> None:
     """Rollback deployments (partial or complete)
@@ -390,6 +392,9 @@ def rollback(
 
         # Preview rollback impact (dry-run)
         schematic rollback --target prod --to-snapshot v0.5.0 --dry-run
+
+        # Non-interactive (skip confirmation prompts, for CI/CD)
+        schematic rollback --partial --deployment deploy_abc123 -p PROD -w abc123 -t prod --no-interaction
     """
     try:
         workspace_path = Path(workspace).resolve()
@@ -451,10 +456,11 @@ def rollback(
                     f"{target_deployment.get('status')}[/yellow]"
                 )
                 console.print("Partial rollback is typically used for failed deployments.")
-                from rich.prompt import Confirm
+                if not no_interaction:
+                    from rich.prompt import Confirm
 
-                if not Confirm.ask("Continue anyway?", default=False):
-                    sys.exit(1)
+                    if not Confirm.ask("Continue anyway?", default=False):
+                        sys.exit(1)
 
             # Get operations that were applied (successful before failure)
             ops_applied = target_deployment.get("opsApplied", [])
@@ -592,7 +598,7 @@ def rollback(
                 warehouse_id=warehouse_id,
                 executor=executor,
                 catalog_mapping=catalog_mapping,
-                auto_triggered=False,  # Manual mode - allow confirmation
+                auto_triggered=False,  # Manual rollback: allow risky ops; --no-interaction only skips prompts
                 from_version=from_version,
                 dry_run=dry_run,
             )
@@ -624,6 +630,7 @@ def rollback(
                 create_clone=create_clone,
                 safe_only=safe_only,
                 dry_run=dry_run,
+                no_interaction=no_interaction,
             )
 
             if result.success:

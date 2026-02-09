@@ -36,6 +36,8 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         id: op.payload.catalogId,
         name: op.payload.name,
         managedLocationName: op.payload.managedLocationName,
+        comment: op.payload.comment,
+        tags: op.payload.tags || {},
         schemas: [],
       };
       newState.catalogs.push(catalog);
@@ -50,7 +52,15 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
       const catalog = newState.catalogs.find(c => c.id === op.target);
       if (catalog) {
         if ('managedLocationName' in op.payload) {
-          catalog.managedLocationName = op.payload.managedLocationName;
+          catalog.managedLocationName = op.payload.managedLocationName == null
+            ? undefined
+            : op.payload.managedLocationName;
+        }
+        if ('comment' in op.payload) {
+          catalog.comment = op.payload.comment;
+        }
+        if ('tags' in op.payload) {
+          catalog.tags = op.payload.tags || {};
         }
       }
       break;
@@ -68,7 +78,10 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
           id: op.payload.schemaId,
           name: op.payload.name,
           managedLocationName: op.payload.managedLocationName,
+          comment: op.payload.comment,
+          tags: op.payload.tags || {},
           tables: [],
+          views: [],
         };
         catalog.schemas.push(schema);
       }
@@ -89,7 +102,15 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         const schema = catalog.schemas.find(s => s.id === op.target);
         if (schema) {
           if ('managedLocationName' in op.payload) {
-            schema.managedLocationName = op.payload.managedLocationName;
+            schema.managedLocationName = op.payload.managedLocationName == null
+              ? undefined
+              : op.payload.managedLocationName;
+          }
+          if ('comment' in op.payload) {
+            schema.comment = op.payload.comment;
+          }
+          if ('tags' in op.payload) {
+            schema.tags = op.payload.tags || {};
           }
           break;
         }
@@ -352,16 +373,14 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         if (op.payload.timeseries !== undefined) constraint.timeseries = op.payload.timeseries;
         if (op.payload.parentTable) constraint.parentTable = op.payload.parentTable;
         if (op.payload.parentColumns) constraint.parentColumns = op.payload.parentColumns;
-        if (op.payload.matchFull !== undefined) constraint.matchFull = op.payload.matchFull;
-        if (op.payload.onUpdate) constraint.onUpdate = op.payload.onUpdate;
-        if (op.payload.onDelete) constraint.onDelete = op.payload.onDelete;
         if (op.payload.expression) constraint.expression = op.payload.expression;
-        if (op.payload.notEnforced !== undefined) constraint.notEnforced = op.payload.notEnforced;
-        if (op.payload.deferrable !== undefined) constraint.deferrable = op.payload.deferrable;
-        if (op.payload.initiallyDeferred !== undefined) constraint.initiallyDeferred = op.payload.initiallyDeferred;
-        if (op.payload.rely !== undefined) constraint.rely = op.payload.rely;
         
-        table.constraints.push(constraint);
+        // Insert at specific position if provided (for updates), otherwise append
+        if (op.payload.insertAt !== undefined && op.payload.insertAt >= 0) {
+          table.constraints.splice(op.payload.insertAt, 0, constraint);
+        } else {
+          table.constraints.push(constraint);
+        }
       }
       break;
     }

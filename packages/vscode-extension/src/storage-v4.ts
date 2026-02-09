@@ -430,9 +430,9 @@ export async function loadCurrentState(
   // Apply changelog ops using provider's state reducer
   state = provider.applyOperations(state, changelog.ops);
 
-  // Optionally validate dependencies (calls Python SDK)
+  // Optionally validate state and dependencies (calls Python SDK: schematic validate --json)
   let validationResult: ValidationResult | null = null;
-  if (validate && changelog.ops.length > 0) {
+  if (validate) {
     validationResult = await validateDependenciesInternal(workspaceUri);
   }
 
@@ -483,7 +483,17 @@ async function validateDependenciesInternal(
         warnings.push(`Could not validate dependencies: ${error.message}`);
       }
     } else {
-      warnings.push(`Could not validate dependencies: ${error.message}`);
+      // Check if it's just CLI not installed (common case - not an error)
+      const errorMsg = error.message || '';
+      if (errorMsg.includes('command not found') || 
+          errorMsg.includes('schematic: command not found') ||
+          errorMsg.includes('ENOENT')) {
+        // Silently skip - CLI validation is optional
+        // User can install Python SDK later if they want validation features
+      } else {
+        // Actual validation error - show warning
+        warnings.push(`Could not validate dependencies: ${error.message}`);
+      }
     }
   }
 
