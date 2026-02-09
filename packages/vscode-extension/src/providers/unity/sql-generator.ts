@@ -1165,6 +1165,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     const reorderOps: Operation[] = [];
     const constraintOps: Operation[] = [];
     const governanceOps: Operation[] = [];
+    const tagOps: Operation[] = [];
     const otherOps: Operation[] = [];
 
     for (const op of batchInfo.modifyOps) {
@@ -1182,6 +1183,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         'add_column_mask', 'update_column_mask', 'remove_column_mask'
       ].includes(opType)) {
         governanceOps.push(op);
+      } else if (opType === 'set_column_tag' || opType === 'unset_column_tag') {
+        tagOps.push(op);
       } else {
         otherOps.push(op);
       }
@@ -1194,6 +1197,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       reorderOps,
       constraintOps,
       governanceOps,
+      tagOps,
       otherOps,
       opIds: batchInfo.opIds,
       operationTypes: batchInfo.operationTypes
@@ -1217,6 +1221,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     propertyOps: Operation[];
     constraintOps?: Operation[];
     reorderOps: Operation[];
+    tagOps?: Operation[];
     otherOps: Operation[];
   }): string {
     const tableOp = batchInfo.tableOp;
@@ -1367,7 +1372,14 @@ ${columnsSql}
       }
     }
     
-    // Process other column operations (like column tags) after table creation
+    // Process batched column tags after table creation (one SET TAGS / UNSET TAGS per column)
+    const tagOps = batchInfo.tagOps || [];
+    const batchedTagSql = this.generateBatchedColumnTagSQL(tagOps);
+    if (batchedTagSql) {
+      statements.push(batchedTagSql);
+    }
+
+    // Process other column operations (e.g. set_table_comment) after table creation
     for (const op of otherOps) {
       const opType = op.op.replace('unity.', '');
       // Skip set_table_comment as it's already in CREATE TABLE
@@ -1409,6 +1421,7 @@ ${columnsSql}
     reorderOps: Operation[];
     constraintOps: Operation[];
     governanceOps: Operation[];
+    tagOps?: Operation[];
     otherOps: Operation[];
   }): string {
     const statements: string[] = [];
@@ -1504,7 +1517,14 @@ ${columnsSql}
       op => !op.op.endsWith('add_column') && !op.op.endsWith('drop_column')
     );
     
-    // Handle all other operations normally
+    // Batched column tags (one SET TAGS / UNSET TAGS per column)
+    const tagOps = batchInfo.tagOps || [];
+    const batchedTagSql = this.generateBatchedColumnTagSQL(tagOps);
+    if (batchedTagSql) {
+      statements.push(batchedTagSql);
+    }
+
+    // Handle all other operations normally (exclude tag ops; they're batched above)
     const allOtherOps = [
       ...otherColumnOps,
       ...batchInfo.propertyOps,
@@ -1661,7 +1681,66 @@ ${columnsSql}
     return `ALTER TABLE ${tableEscaped} ALTER COLUMN ${this.escapeIdentifier(colName)} COMMENT '${comment}'`;
   }
   
-  // Column tag operations
+  /**
+   * Batch column tag ops by (tableId, colId): one SET TAGS and one UNSET TAGS per column.
+   * Databricks supports multiple tags: SET TAGS ('k1'='v1', 'k2'='v2'), UNSET TAGS ('k1', 'k2').
+   */
+  private generateBatchedColumnTagSQL(tagOps: Operation[]): string {
+    if (tagOps.length === 0) return '';
+
+    type ColKey = string;
+    const setByCol = new Map<ColKey, Record<string, string>>();
+    const unsetByCol = new Map<ColKey, Set<string>>();
+
+    for (const op of tagOps) {
+      const tableId = op.payload.tableId;
+      const colId = op.target;
+      const key: ColKey = `${tableId}:${colId}`;
+      const opType = op.op.replace('unity.', '');
+      if (opType === 'set_column_tag') {
+        const tagName = op.payload.tagName;
+        const tagValue = this.escapeString(op.payload.tagValue);
+        if (!setByCol.has(key)) setByCol.set(key, {});
+        setByCol.get(key)![tagName] = tagValue;
+        unsetByCol.get(key)?.delete(tagName);
+      } else if (opType === 'unset_column_tag') {
+        const tagName = op.payload.tagName;
+        if (!unsetByCol.has(key)) unsetByCol.set(key, new Set());
+        unsetByCol.get(key)!.add(tagName);
+        setByCol.get(key)?.delete(tagName);
+      }
+    }
+
+    const allKeys = new Set<ColKey>([...setByCol.keys(), ...unsetByCol.keys()]);
+    const statements: string[] = [];
+    for (const key of allKeys) {
+      const [tableId, colId] = key.split(':');
+
+      const tableFqn = this.idNameMap[tableId] || 'unknown';
+      const tableEscaped = this.buildFqn(...tableFqn.split('.'));
+      const colName = this.escapeIdentifier(this.idNameMap[colId] || colId);
+
+      const unsetTags = unsetByCol.get(key);
+      if (unsetTags && unsetTags.size > 0) {
+        const list = [...unsetTags].map(t => `'${this.escapeString(t)}'`).join(', ');
+        statements.push(
+          `ALTER TABLE ${tableEscaped} ALTER COLUMN ${colName} UNSET TAGS (${list})`
+        );
+      }
+      const setTags = setByCol.get(key);
+      if (setTags && Object.keys(setTags).length > 0) {
+        const list = Object.entries(setTags)
+          .map(([k, v]) => `'${this.escapeString(k)}' = '${v}'`)
+          .join(', ');
+        statements.push(
+          `ALTER TABLE ${tableEscaped} ALTER COLUMN ${colName} SET TAGS (${list})`
+        );
+      }
+    }
+    return statements.join(';\n');
+  }
+
+  // Column tag operations (single-op; batching uses generateBatchedColumnTagSQL)
   private setColumnTag(op: Operation): string {
     const tableFqn = this.idNameMap[op.payload.tableId] || 'unknown';
     const tableParts = tableFqn.split('.');
@@ -1693,9 +1772,15 @@ ${columnsSql}
     const nameClause = constraintName ? `CONSTRAINT ${this.escapeIdentifier(constraintName)} ` : '';
     
     if (constraintType === 'primary_key') {
-      const timeseriesClause = op.payload.timeseries ? ' TIMESERIES' : '';
-      const colList = columns.map((c: string) => this.escapeIdentifier(c)).join(', ');
-      return `ALTER TABLE ${tableEscaped} ADD ${nameClause}PRIMARY KEY(${colList})${timeseriesClause}`;
+      // Databricks: TIMESERIES is per-column: PRIMARY KEY ( col1 [ TIMESERIES ] [, ...] )
+      const colList = columns
+        .map((c: string, i: number) =>
+          i === 0 && op.payload.timeseries
+            ? `${this.escapeIdentifier(c)} TIMESERIES`
+            : this.escapeIdentifier(c)
+        )
+        .join(', ');
+      return `ALTER TABLE ${tableEscaped} ADD ${nameClause}PRIMARY KEY(${colList})`;
     } else if (constraintType === 'foreign_key') {
       const parentTable = this.idNameMap[op.payload.parentTable] || 'unknown';
       const parentParts = parentTable.split('.');

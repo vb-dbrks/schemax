@@ -29,7 +29,10 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const hasBeenDeployed = (project?.snapshots && project.snapshots.length > 0) || 
                           (project?.deployments && project.deployments.length > 0);
 
-  const [managedLocationName, setManagedLocationName] = useState(schema?.managedLocationName || '');
+  const MANAGED_LOCATION_DEFAULT = '__default__';
+  const [managedLocationName, setManagedLocationName] = useState(
+    schema?.managedLocationName ? schema.managedLocationName : MANAGED_LOCATION_DEFAULT
+  );
   const [tags, setTags] = useState<Record<string, string>>(schema?.tags || {});
   const [copySuccess, setCopySuccess] = useState(false);
   const [renameDialog, setRenameDialog] = useState(false);
@@ -45,7 +48,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   // Update local state when schema changes
   useEffect(() => {
     if (schema) {
-      setManagedLocationName(schema.managedLocationName || '');
+      setManagedLocationName(schema.managedLocationName ? schema.managedLocationName : MANAGED_LOCATION_DEFAULT);
       setTags(schema.tags || {});
     }
   }, [schema]);
@@ -64,9 +67,9 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const handleManagedLocationChange = (newLocation: string) => {
     // Only allow changes if not yet deployed/snapshotted
     if (!hasBeenDeployed) {
-      setManagedLocationName(newLocation);
-      // Immediately persist the change
-      updateSchema(schemaId, { managedLocationName: newLocation || undefined });
+      const value = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === '' ? undefined : newLocation;
+      setManagedLocationName(value ?? MANAGED_LOCATION_DEFAULT);
+      updateSchema(schemaId, { managedLocationName: value });
     }
   };
 
@@ -245,7 +248,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
                 handleManagedLocationChange(target.value);
               }}
             >
-              <VSCodeOption value="">-- Default --</VSCodeOption>
+              <VSCodeOption value={MANAGED_LOCATION_DEFAULT}>— Default —</VSCodeOption>
               {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
                 <VSCodeOption key={name} value={name}>
                   {name} {location.description && `(${location.description})`}
@@ -254,7 +257,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
             </VSCodeDropdown>
           </div>
         </div>
-        {managedLocationName && project?.managedLocations?.[managedLocationName] && (
+        {managedLocationName !== MANAGED_LOCATION_DEFAULT && managedLocationName && project?.managedLocations?.[managedLocationName] && (
           <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
             <strong>Paths:</strong>
             <div style={{ marginTop: '4px' }}>

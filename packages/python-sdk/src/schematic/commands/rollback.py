@@ -337,62 +337,70 @@ def rollback_partial(
         catalog=catalog_mapping.get("__implicit__") if catalog_mapping else None,
     )
 
+    rollback_deployment_id: str | None = None
     try:
         result = executor.execute_statements(statements, config)
 
-        # 12. Track rollback deployment in database and locally
-        console.print()
-        console.print("[cyan]Recording rollback...[/cyan]")
-
-        # Initialize deployment tracker
-        unity_executor = cast(UnitySQLExecutor, executor)
-        tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
-
-        # Ensure tracking schema exists
-        tracker.ensure_tracking_schema(
-            auto_create=env_config.get("autoCreateSchematicSchema", True)
+        # If we dropped the deployment catalog itself, we cannot record rollback in the DB
+        mapping = catalog_mapping or {}
+        dropped_tracking_catalog = any(
+            op.op == "unity.drop_catalog" and mapping.get(op.target) == deployment_catalog
+            for op in rollback_ops
         )
 
-        # Generate unique rollback deployment ID
-        rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
+        if not dropped_tracking_catalog:
+            # 12. Track rollback deployment in database and locally (even on execution failure)
+            console.print()
+            console.print("[cyan]Recording rollback...[/cyan]")
 
-        # Determine the snapshot version after rollback
-        # For partial rollback, we revert to the deployment's fromVersion
-        # Need to query deployment to get version info
-        target_deployment = tracker.get_deployment_by_id(deployment_id)
-        if not target_deployment:
-            raise RollbackError(f"Deployment '{deployment_id}' not found")
+            rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
 
-        reverted_to_version = target_deployment.get("fromVersion")
-        if not reverted_to_version:
-            # Edge case: deployment has no fromVersion (created before tracking was added)
-            # Fall back to marking as rollback
-            reverted_to_version = f"rollback_of_{deployment_id}"
+            # Initialize deployment tracker
+            unity_executor = cast(UnitySQLExecutor, executor)
+            tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
 
-        # Start rollback deployment tracking
-        tracker.start_deployment(
-            deployment_id=rollback_deployment_id,
-            environment=target_env,
-            snapshot_version=reverted_to_version,  # State after rollback
-            project_name=project_name,
-            provider_type=provider.info.id,
-            provider_version=provider.info.version,
-            schematic_version="0.2.0",
-            from_snapshot_version=target_deployment.get("version"),  # Failed deployment version
-        )
-
-        # Track individual rollback operations
-        for i, (rollback_op, stmt_result) in enumerate(zip(rollback_ops, result.statement_results)):
-            tracker.record_operation(
-                deployment_id=rollback_deployment_id,
-                op=rollback_op,
-                sql_stmt=stmt_result.sql,
-                result=stmt_result,
-                execution_order=i + 1,
+            # Ensure tracking schema exists
+            tracker.ensure_tracking_schema(
+                auto_create=env_config.get("autoCreateSchematicSchema", True)
             )
 
-        # Complete rollback deployment tracking in database
-        tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
+            # Determine the snapshot version after rollback
+            # For partial rollback, we revert to the deployment's fromVersion
+            # Need to query deployment to get version info
+            target_deployment = tracker.get_deployment_by_id(deployment_id)
+            if not target_deployment:
+                raise RollbackError(f"Deployment '{deployment_id}' not found")
+
+            reverted_to_version = target_deployment.get("fromVersion")
+            if not reverted_to_version:
+                # Edge case: deployment has no fromVersion (created before tracking was added)
+                # Fall back to marking as rollback
+                reverted_to_version = f"rollback_of_{deployment_id}"
+
+            # Start rollback deployment tracking
+            tracker.start_deployment(
+                deployment_id=rollback_deployment_id,
+                environment=target_env,
+                snapshot_version=reverted_to_version,  # State after rollback
+                project_name=project_name,
+                provider_type=provider.info.id,
+                provider_version=provider.info.version,
+                schematic_version="0.2.0",
+                from_snapshot_version=target_deployment.get("version"),  # Failed deployment version
+            )
+
+            # Track individual rollback operations
+            for i, (rollback_op, stmt_result) in enumerate(zip(rollback_ops, result.statement_results)):
+                tracker.record_operation(
+                    deployment_id=rollback_deployment_id,
+                    op=rollback_op,
+                    sql_stmt=stmt_result.sql,
+                    result=stmt_result,
+                    execution_order=i + 1,
+                )
+
+            # Complete rollback deployment tracking in database
+            tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
 
         # 10. Report execution results
         console.print()
@@ -413,8 +421,13 @@ def rollback_partial(
                     sql_lines[0] if sql_lines else "",
                 )
                 console.print(f"  [{i}/{len(result.statement_results)}] {first_sql_line[:80]}...")
-            console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
-            console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
+            if not dropped_tracking_catalog and rollback_deployment_id:
+                console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
+                console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
+            else:
+                console.print(
+                    "[dim]  (Catalog was dropped; rollback not recorded in database)[/dim]"
+                )
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
         else:
             # Rollback execution failed
@@ -424,7 +437,10 @@ def rollback_partial(
             if result.error_message:
                 console.print(f"[red]Error: {result.error_message}[/red]")
             schema_loc = f"{deployment_catalog}.schematic"
-            console.print(f"[dim]  Tracked in {schema_loc} (ID: {rollback_deployment_id})[/dim]")
+            if rollback_deployment_id:
+                console.print(f"[dim]  Tracked in {schema_loc} (ID: {rollback_deployment_id})[/dim]")
+            else:
+                console.print(f"[dim]  Tracking schema: {schema_loc}[/dim]")
 
             return RollbackResult(
                 success=False,
@@ -688,43 +704,58 @@ def rollback_complete(
 
         result = executor.execute_statements(statements, config)
 
-        # 14. Track rollback deployment (reuse tracker from above)
-        console.print()
-        console.print("[cyan]Recording rollback...[/cyan]")
-
-        # Reuse tracker from above, ensure schema exists
-        tracker.ensure_tracking_schema(
-            auto_create=env_config.get("autoCreateSchematicSchema", True)
+        # If we dropped the deployment catalog itself, we cannot record rollback in the DB
+        mapping = catalog_mapping or {}
+        dropped_tracking_catalog = any(
+            op.op == "unity.drop_catalog" and mapping.get(op.target) == deployment_catalog
+            for op in rollback_ops
         )
 
-        # Get current deployed version from database for accurate tracking
-        current_deployment = tracker.get_latest_deployment(target_env)
-        current_deployed_version = current_deployment.get("version") if current_deployment else None
+        rollback_deployment_id: str | None = None
+        if not dropped_tracking_catalog:
+            # 14. Track rollback deployment (reuse tracker from above)
+            console.print()
+            console.print("[cyan]Recording rollback...[/cyan]")
 
-        rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
-
-        tracker.start_deployment(
-            deployment_id=rollback_deployment_id,
-            environment=target_env,
-            snapshot_version=to_snapshot,  # State after rollback
-            project_name=project_name,
-            provider_type=provider.info.id,
-            provider_version=provider.info.version,
-            schematic_version="0.2.0",
-            from_snapshot_version=current_deployed_version,  # State before rollback
-        )
-
-        # Track individual operations
-        for i, (rollback_op, stmt_result) in enumerate(zip(rollback_ops, result.statement_results)):
-            tracker.record_operation(
-                deployment_id=rollback_deployment_id,
-                op=rollback_op,
-                sql_stmt=stmt_result.sql,
-                result=stmt_result,
-                execution_order=i + 1,
+            # Reuse tracker from above, ensure schema exists
+            tracker.ensure_tracking_schema(
+                auto_create=env_config.get("autoCreateSchematicSchema", True)
             )
 
-        tracker.complete_deployment(rollback_deployment_id, result, result.error_message)
+            # Get current deployed version from database for accurate tracking
+            current_deployment = tracker.get_latest_deployment(target_env)
+            current_deployed_version = (
+                current_deployment.get("version") if current_deployment else None
+            )
+
+            rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
+
+            tracker.start_deployment(
+                deployment_id=rollback_deployment_id,
+                environment=target_env,
+                snapshot_version=to_snapshot,  # State after rollback
+                project_name=project_name,
+                provider_type=provider.info.id,
+                provider_version=provider.info.version,
+                schematic_version="0.2.0",
+                from_snapshot_version=current_deployed_version,  # State before rollback
+            )
+
+            # Track individual operations
+            for i, (rollback_op, stmt_result) in enumerate(
+                zip(rollback_ops, result.statement_results)
+            ):
+                tracker.record_operation(
+                    deployment_id=rollback_deployment_id,
+                    op=rollback_op,
+                    sql_stmt=stmt_result.sql,
+                    result=stmt_result,
+                    execution_order=i + 1,
+                )
+
+            tracker.complete_deployment(
+                rollback_deployment_id, result, result.error_message
+            )
 
         # 15. Report results
         console.print()
@@ -749,8 +780,15 @@ def rollback_complete(
                     sql_lines[0] if sql_lines else "",
                 )
                 console.print(f"  [{i}/{len(result.statement_results)}] {first_sql_line[:80]}...")
-            console.print(f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]")
-            console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
+            if not dropped_tracking_catalog and rollback_deployment_id:
+                console.print(
+                    f"[green]✓ Rollback tracked in {deployment_catalog}.schematic[/green]"
+                )
+                console.print(f"[dim]  Rollback ID: {rollback_deployment_id}[/dim]")
+            else:
+                console.print(
+                    "[dim]  (Catalog was dropped; rollback not recorded in database)[/dim]"
+                )
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
         else:
             failed_idx = result.failed_statement_index or 0
@@ -758,7 +796,10 @@ def rollback_complete(
             console.print(f"[yellow]{result.successful_statements} statements succeeded[/yellow]")
             if result.error_message:
                 console.print(f"[red]Error: {result.error_message}[/red]")
-            console.print(f"[yellow]Partial rollback recorded: {rollback_deployment_id}[/yellow]")
+            if rollback_deployment_id:
+                console.print(
+                    f"[yellow]Partial rollback recorded: {rollback_deployment_id}[/yellow]"
+                )
 
             return RollbackResult(
                 success=False,

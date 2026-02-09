@@ -2063,6 +2063,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             # Convert BatchInfo to dict format expected by table methods
             # Categorize all modify operations
             column_ops = []
+            tag_ops = []
             other_ops = []
             for op in batch_info.modify_ops:
                 op_type = op.op.replace("unity.", "")
@@ -2073,10 +2074,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     "change_column_type",
                     "set_nullable",
                     "set_column_comment",
-                    "set_column_tag",
-                    "unset_column_tag",
                 ]:
                     column_ops.append(op)
+                elif op_type in ["set_column_tag", "unset_column_tag"]:
+                    tag_ops.append(op)
                 # Exclude operations that will be handled by dedicated lists below
                 # (property_ops, constraint_ops, reorder_ops, governance_ops)
                 elif op_type not in [
@@ -2104,6 +2105,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 "is_new_table": batch_info.is_new,
                 "table_op": batch_info.create_op,
                 "column_ops": column_ops,
+                "tag_ops": tag_ops,
                 "property_ops": [op for op in batch_info.modify_ops if "property" in op.op],
                 "constraint_ops": constraint_ops_sorted,  # Use sorted list with DROP before ADD
                 "reorder_ops": [op for op in batch_info.modify_ops if "reorder" in op.op],
@@ -2145,9 +2147,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_fqn = f"{schema_fqn}.{table_name}"
         table_esc = self._build_fqn(*table_fqn.split("."))
 
-        # Separate add_column operations from other column operations (like tags)
+        # Separate add_column, tag ops, and other column operations
         add_column_ops = [op for op in column_ops if op.op.endswith("add_column")]
-        other_column_ops = [op for op in column_ops if not op.op.endswith("add_column")]
+        other_column_ops = [
+            op
+            for op in column_ops
+            if not op.op.endswith("add_column")
+            and not op.op.endswith("set_column_tag")
+            and not op.op.endswith("unset_column_tag")
+        ]
 
         # Build column definitions as a dictionary (by column ID - use op.target for add_column)
         columns_dict = {}
@@ -2284,7 +2292,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 col_name = col_op.payload["name"]
                 self.id_name_map[col_id] = col_name
 
-        # Process other column operations (like column tags) after table creation
+        # Batched column tags after table creation (one SET TAGS / UNSET TAGS per column)
+        tag_ops = batch_info.get("tag_ops") or [
+            op
+            for op in column_ops
+            if op.op.endswith("set_column_tag") or op.op.endswith("unset_column_tag")
+        ]
+        batched_tag_sql = self._generate_batched_column_tag_sql(tag_ops)
+        if batched_tag_sql:
+            for stmt in batched_tag_sql.split(";\n"):
+                if stmt.strip():
+                    statements.append(stmt.strip())
+
+        # Process other column operations (non-tag; tags are batched above)
         for op in other_column_ops:
             op_type = op.op.replace("unity.", "")
             try:
@@ -2421,11 +2441,26 @@ class UnitySQLGenerator(BaseSQLGenerator):
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {drop_column_ops[0].id}: {e}")
 
-        # Handle other column operations (non-ADD/DROP COLUMN)
+        # Batched column tags (one SET TAGS / UNSET TAGS per column)
+        tag_ops = batch_info.get("tag_ops") or [
+            op
+            for op in batch_info["column_ops"]
+            if op.op.endswith("set_column_tag") or op.op.endswith("unset_column_tag")
+        ]
+        batched_tag_sql = self._generate_batched_column_tag_sql(tag_ops)
+        if batched_tag_sql:
+            for stmt in batched_tag_sql.split(";\n"):
+                if stmt.strip():
+                    statements.append(stmt.strip())
+
+        # Handle other column operations (non-ADD/DROP, non-tag; tags are batched above)
         other_column_ops = [
             op
             for op in batch_info["column_ops"]
-            if not op.op.endswith("add_column") and not op.op.endswith("drop_column")
+            if not op.op.endswith("add_column")
+            and not op.op.endswith("drop_column")
+            and not op.op.endswith("set_column_tag")
+            and not op.op.endswith("unset_column_tag")
         ]
 
         # Sort constraint operations to ensure DROP comes before ADD
@@ -2436,11 +2471,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
             key=lambda op: (0 if op.op == "unity.drop_constraint" else 1, op.ts),
         )
 
-        # Handle all other operations normally
+        # Handle all other operations normally (tag_ops already emitted above)
         for op in (
             other_column_ops
             + batch_info["property_ops"]
-            + constraint_ops_sorted  # Use sorted list with DROP before ADD
+            + constraint_ops_sorted
             + batch_info["governance_ops"]
             + batch_info["other_ops"]
         ):
@@ -2488,6 +2523,61 @@ class UnitySQLGenerator(BaseSQLGenerator):
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} COMMENT '{comment}'"
 
+    def _generate_batched_column_tag_sql(self, tag_ops: list[Operation]) -> str:
+        """Batch column tag ops by (table_id, col_id): one SET TAGS and one UNSET TAGS per column.
+        Databricks supports multiple tags: SET TAGS ('k1'='v1', 'k2'='v2'), UNSET TAGS ('k1', 'k2').
+        """
+        if not tag_ops:
+            return ""
+
+        set_by_col: dict[str, dict[str, str]] = {}
+        unset_by_col: dict[str, set[str]] = {}
+
+        for op in tag_ops:
+            table_id = op.payload.get("tableId", "")
+            col_id = op.target
+            key = f"{table_id}:{col_id}"
+            op_type = op.op.replace("unity.", "")
+            if op_type == "set_column_tag":
+                tag_name = op.payload["tagName"]
+                tag_value = self.escape_string(op.payload["tagValue"])
+                if key not in set_by_col:
+                    set_by_col[key] = {}
+                set_by_col[key][tag_name] = tag_value
+                if key in unset_by_col:
+                    unset_by_col[key].discard(tag_name)
+            elif op_type == "unset_column_tag":
+                tag_name = op.payload["tagName"]
+                if key not in unset_by_col:
+                    unset_by_col[key] = set()
+                unset_by_col[key].add(tag_name)
+                if key in set_by_col:
+                    set_by_col[key].pop(tag_name, None)
+
+        parts: list[str] = []
+        for key in set(set_by_col.keys()) | set(unset_by_col.keys()):
+            table_id, col_id = key.split(":", 1)
+            table_fqn = self.id_name_map.get(table_id, "unknown")
+            table_esc = self._build_fqn(*table_fqn.split("."))
+            col_name = self.id_name_map.get(col_id, col_id)
+            col_esc = self.escape_identifier(col_name)
+
+            unset_tags = unset_by_col.get(key)
+            if unset_tags:
+                tag_list = ", ".join(f"'{self.escape_string(t)}'" for t in unset_tags)
+                parts.append(
+                    f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} UNSET TAGS ({tag_list})"
+                )
+            set_tags = set_by_col.get(key)
+            if set_tags:
+                tag_list = ", ".join(
+                    f"'{self.escape_string(k)}' = '{v}'" for k, v in set_tags.items()
+                )
+                parts.append(
+                    f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} SET TAGS ({tag_list})"
+                )
+        return ";\n".join(parts) if parts else ""
+
     # Column tag operations
     def _set_column_tag(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
@@ -2522,9 +2612,16 @@ class UnitySQLGenerator(BaseSQLGenerator):
         )
 
         if constraint_type == "primary_key":
-            timeseries = " TIMESERIES" if op.payload.get("timeseries") else ""
-            cols = ", ".join(self.escape_identifier(c) for c in columns)
-            return f"ALTER TABLE {table_esc} ADD {name_clause}PRIMARY KEY({cols}){timeseries}"
+            # Databricks: TIMESERIES is per-column: PRIMARY KEY ( col1 [ TIMESERIES ] [, ...] )
+            col_parts = []
+            for i, c in enumerate(columns):
+                esc = self.escape_identifier(c)
+                if i == 0 and op.payload.get("timeseries"):
+                    col_parts.append(f"{esc} TIMESERIES")
+                else:
+                    col_parts.append(esc)
+            cols = ", ".join(col_parts)
+            return f"ALTER TABLE {table_esc} ADD {name_clause}PRIMARY KEY({cols})"
 
         elif constraint_type == "foreign_key":
             parent_table = self.id_name_map.get(op.payload.get("parentTable", ""), "unknown")

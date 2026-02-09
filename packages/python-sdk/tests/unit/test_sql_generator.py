@@ -654,6 +654,24 @@ class TestColumnTagSQL:
         assert "UNSET TAGS" in result.sql
         assert "'PII'" in result.sql
 
+    def test_batched_column_tags_same_column(self, sample_unity_state):
+        """Multiple set_column_tag on same column produce one SET TAGS with multiple key=value."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        tag_ops = [
+            builder.set_column_tag("col_002", "table_789", "pii", "true", op_id="tag_1"),
+            builder.set_column_tag(
+                "col_002", "table_789", "category", "contact", op_id="tag_2"
+            ),
+        ]
+        batched = generator._generate_batched_column_tag_sql(tag_ops)
+        assert "SET TAGS" in batched
+        assert "pii" in batched and "true" in batched
+        assert "category" in batched and "contact" in batched
+        assert batched.count("ALTER TABLE") == 1
+        assert batched.count("SET TAGS") == 1
+
 
 class TestConstraintSQL:
     """Test SQL generation for constraint operations"""
@@ -678,6 +696,27 @@ class TestConstraintSQL:
         assert "`pk_users`" in result.sql
         assert "PRIMARY KEY" in result.sql
         assert "`user_id`" in result.sql
+
+    def test_add_primary_key_constraint_timeseries_multi_column(self, sample_unity_state):
+        """PRIMARY KEY with timeseries and multiple columns: TIMESERIES after first column only."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        op = builder.add_constraint(
+            "constraint_001",
+            "table_789",
+            "primary_key",
+            ["col_001", "col_002"],
+            name="pk_users",
+            timeseries=True,
+            op_id="op_020",
+        )
+
+        result = generator.generate_sql_for_operation(op)
+        assert "PRIMARY KEY" in result.sql
+        assert "TIMESERIES" in result.sql
+        assert "user_id TIMESERIES" in result.sql or "`user_id` TIMESERIES" in result.sql
+        assert ") TIMESERIES" not in result.sql
 
     def test_add_foreign_key_constraint(self, sample_unity_state):
         """Test ALTER TABLE ADD FOREIGN KEY SQL generation"""
@@ -1504,13 +1543,14 @@ class TestSQLOptimization:
             assert "tagName" in op.payload
             assert "tagValue" in op.payload
 
-        # Generate SQL and verify
+        # Generate SQL and verify (tags are batched per column)
         generator = UnitySQLGenerator(new_state.model_dump(by_alias=True))
         sql = generator.generate_sql(diff_ops)
 
-        # Should generate ALTER COLUMN SET TAGS statements
-        assert "ALTER COLUMN `email` SET TAGS ('pii' = 'true')" in sql
-        assert "ALTER COLUMN `email` SET TAGS ('category' = 'contact')" in sql
+        # Should generate one ALTER COLUMN SET TAGS with both tags batched
+        assert "ALTER COLUMN `email` SET TAGS" in sql
+        assert "pii" in sql and "true" in sql
+        assert "category" in sql and "contact" in sql
 
     def test_single_add_column_not_batched(self, empty_unity_state):
         """Test that single ADD COLUMN operation works normally (no regression)"""
