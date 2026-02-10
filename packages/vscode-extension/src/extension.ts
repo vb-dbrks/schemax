@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { spawn } from 'child_process';
 import * as storageV4 from './storage-v4';
 import { Operation } from './providers/base/operations';
 import { ProviderRegistry } from './providers/registry';
@@ -9,6 +10,25 @@ import './providers'; // Initialize providers
 
 let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
+
+interface ImportRequest {
+  target: string;
+  profile: string;
+  warehouseId: string;
+  catalog?: string;
+  schema?: string;
+  table?: string;
+  catalogMappings?: Record<string, string>;
+  dryRun: boolean;
+  adoptBaseline: boolean;
+}
+
+interface ImportExecutionResult {
+  success: boolean;
+  command: string;
+  stdout: string;
+  stderr: string;
+}
 
 export function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('Schematic');
@@ -37,16 +57,304 @@ export function activate(context: vscode.ExtensionContext) {
     () => generateSQLMigration()
   );
 
-  context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, generateSQLCommand, outputChannel);
+  const importAssetsCommand = vscode.commands.registerCommand(
+    'schematic.importAssets',
+    () => runImportFromPrompts()
+  );
+
+  context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, generateSQLCommand, importAssetsCommand, outputChannel);
 
   outputChannel.appendLine('[Schematic] Extension activated successfully!');
-  outputChannel.appendLine('[Schematic] Commands registered: schematic.openDesigner, schematic.showLastOps, schematic.createSnapshot');
+  outputChannel.appendLine('[Schematic] Commands registered: schematic.openDesigner, schematic.showLastOps, schematic.createSnapshot, schematic.generateSQL, schematic.importAssets');
   vscode.window.showInformationMessage('Schematic Extension Activated!');
   trackEvent('extension_activated');
 }
 
 export function deactivate() {
   trackEvent('extension_deactivated');
+}
+
+function runCommand(
+  command: string,
+  args: string[],
+  cwd: string
+): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: any }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { cwd, shell: false });
+    let stdout = '';
+    let stderr = '';
+    let spawnError: any;
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', (err) => {
+      spawnError = err;
+    });
+    child.on('close', (code) => {
+      resolve({ code, stdout, stderr, spawnError });
+    });
+  });
+}
+
+async function executeImport(
+  workspacePath: string,
+  request: ImportRequest
+): Promise<ImportExecutionResult> {
+  const importArgs = [
+    'import',
+    '--target', request.target,
+    '--profile', request.profile,
+    '--warehouse-id', request.warehouseId,
+  ];
+
+  if (request.catalog?.trim()) importArgs.push('--catalog', request.catalog.trim());
+  if (request.schema?.trim()) importArgs.push('--schema', request.schema.trim());
+  if (request.table?.trim()) importArgs.push('--table', request.table.trim());
+  if (request.catalogMappings) {
+    for (const [logical, physical] of Object.entries(request.catalogMappings)) {
+      importArgs.push('--catalog-map', `${logical}=${physical}`);
+    }
+  }
+  if (request.dryRun) importArgs.push('--dry-run');
+  if (request.adoptBaseline) importArgs.push('--adopt-baseline');
+
+  const candidates: Array<{ cmd: string; args: string[] }> = [
+    { cmd: 'schematic', args: importArgs },
+    { cmd: 'python3', args: ['-m', 'schematic.cli', ...importArgs] },
+    { cmd: 'python', args: ['-m', 'schematic.cli', ...importArgs] },
+  ];
+
+  let lastResult: ImportExecutionResult = {
+    success: false,
+    command: '',
+    stdout: '',
+    stderr: 'No import command candidates were executed',
+  };
+
+  for (const candidate of candidates) {
+    const result = await runCommand(candidate.cmd, candidate.args, workspacePath);
+    const renderedCommand = `${candidate.cmd} ${candidate.args.join(' ')}`;
+
+    if (result.spawnError) {
+      lastResult = {
+        success: false,
+        command: renderedCommand,
+        stdout: result.stdout,
+        stderr: `${result.stderr}\n${result.spawnError.message || result.spawnError}`,
+      };
+      continue;
+    }
+
+    if (result.code === 0) {
+      return {
+        success: true,
+        command: renderedCommand,
+        stdout: result.stdout.trim(),
+        stderr: result.stderr.trim(),
+      };
+    }
+
+    lastResult = {
+      success: false,
+      command: renderedCommand,
+      stdout: result.stdout.trim(),
+      stderr: result.stderr.trim(),
+    };
+  }
+
+  return lastResult;
+}
+
+async function promptImportRequest(workspaceUri: vscode.Uri): Promise<ImportRequest | null> {
+  const project = await storageV4.readProject(workspaceUri);
+  const envNames = Object.keys(project.provider.environments || {});
+  if (envNames.length === 0) {
+    vscode.window.showErrorMessage('Schematic: No environments configured in project.json');
+    return null;
+  }
+
+  const target = await vscode.window.showQuickPick(envNames, {
+    placeHolder: 'Select target environment for import',
+    ignoreFocusOut: true
+  });
+  if (!target) return null;
+
+  const profile = await vscode.window.showInputBox({
+    prompt: 'Databricks profile name',
+    value: 'DEFAULT',
+    placeHolder: 'DEFAULT',
+    validateInput: (value) => value.trim() ? null : 'Profile is required',
+    ignoreFocusOut: true
+  });
+  if (!profile) return null;
+
+  const warehouseId = await vscode.window.showInputBox({
+    prompt: 'SQL Warehouse ID',
+    placeHolder: 'e.g. 1234abcd5678efgh',
+    validateInput: (value) => value.trim() ? null : 'Warehouse ID is required',
+    ignoreFocusOut: true
+  });
+  if (!warehouseId) return null;
+
+  const catalog = await vscode.window.showInputBox({
+    prompt: 'Catalog to import (optional, blank = all visible catalogs)',
+    placeHolder: 'main',
+    ignoreFocusOut: true
+  });
+  if (catalog === undefined) return null;
+
+  const schema = await vscode.window.showInputBox({
+    prompt: 'Schema to import (optional, requires catalog)',
+    placeHolder: 'analytics',
+    validateInput: (value) => {
+      if (value.trim() && !catalog?.trim()) return 'Schema requires catalog';
+      return null;
+    },
+    ignoreFocusOut: true
+  });
+  if (schema === undefined) return null;
+
+  const table = await vscode.window.showInputBox({
+    prompt: 'Table to import (optional, requires schema)',
+    placeHolder: 'users',
+    validateInput: (value) => {
+      if (value.trim() && !schema?.trim()) return 'Table requires schema';
+      return null;
+    },
+    ignoreFocusOut: true
+  });
+  if (table === undefined) return null;
+
+  const mode = await vscode.window.showQuickPick(
+    [
+      { label: 'Dry run (recommended)', dryRun: true, adoptBaseline: false },
+      { label: 'Import only', dryRun: false, adoptBaseline: false },
+      { label: 'Import + adopt baseline', dryRun: false, adoptBaseline: true },
+    ],
+    {
+      placeHolder: 'Select import mode',
+      ignoreFocusOut: true
+    }
+  );
+  if (!mode) return null;
+
+  const bindingsInput = await vscode.window.showInputBox({
+    prompt: 'Catalog mappings (optional): logical=physical, comma-separated',
+    placeHolder: 'schematic_demo=dev_schematic_demo',
+    ignoreFocusOut: true
+  });
+  if (bindingsInput === undefined) return null;
+
+  const catalogMappings = parseCatalogMappingsInput(bindingsInput);
+
+  return {
+    target,
+    profile: profile.trim(),
+    warehouseId: warehouseId.trim(),
+    catalog: catalog?.trim() || undefined,
+    schema: schema?.trim() || undefined,
+    table: table?.trim() || undefined,
+    catalogMappings,
+    dryRun: mode.dryRun,
+    adoptBaseline: mode.adoptBaseline,
+  };
+}
+
+function parseCatalogMappingsInput(input: string): Record<string, string> | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) return undefined;
+
+  const bindings: Record<string, string> = {};
+  const entries = trimmed.split(',').map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of entries) {
+    const eqIndex = entry.indexOf('=');
+    if (eqIndex <= 0 || eqIndex === entry.length - 1) {
+      throw new Error(`Invalid catalog mapping '${entry}'. Expected logical=physical`);
+    }
+    const logical = entry.slice(0, eqIndex).trim();
+    const physical = entry.slice(eqIndex + 1).trim();
+    if (!logical || !physical) {
+      throw new Error(`Invalid catalog mapping '${entry}'. Expected logical=physical`);
+    }
+    bindings[logical] = physical;
+  }
+  return bindings;
+}
+
+async function runImportFromPrompts(): Promise<void> {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!workspaceFolder) {
+    vscode.window.showErrorMessage('Schematic: Please open a workspace folder first.');
+    return;
+  }
+
+  try {
+    const request = await promptImportRequest(workspaceFolder.uri);
+    if (!request) return;
+    await runImportWithRequest(workspaceFolder, request);
+  } catch (error) {
+    vscode.window.showErrorMessage(`Schematic import failed: ${error}`);
+  }
+}
+
+async function runImportWithRequest(
+  workspaceFolder: vscode.WorkspaceFolder,
+  request: ImportRequest,
+  panel?: vscode.WebviewPanel
+): Promise<ImportExecutionResult> {
+  outputChannel.appendLine('[Schematic] Running import workflow...');
+  outputChannel.appendLine(`[Schematic] Import request: ${JSON.stringify(request)}`);
+
+  const result = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: request.dryRun ? 'Running import dry-run...' : 'Importing assets...',
+      cancellable: false,
+    },
+    async () => executeImport(workspaceFolder.uri.fsPath, request)
+  );
+
+  if (result.stdout) {
+    outputChannel.appendLine('[Schematic] Import stdout:');
+    outputChannel.appendLine(result.stdout);
+  }
+  if (result.stderr) {
+    outputChannel.appendLine('[Schematic] Import stderr:');
+    outputChannel.appendLine(result.stderr);
+  }
+
+  if (result.success) {
+    vscode.window.showInformationMessage(
+      request.dryRun
+        ? 'Schematic import dry-run completed'
+        : 'Schematic import completed successfully'
+    );
+    trackEvent('import_completed', {
+      dryRun: request.dryRun,
+      adoptBaseline: request.adoptBaseline,
+      target: request.target,
+    });
+  } else {
+    vscode.window.showErrorMessage(`Schematic import failed. See Output > Schematic for details.`);
+    trackEvent('import_failed', {
+      dryRun: request.dryRun,
+      adoptBaseline: request.adoptBaseline,
+      target: request.target,
+    });
+  }
+
+  if (panel) {
+    panel.webview.postMessage({
+      type: 'import-result',
+      payload: result,
+    });
+  }
+
+  return result;
 }
 
 /**
@@ -909,6 +1217,27 @@ async function openDesigner(context: vscode.ExtensionContext) {
           }
           break;
         }
+        case 'run-import': {
+          try {
+            const request = message.payload as ImportRequest;
+            const result = await runImportWithRequest(workspaceFolder, request, currentPanel);
+            if (result.success && !request.dryRun) {
+              await reloadProject(workspaceFolder, currentPanel);
+            }
+          } catch (error) {
+            outputChannel.appendLine(`[Schematic] ERROR: Import run failed: ${error}`);
+            currentPanel?.webview.postMessage({
+              type: 'import-result',
+              payload: {
+                success: false,
+                command: '',
+                stdout: '',
+                stderr: String(error),
+              } as ImportExecutionResult,
+            });
+          }
+          break;
+        }
       }
     },
     undefined,
@@ -1318,4 +1647,3 @@ async function generateSQLMigration() {
     vscode.window.showErrorMessage(`Failed to generate SQL: ${error}`);
   }
 }
-

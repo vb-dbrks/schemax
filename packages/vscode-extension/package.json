@@ -59,6 +59,10 @@
       {
         "command": "schematic.generateSQL",
         "title": "Schematic: Generate SQL Migration"
+      },
+      {
+        "command": "schematic.importAssets",
+        "title": "Schematic: Import Existing Assets"
       }
     ]
   },

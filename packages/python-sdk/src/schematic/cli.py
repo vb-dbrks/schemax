@@ -14,10 +14,12 @@ import schematic.providers  # noqa: F401
 from .commands import (
     ApplyError,
     DiffError,
+    ImportError,
     SQLGenerationError,
     apply_to_environment,
     generate_diff,
     generate_sql_migration,
+    import_from_provider,
     rollback_complete,
     validate_project,
 )
@@ -272,6 +274,96 @@ def bundle(target: str, version: str, output: str) -> None:
     except Exception as e:
         console.print(f"[red]✗ Error:[/red] {e}")
         sys.exit(1)
+
+
+@cli.command(name="import")
+@click.option("--target", "-t", required=True, help="Target environment (dev/test/prod)")
+@click.option("--profile", "-p", required=True, help="Databricks profile name")
+@click.option("--warehouse-id", "-w", required=True, help="SQL warehouse ID")
+@click.option("--catalog", help="Catalog name to import")
+@click.option("--schema", help="Schema name to import (requires --catalog)")
+@click.option("--table", help="Table name to import (requires --catalog and --schema)")
+@click.option(
+    "--catalog-map",
+    "catalog_map",
+    multiple=True,
+    help="Catalog mapping override in logical=physical format (repeatable)",
+)
+@click.option("--dry-run", is_flag=True, help="Preview import operations without writing changelog")
+@click.option(
+    "--adopt-baseline",
+    is_flag=True,
+    help="Mark imported snapshot as deployment baseline (planned, scaffold only)",
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def import_command(
+    target: str,
+    profile: str,
+    warehouse_id: str,
+    catalog: str | None,
+    schema: str | None,
+    table: str | None,
+    catalog_map: tuple[str, ...],
+    dry_run: bool,
+    adopt_baseline: bool,
+    workspace: str,
+) -> None:
+    """Import existing provider assets into Schematic changelog.
+
+    This is a CLI-first import workflow similar to Terraform import:
+    discover live assets -> map to provider state -> generate operations into changelog.
+    """
+    try:
+        if schema and not catalog:
+            console.print("[red]✗[/red] --schema requires --catalog")
+            sys.exit(1)
+        if table and (not catalog or not schema):
+            console.print("[red]✗[/red] --table requires --catalog and --schema")
+            sys.exit(1)
+        binding_overrides = _parse_catalog_mappings(catalog_map)
+
+        workspace_path = Path(workspace).resolve()
+
+        import_from_provider(
+            workspace=workspace_path,
+            target_env=target,
+            profile=profile,
+            warehouse_id=warehouse_id,
+            catalog=catalog,
+            schema=schema,
+            table=table,
+            dry_run=dry_run,
+            adopt_baseline=adopt_baseline,
+            catalog_mappings_override=binding_overrides,
+        )
+    except ImportError as e:
+        console.print(f"[red]✗ Import failed:[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Unexpected error:[/red] {e}")
+        sys.exit(1)
+
+
+def _parse_catalog_mappings(catalog_map: tuple[str, ...]) -> dict[str, str]:
+    bindings: dict[str, str] = {}
+    for binding in catalog_map:
+        if "=" not in binding:
+            raise ImportError(
+                f"Invalid --catalog-map '{binding}'. Expected logical=physical"
+            )
+        logical, physical = binding.split("=", 1)
+        logical = logical.strip()
+        physical = physical.strip()
+        if not logical or not physical:
+            raise ImportError(
+                f"Invalid --catalog-map '{binding}'. Expected logical=physical"
+            )
+        if logical in bindings and bindings[logical] != physical:
+            raise ImportError(
+                f"Conflicting --catalog-map for '{logical}': '{bindings[logical]}' vs '{physical}'"
+            )
+        bindings[logical] = physical
+    return bindings
 
 
 @cli.command()

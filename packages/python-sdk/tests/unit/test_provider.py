@@ -8,9 +8,14 @@ Tests the provider registry and Unity provider implementation including:
 - SQL generator creation
 """
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
+from databricks.sdk.service.sql import StatementState
 
 from schematic.providers import Operation, ProviderRegistry
+from schematic.providers.base.executor import ExecutionConfig
 from tests.utils import OperationBuilder
 
 
@@ -189,6 +194,147 @@ class TestUnityProvider:
 
         result = generator.generate_sql_for_operation(op)
         assert "CREATE CATALOG" in result.sql
+
+    @staticmethod
+    def _mock_query_response(
+        columns: list[str], rows: list[list[str]], state: StatementState = StatementState.SUCCEEDED
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            status=SimpleNamespace(
+                state=state,
+                error=SimpleNamespace(message="boom") if state != StatementState.SUCCEEDED else None,
+            ),
+            result=SimpleNamespace(data_array=rows),
+            manifest=SimpleNamespace(
+                schema=SimpleNamespace(columns=[SimpleNamespace(name=col) for col in columns])
+            ),
+        )
+
+    def test_discover_state_builds_hierarchy(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+        executed_sql: list[str] = []
+
+        def _execute_statement(warehouse_id: str, statement: str, wait_timeout: str):
+            del warehouse_id, wait_timeout
+            executed_sql.append(statement)
+            if "information_schema.catalogs" in statement:
+                return self._mock_query_response(["catalog_name"], [["main"]])
+            if "information_schema.schemata" in statement:
+                return self._mock_query_response(["schema_name"], [["analytics"]])
+            if "information_schema.tables" in statement:
+                return self._mock_query_response(
+                    ["table_name", "table_type", "comment"],
+                    [["users", "BASE TABLE", "user table"], ["active_users", "VIEW", None]],
+                )
+            if "information_schema.columns" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "column_name",
+                        "data_type",
+                        "is_nullable",
+                        "comment",
+                        "ordinal_position",
+                    ],
+                    [
+                        ["users", "id", "BIGINT", "NO", "pk", "1"],
+                        ["users", "email", "STRING", "YES", None, "2"],
+                    ],
+                )
+            raise AssertionError(f"Unexpected query: {statement}")
+
+        mock_client.statement_execution.execute_statement = _execute_statement
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+
+            state = unity_provider.discover_state(
+                config=ExecutionConfig(
+                    target_env="dev",
+                    profile="DEFAULT",
+                    warehouse_id="wh_123",
+                ),
+                scope={"catalog": "main", "schema": "analytics"},
+            )
+
+        assert len(state["catalogs"]) == 1
+        cat = state["catalogs"][0]
+        assert cat["name"] == "main"
+        assert len(cat["schemas"]) == 1
+        sch = cat["schemas"][0]
+        assert sch["name"] == "analytics"
+        assert len(sch["tables"]) == 1
+        assert sch["tables"][0]["name"] == "users"
+        assert len(sch["tables"][0]["columns"]) == 2
+        assert sch["tables"][0]["columns"][0]["nullable"] is False
+        assert len(sch["views"]) == 1
+        assert sch["views"][0]["name"] == "active_users"
+        assert any("catalog_name = 'main'" in sql for sql in executed_sql)
+        assert any("schema_name = 'analytics'" in sql for sql in executed_sql)
+
+    def test_discover_state_generates_deterministic_ids(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+
+        def _execute_statement(warehouse_id: str, statement: str, wait_timeout: str):
+            del warehouse_id, wait_timeout
+            if "information_schema.catalogs" in statement:
+                return self._mock_query_response(["catalog_name"], [["main"]])
+            if "information_schema.schemata" in statement:
+                return self._mock_query_response(["schema_name"], [["analytics"]])
+            if "information_schema.tables" in statement:
+                return self._mock_query_response(
+                    ["table_name", "table_type", "comment"],
+                    [["users", "BASE TABLE", None]],
+                )
+            if "information_schema.columns" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "column_name",
+                        "data_type",
+                        "is_nullable",
+                        "comment",
+                        "ordinal_position",
+                    ],
+                    [["users", "id", "BIGINT", "NO", None, "1"]],
+                )
+            raise AssertionError(f"Unexpected query: {statement}")
+
+        mock_client.statement_execution.execute_statement = _execute_statement
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+            cfg = ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123")
+            state_1 = unity_provider.discover_state(config=cfg, scope={"catalog": "main"})
+            state_2 = unity_provider.discover_state(config=cfg, scope={"catalog": "main"})
+
+        assert state_1["catalogs"][0]["id"] == state_2["catalogs"][0]["id"]
+        assert (
+            state_1["catalogs"][0]["schemas"][0]["tables"][0]["id"]
+            == state_2["catalogs"][0]["schemas"][0]["tables"][0]["id"]
+        )
+        assert (
+            state_1["catalogs"][0]["schemas"][0]["tables"][0]["columns"][0]["id"]
+            == state_2["catalogs"][0]["schemas"][0]["tables"][0]["columns"][0]["id"]
+        )
+
+    def test_discover_state_raises_on_failed_query(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+        mock_client.statement_execution.execute_statement = lambda **_: self._mock_query_response(
+            ["catalog_name"], [], state=StatementState.FAILED
+        )
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+            with pytest.raises(RuntimeError, match="Unity metadata discovery query failed"):
+                unity_provider.discover_state(
+                    config=ExecutionConfig(
+                        target_env="dev",
+                        profile="DEFAULT",
+                        warehouse_id="wh_123",
+                    ),
+                    scope={"catalog": "main"},
+                )
 
 
 class TestOperationMetadata:

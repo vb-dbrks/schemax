@@ -5,7 +5,10 @@ Main provider implementation for Databricks Unity Catalog.
 Implements the Provider interface to enable Unity Catalog support in Schematic.
 """
 
+import hashlib
 from typing import Any
+
+from databricks.sdk.service.sql import StatementState
 
 from schematic.providers.base.executor import ExecutionConfig, SQLExecutor
 from schematic.providers.base.models import ProviderState, ValidationError, ValidationResult
@@ -255,6 +258,263 @@ class UnityProvider(BaseProvider):
 
         # Return executor
         return UnitySQLExecutor(client)
+
+    def discover_state(
+        self,
+        config: ExecutionConfig,
+        scope: dict[str, Any] | None = None,
+    ) -> ProviderState:
+        """Discover live Unity Catalog state for import workflows."""
+        client = create_databricks_client(config.profile)
+        scope = scope or {}
+
+        catalog_filter = scope.get("catalog")
+        schema_filter = scope.get("schema")
+        table_filter = scope.get("table")
+
+        catalogs = self._fetch_catalogs(client, config.warehouse_id, catalog_filter)
+        if not catalogs:
+            return {"catalogs": []}
+
+        state_catalogs = []
+        for catalog_name in catalogs:
+            schemas = self._fetch_schemas(client, config.warehouse_id, catalog_name, schema_filter)
+            state_schemas = []
+            for schema_name in schemas:
+                table_rows = self._fetch_tables(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_filter,
+                )
+                columns_by_table = self._fetch_columns(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_filter,
+                )
+
+                tables = []
+                views = []
+                for row in table_rows:
+                    table_name = str(row["table_name"])
+                    table_kind = str(row.get("table_type", "BASE TABLE")).upper()
+
+                    if table_kind == "VIEW":
+                        views.append(
+                            {
+                                "id": self._stable_id(
+                                    "view", catalog_name, schema_name, table_name
+                                ),
+                                "name": table_name,
+                                "definition": "",
+                                "comment": None,
+                                "dependencies": None,
+                                "extractedDependencies": None,
+                                "tags": {},
+                                "properties": {},
+                            }
+                        )
+                        continue
+
+                    column_rows = columns_by_table.get(table_name, [])
+                    columns = []
+                    for col in column_rows:
+                        col_name = str(col["column_name"])
+                        col_type = str(col.get("data_type", "STRING"))
+                        nullable = str(col.get("is_nullable", "YES")).upper() == "YES"
+                        columns.append(
+                            {
+                                "id": self._stable_id(
+                                    "col", catalog_name, schema_name, table_name, col_name
+                                ),
+                                "name": col_name,
+                                "type": col_type,
+                                "nullable": nullable,
+                                "comment": col.get("comment"),
+                                "tags": {},
+                                "maskId": None,
+                            }
+                        )
+
+                    tables.append(
+                        {
+                            "id": self._stable_id(
+                                "tbl", catalog_name, schema_name, table_name
+                            ),
+                            "name": table_name,
+                            "format": "delta",
+                            "external": None,
+                            "externalLocationName": None,
+                            "path": None,
+                            "partitionColumns": None,
+                            "clusterColumns": None,
+                            "columnMapping": None,
+                            "columns": columns,
+                            "properties": {},
+                            "tags": {},
+                            "constraints": [],
+                            "grants": [],
+                            "comment": row.get("comment"),
+                            "rowFilters": [],
+                            "columnMasks": [],
+                        }
+                    )
+
+                state_schemas.append(
+                    {
+                        "id": self._stable_id("sch", catalog_name, schema_name),
+                        "name": schema_name,
+                        "managedLocationName": None,
+                        "comment": None,
+                        "tags": {},
+                        "tables": tables,
+                        "views": views,
+                    }
+                )
+
+            state_catalogs.append(
+                {
+                    "id": self._stable_id("cat", catalog_name),
+                    "name": catalog_name,
+                    "managedLocationName": None,
+                    "comment": None,
+                    "tags": {},
+                    "schemas": state_schemas,
+                }
+            )
+
+        return {"catalogs": state_catalogs}
+
+    def _stable_id(self, prefix: str, *parts: str) -> str:
+        """Create deterministic object ID from provider object identity."""
+        normalized = "||".join(str(p).strip().lower() for p in parts)
+        digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:12]
+        return f"{prefix}_{digest}"
+
+    def _fetch_catalogs(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_filter: str | None,
+    ) -> list[str]:
+        sql = "SELECT catalog_name FROM system.information_schema.catalogs"
+        if catalog_filter:
+            safe = catalog_filter.replace("'", "''")
+            sql += f" WHERE catalog_name = '{safe}'"
+        sql += " ORDER BY catalog_name"
+        rows = self._execute_query(client, warehouse_id, sql)
+        return [str(r["catalog_name"]) for r in rows if r.get("catalog_name")]
+
+    def _fetch_schemas(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_filter: str | None,
+    ) -> list[str]:
+        cat = catalog_name.replace("'", "''")
+        sql = (
+            "SELECT schema_name "
+            "FROM system.information_schema.schemata "
+            f"WHERE catalog_name = '{cat}'"
+        )
+        if schema_filter:
+            sch = schema_filter.replace("'", "''")
+            sql += f" AND schema_name = '{sch}'"
+        sql += " ORDER BY schema_name"
+        rows = self._execute_query(client, warehouse_id, sql)
+        return [str(r["schema_name"]) for r in rows if r.get("schema_name")]
+
+    def _fetch_tables(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+        table_filter: str | None,
+    ) -> list[dict[str, Any]]:
+        cat = catalog_name.replace("'", "''")
+        sch = schema_name.replace("'", "''")
+        sql = (
+            "SELECT table_name, table_type, comment "
+            "FROM system.information_schema.tables "
+            f"WHERE table_catalog = '{cat}' "
+            f"AND table_schema = '{sch}'"
+        )
+        if table_filter:
+            tbl = table_filter.replace("'", "''")
+            sql += f" AND table_name = '{tbl}'"
+        sql += " ORDER BY table_name"
+        return self._execute_query(client, warehouse_id, sql)
+
+    def _fetch_columns(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+        table_filter: str | None,
+    ) -> dict[str, list[dict[str, Any]]]:
+        cat = catalog_name.replace("'", "''")
+        sch = schema_name.replace("'", "''")
+        sql = (
+            "SELECT table_name, column_name, data_type, is_nullable, comment, ordinal_position "
+            "FROM system.information_schema.columns "
+            f"WHERE table_catalog = '{cat}' "
+            f"AND table_schema = '{sch}'"
+        )
+        if table_filter:
+            tbl = table_filter.replace("'", "''")
+            sql += f" AND table_name = '{tbl}'"
+        sql += " ORDER BY table_name, ordinal_position"
+        rows = self._execute_query(client, warehouse_id, sql)
+
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            table_name = str(row.get("table_name", ""))
+            if not table_name:
+                continue
+            grouped.setdefault(table_name, []).append(row)
+        return grouped
+
+    def _execute_query(
+        self,
+        client: Any,
+        warehouse_id: str,
+        sql: str,
+    ) -> list[dict[str, Any]]:
+        response = client.statement_execution.execute_statement(
+            warehouse_id=warehouse_id,
+            statement=sql,
+            wait_timeout="30s",
+        )
+        if not response.status or response.status.state != StatementState.SUCCEEDED:
+            msg = "query failed"
+            if response.status and response.status.error:
+                msg = str(getattr(response.status.error, "message", msg) or msg)
+            raise RuntimeError(f"Unity metadata discovery query failed: {msg}")
+
+        if (
+            not response.result
+            or not response.result.data_array
+            or not response.manifest
+            or not response.manifest.schema
+            or not response.manifest.schema.columns
+        ):
+            return []
+
+        columns = [c.name for c in response.manifest.schema.columns]
+        rows: list[dict[str, Any]] = []
+        for row in response.result.data_array:
+            row_dict: dict[str, Any] = {}
+            for i, value in enumerate(row):
+                if i < len(columns):
+                    row_dict[columns[i]] = value
+            rows.append(row_dict)
+        return rows
 
     def validate_execution_config(self, config: ExecutionConfig) -> ValidationResult:
         """Validate execution configuration for Unity Catalog

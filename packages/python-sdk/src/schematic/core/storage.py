@@ -101,6 +101,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
                     "requireSnapshot": False,
                     "autoCreateTopLevel": True,
                     "autoCreateSchematicSchema": True,
+                    "catalogMappings": {},
                 },
                 "test": {
                     "topLevelName": f"test_{workspace_name}",
@@ -109,6 +110,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
                     "requireSnapshot": True,
                     "autoCreateTopLevel": True,
                     "autoCreateSchematicSchema": True,
+                    "catalogMappings": {},
                 },
                 "prod": {
                     "topLevelName": f"prod_{workspace_name}",
@@ -118,6 +120,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
                     "requireApproval": False,
                     "autoCreateTopLevel": False,
                     "autoCreateSchematicSchema": True,
+                    "catalogMappings": {},
                 },
             },
         },

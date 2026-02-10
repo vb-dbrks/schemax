@@ -180,6 +180,26 @@ class Provider(ABC):
         """
         pass
 
+    def discover_state(
+        self,
+        config: ExecutionConfig,
+        scope: dict[str, Any] | None = None,
+    ) -> ProviderState:
+        """Discover current state from the target provider.
+
+        Providers can override this for import/adoption workflows.
+
+        Args:
+            config: Execution/auth context for connecting to provider
+            scope: Optional discovery filter (e.g., catalog/schema/table)
+
+        Returns:
+            Discovered provider state
+        """
+        raise NotImplementedError(
+            f"Provider '{self.info.id}' does not implement live state discovery yet"
+        )
+
 
 class BaseProvider(Provider):
     """Base implementation of Provider with common functionality"""
