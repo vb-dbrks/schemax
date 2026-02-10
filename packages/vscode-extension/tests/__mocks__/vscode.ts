@@ -1,4 +1,6 @@
 // Mock VS Code API for testing
+import { jest } from '@jest/globals';
+
 export const window = {
   showInformationMessage: jest.fn(),
   showErrorMessage: jest.fn(),
