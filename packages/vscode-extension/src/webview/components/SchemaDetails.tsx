@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
+import { RichComment } from './RichComment';
 
 // Codicon icons - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -226,7 +227,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
           <label>Comment:</label>
           <div className="property-value">
             {schema.comment ? (
-              <span>{schema.comment}</span>
+              <RichComment text={schema.comment} />
             ) : (
               <span className="inline-warning">
                 <span className="inline-warning__dot" aria-hidden="true" />
@@ -491,4 +492,3 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
     </div>
   );
 };
-

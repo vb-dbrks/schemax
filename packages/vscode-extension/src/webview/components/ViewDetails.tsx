@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { extractDependenciesFromView } from '../../providers/base/sql-parser';
+import { RichComment } from './RichComment';
 import './ViewDetails.css';
 
 interface ViewDetailsProps {
@@ -141,7 +142,7 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
       {view.comment && (
         <div className="view-section">
           <h3>Comment</h3>
-          <p className="comment-text">{view.comment}</p>
+          <RichComment text={view.comment} />
         </div>
       )}
 
@@ -228,4 +229,3 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
     </div>
   );
 };
-

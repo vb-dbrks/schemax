@@ -5,6 +5,7 @@ Unit tests for import command scaffolding.
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from schematic.cli import cli
@@ -29,6 +30,11 @@ def _make_provider(
     valid_config: bool = True,
     discovered_state: dict | None = None,
     diff_ops: list[Operation] | None = None,
+    prepared_state: dict | None = None,
+    prepared_mappings: dict[str, str] | None = None,
+    mappings_updated: bool = False,
+    reject_information_schema: bool = True,
+    supports_baseline_adoption: bool = True,
 ):
     errors = []
     if not valid_config:
@@ -36,10 +42,40 @@ def _make_provider(
 
     provider = SimpleNamespace()
     provider.info = SimpleNamespace(id="unity", name="Unity Catalog", version="1.0.0")
+    provider.capabilities = SimpleNamespace(
+        features={"baseline_adoption": supports_baseline_adoption}
+    )
     provider.validate_execution_config = lambda _config: ValidationResult(
         valid=valid_config, errors=errors
     )
+    provider.validate_import_scope = lambda scope: (
+        ValidationResult(
+            valid=False,
+            errors=[
+                ValidationError(
+                    field="schema",
+                    message=(
+                        "Schema 'information_schema' is system-managed in Unity Catalog "
+                        "and cannot be imported."
+                    ),
+                )
+            ],
+        )
+        if reject_information_schema
+        and str(scope.get("schema") or "").strip().lower() == "information_schema"
+        else ValidationResult(valid=True, errors=[])
+    )
     provider.discover_state = lambda config, scope: discovered_state or {"catalogs": []}
+    provider.collect_import_warnings = lambda config, scope, discovered_state: []
+    provider.prepare_import_state = lambda local_state, discovered_state, env_config, mapping_overrides: (
+        prepared_state if prepared_state is not None else discovered_state,
+        prepared_mappings or {},
+        mappings_updated,
+    )
+    provider.update_env_import_mappings = lambda env_config, mappings: env_config.update(
+        {"catalogMappings": dict(sorted(mappings.items()))}
+    )
+    provider.adopt_import_baseline = lambda **kwargs: "deploy_import_test"
 
     differ = SimpleNamespace(generate_diff_operations=lambda: diff_ops or [])
     provider.get_state_differ = lambda old_state, new_state, old_operations, new_operations: differ
@@ -147,92 +183,89 @@ class TestImportFromProvider:
             except ImportError as err:
                 assert "discovery not implemented" in str(err)
 
+    def test_information_schema_scope_is_rejected(self):
+        provider = _make_provider()
+        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
+            mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
+            with pytest.raises(ImportError, match="information_schema"):
+                import_from_provider(
+                    workspace=None,
+                    target_env="dev",
+                    profile="DEFAULT",
+                    warehouse_id="wh_123",
+                    catalog="main",
+                    schema="information_schema",
+                )
+
     def test_adopt_baseline_creates_snapshot_and_tracks_deployment(self):
         provider = _make_provider(diff_ops=[_make_op("op_1")])
-        tracker = SimpleNamespace()
-        tracker.ensure_tracking_schema = lambda auto_create: None
-        tracker.get_latest_deployment = lambda env: {"version": "v0.1.0"}
-        tracker.get_most_recent_deployment_id = lambda env: "deploy_prev"
-        tracker.start_deployment = lambda **kwargs: None
-        tracker.complete_deployment = lambda deployment_id, result: None
+        provider.adopt_import_baseline = Mock(return_value="deploy_import_1234")
 
         with patch("schematic.commands.import_assets.load_current_state") as mock_load:
             with patch("schematic.commands.import_assets.append_ops") as mock_append:
                 with patch("schematic.commands.import_assets.read_project") as mock_project:
                     with patch("schematic.commands.import_assets.create_snapshot") as mock_snapshot:
-                        with patch(
-                            "schematic.commands.import_assets.get_environment_config"
-                        ) as mock_env_cfg:
-                            with patch(
-                                "schematic.commands.import_assets.create_databricks_client"
-                            ) as mock_client:
-                                with patch(
-                                    "schematic.commands.import_assets.DeploymentTracker"
-                                ) as mock_tracker_cls:
-                                    mock_load.return_value = (
-                                        {"catalogs": []},
-                                        {"ops": []},
-                                        provider,
-                                        None,
-                                    )
-                                    mock_project.return_value = _make_project()
-                                    mock_snapshot.return_value = (
-                                        _make_project() | {"latestSnapshot": "v0.2.0"},
-                                        {"version": "v0.2.0"},
-                                    )
-                                    mock_env_cfg.return_value = {
-                                        "topLevelName": "dev_demo_project",
-                                        "autoCreateSchematicSchema": True,
-                                    }
-                                    mock_client.return_value = object()
-                                    mock_tracker_cls.return_value = tracker
+                        mock_load.return_value = (
+                            {"catalogs": []},
+                            {"ops": []},
+                            provider,
+                            None,
+                        )
+                        mock_project.return_value = _make_project()
+                        mock_snapshot.return_value = (
+                            _make_project() | {"latestSnapshot": "v0.2.0"},
+                            {"version": "v0.2.0"},
+                        )
 
-                                    summary = import_from_provider(
-                                        workspace=None,
-                                        target_env="dev",
-                                        profile="DEFAULT",
-                                        warehouse_id="wh_123",
-                                        dry_run=False,
-                                        adopt_baseline=True,
-                                    )
+                        summary = import_from_provider(
+                            workspace=None,
+                            target_env="dev",
+                            profile="DEFAULT",
+                            warehouse_id="wh_123",
+                            dry_run=False,
+                            adopt_baseline=True,
+                        )
 
         mock_append.assert_called_once()
         mock_snapshot.assert_called_once()
+        provider.adopt_import_baseline.assert_called_once()
         assert summary["snapshot_version"] == "v0.2.0"
-        assert summary["deployment_id"].startswith("deploy_import_")
+        assert summary["deployment_id"] == "deploy_import_1234"
 
-    def test_import_normalizes_physical_catalog_to_logical_and_avoids_false_drop(self):
-        discovered_state = {
-            "catalogs": [
-                {
-                    "id": "cat_phys",
-                    "name": "dev_schematic_demo",
-                    "schemas": [],
-                }
-            ]
-        }
-        provider = _make_provider(discovered_state=discovered_state, diff_ops=[])
+    def test_adopt_baseline_rejected_when_provider_capability_missing(self):
+        provider = _make_provider(supports_baseline_adoption=False)
+        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
+            with patch("schematic.commands.import_assets.read_project") as mock_project:
+                mock_project.return_value = _make_project()
+                mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
+                with pytest.raises(ImportError, match="does not support baseline adoption"):
+                    import_from_provider(
+                        workspace=None,
+                        target_env="dev",
+                        profile="DEFAULT",
+                        warehouse_id="wh_123",
+                        dry_run=False,
+                        adopt_baseline=True,
+                    )
+
+    def test_import_uses_provider_prepared_state_and_mappings(self):
+        discovered_state = {"catalogs": [{"id": "cat_phys", "name": "dev_schematic_demo", "schemas": []}]}
+        prepared_state = {"catalogs": [{"id": "cat_local", "name": "schematic_demo", "schemas": []}]}
+        provider = _make_provider(
+            discovered_state=discovered_state,
+            prepared_state=prepared_state,
+            prepared_mappings={"schematic_demo": "dev_schematic_demo"},
+            diff_ops=[],
+        )
         provider.get_state_differ = Mock(
             return_value=SimpleNamespace(generate_diff_operations=lambda: [])
         )
 
-        local_state = {
-            "catalogs": [
-                {
-                    "id": "cat_local",
-                    "name": "schematic_demo",
-                    "schemas": [],
-                }
-            ]
-        }
-
         project = _make_project()
-        project["provider"]["environments"]["dev"]["topLevelName"] = "dev_schematic_demo"
-
         with patch("schematic.commands.import_assets.load_current_state") as mock_load:
             with patch("schematic.commands.import_assets.read_project") as mock_project:
                 mock_project.return_value = project
-                mock_load.return_value = (local_state, {"ops": []}, provider, None)
+                mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
 
                 summary = import_from_provider(
                     workspace=None,
@@ -244,40 +277,26 @@ class TestImportFromProvider:
 
         assert summary["catalog_mappings"] == {"schematic_demo": "dev_schematic_demo"}
         kwargs = provider.get_state_differ.call_args.kwargs
-        normalized_catalog = kwargs["new_state"]["catalogs"][0]
-        assert normalized_catalog["name"] == "schematic_demo"
-        assert normalized_catalog["id"] == "cat_local"
+        assert kwargs["new_state"] == prepared_state
 
-    def test_non_dry_run_persists_catalog_mappings(self):
-        discovered_state = {
-            "catalogs": [
-                {
-                    "id": "cat_phys",
-                    "name": "dev_schematic_demo",
-                    "schemas": [],
-                }
-            ]
-        }
-        provider = _make_provider(discovered_state=discovered_state, diff_ops=[])
-
-        local_state = {
-            "catalogs": [
-                {
-                    "id": "cat_local",
-                    "name": "schematic_demo",
-                    "schemas": [],
-                }
-            ]
-        }
+    def test_non_dry_run_persists_catalog_mappings_via_provider_hook(self):
+        provider = _make_provider(
+            prepared_mappings={"schematic_demo": "dev_schematic_demo"},
+            mappings_updated=True,
+            diff_ops=[],
+        )
+        provider.update_env_import_mappings = Mock(
+            side_effect=lambda env_config, mappings: env_config.update(
+                {"catalogMappings": dict(sorted(mappings.items()))}
+            )
+        )
 
         project = _make_project()
-        project["provider"]["environments"]["dev"]["topLevelName"] = "dev_schematic_demo"
-
         with patch("schematic.commands.import_assets.load_current_state") as mock_load:
             with patch("schematic.commands.import_assets.read_project") as mock_project:
                 with patch("schematic.commands.import_assets.write_project") as mock_write_project:
                     mock_project.return_value = project
-                    mock_load.return_value = (local_state, {"ops": []}, provider, None)
+                    mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
 
                     import_from_provider(
                         workspace=None,
@@ -287,6 +306,7 @@ class TestImportFromProvider:
                         dry_run=False,
                     )
 
+        provider.update_env_import_mappings.assert_called_once()
         assert mock_write_project.call_count == 1
         persisted_project = mock_write_project.call_args.args[1]
         assert persisted_project["provider"]["environments"]["dev"]["catalogMappings"] == {
@@ -313,6 +333,31 @@ class TestImportCli:
         )
         assert result.exit_code == 1
         assert "--schema requires --catalog" in result.output
+
+    def test_import_cli_rejects_information_schema(self):
+        runner = CliRunner()
+        with patch(
+            "schematic.cli.import_from_provider",
+            side_effect=ImportError("Schema 'information_schema' is system-managed"),
+        ):
+            result = runner.invoke(
+                cli,
+                [
+                    "import",
+                    "--target",
+                    "dev",
+                    "--profile",
+                    "DEFAULT",
+                    "--warehouse-id",
+                    "wh_123",
+                    "--catalog",
+                    "main",
+                    "--schema",
+                    "information_schema",
+                ],
+            )
+            assert result.exit_code == 1
+            assert "system-managed" in result.output
 
     def test_import_cli_routes_to_command(self):
         runner = CliRunner()

@@ -7,6 +7,7 @@ import { TableProperties } from './TableProperties';
 import { TableTags } from './TableTags';
 import { TableConstraints } from './TableConstraints';
 import { SecurityGovernance } from './SecurityGovernance';
+import { RichComment } from './RichComment';
 
 // Codicon icon - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -187,7 +188,7 @@ export const TableDesigner: React.FC = () => {
           <label>Comment:</label>
           <div className="property-value">
             {table.comment ? (
-              <span>{table.comment}</span>
+              <RichComment text={table.comment} />
             ) : (
               <span className="inline-warning">
                 <span className="inline-warning__dot" aria-hidden="true" />
@@ -283,4 +284,3 @@ export const TableDesigner: React.FC = () => {
     </div>
   );
 };
-

@@ -17,6 +17,7 @@ interface LocationDefinition {
 
 interface EnvironmentConfig {
   topLevelName: string;
+  catalogMappings?: Record<string, string>;
   description?: string;
   allowDrift: boolean;
   requireSnapshot: boolean;
@@ -33,6 +34,39 @@ interface LocationModalData {
   paths: Record<string, string>; // env -> path
 }
 
+function formatCatalogMappingsText(mappings?: Record<string, string>): string {
+  if (!mappings) {
+    return '';
+  }
+  return Object.entries(mappings)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([logical, physical]) => `${logical}=${physical}`)
+    .join('\n');
+}
+
+function parseCatalogMappingsText(text: string): Record<string, string> {
+  const mappings: Record<string, string> = {};
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const separator = line.indexOf('=');
+    if (separator <= 0 || separator === line.length - 1) {
+      throw new Error(`Invalid mapping '${line}'. Expected format logical=physical`);
+    }
+    const logical = line.slice(0, separator).trim();
+    const physical = line.slice(separator + 1).trim();
+    if (!logical || !physical) {
+      throw new Error(`Invalid mapping '${line}'. Expected format logical=physical`);
+    }
+    mappings[logical] = physical;
+  }
+
+  return mappings;
+}
+
 export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelProps) {
   const [editedProject, setEditedProject] = useState<ProjectFile>(JSON.parse(JSON.stringify(project)));
   const [expandedEnvs, setExpandedEnvs] = useState<Set<string>>(new Set([project.activeEnvironment || 'dev']));
@@ -46,10 +80,23 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
   } | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [locationNameError, setLocationNameError] = useState<string | null>(null);
+  const [mappingTextByEnv, setMappingTextByEnv] = useState<Record<string, string>>({});
+  const [mappingErrorByEnv, setMappingErrorByEnv] = useState<Record<string, string>>({});
 
   const activeEnv = project.activeEnvironment || 'dev';
   const environments = editedProject.provider?.environments || {};
   const environmentNames = Object.keys(environments);
+  const logicalCatalogs = editedProject.state?.catalogs || [];
+  const hasMappingErrors = Object.values(mappingErrorByEnv).some(Boolean);
+
+  useEffect(() => {
+    const initialText: Record<string, string> = {};
+    environmentNames.forEach((envName) => {
+      initialText[envName] = formatCatalogMappingsText(environments[envName]?.catalogMappings);
+    });
+    setMappingTextByEnv(initialText);
+    setMappingErrorByEnv({});
+  }, [editedProject.provider?.environments]);
 
   const toggleEnv = (envName: string) => {
     const newExpanded = new Set(expandedEnvs);
@@ -93,6 +140,23 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
       setIsDirty(true);
     }
     setEditingCatalog(null);
+  };
+
+  const updateCatalogMappings = (envName: string, rawText: string) => {
+    setMappingTextByEnv((current) => ({ ...current, [envName]: rawText }));
+
+    try {
+      const mappings = parseCatalogMappingsText(rawText);
+      const updated = { ...editedProject };
+      if (updated.provider?.environments?.[envName]) {
+        updated.provider.environments[envName].catalogMappings = mappings;
+        setEditedProject(updated);
+        setIsDirty(true);
+      }
+      setMappingErrorByEnv((current) => ({ ...current, [envName]: '' }));
+    } catch (error) {
+      setMappingErrorByEnv((current) => ({ ...current, [envName]: String(error) }));
+    }
   };
 
   const cancelCatalogEdit = () => {
@@ -381,7 +445,9 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                     {/* Logical Isolation (Catalog Mapping) */}
                     <div className="isolation-section">
                       <h4>Logical Isolation</h4>
-                      <p className="help-text">Physical catalog name for this environment</p>
+                      <p className="help-text">
+                        Configure logical-to-physical catalog mapping for this environment.
+                      </p>
 
                       {editingCatalog === envName ? (
                         <div className="inline-edit">
@@ -399,13 +465,35 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                         </div>
                       ) : (
                         <div className="catalog-display">
-                          <span className="label">Catalog:</span>
+                          <span className="label">Tracking Catalog:</span>
                           <code>{envConfig.topLevelName}</code>
                           <VSCodeButton appearance="icon" onClick={() => startEditCatalog(envName)}>
                             ✏️
                           </VSCodeButton>
                         </div>
                       )}
+                      <div className="modal-field" style={{ marginTop: '10px' }}>
+                        <label>Catalog mappings (logical=physical)</label>
+                        <textarea
+                          className="import-bindings-textarea"
+                          value={mappingTextByEnv[envName] ?? ''}
+                          onChange={(e) => updateCatalogMappings(envName, e.target.value)}
+                          placeholder={'schematic_demo=dev_schematic_demo\nsamples=dev_samples'}
+                        />
+                        <p className="field-help">
+                          One mapping per line. SQL/apply requires mappings for all logical catalogs.
+                        </p>
+                        {mappingErrorByEnv[envName] && (
+                          <p className="field-error" style={{ color: 'var(--vscode-errorForeground)', marginTop: '4px', fontSize: '12px' }}>
+                            {mappingErrorByEnv[envName]}
+                          </p>
+                        )}
+                        {logicalCatalogs.length > 0 && (
+                          <p className="field-help">
+                            Logical catalogs in project: {logicalCatalogs.map((catalog) => catalog.name).join(', ')}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     {/* Environment Details */}
@@ -430,7 +518,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
         </div>
 
         <div className="modal-footer">
-          <VSCodeButton appearance="primary" onClick={handleSave} disabled={!isDirty}>
+          <VSCodeButton appearance="primary" onClick={handleSave} disabled={!isDirty || hasMappingErrors}>
             Save Changes
           </VSCodeButton>
           <VSCodeButton appearance="secondary" onClick={handleCancel}>

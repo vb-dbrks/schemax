@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn } from 'child_process';
+import { ChildProcess, spawn } from 'child_process';
 import * as storageV4 from './storage-v4';
 import { Operation } from './providers/base/operations';
 import { ProviderRegistry } from './providers/registry';
@@ -28,7 +28,18 @@ interface ImportExecutionResult {
   command: string;
   stdout: string;
   stderr: string;
+  cancelled?: boolean;
 }
+
+interface ImportProgressUpdate {
+  phase: string;
+  message: string;
+  percent: number;
+  level?: 'info' | 'warning' | 'error' | 'success';
+}
+
+let activeImportProcess: ChildProcess | null = null;
+let activeImportCancelled = false;
 
 export function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('Schematic');
@@ -77,32 +88,55 @@ export function deactivate() {
 function runCommand(
   command: string,
   args: string[],
-  cwd: string
-): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: any }> {
+  cwd: string,
+  onStdout?: (chunk: string) => void,
+  onStderr?: (chunk: string) => void
+): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: any; cancelled?: boolean }> {
   return new Promise((resolve) => {
+    if (activeImportCancelled) {
+      resolve({ code: null, stdout: '', stderr: '', cancelled: true });
+      return;
+    }
+
     const child = spawn(command, args, { cwd, shell: false });
+    activeImportProcess = child;
     let stdout = '';
     let stderr = '';
     let spawnError: any;
 
     child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
+      const text = chunk.toString();
+      stdout += text;
+      onStdout?.(text);
     });
     child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString();
+      const text = chunk.toString();
+      stderr += text;
+      onStderr?.(text);
     });
     child.on('error', (err) => {
       spawnError = err;
     });
     child.on('close', (code) => {
-      resolve({ code, stdout, stderr, spawnError });
+      const cancelled = activeImportCancelled;
+      if (activeImportProcess === child) {
+        activeImportProcess = null;
+      }
+      resolve({ code, stdout, stderr, spawnError, cancelled });
     });
+
+    if (activeImportCancelled) {
+      try {
+        child.kill('SIGTERM');
+      } catch {}
+    }
   });
 }
 
 async function executeImport(
   workspacePath: string,
-  request: ImportRequest
+  request: ImportRequest,
+  onProgress?: (update: ImportProgressUpdate) => void
 ): Promise<ImportExecutionResult> {
   const importArgs = [
     'import',
@@ -135,9 +169,100 @@ async function executeImport(
     stderr: 'No import command candidates were executed',
   };
 
-  for (const candidate of candidates) {
-    const result = await runCommand(candidate.cmd, candidate.args, workspacePath);
+  activeImportCancelled = false;
+
+  let currentPercent = 10;
+  const emitProgress = (update: ImportProgressUpdate) => {
+    currentPercent = Math.max(currentPercent, update.percent);
+    onProgress?.({ ...update, percent: currentPercent });
+  };
+
+  emitProgress({
+    phase: 'starting',
+    message: 'Preparing import command',
+    percent: 10,
+    level: 'info',
+  });
+
+  // Smooth progress while waiting for CLI output.
+  const runningTimer = setInterval(() => {
+    if (currentPercent < 92) {
+      currentPercent = Math.min(92, currentPercent + 3);
+      onProgress?.({
+        phase: 'running',
+        message: 'Import in progress...',
+        percent: currentPercent,
+        level: 'info',
+      });
+    }
+  }, 1200);
+
+  try {
+    for (const candidate of candidates) {
+    if (activeImportCancelled) {
+      onProgress?.({
+        phase: 'cancelled',
+        message: 'Import cancelled by user.',
+        percent: 100,
+        level: 'warning',
+      });
+      return {
+        success: false,
+        command: '',
+        stdout: '',
+        stderr: 'Import cancelled by user',
+        cancelled: true,
+      };
+    }
+
     const renderedCommand = `${candidate.cmd} ${candidate.args.join(' ')}`;
+    emitProgress({
+      phase: 'launch',
+      message: `Launching import command: ${candidate.cmd}`,
+      percent: 20,
+      level: 'info',
+    });
+
+    const result = await runCommand(
+      candidate.cmd,
+      candidate.args,
+      workspacePath,
+      (stdoutChunk) => {
+        for (const line of stdoutChunk.split('\n')) {
+          const update = parseImportProgressLine(line);
+          if (update) {
+            emitProgress(update);
+          }
+        }
+      },
+      (stderrChunk) => {
+        const text = stderrChunk.trim();
+        if (text) {
+          emitProgress({
+            phase: 'stderr',
+            message: text,
+            percent: 30,
+            level: 'warning',
+          });
+        }
+      }
+    );
+
+    if (result.cancelled) {
+      onProgress?.({
+        phase: 'cancelled',
+        message: 'Import cancelled by user.',
+        percent: 100,
+        level: 'warning',
+      });
+      return {
+        success: false,
+        command: renderedCommand,
+        stdout: result.stdout.trim(),
+        stderr: result.stderr.trim() || 'Import cancelled by user',
+        cancelled: true,
+      };
+    }
 
     if (result.spawnError) {
       lastResult = {
@@ -146,10 +271,22 @@ async function executeImport(
         stdout: result.stdout,
         stderr: `${result.stderr}\n${result.spawnError.message || result.spawnError}`,
       };
+      emitProgress({
+        phase: 'spawn-error',
+        message: `Import launcher failed for ${candidate.cmd}: ${result.spawnError.message || result.spawnError}`,
+        percent: 25,
+        level: 'warning',
+      });
       continue;
     }
 
     if (result.code === 0) {
+      onProgress?.({
+        phase: 'completed',
+        message: request.dryRun ? 'Dry-run completed' : 'Import completed',
+        percent: 100,
+        level: 'success',
+      });
       return {
         success: true,
         command: renderedCommand,
@@ -164,9 +301,63 @@ async function executeImport(
       stdout: result.stdout.trim(),
       stderr: result.stderr.trim(),
     };
-  }
+    emitProgress({
+      phase: 'command-failed',
+      message: `Import command failed (${candidate.cmd})`,
+      percent: 35,
+      level: 'warning',
+    });
+    }
 
-  return lastResult;
+    onProgress?.({
+    phase: 'failed',
+    message: 'Import failed. Check stderr/output for details.',
+    percent: 100,
+    level: 'error',
+  });
+    return lastResult;
+  } finally {
+    clearInterval(runningTimer);
+    activeImportProcess = null;
+    activeImportCancelled = false;
+  }
+}
+
+function parseImportProgressLine(line: string): ImportProgressUpdate | null {
+  const trimmed = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
+  if (!trimmed) return null;
+
+  if (trimmed.includes('Schematic Import')) {
+    return { phase: 'start', message: 'Import started', percent: 25, level: 'info' };
+  }
+  if (trimmed.includes('Provider:')) {
+    return { phase: 'provider', message: trimmed, percent: 30, level: 'info' };
+  }
+  if (trimmed.includes('Discovered:')) {
+    return { phase: 'discovered', message: trimmed, percent: 60, level: 'info' };
+  }
+  if (trimmed.includes('Planned operations:')) {
+    return { phase: 'planned', message: trimmed, percent: 72, level: 'info' };
+  }
+  if (trimmed.includes('Updated catalog mappings')) {
+    return { phase: 'mappings', message: trimmed, percent: 82, level: 'info' };
+  }
+  if (trimmed.includes('Imported ') && trimmed.includes('operation')) {
+    return { phase: 'write', message: trimmed, percent: 90, level: 'info' };
+  }
+  if (trimmed.includes('Created baseline snapshot')) {
+    return { phase: 'snapshot', message: trimmed, percent: 94, level: 'info' };
+  }
+  if (trimmed.includes('Adopted baseline deployment')) {
+    return { phase: 'baseline', message: trimmed, percent: 97, level: 'info' };
+  }
+  if (trimmed.startsWith('Warning:') || trimmed.includes('Unsupported Unity object type')) {
+    return { phase: 'warning', message: trimmed, percent: 75, level: 'warning' };
+  }
+  if (trimmed.includes('Dry-run:')) {
+    return { phase: 'dry-run-complete', message: trimmed, percent: 100, level: 'success' };
+  }
+  return null;
 }
 
 async function promptImportRequest(workspaceUri: vscode.Uri): Promise<ImportRequest | null> {
@@ -313,9 +504,21 @@ async function runImportWithRequest(
     {
       location: vscode.ProgressLocation.Notification,
       title: request.dryRun ? 'Running import dry-run...' : 'Importing assets...',
-      cancellable: false,
+      cancellable: true,
     },
-    async () => executeImport(workspaceFolder.uri.fsPath, request)
+    async (_progress, token) => {
+      token.onCancellationRequested(() => {
+        cancelActiveImport();
+      });
+      return executeImport(workspaceFolder.uri.fsPath, request, (update) => {
+        if (panel) {
+          panel.webview.postMessage({
+            type: 'import-progress',
+            payload: update,
+          });
+        }
+      });
+    }
   );
 
   if (result.stdout) {
@@ -327,7 +530,14 @@ async function runImportWithRequest(
     outputChannel.appendLine(result.stderr);
   }
 
-  if (result.success) {
+  if (result.cancelled) {
+    vscode.window.showInformationMessage('Schematic import cancelled');
+    trackEvent('import_cancelled', {
+      dryRun: request.dryRun,
+      adoptBaseline: request.adoptBaseline,
+      target: request.target,
+    });
+  } else if (result.success) {
     vscode.window.showInformationMessage(
       request.dryRun
         ? 'Schematic import dry-run completed'
@@ -349,12 +559,40 @@ async function runImportWithRequest(
 
   if (panel) {
     panel.webview.postMessage({
+      type: 'import-progress',
+      payload: {
+        phase: result.cancelled ? 'cancelled' : (result.success ? 'completed' : 'failed'),
+        message: result.cancelled
+          ? 'Import cancelled by user.'
+          : (result.success
+          ? (request.dryRun ? 'Dry-run completed' : 'Import completed')
+          : 'Import failed. See output details below.'),
+        percent: 100,
+        level: result.cancelled ? 'warning' : (result.success ? 'success' : 'error'),
+      } satisfies ImportProgressUpdate,
+    });
+    panel.webview.postMessage({
       type: 'import-result',
       payload: result,
     });
   }
 
   return result;
+}
+
+function cancelActiveImport(): void {
+  activeImportCancelled = true;
+  if (!activeImportProcess) return;
+
+  try {
+    activeImportProcess.kill('SIGTERM');
+  } catch {}
+  setTimeout(() => {
+    if (!activeImportProcess) return;
+    try {
+      activeImportProcess.kill('SIGKILL');
+    } catch {}
+  }, 3000);
 }
 
 /**
@@ -642,6 +880,13 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
   if (!logicalCatalogName) {
     return false; // User cancelled
   }
+
+  Object.values(environments).forEach((config) => {
+    config.catalogMappings = {
+      ...(config.catalogMappings || {}),
+      [logicalCatalogName]: config.topLevelName,
+    };
+  });
   
   outputChannel.appendLine(`[Schematic] Logical catalog name: ${logicalCatalogName}`);
   outputChannel.appendLine('[Schematic] Physical catalog mappings:');
@@ -1223,6 +1468,9 @@ async function openDesigner(context: vscode.ExtensionContext) {
             const result = await runImportWithRequest(workspaceFolder, request, currentPanel);
             if (result.success && !request.dryRun) {
               await reloadProject(workspaceFolder, currentPanel);
+            } else if (result.cancelled && !request.dryRun) {
+              // Re-sync UI with disk in case cancellation happened during file writes.
+              await reloadProject(workspaceFolder, currentPanel);
             }
           } catch (error) {
             outputChannel.appendLine(`[Schematic] ERROR: Import run failed: ${error}`);
@@ -1236,6 +1484,11 @@ async function openDesigner(context: vscode.ExtensionContext) {
               } as ImportExecutionResult,
             });
           }
+          break;
+        }
+        case 'cancel-import': {
+          cancelActiveImport();
+          outputChannel.appendLine('[Schematic] Import cancellation requested from webview');
           break;
         }
       }
@@ -1504,46 +1757,35 @@ async function createSnapshotCommand_impl() {
  */
 /**
  * Build catalog name mapping (logical → physical) for environment-specific SQL generation.
- * 
- * For the MVP, we support single-catalog projects only. The logical catalog name
- * is automatically mapped to the environment's physical catalog name.
- * 
- * Multi-catalog support is a future enhancement (see GitHub issue #XX).
- */
-/**
- * Build catalog name mapping (logical → physical) for environment-specific SQL generation.
- * 
- * Supports two modes:
- * 1. Single-catalog (implicit): Catalog stored as __implicit__ in state, mapped to env catalog
- * 2. Single-catalog (explicit): One named catalog, mapped to env catalog
- * 3. Multi-catalog: Not yet supported
+ *
+ * Uses provider.environments.<env>.catalogMappings and requires mappings for all logical
+ * catalogs currently present in state.
  */
 function buildCatalogMapping(state: any, envConfig: storageV4.EnvironmentConfig): Record<string, string> {
   const catalogs = state.catalogs || [];
-  
+
   if (catalogs.length === 0) {
-    // No catalogs yet - no mapping needed
     return {};
   }
-  
-  if (catalogs.length === 1) {
-    const logicalName = catalogs[0].name;
-    const physicalName = envConfig.topLevelName;
-    
-    outputChannel.appendLine(`[Schematic] Catalog mapping: ${logicalName} → ${physicalName}`);
-    
-    return {
-      [logicalName]: physicalName
-    };
+
+  const rawMappings = envConfig.catalogMappings || {};
+  const catalogNames = catalogs
+    .map((catalog: any) => String(catalog?.name || '').trim())
+    .filter(Boolean);
+
+  const missing = catalogNames.filter((name: string) => !(name in rawMappings));
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing catalog mapping(s) for logical catalog(s): ${missing.join(', ')}. ` +
+      `Update provider.environments.<env>.catalogMappings in project settings.`
+    );
   }
-  
-  // Multiple catalogs - not supported yet
-  throw new Error(
-    `Multi-catalog projects are not yet supported. ` +
-    `Found ${catalogs.length} catalogs: ${catalogs.map((c: any) => c.name).join(', ')}. ` +
-    `For now, please use a single catalog per project. ` +
-    `Multi-catalog support is tracked in issue #XX.`
-  );
+
+  const resolved: Record<string, string> = {};
+  for (const logicalName of catalogNames) {
+    resolved[logicalName] = String(rawMappings[logicalName]);
+  }
+  return resolved;
 }
 
 async function generateSQLMigration() {
@@ -1596,7 +1838,7 @@ async function generateSQLMigration() {
 
     const envConfig = storageV4.getEnvironmentConfig(project, targetEnv);
     outputChannel.appendLine(`[Schematic] Target environment: ${targetEnv}`);
-    outputChannel.appendLine(`[Schematic] Physical catalog: ${envConfig.topLevelName}`);
+    outputChannel.appendLine(`[Schematic] Tracking catalog: ${envConfig.topLevelName}`);
 
     // Build catalog name mapping (logical → physical)
     const catalogMapping = buildCatalogMapping(state, envConfig);
@@ -1604,7 +1846,11 @@ async function generateSQLMigration() {
 
     // Generate SQL using provider's SQL generator
     // Note: Catalog mapping is applied during SQL generation via the generator's internal mapping
-    const generator = provider.getSQLGenerator(state);
+    const generator = provider.getSQLGenerator(state, catalogMapping, {
+      managedLocations: project.managedLocations,
+      externalLocations: project.externalLocations,
+      environmentName: targetEnv,
+    });
     const sql = generator.generateSQL(changelog.ops);
     
     outputChannel.appendLine(`[Schematic] Generated SQL (${sql.length} characters)`);

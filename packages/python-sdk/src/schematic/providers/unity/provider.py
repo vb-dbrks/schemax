@@ -6,11 +6,15 @@ Implements the Provider interface to enable Unity Catalog support in Schematic.
 """
 
 import hashlib
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from typing import Any
 
 from databricks.sdk.service.sql import StatementState
 
-from schematic.providers.base.executor import ExecutionConfig, SQLExecutor
+from schematic.providers.base.executor import ExecutionConfig, ExecutionResult, SQLExecutor
 from schematic.providers.base.models import ProviderState, ValidationError, ValidationResult
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.provider import BaseProvider, ProviderCapabilities, ProviderInfo
@@ -29,6 +33,18 @@ from .state_reducer import apply_operation, apply_operations
 
 class UnityProvider(BaseProvider):
     """Unity Catalog Provider Implementation"""
+    SYSTEM_SCHEMA_NAME = "information_schema"
+    SYSTEM_CATALOG_NAMES = frozenset({"system"})
+    VIEW_TABLE_TYPES = frozenset({"VIEW"})
+    UNSUPPORTED_DISCOVERY_TABLE_TYPES = frozenset(
+        {
+            "MATERIALIZED VIEW",
+            "STREAMING TABLE",
+            "MATERIALIZED_VIEW",
+            "STREAMING_TABLE",
+        }
+    )
+    DEFAULT_IMPORT_PROPERTIES_WORKERS = 6
 
     @property
     def info(self) -> ProviderInfo:
@@ -59,11 +75,14 @@ class UnityProvider(BaseProvider):
                 "materialized_views": False,  # Future
                 "functions": False,  # Future
                 "indexes": False,  # Not applicable to Unity Catalog
+                "baseline_adoption": True,
             },
         )
 
     def __init__(self) -> None:
         super().__init__()
+        self._last_import_warnings: list[str] = []
+        self._import_thread_local = threading.local()
         # Register all operation metadata
         for metadata in unity_operation_metadata:
             self.register_operation(metadata)
@@ -265,6 +284,7 @@ class UnityProvider(BaseProvider):
         scope: dict[str, Any] | None = None,
     ) -> ProviderState:
         """Discover live Unity Catalog state for import workflows."""
+        self._last_import_warnings = []
         client = create_databricks_client(config.profile)
         scope = scope or {}
 
@@ -295,6 +315,34 @@ class UnityProvider(BaseProvider):
                     schema_name,
                     table_filter,
                 )
+                tags_by_table = self._fetch_table_tags(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_filter,
+                )
+                constraints_by_table = self._fetch_constraints(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_filter,
+                )
+                table_names = [
+                    str(row.get("table_name", ""))
+                    for row in table_rows
+                    if str(row.get("table_type", "BASE TABLE")).upper() not in self.VIEW_TABLE_TYPES
+                    and str(row.get("table_type", "BASE TABLE")).upper()
+                    not in self.UNSUPPORTED_DISCOVERY_TABLE_TYPES
+                    and row.get("table_name")
+                ]
+                properties_by_table = self._fetch_table_properties_for_tables(
+                    config=config,
+                    catalog_name=catalog_name,
+                    schema_name=schema_name,
+                    table_names=table_names,
+                )
 
                 tables = []
                 views = []
@@ -302,7 +350,14 @@ class UnityProvider(BaseProvider):
                     table_name = str(row["table_name"])
                     table_kind = str(row.get("table_type", "BASE TABLE")).upper()
 
-                    if table_kind == "VIEW":
+                    if table_kind in self.UNSUPPORTED_DISCOVERY_TABLE_TYPES:
+                        self._last_import_warnings.append(
+                            "Unsupported Unity object type discovered during import and skipped: "
+                            f"{catalog_name}.{schema_name}.{table_name} ({table_kind})."
+                        )
+                        continue
+
+                    if table_kind in self.VIEW_TABLE_TYPES:
                         views.append(
                             {
                                 "id": self._stable_id(
@@ -321,15 +376,15 @@ class UnityProvider(BaseProvider):
 
                     column_rows = columns_by_table.get(table_name, [])
                     columns = []
+                    column_id_by_name: dict[str, str] = {}
                     for col in column_rows:
                         col_name = str(col["column_name"])
                         col_type = str(col.get("data_type", "STRING"))
                         nullable = str(col.get("is_nullable", "YES")).upper() == "YES"
+                        col_id = self._stable_id("col", catalog_name, schema_name, table_name, col_name)
                         columns.append(
                             {
-                                "id": self._stable_id(
-                                    "col", catalog_name, schema_name, table_name, col_name
-                                ),
+                                "id": col_id,
                                 "name": col_name,
                                 "type": col_type,
                                 "nullable": nullable,
@@ -338,6 +393,16 @@ class UnityProvider(BaseProvider):
                                 "maskId": None,
                             }
                         )
+                        column_id_by_name[col_name] = col_id
+
+                    properties = properties_by_table.get(table_name, {})
+                    constraints = self._build_table_constraints(
+                        catalog_name,
+                        schema_name,
+                        table_name,
+                        constraints_by_table.get(table_name, []),
+                        column_id_by_name,
+                    )
 
                     tables.append(
                         {
@@ -353,9 +418,9 @@ class UnityProvider(BaseProvider):
                             "clusterColumns": None,
                             "columnMapping": None,
                             "columns": columns,
-                            "properties": {},
-                            "tags": {},
-                            "constraints": [],
+                            "properties": properties,
+                            "tags": tags_by_table.get(table_name, {}),
+                            "constraints": constraints,
                             "grants": [],
                             "comment": row.get("comment"),
                             "rowFilters": [],
@@ -388,6 +453,177 @@ class UnityProvider(BaseProvider):
 
         return {"catalogs": state_catalogs}
 
+    def collect_import_warnings(
+        self,
+        config: ExecutionConfig,
+        scope: dict[str, Any],
+        discovered_state: ProviderState,
+    ) -> list[str]:
+        del config, scope, discovered_state
+        # Keep ordering stable but remove duplicates.
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for warning in self._last_import_warnings:
+            if warning in seen:
+                continue
+            seen.add(warning)
+            ordered.append(warning)
+        return ordered
+
+    def validate_import_scope(self, scope: dict[str, Any]) -> ValidationResult:
+        catalog = str(scope.get("catalog") or "").strip().lower()
+        if catalog in self.SYSTEM_CATALOG_NAMES:
+            return ValidationResult(
+                valid=False,
+                errors=[
+                    ValidationError(
+                        field="catalog",
+                        message=(
+                            f"Catalog '{catalog}' is system-managed in Unity Catalog "
+                            "and cannot be imported."
+                        ),
+                        code="UNSUPPORTED_IMPORT_SCOPE",
+                    )
+                ],
+            )
+
+        schema = str(scope.get("schema") or "").strip().lower()
+        if schema == self.SYSTEM_SCHEMA_NAME:
+            return ValidationResult(
+                valid=False,
+                errors=[
+                    ValidationError(
+                        field="schema",
+                        message=(
+                            "Schema 'information_schema' is system-managed in Unity Catalog "
+                            "and cannot be imported."
+                        ),
+                        code="UNSUPPORTED_IMPORT_SCOPE",
+                    )
+                ],
+            )
+        return ValidationResult(valid=True, errors=[])
+
+    def prepare_import_state(
+        self,
+        local_state: ProviderState,
+        discovered_state: ProviderState,
+        env_config: dict[str, Any],
+        mapping_overrides: dict[str, str] | None = None,
+    ) -> tuple[ProviderState, dict[str, str], bool]:
+        top_level_name = env_config.get("topLevelName")
+        existing_mappings = self._read_catalog_mappings(env_config)
+        catalog_mappings = dict(existing_mappings)
+        if mapping_overrides:
+            for logical, physical in mapping_overrides.items():
+                catalog_mappings[str(logical)] = str(physical)
+        reverse_mappings = self._build_reverse_mappings(catalog_mappings)
+
+        local_catalogs = (local_state or {}).get("catalogs", []) or []
+        local_catalog_by_name = {
+            str(cat.get("name")): cat
+            for cat in local_catalogs
+            if isinstance(cat, dict) and cat.get("name")
+        }
+
+        normalized = deepcopy(discovered_state or {})
+        normalized_catalogs = []
+        for discovered_catalog in normalized.get("catalogs", []) or []:
+            if not isinstance(discovered_catalog, dict):
+                continue
+
+            physical_name = str(discovered_catalog.get("name", ""))
+            if not physical_name:
+                continue
+
+            logical_name = reverse_mappings.get(physical_name)
+            if logical_name is None:
+                if (
+                    top_level_name
+                    and physical_name == top_level_name
+                    and len(local_catalog_by_name) == 1
+                ):
+                    logical_name = next(iter(local_catalog_by_name.keys()))
+                else:
+                    logical_name = physical_name
+
+                existing_physical = catalog_mappings.get(logical_name)
+                if existing_physical and existing_physical != physical_name:
+                    raise ValueError(
+                        "Catalog mapping conflict for logical catalog "
+                        f"'{logical_name}': '{existing_physical}' vs '{physical_name}'"
+                    )
+
+                catalog_mappings[logical_name] = physical_name
+                reverse_mappings[physical_name] = logical_name
+
+            local_catalog = local_catalog_by_name.get(logical_name)
+            normalized_catalog = self._normalize_catalog_tree(discovered_catalog, local_catalog)
+            normalized_catalog["name"] = logical_name
+            normalized_catalogs.append(normalized_catalog)
+
+        normalized["catalogs"] = normalized_catalogs
+        return normalized, catalog_mappings, catalog_mappings != existing_mappings
+
+    def update_env_import_mappings(
+        self,
+        env_config: dict[str, Any],
+        mappings: dict[str, str],
+    ) -> None:
+        env_config["catalogMappings"] = dict(sorted(mappings.items()))
+
+    def adopt_import_baseline(
+        self,
+        project: dict[str, Any],
+        env_config: dict[str, Any],
+        target_env: str,
+        profile: str,
+        warehouse_id: str,
+        snapshot_version: str,
+    ) -> str:
+        from schematic.core.deployment import DeploymentTracker
+
+        deployment_catalog = env_config["topLevelName"]
+        auto_create_schema = env_config.get("autoCreateSchematicSchema", True)
+
+        client = create_databricks_client(profile)
+        tracker = DeploymentTracker(client, deployment_catalog, warehouse_id)
+        tracker.ensure_tracking_schema(auto_create=auto_create_schema)
+
+        latest_success = tracker.get_latest_deployment(target_env)
+        from_snapshot_version = latest_success.get("version") if latest_success else None
+        previous_deployment_id = tracker.get_most_recent_deployment_id(target_env)
+
+        import uuid
+
+        deployment_id = f"deploy_import_{uuid.uuid4().hex[:8]}"
+        tracker.start_deployment(
+            deployment_id=deployment_id,
+            environment=target_env,
+            snapshot_version=snapshot_version,
+            project_name=project.get("name", "unknown"),
+            provider_type=self.info.id,
+            provider_version=self.info.version,
+            schematic_version="0.2.0",
+            from_snapshot_version=from_snapshot_version,
+            previous_deployment_id=previous_deployment_id,
+        )
+
+        tracker.complete_deployment(
+            deployment_id=deployment_id,
+            result=ExecutionResult(
+                deployment_id=deployment_id,
+                total_statements=0,
+                successful_statements=0,
+                failed_statement_index=None,
+                statement_results=[],
+                total_execution_time_ms=0,
+                status="success",
+                error_message=None,
+            ),
+        )
+        return deployment_id
+
     def _stable_id(self, prefix: str, *parts: str) -> str:
         """Create deterministic object ID from provider object identity."""
         normalized = "||".join(str(p).strip().lower() for p in parts)
@@ -404,6 +640,11 @@ class UnityProvider(BaseProvider):
         if catalog_filter:
             safe = catalog_filter.replace("'", "''")
             sql += f" WHERE catalog_name = '{safe}'"
+        else:
+            excluded = ", ".join(
+                f"'{catalog_name}'" for catalog_name in sorted(self.SYSTEM_CATALOG_NAMES)
+            )
+            sql += f" WHERE lower(catalog_name) NOT IN ({excluded})"
         sql += " ORDER BY catalog_name"
         rows = self._execute_query(client, warehouse_id, sql)
         return [str(r["catalog_name"]) for r in rows if r.get("catalog_name")]
@@ -419,7 +660,8 @@ class UnityProvider(BaseProvider):
         sql = (
             "SELECT schema_name "
             "FROM system.information_schema.schemata "
-            f"WHERE catalog_name = '{cat}'"
+            f"WHERE catalog_name = '{cat}' "
+            "AND lower(schema_name) <> 'information_schema'"
         )
         if schema_filter:
             sch = schema_filter.replace("'", "''")
@@ -480,6 +722,494 @@ class UnityProvider(BaseProvider):
             grouped.setdefault(table_name, []).append(row)
         return grouped
 
+    def _fetch_table_tags(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+        table_filter: str | None,
+    ) -> dict[str, dict[str, str]]:
+        cat = catalog_name.replace("'", "''")
+        sch = schema_name.replace("'", "''")
+        sql_primary = (
+            "SELECT table_name, tag_name, tag_value "
+            "FROM system.information_schema.table_tags "
+            f"WHERE catalog_name = '{cat}' "
+            f"AND schema_name = '{sch}'"
+        )
+        sql_fallback = (
+            "SELECT table_name, tag_name, tag_value "
+            "FROM system.information_schema.table_tags "
+            f"WHERE table_catalog = '{cat}' "
+            f"AND table_schema = '{sch}'"
+        )
+        if table_filter:
+            tbl = table_filter.replace("'", "''")
+            sql_primary += f" AND table_name = '{tbl}'"
+            sql_fallback += f" AND table_name = '{tbl}'"
+        sql_primary += " ORDER BY table_name, tag_name"
+        sql_fallback += " ORDER BY table_name, tag_name"
+        rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql_primary,
+            warning=(
+                "Could not discover Unity table tags from information_schema.table_tags; "
+                "retrying with alternate column names."
+            ),
+        )
+        if not rows:
+            rows = self._execute_query_optional(
+                client,
+                warehouse_id,
+                sql_fallback,
+                warning=(
+                    "Could not discover Unity table tags from information_schema.table_tags; "
+                    "continuing without table tags."
+                ),
+            )
+
+        grouped: dict[str, dict[str, str]] = {}
+        for row in rows:
+            table_name = str(
+                row.get("table_name")
+                or row.get("TABLE_NAME")
+                or ""
+            )
+            tag_name = str(
+                row.get("tag_name")
+                or row.get("TAG_NAME")
+                or ""
+            )
+            if not table_name or not tag_name:
+                continue
+            tag_value = row.get("tag_value")
+            if tag_value is None:
+                tag_value = row.get("TAG_VALUE")
+            grouped.setdefault(table_name, {})[tag_name] = "" if tag_value is None else str(tag_value)
+        return grouped
+
+    def _fetch_table_properties(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+        table_name: str,
+    ) -> dict[str, str]:
+        try:
+            return self._fetch_table_properties_strict(
+                client,
+                warehouse_id,
+                catalog_name,
+                schema_name,
+                table_name,
+            )
+        except RuntimeError:
+            self._last_import_warnings.append(
+                "Could not discover table TBLPROPERTIES via SHOW TBLPROPERTIES; "
+                "continuing without table properties."
+            )
+            return {}
+
+    def _fetch_table_properties_strict(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+        table_name: str,
+    ) -> dict[str, str]:
+        cat = catalog_name.replace("`", "``")
+        sch = schema_name.replace("`", "``")
+        tbl = table_name.replace("`", "``")
+        sql = f"SHOW TBLPROPERTIES `{cat}`.`{sch}`.`{tbl}`"
+        rows = self._execute_query(client, warehouse_id, sql)
+
+        properties: dict[str, str] = {}
+        for row in rows:
+            key = row.get("key")
+            if key is None:
+                key = row.get("KEY")
+            if key is None:
+                key = row.get("col_name")
+            value = row.get("value")
+            if value is None:
+                value = row.get("VALUE")
+            if value is None:
+                value = row.get("data_type")
+            if key is None:
+                continue
+            key_str = str(key)
+            # Ignore Spark pseudo-row emitted when no properties are defined.
+            if key_str.lower().startswith("transient_lastddltime"):
+                continue
+            properties[key_str] = "" if value is None else str(value)
+        return properties
+
+    def _fetch_constraints(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+        table_filter: str | None,
+    ) -> dict[str, list[dict[str, Any]]]:
+        cat = catalog_name.replace("'", "''")
+        sch = schema_name.replace("'", "''")
+        sql = (
+            "SELECT "
+            "tc.table_name, "
+            "tc.constraint_name, "
+            "tc.constraint_type, "
+            "kcu.column_name AS child_column_name, "
+            "kcu.ordinal_position AS child_ordinal_position, "
+            "pk.table_name AS parent_table_name, "
+            "pk.column_name AS parent_column_name, "
+            "pk.ordinal_position AS parent_ordinal_position, "
+            "rc.update_rule, "
+            "rc.delete_rule "
+            "FROM system.information_schema.table_constraints tc "
+            "LEFT JOIN system.information_schema.key_column_usage kcu "
+            "ON tc.constraint_catalog = kcu.constraint_catalog "
+            "AND tc.constraint_schema = kcu.constraint_schema "
+            "AND tc.constraint_name = kcu.constraint_name "
+            "LEFT JOIN system.information_schema.referential_constraints rc "
+            "ON tc.constraint_catalog = rc.constraint_catalog "
+            "AND tc.constraint_schema = rc.constraint_schema "
+            "AND tc.constraint_name = rc.constraint_name "
+            "LEFT JOIN system.information_schema.key_column_usage pk "
+            "ON rc.unique_constraint_catalog = pk.constraint_catalog "
+            "AND rc.unique_constraint_schema = pk.constraint_schema "
+            "AND rc.unique_constraint_name = pk.constraint_name "
+            "AND kcu.position_in_unique_constraint = pk.ordinal_position "
+            f"WHERE tc.table_catalog = '{cat}' "
+            f"AND tc.table_schema = '{sch}' "
+            "AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')"
+        )
+        if table_filter:
+            tbl = table_filter.replace("'", "''")
+            sql += f" AND tc.table_name = '{tbl}'"
+        sql += " ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position"
+        rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql,
+            warning=(
+                "Could not discover table constraints from information_schema.table_constraints; "
+                "continuing without imported constraints."
+            ),
+        )
+
+        grouped_raw: dict[str, dict[str, dict[str, Any]]] = {}
+        for row in rows:
+            table_name = str(row.get("table_name", ""))
+            constraint_name = str(row.get("constraint_name", ""))
+            constraint_type = str(row.get("constraint_type", "")).upper()
+            if not table_name or not constraint_name or constraint_type not in ("PRIMARY KEY", "FOREIGN KEY"):
+                continue
+
+            by_table = grouped_raw.setdefault(table_name, {})
+            entry = by_table.setdefault(
+                constraint_name,
+                {
+                    "name": constraint_name,
+                    "type": constraint_type,
+                    "columns": [],
+                    "parent_table": row.get("parent_table_name"),
+                    "parent_columns": [],
+                    "on_update": row.get("update_rule"),
+                    "on_delete": row.get("delete_rule"),
+                },
+            )
+
+            child_col = row.get("child_column_name")
+            if child_col and child_col not in entry["columns"]:
+                entry["columns"].append(child_col)
+
+            parent_col = row.get("parent_column_name")
+            if parent_col and parent_col not in entry["parent_columns"]:
+                entry["parent_columns"].append(parent_col)
+
+            if not entry.get("parent_table") and row.get("parent_table_name"):
+                entry["parent_table"] = row.get("parent_table_name")
+
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for table_name, constraints in grouped_raw.items():
+            grouped[table_name] = list(constraints.values())
+        return grouped
+
+    def _build_table_constraints(
+        self,
+        catalog_name: str,
+        schema_name: str,
+        table_name: str,
+        raw_constraints: list[dict[str, Any]],
+        column_id_by_name: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        constraints: list[dict[str, Any]] = []
+        for raw in raw_constraints:
+            constraint_type = str(raw.get("type", "")).upper()
+            constraint_name = raw.get("name")
+            columns = [
+                column_id_by_name[col_name]
+                for col_name in raw.get("columns", [])
+                if col_name in column_id_by_name
+            ]
+            if not columns:
+                continue
+
+            constraint_id = self._stable_id(
+                "con",
+                catalog_name,
+                schema_name,
+                table_name,
+                str(constraint_name or constraint_type),
+                ",".join(columns),
+            )
+            if constraint_type == "PRIMARY KEY":
+                constraints.append(
+                    {
+                        "id": constraint_id,
+                        "type": "primary_key",
+                        "name": constraint_name,
+                        "columns": columns,
+                    }
+                )
+                continue
+
+            if constraint_type == "FOREIGN KEY":
+                parent_table_name = raw.get("parent_table")
+                if not parent_table_name:
+                    continue
+                parent_columns = [
+                    self._stable_id(
+                        "col",
+                        catalog_name,
+                        schema_name,
+                        str(parent_table_name),
+                        str(col_name),
+                    )
+                    for col_name in raw.get("parent_columns", [])
+                    if col_name
+                ]
+                constraints.append(
+                    {
+                        "id": constraint_id,
+                        "type": "foreign_key",
+                        "name": constraint_name,
+                        "columns": columns,
+                        "parentTable": self._stable_id(
+                            "tbl",
+                            catalog_name,
+                            schema_name,
+                            str(parent_table_name),
+                        ),
+                        "parentColumns": parent_columns,
+                        "onUpdate": str(raw.get("on_update") or "NO_ACTION").upper(),
+                        "onDelete": str(raw.get("on_delete") or "NO_ACTION").upper(),
+                    }
+                )
+
+        return constraints
+
+    def _fetch_table_properties_for_tables(
+        self,
+        config: ExecutionConfig,
+        catalog_name: str,
+        schema_name: str,
+        table_names: list[str],
+    ) -> dict[str, dict[str, str]]:
+        if not table_names:
+            return {}
+
+        unique_names = sorted(set(table_names))
+        if len(unique_names) == 1:
+            client = self._get_import_thread_client(config.profile)
+            table_name = unique_names[0]
+            return {
+                table_name: self._fetch_table_properties(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_name,
+                )
+            }
+
+        configured = os.getenv("SCHEMATIC_IMPORT_PROPERTIES_WORKERS", "").strip()
+        max_workers = self.DEFAULT_IMPORT_PROPERTIES_WORKERS
+        if configured:
+            try:
+                parsed = int(configured)
+                if parsed > 0:
+                    max_workers = parsed
+            except ValueError:
+                pass
+        cpu_count = os.cpu_count() or self.DEFAULT_IMPORT_PROPERTIES_WORKERS
+        max_workers = max(1, min(max_workers, cpu_count * 2, len(unique_names)))
+
+        def _load(table_name: str) -> tuple[str, dict[str, str]]:
+            client = self._get_import_thread_client(config.profile)
+            try:
+                props = self._fetch_table_properties_strict(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_name,
+                )
+            except RuntimeError:
+                props = {}
+            return table_name, props
+
+        properties_by_table: dict[str, dict[str, str]] = {}
+        failed_tables: list[str] = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for table_name, properties in executor.map(_load, unique_names):
+                properties_by_table[table_name] = properties
+                if not properties:
+                    failed_tables.append(table_name)
+
+        if failed_tables:
+            client = self._get_import_thread_client(config.profile)
+            for table_name in failed_tables:
+                # Retry sequentially through tolerant path; captures warning if it fails.
+                retry_props = self._fetch_table_properties(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_name,
+                )
+                if retry_props:
+                    properties_by_table[table_name] = retry_props
+        return properties_by_table
+
+    def _get_import_thread_client(self, profile: str) -> Any:
+        client = getattr(self._import_thread_local, "client", None)
+        client_profile = getattr(self._import_thread_local, "profile", None)
+        if client is not None and client_profile == profile:
+            return client
+        client = create_databricks_client(profile)
+        self._import_thread_local.client = client
+        self._import_thread_local.profile = profile
+        return client
+
+    def _normalize_catalog_tree(
+        self,
+        discovered_catalog: dict[str, Any],
+        local_catalog: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        normalized_catalog = deepcopy(discovered_catalog)
+        if local_catalog and local_catalog.get("id"):
+            normalized_catalog["id"] = local_catalog["id"]
+
+        local_schemas = (local_catalog or {}).get("schemas", []) or []
+        local_schema_by_name = {
+            str(schema.get("name")): schema
+            for schema in local_schemas
+            if isinstance(schema, dict) and schema.get("name")
+        }
+
+        normalized_schemas = []
+        for schema in normalized_catalog.get("schemas", []) or []:
+            if not isinstance(schema, dict):
+                continue
+            local_schema = local_schema_by_name.get(str(schema.get("name", "")))
+            normalized_schema = deepcopy(schema)
+            if local_schema and local_schema.get("id"):
+                normalized_schema["id"] = local_schema["id"]
+            self._normalize_schema_tree(normalized_schema, local_schema)
+            normalized_schemas.append(normalized_schema)
+
+        normalized_catalog["schemas"] = normalized_schemas
+        return normalized_catalog
+
+    def _normalize_schema_tree(
+        self,
+        normalized_schema: dict[str, Any],
+        local_schema: dict[str, Any] | None,
+    ) -> None:
+        local_tables = (local_schema or {}).get("tables", []) or []
+        local_table_by_name = {
+            str(table.get("name")): table
+            for table in local_tables
+            if isinstance(table, dict) and table.get("name")
+        }
+        normalized_tables = []
+        for table in normalized_schema.get("tables", []) or []:
+            if not isinstance(table, dict):
+                continue
+            local_table = local_table_by_name.get(str(table.get("name", "")))
+            normalized_table = deepcopy(table)
+            if local_table and local_table.get("id"):
+                normalized_table["id"] = local_table["id"]
+            self._normalize_table_tree(normalized_table, local_table)
+            normalized_tables.append(normalized_table)
+        normalized_schema["tables"] = normalized_tables
+
+        local_views = (local_schema or {}).get("views", []) or []
+        local_view_by_name = {
+            str(view.get("name")): view
+            for view in local_views
+            if isinstance(view, dict) and view.get("name")
+        }
+        normalized_views = []
+        for view in normalized_schema.get("views", []) or []:
+            if not isinstance(view, dict):
+                continue
+            local_view = local_view_by_name.get(str(view.get("name", "")))
+            normalized_view = deepcopy(view)
+            if local_view and local_view.get("id"):
+                normalized_view["id"] = local_view["id"]
+            normalized_views.append(normalized_view)
+        normalized_schema["views"] = normalized_views
+
+    def _normalize_table_tree(
+        self,
+        normalized_table: dict[str, Any],
+        local_table: dict[str, Any] | None,
+    ) -> None:
+        local_columns = (local_table or {}).get("columns", []) or []
+        local_column_by_name = {
+            str(column.get("name")): column
+            for column in local_columns
+            if isinstance(column, dict) and column.get("name")
+        }
+        normalized_columns = []
+        for column in normalized_table.get("columns", []) or []:
+            if not isinstance(column, dict):
+                continue
+            local_column = local_column_by_name.get(str(column.get("name", "")))
+            normalized_column = deepcopy(column)
+            if local_column and local_column.get("id"):
+                normalized_column["id"] = local_column["id"]
+            normalized_columns.append(normalized_column)
+        normalized_table["columns"] = normalized_columns
+
+    def _read_catalog_mappings(self, env_config: dict[str, Any]) -> dict[str, str]:
+        raw = env_config.get("catalogMappings") or {}
+        if not isinstance(raw, dict):
+            raise ValueError(
+                "Environment catalogMappings must be an object mapping logical->physical"
+            )
+        return {str(k): str(v) for k, v in raw.items()}
+
+    def _build_reverse_mappings(self, mappings: dict[str, str]) -> dict[str, str]:
+        reverse: dict[str, str] = {}
+        for logical, physical in mappings.items():
+            existing = reverse.get(physical)
+            if existing and existing != logical:
+                raise ValueError(
+                    "Invalid catalogMappings: physical catalog "
+                    f"'{physical}' is mapped from multiple logical catalogs "
+                    f"('{existing}', '{logical}')"
+                )
+            reverse[physical] = logical
+        return reverse
+
     def _execute_query(
         self,
         client: Any,
@@ -515,6 +1245,19 @@ class UnityProvider(BaseProvider):
                     row_dict[columns[i]] = value
             rows.append(row_dict)
         return rows
+
+    def _execute_query_optional(
+        self,
+        client: Any,
+        warehouse_id: str,
+        sql: str,
+        warning: str,
+    ) -> list[dict[str, Any]]:
+        try:
+            return self._execute_query(client, warehouse_id, sql)
+        except RuntimeError:
+            self._last_import_warnings.append(warning)
+            return []
 
     def validate_execution_config(self, config: ExecutionConfig) -> ValidationResult:
         """Validate execution configuration for Unity Catalog

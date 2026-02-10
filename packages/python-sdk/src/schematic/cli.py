@@ -657,16 +657,16 @@ def rollback(
             env_config = get_environment_config(project, target)
 
             # Build catalog mapping
+            from .commands.sql import SQLGenerationError, build_catalog_mapping
             from .core.storage import load_current_state
 
             state, _, provider, _ = load_current_state(workspace_path, validate=False)
 
-            # Build simple catalog mapping (single catalog mode)
-            catalogs = state.get("catalogs", [])
-            catalog_mapping = {}
-            if catalogs:
-                logical_name = catalogs[0].get("name", "__implicit__")
-                catalog_mapping = {logical_name: env_config["topLevelName"]}
+            try:
+                catalog_mapping = build_catalog_mapping(state, env_config)
+            except SQLGenerationError as e:
+                console.print(f"[red]✗[/red] {e}")
+                sys.exit(1)
 
             # Initialize executor
             from schematic.providers.unity.auth import create_databricks_client

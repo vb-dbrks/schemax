@@ -241,6 +241,32 @@ class TestUnityProvider:
                         ["users", "email", "STRING", "YES", None, "2"],
                     ],
                 )
+            if "information_schema.table_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "tag_name", "tag_value"],
+                    [["users", "sensitivity", "low"]],
+                )
+            if "information_schema.table_constraints" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "constraint_name",
+                        "constraint_type",
+                        "child_column_name",
+                        "child_ordinal_position",
+                        "parent_table_name",
+                        "parent_column_name",
+                        "parent_ordinal_position",
+                        "update_rule",
+                        "delete_rule",
+                    ],
+                    [["users", "pk_users", "PRIMARY KEY", "id", "1", None, None, None, None, None]],
+                )
+            if statement.strip().startswith("SHOW TBLPROPERTIES"):
+                return self._mock_query_response(
+                    ["key", "value"],
+                    [["tag", "core"]],
+                )
             raise AssertionError(f"Unexpected query: {statement}")
 
         mock_client.statement_execution.execute_statement = _execute_statement
@@ -265,6 +291,10 @@ class TestUnityProvider:
         assert sch["name"] == "analytics"
         assert len(sch["tables"]) == 1
         assert sch["tables"][0]["name"] == "users"
+        assert sch["tables"][0]["tags"] == {"sensitivity": "low"}
+        assert sch["tables"][0]["properties"] == {"tag": "core"}
+        assert len(sch["tables"][0]["constraints"]) == 1
+        assert sch["tables"][0]["constraints"][0]["type"] == "primary_key"
         assert len(sch["tables"][0]["columns"]) == 2
         assert sch["tables"][0]["columns"][0]["nullable"] is False
         assert len(sch["views"]) == 1
@@ -298,6 +328,29 @@ class TestUnityProvider:
                     ],
                     [["users", "id", "BIGINT", "NO", None, "1"]],
                 )
+            if "information_schema.table_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "tag_name", "tag_value"],
+                    [],
+                )
+            if "information_schema.table_constraints" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "constraint_name",
+                        "constraint_type",
+                        "child_column_name",
+                        "child_ordinal_position",
+                        "parent_table_name",
+                        "parent_column_name",
+                        "parent_ordinal_position",
+                        "update_rule",
+                        "delete_rule",
+                    ],
+                    [],
+                )
+            if statement.strip().startswith("SHOW TBLPROPERTIES"):
+                return self._mock_query_response(["key", "value"], [])
             raise AssertionError(f"Unexpected query: {statement}")
 
         mock_client.statement_execution.execute_statement = _execute_statement
@@ -318,6 +371,106 @@ class TestUnityProvider:
             == state_2["catalogs"][0]["schemas"][0]["tables"][0]["columns"][0]["id"]
         )
 
+    def test_discover_state_imports_table_tags_properties_and_constraints(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+
+        def _execute_statement(warehouse_id: str, statement: str, wait_timeout: str):
+            del warehouse_id, wait_timeout
+            if "information_schema.catalogs" in statement:
+                return self._mock_query_response(["catalog_name"], [["main"]])
+            if "information_schema.schemata" in statement:
+                return self._mock_query_response(["schema_name"], [["analytics"]])
+            if "information_schema.tables" in statement:
+                return self._mock_query_response(
+                    ["table_name", "table_type", "comment"],
+                    [["users", "BASE TABLE", "users table"], ["orders", "BASE TABLE", "orders table"]],
+                )
+            if "information_schema.columns" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "column_name",
+                        "data_type",
+                        "is_nullable",
+                        "comment",
+                        "ordinal_position",
+                    ],
+                    [
+                        ["users", "user_id", "INT", "NO", None, "1"],
+                        ["orders", "order_id", "INT", "NO", None, "1"],
+                        ["orders", "user_id", "INT", "NO", None, "2"],
+                    ],
+                )
+            if "information_schema.table_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "tag_name", "tag_value"],
+                    [["users", "sensitivity", "low"], ["orders", "domain", "sales"]],
+                )
+            if "information_schema.table_constraints" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "constraint_name",
+                        "constraint_type",
+                        "child_column_name",
+                        "child_ordinal_position",
+                        "parent_table_name",
+                        "parent_column_name",
+                        "parent_ordinal_position",
+                        "update_rule",
+                        "delete_rule",
+                    ],
+                    [
+                        ["users", "pk_users", "PRIMARY KEY", "user_id", "1", None, None, None, None, None],
+                        [
+                            "orders",
+                            "fk_orders_user",
+                            "FOREIGN KEY",
+                            "user_id",
+                            "1",
+                            "users",
+                            "user_id",
+                            "1",
+                            "NO_ACTION",
+                            "NO_ACTION",
+                        ],
+                    ],
+                )
+            if statement.strip() == "SHOW TBLPROPERTIES `main`.`analytics`.`users`":
+                return self._mock_query_response(["key", "value"], [["tag", "core"]])
+            if statement.strip() == "SHOW TBLPROPERTIES `main`.`analytics`.`orders`":
+                return self._mock_query_response(
+                    ["key", "value"],
+                    [["tag", "transactional"], ["sensitivity", "medium"]],
+                )
+            raise AssertionError(f"Unexpected query: {statement}")
+
+        mock_client.statement_execution.execute_statement = _execute_statement
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+            state = unity_provider.discover_state(
+                config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
+                scope={"catalog": "main", "schema": "analytics"},
+            )
+
+        tables = state["catalogs"][0]["schemas"][0]["tables"]
+        users = next(table for table in tables if table["name"] == "users")
+        orders = next(table for table in tables if table["name"] == "orders")
+
+        assert users["tags"] == {"sensitivity": "low"}
+        assert users["properties"] == {"tag": "core"}
+        assert len(users["constraints"]) == 1
+        assert users["constraints"][0]["type"] == "primary_key"
+
+        assert orders["tags"] == {"domain": "sales"}
+        assert orders["properties"] == {"tag": "transactional", "sensitivity": "medium"}
+        assert len(orders["constraints"]) == 1
+        assert orders["constraints"][0]["type"] == "foreign_key"
+        assert orders["constraints"][0]["parentTable"] == unity_provider._stable_id(
+            "tbl", "main", "analytics", "users"
+        )
+
     def test_discover_state_raises_on_failed_query(self, unity_provider):
         mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
         mock_client.statement_execution.execute_statement = lambda **_: self._mock_query_response(
@@ -335,6 +488,222 @@ class TestUnityProvider:
                     ),
                     scope={"catalog": "main"},
                 )
+
+    def test_discover_state_filters_information_schema(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+        executed_sql: list[str] = []
+
+        def _execute_statement(warehouse_id: str, statement: str, wait_timeout: str):
+            del warehouse_id, wait_timeout
+            executed_sql.append(statement)
+            if "information_schema.catalogs" in statement:
+                return self._mock_query_response(["catalog_name"], [["main"]])
+            if "information_schema.schemata" in statement:
+                if "lower(schema_name) <> 'information_schema'" in statement:
+                    return self._mock_query_response(["schema_name"], [["analytics"]])
+                return self._mock_query_response(["schema_name"], [["analytics"], ["information_schema"]])
+            if "information_schema.tables" in statement:
+                return self._mock_query_response(["table_name", "table_type", "comment"], [])
+            if "information_schema.columns" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "column_name",
+                        "data_type",
+                        "is_nullable",
+                        "comment",
+                        "ordinal_position",
+                    ],
+                    [],
+                )
+            if "information_schema.table_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "tag_name", "tag_value"],
+                    [],
+                )
+            if "information_schema.table_constraints" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "constraint_name",
+                        "constraint_type",
+                        "child_column_name",
+                        "child_ordinal_position",
+                        "parent_table_name",
+                        "parent_column_name",
+                        "parent_ordinal_position",
+                        "update_rule",
+                        "delete_rule",
+                    ],
+                    [],
+                )
+            raise AssertionError(f"Unexpected query: {statement}")
+
+        mock_client.statement_execution.execute_statement = _execute_statement
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+            state = unity_provider.discover_state(
+                config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
+                scope={"catalog": "main"},
+            )
+
+        schemas = state["catalogs"][0]["schemas"]
+        assert [s["name"] for s in schemas] == ["analytics"]
+        assert any("lower(schema_name) <> 'information_schema'" in sql for sql in executed_sql)
+
+    def test_discover_state_warns_on_unsupported_table_types(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+
+        def _execute_statement(warehouse_id: str, statement: str, wait_timeout: str):
+            del warehouse_id, wait_timeout
+            if "information_schema.catalogs" in statement:
+                return self._mock_query_response(["catalog_name"], [["main"]])
+            if "information_schema.schemata" in statement:
+                return self._mock_query_response(["schema_name"], [["analytics"]])
+            if "information_schema.tables" in statement:
+                return self._mock_query_response(
+                    ["table_name", "table_type", "comment"],
+                    [
+                        ["users", "MANAGED", None],
+                        ["active_users", "VIEW", None],
+                        ["mv_users", "MATERIALIZED VIEW", None],
+                    ],
+                )
+            if "information_schema.columns" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "column_name",
+                        "data_type",
+                        "is_nullable",
+                        "comment",
+                        "ordinal_position",
+                    ],
+                    [["users", "id", "BIGINT", "NO", None, "1"]],
+                )
+            if "information_schema.table_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "tag_name", "tag_value"],
+                    [],
+                )
+            if "information_schema.table_constraints" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "constraint_name",
+                        "constraint_type",
+                        "child_column_name",
+                        "child_ordinal_position",
+                        "parent_table_name",
+                        "parent_column_name",
+                        "parent_ordinal_position",
+                        "update_rule",
+                        "delete_rule",
+                    ],
+                    [],
+                )
+            if statement.strip().startswith("SHOW TBLPROPERTIES"):
+                return self._mock_query_response(["key", "value"], [])
+            raise AssertionError(f"Unexpected query: {statement}")
+
+        mock_client.statement_execution.execute_statement = _execute_statement
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+            config = ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123")
+            state = unity_provider.discover_state(
+                config=config,
+                scope={"catalog": "main", "schema": "analytics"},
+            )
+            warnings = unity_provider.collect_import_warnings(
+                config=config,
+                scope={"catalog": "main", "schema": "analytics"},
+                discovered_state=state,
+            )
+
+        assert [table["name"] for table in state["catalogs"][0]["schemas"][0]["tables"]] == ["users"]
+        assert [view["name"] for view in state["catalogs"][0]["schemas"][0]["views"]] == [
+            "active_users"
+        ]
+        assert any("mv_users (MATERIALIZED VIEW)" in warning for warning in warnings)
+
+    def test_discover_state_filters_system_catalog(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+        executed_sql: list[str] = []
+
+        def _execute_statement(warehouse_id: str, statement: str, wait_timeout: str):
+            del warehouse_id, wait_timeout
+            executed_sql.append(statement)
+            if "information_schema.catalogs" in statement:
+                if "lower(catalog_name) NOT IN ('system')" in statement:
+                    return self._mock_query_response(
+                        ["catalog_name"], [["main"], ["finance"]]
+                    )
+                return self._mock_query_response(
+                    ["catalog_name"], [["main"], ["system"], ["finance"]]
+                )
+            if "information_schema.schemata" in statement:
+                if "catalog_name = 'main'" in statement:
+                    return self._mock_query_response(["schema_name"], [["analytics"]])
+                if "catalog_name = 'finance'" in statement:
+                    return self._mock_query_response(["schema_name"], [["core"]])
+                raise AssertionError(f"Unexpected schemata query: {statement}")
+            if "information_schema.tables" in statement:
+                return self._mock_query_response(["table_name", "table_type", "comment"], [])
+            if "information_schema.columns" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "column_name",
+                        "data_type",
+                        "is_nullable",
+                        "comment",
+                        "ordinal_position",
+                    ],
+                    [],
+                )
+            if "information_schema.table_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "tag_name", "tag_value"],
+                    [],
+                )
+            if "information_schema.table_constraints" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "constraint_name",
+                        "constraint_type",
+                        "child_column_name",
+                        "child_ordinal_position",
+                        "parent_table_name",
+                        "parent_column_name",
+                        "parent_ordinal_position",
+                        "update_rule",
+                        "delete_rule",
+                    ],
+                    [],
+                )
+            raise AssertionError(f"Unexpected query: {statement}")
+
+        mock_client.statement_execution.execute_statement = _execute_statement
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+            state = unity_provider.discover_state(
+                config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
+                scope={},
+            )
+
+        assert [catalog["name"] for catalog in state["catalogs"]] == ["main", "finance"]
+        assert any("lower(catalog_name) NOT IN ('system')" in sql for sql in executed_sql)
+
+    def test_validate_import_scope_rejects_system_catalog(self, unity_provider):
+        validation = unity_provider.validate_import_scope({"catalog": "system"})
+        assert not validation.valid
+        assert validation.errors
+        assert validation.errors[0].field == "catalog"
+        assert "system-managed" in validation.errors[0].message
 
 
 class TestOperationMetadata:

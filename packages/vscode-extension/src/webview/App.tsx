@@ -9,7 +9,12 @@ import { SchemaDetails } from './components/SchemaDetails';
 import { SnapshotPanel } from './components/SnapshotPanel';
 import { getVsCodeApi } from './vscode-api';
 import { ProjectSettingsPanel } from './components/ProjectSettingsPanel';
-import { ImportAssetsPanel, ImportRunRequest, ImportRunResult } from './components/ImportAssetsPanel';
+import {
+  ImportAssetsPanel,
+  ImportProgress,
+  ImportRunRequest,
+  ImportRunResult,
+} from './components/ImportAssetsPanel';
 
 const vscode = getVsCodeApi();
 
@@ -49,6 +54,7 @@ export const App: React.FC = () => {
   const [isImportOpen, setIsImportOpen] = React.useState(false);
   const [isImportRunning, setIsImportRunning] = React.useState(false);
   const [importResult, setImportResult] = React.useState<ImportRunResult | null>(null);
+  const [importProgress, setImportProgress] = React.useState<ImportProgress | null>(null);
   
   // Determine if selected object is a view
   const isViewSelected = selectedTableId ? !!findView(selectedTableId) : false;
@@ -96,6 +102,9 @@ export const App: React.FC = () => {
         case 'import-result':
           setIsImportRunning(false);
           setImportResult(message.payload);
+          break;
+        case 'import-progress':
+          setImportProgress(message.payload);
           break;
       }
     };
@@ -182,6 +191,7 @@ export const App: React.FC = () => {
             className="import-assets-button"
             onClick={() => {
               setImportResult(null);
+              setImportProgress(null);
               setIsImportOpen(true);
             }}
             disabled={isImportRunning}
@@ -279,11 +289,27 @@ export const App: React.FC = () => {
           project={project}
           isRunning={isImportRunning}
           result={importResult}
+          progress={importProgress}
           onClose={() => setIsImportOpen(false)}
           onRun={(request: ImportRunRequest) => {
             setIsImportRunning(true);
             setImportResult(null);
+            setImportProgress({
+              phase: 'starting',
+              message: 'Preparing import...',
+              percent: 5,
+              level: 'info',
+            });
             vscode.postMessage({ type: 'run-import', payload: request });
+          }}
+          onCancel={() => {
+            setImportProgress({
+              phase: 'cancel-requested',
+              message: 'Cancelling import...',
+              percent: importProgress?.percent ?? 35,
+              level: 'warning',
+            });
+            vscode.postMessage({ type: 'cancel-import' });
           }}
         />
       )}

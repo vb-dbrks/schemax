@@ -14,7 +14,10 @@ class TestCatalogMapping:
     def test_build_catalog_mapping_implicit_catalog(self):
         """Should map __implicit__ to environment's physical catalog"""
         state = {"catalogs": [{"id": "cat_implicit", "name": "__implicit__", "schemas": []}]}
-        env_config = {"topLevelName": "dev_my_analytics"}
+        env_config = {
+            "topLevelName": "dev_my_analytics",
+            "catalogMappings": {"__implicit__": "dev_my_analytics"},
+        }
 
         mapping = build_catalog_mapping(state, env_config)
 
@@ -23,7 +26,10 @@ class TestCatalogMapping:
     def test_build_catalog_mapping_single_explicit_catalog(self):
         """Should map single explicit catalog to environment catalog"""
         state = {"catalogs": [{"id": "cat_123", "name": "sales_analytics", "schemas": []}]}
-        env_config = {"topLevelName": "dev_sales"}
+        env_config = {
+            "topLevelName": "dev_sales",
+            "catalogMappings": {"sales_analytics": "dev_sales"},
+        }
 
         mapping = build_catalog_mapping(state, env_config)
 
@@ -32,25 +38,42 @@ class TestCatalogMapping:
     def test_build_catalog_mapping_no_catalogs(self):
         """Should return empty mapping if no catalogs"""
         state = {"catalogs": []}
-        env_config = {"topLevelName": "dev_my_analytics"}
+        env_config = {"topLevelName": "dev_my_analytics", "catalogMappings": {}}
 
         mapping = build_catalog_mapping(state, env_config)
 
         assert mapping == {}
 
-    def test_build_catalog_mapping_multi_catalog_error(self):
-        """Should raise error for multi-catalog projects (not yet supported)"""
+    def test_build_catalog_mapping_multi_catalog(self):
+        """Should resolve mappings for multi-catalog projects"""
         state = {
             "catalogs": [
                 {"id": "cat_1", "name": "sales", "schemas": []},
                 {"id": "cat_2", "name": "analytics", "schemas": []},
             ]
         }
-        env_config = {"topLevelName": "dev_primary"}
+        env_config = {
+            "topLevelName": "dev_primary",
+            "catalogMappings": {"sales": "dev_sales", "analytics": "dev_analytics"},
+        }
 
-        with pytest.raises(
-            SQLGenerationError, match="Multi-catalog projects are not yet supported"
-        ):
+        mapping = build_catalog_mapping(state, env_config)
+        assert mapping == {"sales": "dev_sales", "analytics": "dev_analytics"}
+
+    def test_build_catalog_mapping_errors_on_missing_mapping(self):
+        """Should fail if any logical catalog mapping is missing"""
+        state = {
+            "catalogs": [
+                {"id": "cat_1", "name": "sales", "schemas": []},
+                {"id": "cat_2", "name": "analytics", "schemas": []},
+            ]
+        }
+        env_config = {
+            "topLevelName": "dev_primary",
+            "catalogMappings": {"sales": "dev_sales"},
+        }
+
+        with pytest.raises(SQLGenerationError, match="Missing catalog mapping"):
             build_catalog_mapping(state, env_config)
 
 

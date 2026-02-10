@@ -49,11 +49,12 @@ describe('ImportAssetsPanel', () => {
         isRunning={false}
         result={null}
         onClose={jest.fn()}
+        onCancel={jest.fn()}
         onRun={onRun}
       />
     );
 
-    fireEvent.click(screen.getByText('Run dry-run'));
+    fireEvent.click(screen.getByText('Run'));
 
     expect(onRun).not.toHaveBeenCalled();
     expect(screen.getByText('Warehouse ID is required')).toBeTruthy();
@@ -68,6 +69,7 @@ describe('ImportAssetsPanel', () => {
         isRunning={false}
         result={null}
         onClose={jest.fn()}
+        onCancel={jest.fn()}
         onRun={onRun}
       />
     );
@@ -78,6 +80,12 @@ describe('ImportAssetsPanel', () => {
     const schemaInput = screen.getByLabelText('Schema (optional)') as HTMLInputElement;
     const tableInput = screen.getByLabelText('Table (optional)') as HTMLInputElement;
     const bindingsInput = screen.getByLabelText('Catalog mappings (optional)') as HTMLTextAreaElement;
+    const importRunTypeRadio = screen.getByRole('radio', {
+      name: 'Import and write operations',
+    }) as HTMLInputElement;
+    const adoptBaselineCheckbox = screen.getByRole('checkbox', {
+      name: 'Adopt imported snapshot as deployment baseline',
+    }) as HTMLInputElement;
 
     fireEvent.input(profileInput, { target: { value: '  TEAM  ' } });
     fireEvent.input(warehouseInput, { target: { value: '  abc123  ' } });
@@ -88,9 +96,9 @@ describe('ImportAssetsPanel', () => {
       target: { value: 'schematic_demo=dev_schematic_demo\ncore=dev_core' },
     });
 
-    fireEvent.click(screen.getByText('Import'));
-    fireEvent.click(screen.getByText('Adopt baseline: OFF'));
-    fireEvent.click(screen.getByText('Run import'));
+    fireEvent.click(importRunTypeRadio);
+    fireEvent.click(adoptBaselineCheckbox);
+    fireEvent.click(screen.getByText('Run'));
 
     expect(onRun).toHaveBeenCalledTimes(1);
     expect(onRun).toHaveBeenCalledWith({
@@ -118,6 +126,7 @@ describe('ImportAssetsPanel', () => {
         isRunning={false}
         result={null}
         onClose={jest.fn()}
+        onCancel={jest.fn()}
         onRun={onRun}
       />
     );
@@ -127,7 +136,7 @@ describe('ImportAssetsPanel', () => {
 
     fireEvent.input(warehouseInput, { target: { value: 'abc123' } });
     fireEvent.change(bindingsInput, { target: { value: 'bad-format' } });
-    fireEvent.click(screen.getByText('Run dry-run'));
+    fireEvent.click(screen.getByText('Run'));
 
     expect(onRun).not.toHaveBeenCalled();
     expect(screen.getByText("Error: Invalid catalog mapping 'bad-format'. Expected logical=physical")).toBeTruthy();
@@ -156,6 +165,7 @@ describe('ImportAssetsPanel', () => {
         isRunning={false}
         result={null}
         onClose={jest.fn()}
+        onCancel={jest.fn()}
         onRun={jest.fn()}
       />
     );
@@ -171,6 +181,7 @@ describe('ImportAssetsPanel', () => {
         isRunning={false}
         result={null}
         onClose={jest.fn()}
+        onCancel={jest.fn()}
         onRun={jest.fn()}
       />
     );
@@ -197,6 +208,7 @@ describe('ImportAssetsPanel', () => {
         isRunning={false}
         result={null}
         onClose={jest.fn()}
+        onCancel={jest.fn()}
         onRun={jest.fn()}
       />
     );
@@ -208,5 +220,24 @@ describe('ImportAssetsPanel', () => {
     fireEvent.input(envSelect, { target: { value: 'prod' } });
 
     expect(bindingsInput.value).toBe('custom=catalog_name');
+  });
+
+  test('shows cancel action while import is running', () => {
+    const onCancel = jest.fn();
+
+    render(
+      <ImportAssetsPanel
+        project={makeProject()}
+        isRunning={true}
+        result={null}
+        progress={{ phase: 'running', message: 'Running import...', percent: 45, level: 'info' }}
+        onClose={jest.fn()}
+        onCancel={onCancel}
+        onRun={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Cancel import'));
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });

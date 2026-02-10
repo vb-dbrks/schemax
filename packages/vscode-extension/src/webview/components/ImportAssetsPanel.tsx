@@ -19,17 +19,71 @@ export interface ImportRunResult {
   command: string;
   stdout: string;
   stderr: string;
+  cancelled?: boolean;
+}
+
+export interface ImportProgress {
+  phase: string;
+  message: string;
+  percent: number;
+  level?: 'info' | 'warning' | 'error' | 'success';
 }
 
 interface ImportAssetsPanelProps {
   project: ProjectFile;
   isRunning: boolean;
   result: ImportRunResult | null;
+  progress: ImportProgress | null;
   onClose: () => void;
   onRun: (request: ImportRunRequest) => void;
+  onCancel: () => void;
 }
 
-export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }: ImportAssetsPanelProps) {
+function FieldLabel({ text, help }: { text: string; help: string }) {
+  const tooltipId = React.useId();
+  const [showHelp, setShowHelp] = React.useState<boolean>(false);
+
+  return (
+    <div className="field-label-row">
+      <label>{text}</label>
+      <button
+        type="button"
+        className="help-icon-button"
+        aria-label={`${text} help`}
+        aria-expanded={showHelp}
+        aria-describedby={showHelp ? tooltipId : undefined}
+        aria-haspopup="true"
+        onMouseEnter={() => setShowHelp(true)}
+        onMouseLeave={() => setShowHelp(false)}
+        onFocus={() => setShowHelp(true)}
+        onBlur={() => setShowHelp(false)}
+        onClick={() => setShowHelp((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            setShowHelp(false);
+          }
+        }}
+      >
+        ?
+      </button>
+      {showHelp && (
+        <div id={tooltipId} role="tooltip" className="help-tooltip">
+          {help}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ImportAssetsPanel({
+  project,
+  isRunning,
+  result,
+  progress,
+  onClose,
+  onRun,
+  onCancel,
+}: ImportAssetsPanelProps) {
   const envNames = Object.keys(project.provider?.environments || {});
   const [target, setTarget] = React.useState<string>(envNames[0] || 'dev');
   const [profile, setProfile] = React.useState<string>('DEFAULT');
@@ -105,7 +159,10 @@ export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }
           </p>
 
           <div className="modal-field">
-            <label>Target Environment</label>
+            <FieldLabel
+              text="Target Environment"
+              help="Select the environment whose catalog mapping and state should be used for this import."
+            />
             <VSCodeDropdown
               value={target}
               aria-label="Target Environment"
@@ -119,7 +176,10 @@ export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }
           </div>
 
           <div className="modal-field">
-            <label>Databricks Profile</label>
+            <FieldLabel
+              text="Databricks Profile"
+              help="Authentication profile from your Databricks config (for example, DEFAULT or dev)."
+            />
             <VSCodeTextField
               value={profile}
               aria-label="Databricks Profile"
@@ -129,7 +189,10 @@ export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }
           </div>
 
           <div className="modal-field">
-            <label>Warehouse ID</label>
+            <FieldLabel
+              text="Warehouse ID"
+              help="SQL Warehouse used to run metadata discovery queries against Unity Catalog."
+            />
             <VSCodeTextField
               value={warehouseId}
               aria-label="Warehouse ID"
@@ -140,7 +203,10 @@ export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }
           </div>
 
           <div className="modal-field">
-            <label>Catalog (optional)</label>
+            <FieldLabel
+              text="Catalog (optional)"
+              help="Limit discovery to a single catalog. Leave empty to discover across all visible catalogs."
+            />
             <VSCodeTextField
               value={catalog}
               aria-label="Catalog (optional)"
@@ -151,7 +217,10 @@ export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }
           </div>
 
           <div className="modal-field">
-            <label>Schema (optional)</label>
+            <FieldLabel
+              text="Schema (optional)"
+              help="Limit discovery to a schema within the selected catalog."
+            />
             <VSCodeTextField
               value={schema}
               aria-label="Schema (optional)"
@@ -162,7 +231,10 @@ export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }
           </div>
 
           <div className="modal-field">
-            <label>Table (optional)</label>
+            <FieldLabel
+              text="Table (optional)"
+              help="Limit discovery to one table or view within the selected schema."
+            />
             <VSCodeTextField
               value={table}
               aria-label="Table (optional)"
@@ -173,7 +245,10 @@ export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }
           </div>
 
           <div className="modal-field">
-            <label>Catalog mappings (optional)</label>
+            <FieldLabel
+              text="Catalog mappings (optional)"
+              help="Map Schematic logical catalog names to physical catalog names in this environment. Format: logical=physical."
+            />
             <textarea
               className="import-bindings-textarea"
               aria-label="Catalog mappings (optional)"
@@ -190,39 +265,86 @@ export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }
             </p>
           </div>
 
-          <div className="import-mode-row">
-            <VSCodeButton
-              appearance={dryRun ? 'primary' : 'secondary'}
-              onClick={() => setDryRun(true)}
-              disabled={isRunning}
-            >
-              Dry run
-            </VSCodeButton>
-            <VSCodeButton
-              appearance={!dryRun ? 'primary' : 'secondary'}
-              onClick={() => setDryRun(false)}
-              disabled={isRunning}
-            >
-              Import
-            </VSCodeButton>
-            {!dryRun && (
-              <VSCodeButton
-                appearance={adoptBaseline ? 'primary' : 'secondary'}
-                onClick={() => setAdoptBaseline(!adoptBaseline)}
-                disabled={isRunning}
-              >
-                {adoptBaseline ? 'Adopt baseline: ON' : 'Adopt baseline: OFF'}
-              </VSCodeButton>
-            )}
+          <FieldLabel
+            text="Execution settings"
+            help="Choose whether to preview only or write import operations. Optionally adopt the imported snapshot as the deployed baseline."
+          />
+          <div className="import-settings-grid">
+            <div className="import-setting">
+              <fieldset className="import-radio-group" aria-label="Run type">
+                <legend>Run type</legend>
+                <label className="import-radio-option">
+                  <input
+                    type="radio"
+                    name="import-run-type"
+                    checked={dryRun}
+                    disabled={isRunning}
+                    onChange={() => setDryRun(true)}
+                  />
+                  <span>Dry-run preview (no file changes)</span>
+                </label>
+                <label className="import-radio-option">
+                  <input
+                    type="radio"
+                    name="import-run-type"
+                    checked={!dryRun}
+                    disabled={isRunning}
+                    onChange={() => setDryRun(false)}
+                  />
+                  <span>Import and write operations</span>
+                </label>
+              </fieldset>
+            </div>
+            <div className="import-setting">
+              <label className="import-checkbox">
+                <input
+                  type="checkbox"
+                  checked={adoptBaseline}
+                  disabled={isRunning || dryRun}
+                  onChange={(event) => setAdoptBaseline(event.target.checked)}
+                />
+                <span>Adopt imported snapshot as deployment baseline</span>
+              </label>
+              {dryRun && (
+                <p className="field-help import-checkbox-subtext">
+                  Available only when run type is <code>Import and write operations</code>.
+                </p>
+              )}
+            </div>
           </div>
+          <p className="field-help">
+            {dryRun
+              ? 'Execution summary: preview only. Schematic will discover assets and show operations without writing files.'
+              : (adoptBaseline
+                  ? 'Execution summary: write import operations and adopt the imported snapshot as deployed baseline.'
+                  : 'Execution summary: write import operations without adopting baseline.')}
+          </p>
 
           {validationError && (
             <p className="form-error">{validationError}</p>
           )}
 
+          {(isRunning || progress) && (
+            <div className={`import-progress ${progress?.level || 'info'}`}>
+              <div className="import-progress__header">
+                <strong>Import progress</strong>
+                <span>{Math.max(0, Math.min(100, progress?.percent ?? (isRunning ? 5 : 0)))}%</span>
+              </div>
+              <div className="import-progress__bar">
+                <div
+                  className="import-progress__fill"
+                  style={{ width: `${Math.max(0, Math.min(100, progress?.percent ?? (isRunning ? 5 : 0)))}%` }}
+                />
+              </div>
+              <p className="import-progress__message">
+                {progress?.message || 'Running import...'}
+              </p>
+            </div>
+          )}
+
           {result && (
-            <div className={`import-result ${result.success ? 'success' : 'error'}`}>
-              <strong>{result.success ? 'Import completed' : 'Import failed'}</strong>
+            <div className={`import-result ${result.cancelled ? 'warning' : (result.success ? 'success' : 'error')}`}>
+              <strong>{result.cancelled ? 'Import cancelled' : (result.success ? 'Import completed' : 'Import failed')}</strong>
               {result.command && <p><code>{result.command}</code></p>}
               {result.stdout && <pre>{result.stdout}</pre>}
               {result.stderr && <pre>{result.stderr}</pre>}
@@ -231,11 +353,17 @@ export function ImportAssetsPanel({ project, isRunning, result, onClose, onRun }
         </div>
 
         <div className="modal-footer">
-          <VSCodeButton appearance="secondary" onClick={onClose} disabled={isRunning}>
-            Close
-          </VSCodeButton>
+          {isRunning ? (
+            <VSCodeButton appearance="secondary" onClick={onCancel}>
+              Cancel import
+            </VSCodeButton>
+          ) : (
+            <VSCodeButton appearance="secondary" onClick={onClose}>
+              Close
+            </VSCodeButton>
+          )}
           <VSCodeButton onClick={handleSubmit} disabled={isRunning}>
-            {isRunning ? 'Running...' : (dryRun ? 'Run dry-run' : 'Run import')}
+            {isRunning ? 'Running...' : 'Run'}
           </VSCodeButton>
         </div>
       </div>

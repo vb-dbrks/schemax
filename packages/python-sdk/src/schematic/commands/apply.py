@@ -14,6 +14,7 @@ from uuid import uuid4
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
+from schematic.commands.sql import SQLGenerationError, build_catalog_mapping
 from schematic.core.deployment import DeploymentTracker
 from schematic.core.storage import (
     create_snapshot,
@@ -33,37 +34,6 @@ class ApplyError(Exception):
     """Raised when apply command fails"""
 
     pass
-
-
-def _build_catalog_mapping(state: dict, env_config: dict) -> dict:
-    """
-    Build catalog name mapping (logical → physical) for environment-specific SQL generation.
-
-    Supports two modes:
-    1. Single-catalog (implicit): Catalog stored as __implicit__ in state, mapped to env catalog
-    2. Single-catalog (explicit): One named catalog, mapped to env catalog
-    3. Multi-catalog: Not yet supported
-    """
-    catalogs = state.get("catalogs", [])
-
-    if len(catalogs) == 0:
-        # No catalogs yet - no mapping needed
-        return {}
-
-    if len(catalogs) == 1:
-        logical_name = catalogs[0]["name"]
-        physical_name = env_config["topLevelName"]
-
-        console.print(f"[dim]  Catalog mapping: {logical_name} → {physical_name}[/dim]")
-
-        return {logical_name: physical_name}
-
-    # Multiple catalogs - not supported yet
-    raise ApplyError(
-        f"Multi-catalog projects are not yet supported. "
-        f"Found {len(catalogs)} catalogs: {', '.join(c['name'] for c in catalogs)}. "
-        "For now, please use a single catalog per project."
-    )
 
 
 def apply_to_environment(
@@ -237,7 +207,10 @@ def apply_to_environment(
         # 9. Generate SQL with explicit operation mapping
         console.print("[blue]Generating SQL...[/blue]")
 
-        catalog_mapping = _build_catalog_mapping(latest_state, env_config)
+        try:
+            catalog_mapping = build_catalog_mapping(latest_state, env_config)
+        except SQLGenerationError as e:
+            raise ApplyError(str(e)) from e
         generator = provider.get_sql_generator(
             latest_state,
             catalog_mapping,

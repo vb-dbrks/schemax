@@ -7,6 +7,7 @@ import { validateUnityCatalogObjectName } from '../utils/unityNames';
 // Environment config type for tooltip
 interface EnvironmentConfig {
   topLevelName: string;
+  catalogMappings?: Record<string, string>;
   description?: string;
   [key: string]: any;
 }
@@ -116,7 +117,9 @@ const TopLevelMappingTooltip: React.FC<{
           <div className="tooltip-mapping" key={env}>
             <span className="env-name">{env}</span>
             <span className="arrow">→</span>
-            <span className="physical-name">{config.topLevelName}</span>
+            <span className="physical-name">
+              {config.catalogMappings?.[logicalName] || "unmapped"}
+            </span>
           </div>
         ))}
       </div>
@@ -494,12 +497,6 @@ export const Sidebar: React.FC = () => {
         </VSCodeButton>
       );
     } else {
-      // Block multi-catalog: Hide "+ Catalog" button if one already exists
-      const catalogCount = project.state.catalogs.length;
-      if (catalogCount >= 1) {
-        return null; // Don't show "+ Catalog" button
-      }
-      
       return (
         <VSCodeButton
           appearance="secondary"
