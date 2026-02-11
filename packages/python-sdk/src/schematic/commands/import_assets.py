@@ -156,9 +156,7 @@ def import_from_provider(
     if mappings_updated:
         provider.update_env_import_mappings(env_config, catalog_mappings)
         write_project(workspace, project)
-        console.print(
-            f"[green]✓[/green] Updated catalog mappings for environment '{target_env}'"
-        )
+        console.print(f"[green]✓[/green] Updated catalog mappings for environment '{target_env}'")
 
     if import_ops:
         append_ops(workspace, import_ops)
@@ -168,9 +166,7 @@ def import_from_provider(
 
     if adopt_baseline:
         if not provider.capabilities.features.get("baseline_adoption", False):
-            raise ImportError(
-                f"Provider '{provider.info.id}' does not support baseline adoption."
-            )
+            raise ImportError(f"Provider '{provider.info.id}' does not support baseline adoption.")
 
         snapshot_version = project.get("latestSnapshot")
         if import_ops or not snapshot_version:
@@ -217,6 +213,7 @@ def import_from_provider(
         )
 
     return summary
+
 
 def _count_objects(state: dict[str, Any]) -> dict[str, int]:
     catalogs = state.get("catalogs", [])

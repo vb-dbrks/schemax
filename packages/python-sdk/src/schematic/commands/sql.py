@@ -54,7 +54,9 @@ def build_catalog_mapping(state: dict, env_config: dict) -> dict[str, str]:
 
     raw_mappings = env_config.get("catalogMappings") or {}
     if not isinstance(raw_mappings, dict):
-        raise SQLGenerationError("Environment catalogMappings must be an object mapping logical->physical")
+        raise SQLGenerationError(
+            "Environment catalogMappings must be an object mapping logical->physical"
+        )
 
     mappings = {str(logical): str(physical) for logical, physical in raw_mappings.items()}
     catalog_names = [str(c.get("name")) for c in catalogs if c.get("name")]
@@ -67,7 +69,9 @@ def build_catalog_mapping(state: dict, env_config: dict) -> dict[str, str]:
         )
 
     resolved = {logical: mappings[logical] for logical in catalog_names}
-    rendered = ", ".join(f"{logical} → {physical}" for logical, physical in sorted(resolved.items()))
+    rendered = ", ".join(
+        f"{logical} → {physical}" for logical, physical in sorted(resolved.items())
+    )
     console.print(f"[dim]  Catalog mappings: {rendered}[/dim]")
     return resolved
 

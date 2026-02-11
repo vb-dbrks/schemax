@@ -74,9 +74,13 @@ def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, temp_workspa
     _FakeDeploymentTracker.deployments_by_env = {}
 
     fake_client = object()
-    monkeypatch.setattr("schematic.commands.import_assets.create_databricks_client", lambda _: fake_client)
-    monkeypatch.setattr("schematic.providers.unity.auth.create_databricks_client", lambda _: fake_client)
-    monkeypatch.setattr("schematic.commands.import_assets.DeploymentTracker", _FakeDeploymentTracker)
+    monkeypatch.setattr(
+        "schematic.providers.unity.provider.create_databricks_client", lambda _: fake_client
+    )
+    monkeypatch.setattr(
+        "schematic.providers.unity.auth.create_databricks_client", lambda _: fake_client
+    )
+    monkeypatch.setattr("schematic.core.deployment.DeploymentTracker", _FakeDeploymentTracker)
     monkeypatch.setattr("schematic.commands.apply.DeploymentTracker", _FakeDeploymentTracker)
 
     summary = import_from_provider(

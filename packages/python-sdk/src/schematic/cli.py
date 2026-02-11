@@ -4,6 +4,7 @@ Click-based CLI for Schematic.
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -324,7 +325,7 @@ def import_command(
 
         workspace_path = Path(workspace).resolve()
 
-        import_from_provider(
+        summary = import_from_provider(
             workspace=workspace_path,
             target_env=target,
             profile=profile,
@@ -336,6 +337,7 @@ def import_command(
             adopt_baseline=adopt_baseline,
             catalog_mappings_override=binding_overrides,
         )
+        _print_import_summary(summary)
     except ImportError as e:
         console.print(f"[red]✗ Import failed:[/red] {e}")
         sys.exit(1)
@@ -348,22 +350,42 @@ def _parse_catalog_mappings(catalog_map: tuple[str, ...]) -> dict[str, str]:
     bindings: dict[str, str] = {}
     for binding in catalog_map:
         if "=" not in binding:
-            raise ImportError(
-                f"Invalid --catalog-map '{binding}'. Expected logical=physical"
-            )
+            raise ImportError(f"Invalid --catalog-map '{binding}'. Expected logical=physical")
         logical, physical = binding.split("=", 1)
         logical = logical.strip()
         physical = physical.strip()
         if not logical or not physical:
-            raise ImportError(
-                f"Invalid --catalog-map '{binding}'. Expected logical=physical"
-            )
+            raise ImportError(f"Invalid --catalog-map '{binding}'. Expected logical=physical")
         if logical in bindings and bindings[logical] != physical:
             raise ImportError(
                 f"Conflicting --catalog-map for '{logical}': '{bindings[logical]}' vs '{physical}'"
             )
         bindings[logical] = physical
     return bindings
+
+
+def _print_import_summary(summary: dict[str, Any]) -> None:
+    """Render a concise completion summary for the import command."""
+    operations = int(summary.get("operations_generated", 0))
+    dry_run = bool(summary.get("dry_run", False))
+    mode = "previewed" if dry_run else "prepared"
+    console.print(f"[green]✓[/green] Import summary: {operations} operation(s) {mode}.")
+
+    catalog_mappings = summary.get("catalog_mappings", {})
+    if isinstance(catalog_mappings, dict) and catalog_mappings:
+        console.print(f"[blue]Catalog mappings:[/blue] {len(catalog_mappings)}")
+
+    warnings = summary.get("warnings", [])
+    if isinstance(warnings, list) and warnings:
+        console.print(f"[yellow]Warnings:[/yellow] {len(warnings)}")
+
+    snapshot_version = summary.get("snapshot_version")
+    if snapshot_version:
+        console.print(f"[blue]Baseline snapshot:[/blue] {snapshot_version}")
+
+    deployment_id = summary.get("deployment_id")
+    if deployment_id:
+        console.print(f"[blue]Baseline deployment:[/blue] {deployment_id}")
 
 
 @cli.command()

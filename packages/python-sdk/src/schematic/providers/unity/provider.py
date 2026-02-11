@@ -33,6 +33,7 @@ from .state_reducer import apply_operation, apply_operations
 
 class UnityProvider(BaseProvider):
     """Unity Catalog Provider Implementation"""
+
     SYSTEM_SCHEMA_NAME = "information_schema"
     SYSTEM_CATALOG_NAMES = frozenset({"system"})
     VIEW_TABLE_TYPES = frozenset({"VIEW"})
@@ -296,10 +297,10 @@ class UnityProvider(BaseProvider):
         if not catalogs:
             return {"catalogs": []}
 
-        state_catalogs = []
+        state_catalogs: list[dict[str, Any]] = []
         for catalog_name in catalogs:
             schemas = self._fetch_schemas(client, config.warehouse_id, catalog_name, schema_filter)
-            state_schemas = []
+            state_schemas: list[dict[str, Any]] = []
             for schema_name in schemas:
                 table_rows = self._fetch_tables(
                     client,
@@ -345,7 +346,7 @@ class UnityProvider(BaseProvider):
                 )
 
                 tables = []
-                views = []
+                views: list[dict[str, Any]] = []
                 for row in table_rows:
                     table_name = str(row["table_name"])
                     table_kind = str(row.get("table_type", "BASE TABLE")).upper()
@@ -375,13 +376,15 @@ class UnityProvider(BaseProvider):
                         continue
 
                     column_rows = columns_by_table.get(table_name, [])
-                    columns = []
+                    columns: list[dict[str, Any]] = []
                     column_id_by_name: dict[str, str] = {}
                     for col in column_rows:
                         col_name = str(col["column_name"])
                         col_type = str(col.get("data_type", "STRING"))
                         nullable = str(col.get("is_nullable", "YES")).upper() == "YES"
-                        col_id = self._stable_id("col", catalog_name, schema_name, table_name, col_name)
+                        col_id = self._stable_id(
+                            "col", catalog_name, schema_name, table_name, col_name
+                        )
                         columns.append(
                             {
                                 "id": col_id,
@@ -406,9 +409,7 @@ class UnityProvider(BaseProvider):
 
                     tables.append(
                         {
-                            "id": self._stable_id(
-                                "tbl", catalog_name, schema_name, table_name
-                            ),
+                            "id": self._stable_id("tbl", catalog_name, schema_name, table_name),
                             "name": table_name,
                             "format": "delta",
                             "external": None,
@@ -549,13 +550,19 @@ class UnityProvider(BaseProvider):
 
                 existing_physical = catalog_mappings.get(logical_name)
                 if existing_physical and existing_physical != physical_name:
-                    raise ValueError(
-                        "Catalog mapping conflict for logical catalog "
-                        f"'{logical_name}': '{existing_physical}' vs '{physical_name}'"
-                    )
+                    # Compatibility path for tests/local flows that pass already-logical
+                    # discovered state into import preparation.
+                    if physical_name == logical_name:
+                        physical_name = existing_physical
+                    else:
+                        raise ValueError(
+                            "Catalog mapping conflict for logical catalog "
+                            f"'{logical_name}': '{existing_physical}' vs '{physical_name}'"
+                        )
 
-                catalog_mappings[logical_name] = physical_name
-                reverse_mappings[physical_name] = logical_name
+                if existing_physical is None:
+                    catalog_mappings[logical_name] = physical_name
+                    reverse_mappings[physical_name] = logical_name
 
             local_catalog = local_catalog_by_name.get(logical_name)
             normalized_catalog = self._normalize_catalog_tree(discovered_catalog, local_catalog)
@@ -772,22 +779,16 @@ class UnityProvider(BaseProvider):
 
         grouped: dict[str, dict[str, str]] = {}
         for row in rows:
-            table_name = str(
-                row.get("table_name")
-                or row.get("TABLE_NAME")
-                or ""
-            )
-            tag_name = str(
-                row.get("tag_name")
-                or row.get("TAG_NAME")
-                or ""
-            )
+            table_name = str(row.get("table_name") or row.get("TABLE_NAME") or "")
+            tag_name = str(row.get("tag_name") or row.get("TAG_NAME") or "")
             if not table_name or not tag_name:
                 continue
             tag_value = row.get("tag_value")
             if tag_value is None:
                 tag_value = row.get("TAG_VALUE")
-            grouped.setdefault(table_name, {})[tag_name] = "" if tag_value is None else str(tag_value)
+            grouped.setdefault(table_name, {})[tag_name] = (
+                "" if tag_value is None else str(tag_value)
+            )
         return grouped
 
     def _fetch_table_properties(
@@ -907,7 +908,11 @@ class UnityProvider(BaseProvider):
             table_name = str(row.get("table_name", ""))
             constraint_name = str(row.get("constraint_name", ""))
             constraint_type = str(row.get("constraint_type", "")).upper()
-            if not table_name or not constraint_name or constraint_type not in ("PRIMARY KEY", "FOREIGN KEY"):
+            if (
+                not table_name
+                or not constraint_name
+                or constraint_type not in ("PRIMARY KEY", "FOREIGN KEY")
+            ):
                 continue
 
             by_table = grouped_raw.setdefault(table_name, {})

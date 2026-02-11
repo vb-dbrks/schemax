@@ -202,7 +202,9 @@ class TestUnityProvider:
         return SimpleNamespace(
             status=SimpleNamespace(
                 state=state,
-                error=SimpleNamespace(message="boom") if state != StatementState.SUCCEEDED else None,
+                error=SimpleNamespace(message="boom")
+                if state != StatementState.SUCCEEDED
+                else None,
             ),
             result=SimpleNamespace(data_array=rows),
             manifest=SimpleNamespace(
@@ -383,7 +385,10 @@ class TestUnityProvider:
             if "information_schema.tables" in statement:
                 return self._mock_query_response(
                     ["table_name", "table_type", "comment"],
-                    [["users", "BASE TABLE", "users table"], ["orders", "BASE TABLE", "orders table"]],
+                    [
+                        ["users", "BASE TABLE", "users table"],
+                        ["orders", "BASE TABLE", "orders table"],
+                    ],
                 )
             if "information_schema.columns" in statement:
                 return self._mock_query_response(
@@ -421,7 +426,18 @@ class TestUnityProvider:
                         "delete_rule",
                     ],
                     [
-                        ["users", "pk_users", "PRIMARY KEY", "user_id", "1", None, None, None, None, None],
+                        [
+                            "users",
+                            "pk_users",
+                            "PRIMARY KEY",
+                            "user_id",
+                            "1",
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                        ],
                         [
                             "orders",
                             "fk_orders_user",
@@ -501,7 +517,9 @@ class TestUnityProvider:
             if "information_schema.schemata" in statement:
                 if "lower(schema_name) <> 'information_schema'" in statement:
                     return self._mock_query_response(["schema_name"], [["analytics"]])
-                return self._mock_query_response(["schema_name"], [["analytics"], ["information_schema"]])
+                return self._mock_query_response(
+                    ["schema_name"], [["analytics"], ["information_schema"]]
+                )
             if "information_schema.tables" in statement:
                 return self._mock_query_response(["table_name", "table_type", "comment"], [])
             if "information_schema.columns" in statement:
@@ -622,7 +640,9 @@ class TestUnityProvider:
                 discovered_state=state,
             )
 
-        assert [table["name"] for table in state["catalogs"][0]["schemas"][0]["tables"]] == ["users"]
+        assert [table["name"] for table in state["catalogs"][0]["schemas"][0]["tables"]] == [
+            "users"
+        ]
         assert [view["name"] for view in state["catalogs"][0]["schemas"][0]["views"]] == [
             "active_users"
         ]
@@ -637,9 +657,7 @@ class TestUnityProvider:
             executed_sql.append(statement)
             if "information_schema.catalogs" in statement:
                 if "lower(catalog_name) NOT IN ('system')" in statement:
-                    return self._mock_query_response(
-                        ["catalog_name"], [["main"], ["finance"]]
-                    )
+                    return self._mock_query_response(["catalog_name"], [["main"], ["finance"]])
                 return self._mock_query_response(
                     ["catalog_name"], [["main"], ["system"], ["finance"]]
                 )

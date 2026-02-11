@@ -67,10 +67,12 @@ def _make_provider(
     )
     provider.discover_state = lambda config, scope: discovered_state or {"catalogs": []}
     provider.collect_import_warnings = lambda config, scope, discovered_state: []
-    provider.prepare_import_state = lambda local_state, discovered_state, env_config, mapping_overrides: (
-        prepared_state if prepared_state is not None else discovered_state,
-        prepared_mappings or {},
-        mappings_updated,
+    provider.prepare_import_state = (
+        lambda local_state, discovered_state, env_config, mapping_overrides: (
+            prepared_state if prepared_state is not None else discovered_state,
+            prepared_mappings or {},
+            mappings_updated,
+        )
     )
     provider.update_env_import_mappings = lambda env_config, mappings: env_config.update(
         {"catalogMappings": dict(sorted(mappings.items()))}
@@ -249,8 +251,12 @@ class TestImportFromProvider:
                     )
 
     def test_import_uses_provider_prepared_state_and_mappings(self):
-        discovered_state = {"catalogs": [{"id": "cat_phys", "name": "dev_schematic_demo", "schemas": []}]}
-        prepared_state = {"catalogs": [{"id": "cat_local", "name": "schematic_demo", "schemas": []}]}
+        discovered_state = {
+            "catalogs": [{"id": "cat_phys", "name": "dev_schematic_demo", "schemas": []}]
+        }
+        prepared_state = {
+            "catalogs": [{"id": "cat_local", "name": "schematic_demo", "schemas": []}]
+        }
         provider = _make_provider(
             discovered_state=discovered_state,
             prepared_state=prepared_state,
@@ -408,9 +414,7 @@ class TestImportCli:
 
             assert result.exit_code == 0
             kwargs = mock_import.call_args.kwargs
-            assert kwargs["catalog_mappings_override"] == {
-                "schematic_demo": "dev_schematic_demo"
-            }
+            assert kwargs["catalog_mappings_override"] == {"schematic_demo": "dev_schematic_demo"}
 
     def test_import_cli_rejects_invalid_catalog_mapping_format(self):
         runner = CliRunner()
@@ -430,3 +434,33 @@ class TestImportCli:
         )
         assert result.exit_code == 1
         assert "logical=physical" in result.output
+
+    def test_import_cli_prints_summary_from_import_result(self):
+        runner = CliRunner()
+        with patch(
+            "schematic.cli.import_from_provider",
+            return_value={
+                "operations_generated": 12,
+                "dry_run": True,
+                "warnings": ["w1"],
+                "catalog_mappings": {"samples": "samples"},
+            },
+        ):
+            result = runner.invoke(
+                cli,
+                [
+                    "import",
+                    "--target",
+                    "dev",
+                    "--profile",
+                    "DEFAULT",
+                    "--warehouse-id",
+                    "wh_123",
+                    "--dry-run",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "Import summary: 12 operation(s) previewed." in result.output
+        assert "Catalog mappings: 1" in result.output
+        assert "Warnings: 1" in result.output
