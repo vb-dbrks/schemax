@@ -14,6 +14,7 @@ import pytest
 
 from schematic.commands.import_assets import import_from_provider
 from schematic.core.storage import ensure_project_file
+from schematic.providers import ProviderRegistry
 from schematic.providers.base.executor import ExecutionConfig
 from schematic.providers.unity.auth import create_databricks_client
 from schematic.providers.unity.executor import UnitySQLExecutor
@@ -112,6 +113,25 @@ def test_import_from_live_databricks_fixture_sql(temp_workspace):
         seed_result = executor.execute_statements(statements=statements, config=config)
         assert seed_result.status == "success"
 
+        provider = ProviderRegistry.get("unity")
+        discovered_state = provider.discover_state(
+            config=ExecutionConfig(target_env="dev", profile=profile, warehouse_id=warehouse_id),
+            scope={"catalog": main_catalog},
+        )
+        catalog = discovered_state["catalogs"][0]
+        core_schema = next(schema for schema in catalog["schemas"] if schema["name"] == "core")
+        analytics_schema = next(
+            schema for schema in catalog["schemas"] if schema["name"] == "analytics"
+        )
+        orders_table = next(table for table in core_schema["tables"] if table["name"] == "orders")
+        clustered_table = next(
+            table for table in core_schema["tables"] if table["name"] == "orders_clustered"
+        )
+        users_table = next(table for table in core_schema["tables"] if table["name"] == "users")
+        enriched_view = next(
+            view for view in analytics_schema["views"] if view["name"] == "v_orders_enriched"
+        )
+
         summary = import_from_provider(
             workspace=temp_workspace,
             target_env="dev",
@@ -128,6 +148,29 @@ def test_import_from_live_databricks_fixture_sql(temp_workspace):
         assert summary["object_counts"]["schemas"] >= 3
         assert summary["object_counts"]["tables"] >= 4
         assert summary["object_counts"]["views"] >= 2
+        assert summary["operation_breakdown"].get("unity.add_constraint", 0) >= 3
+        assert summary["operation_breakdown"].get("unity.set_table_tag", 0) >= 8
+        assert summary["operation_breakdown"].get("unity.set_column_tag", 0) >= 3
+
+        assert bool(catalog.get("comment"))
+        assert bool(catalog.get("tags"))
+        assert bool(core_schema.get("comment"))
+        assert bool(core_schema.get("tags"))
+
+        assert bool(users_table.get("properties"))
+        assert bool(users_table.get("tags"))
+        assert any(constraint["type"] == "primary_key" for constraint in users_table["constraints"])
+        assert any(
+            constraint["type"] == "foreign_key" for constraint in orders_table["constraints"]
+        )
+        assert any(constraint["type"] == "check" for constraint in orders_table["constraints"])
+        assert orders_table.get("partitionColumns") == ["order_date"]
+        assert clustered_table.get("clusterColumns") == ["status"]
+
+        assert bool(enriched_view.get("definition"))
+        assert bool(enriched_view.get("tags"))
+        assert bool(enriched_view.get("properties"))
+        assert bool(enriched_view.get("extractedDependencies"))
     finally:
         # Best-effort cleanup so repeated local runs stay predictable.
         executor.execute_statements(statements=cleanup_statements, config=config)

@@ -6,8 +6,10 @@ Implements the Provider interface to enable Unity Catalog support in Schematic.
 """
 
 import hashlib
+import json
 import os
 import threading
+from ast import literal_eval
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from typing import Any
@@ -19,6 +21,7 @@ from schematic.providers.base.models import ProviderState, ValidationError, Vali
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.provider import BaseProvider, ProviderCapabilities, ProviderInfo
 from schematic.providers.base.sql_generator import SQLGenerator
+from schematic.providers.base.sql_parser import extract_table_references
 from schematic.providers.base.state_differ import StateDiffer
 
 from .auth import check_profile_exists, create_databricks_client
@@ -298,13 +301,27 @@ class UnityProvider(BaseProvider):
         catalogs = self._fetch_catalogs(client, config.warehouse_id, catalog_filter)
         if not catalogs:
             return {"catalogs": []}
+        catalog_metadata = self._fetch_catalog_metadata(client, config.warehouse_id, catalog_filter)
 
         state_catalogs: list[dict[str, Any]] = []
         for catalog_name in catalogs:
+            schema_metadata = self._fetch_schema_metadata(
+                client,
+                config.warehouse_id,
+                catalog_name,
+                schema_filter,
+            )
             schemas = self._fetch_schemas(client, config.warehouse_id, catalog_name, schema_filter)
             state_schemas: list[dict[str, Any]] = []
             for schema_name in schemas:
                 table_rows = self._fetch_tables(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_filter,
+                )
+                view_definitions = self._fetch_views(
                     client,
                     config.warehouse_id,
                     catalog_name,
@@ -347,11 +364,33 @@ class UnityProvider(BaseProvider):
                     not in self.UNSUPPORTED_DISCOVERY_TABLE_TYPES
                     and row.get("table_name")
                 ]
+                view_names = [
+                    str(row.get("table_name", ""))
+                    for row in table_rows
+                    if str(row.get("table_type", "BASE TABLE")).upper() in self.VIEW_TABLE_TYPES
+                    and row.get("table_name")
+                ]
                 properties_by_table = self._fetch_table_properties_for_tables(
                     config=config,
                     catalog_name=catalog_name,
                     schema_name=schema_name,
                     table_names=table_names,
+                )
+                constraints_by_table = self._merge_check_constraints_from_properties(
+                    constraints_by_table,
+                    properties_by_table,
+                )
+                table_details_by_table = self._fetch_table_details_for_tables(
+                    config=config,
+                    catalog_name=catalog_name,
+                    schema_name=schema_name,
+                    table_names=table_names,
+                )
+                properties_by_view = self._fetch_table_properties_for_tables(
+                    config=config,
+                    catalog_name=catalog_name,
+                    schema_name=schema_name,
+                    table_names=view_names,
                 )
 
                 tables = []
@@ -368,18 +407,31 @@ class UnityProvider(BaseProvider):
                         continue
 
                     if table_kind in self.VIEW_TABLE_TYPES:
+                        definition = str(
+                            view_definitions.get(table_name, {}).get("definition") or ""
+                        )
+                        view_properties = properties_by_view.get(table_name, {})
+                        comment = row.get("comment")
+                        if not comment:
+                            comment = view_properties.get("comment")
+                        extracted_dependencies = None
+                        if definition:
+                            extracted_dependencies = extract_table_references(
+                                definition,
+                                dialect="databricks",
+                            )
                         views.append(
                             {
                                 "id": self._stable_id(
                                     "view", catalog_name, schema_name, table_name
                                 ),
                                 "name": table_name,
-                                "definition": "",
-                                "comment": None,
+                                "definition": definition,
+                                "comment": comment,
                                 "dependencies": None,
-                                "extractedDependencies": None,
-                                "tags": {},
-                                "properties": {},
+                                "extractedDependencies": extracted_dependencies,
+                                "tags": tags_by_table.get(table_name, {}),
+                                "properties": view_properties,
                             }
                         )
                         continue
@@ -409,8 +461,12 @@ class UnityProvider(BaseProvider):
                         column_id_by_name[col_name] = col_id
 
                     properties = properties_by_table.get(table_name, {})
+                    table_detail = table_details_by_table.get(table_name, {})
                     data_source_format = str(
-                        row.get("data_source_format") or row.get("DATA_SOURCE_FORMAT") or "DELTA"
+                        table_detail.get("format")
+                        or row.get("data_source_format")
+                        or row.get("DATA_SOURCE_FORMAT")
+                        or "DELTA"
                     ).lower()
                     if data_source_format not in {"delta", "iceberg"}:
                         self._last_import_warnings.append(
@@ -421,6 +477,8 @@ class UnityProvider(BaseProvider):
                     storage_path = row.get("storage_path")
                     if storage_path is None:
                         storage_path = row.get("STORAGE_PATH")
+                    if storage_path is None:
+                        storage_path = table_detail.get("location")
                     table_external: bool | None = None
                     if table_kind in {"EXTERNAL"}:
                         table_external = True
@@ -442,8 +500,8 @@ class UnityProvider(BaseProvider):
                             "external": table_external,
                             "externalLocationName": None,
                             "path": None if storage_path is None else str(storage_path),
-                            "partitionColumns": None,
-                            "clusterColumns": None,
+                            "partitionColumns": table_detail.get("partitionColumns"),
+                            "clusterColumns": table_detail.get("clusterColumns"),
                             "columnMapping": None,
                             "columns": columns,
                             "properties": properties,
@@ -456,25 +514,27 @@ class UnityProvider(BaseProvider):
                         }
                     )
 
+                schema_meta = schema_metadata.get(schema_name, {})
                 state_schemas.append(
                     {
                         "id": self._stable_id("sch", catalog_name, schema_name),
                         "name": schema_name,
                         "managedLocationName": None,
-                        "comment": None,
-                        "tags": {},
+                        "comment": schema_meta.get("comment"),
+                        "tags": schema_meta.get("tags", {}),
                         "tables": tables,
                         "views": views,
                     }
                 )
 
+            cat_meta = catalog_metadata.get(catalog_name, {})
             state_catalogs.append(
                 {
                     "id": self._stable_id("cat", catalog_name),
                     "name": catalog_name,
                     "managedLocationName": None,
-                    "comment": None,
-                    "tags": {},
+                    "comment": cat_meta.get("comment"),
+                    "tags": cat_meta.get("tags", {}),
                     "schemas": state_schemas,
                 }
             )
@@ -683,6 +743,65 @@ class UnityProvider(BaseProvider):
         rows = self._execute_query(client, warehouse_id, sql)
         return [str(r["catalog_name"]) for r in rows if r.get("catalog_name")]
 
+    def _fetch_catalog_metadata(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_filter: str | None,
+    ) -> dict[str, dict[str, Any]]:
+        sql_comments = "SELECT catalog_name, comment FROM system.information_schema.catalogs"
+        if catalog_filter:
+            safe = catalog_filter.replace("'", "''")
+            sql_comments += f" WHERE catalog_name = '{safe}'"
+        sql_comments += " ORDER BY catalog_name"
+        comment_rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql_comments,
+            warning=(
+                "Could not discover Unity catalog comments from information_schema.catalogs; "
+                "continuing without catalog comments."
+            ),
+        )
+
+        metadata: dict[str, dict[str, Any]] = {}
+        for row in comment_rows:
+            catalog_name = str(row.get("catalog_name") or "")
+            if not catalog_name:
+                continue
+            metadata[catalog_name] = {
+                "comment": row.get("comment"),
+                "tags": {},
+            }
+
+        sql_tags = (
+            "SELECT catalog_name, tag_name, tag_value FROM system.information_schema.catalog_tags"
+        )
+        if catalog_filter:
+            safe = catalog_filter.replace("'", "''")
+            sql_tags += f" WHERE catalog_name = '{safe}'"
+        sql_tags += " ORDER BY catalog_name, tag_name"
+        tag_rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql_tags,
+            warning=(
+                "Could not discover Unity catalog tags from information_schema.catalog_tags; "
+                "continuing without catalog tags."
+            ),
+        )
+        for row in tag_rows:
+            catalog_name = str(row.get("catalog_name") or "")
+            tag_name = str(row.get("tag_name") or "")
+            if not catalog_name or not tag_name:
+                continue
+            tag_value = row.get("tag_value")
+            metadata.setdefault(catalog_name, {"comment": None, "tags": {}})["tags"][tag_name] = (
+                "" if tag_value is None else str(tag_value)
+            )
+
+        return metadata
+
     def _fetch_schemas(
         self,
         client: Any,
@@ -703,6 +822,74 @@ class UnityProvider(BaseProvider):
         sql += " ORDER BY schema_name"
         rows = self._execute_query(client, warehouse_id, sql)
         return [str(r["schema_name"]) for r in rows if r.get("schema_name")]
+
+    def _fetch_schema_metadata(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_filter: str | None,
+    ) -> dict[str, dict[str, Any]]:
+        cat = catalog_name.replace("'", "''")
+        sql_comments = (
+            "SELECT schema_name, comment "
+            "FROM system.information_schema.schemata "
+            f"WHERE catalog_name = '{cat}' "
+            "AND lower(schema_name) <> 'information_schema'"
+        )
+        if schema_filter:
+            sch = schema_filter.replace("'", "''")
+            sql_comments += f" AND schema_name = '{sch}'"
+        sql_comments += " ORDER BY schema_name"
+        comment_rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql_comments,
+            warning=(
+                "Could not discover Unity schema comments from information_schema.schemata; "
+                "continuing without schema comments."
+            ),
+        )
+
+        metadata: dict[str, dict[str, Any]] = {}
+        for row in comment_rows:
+            schema_name = str(row.get("schema_name") or "")
+            if not schema_name:
+                continue
+            metadata[schema_name] = {
+                "comment": row.get("comment"),
+                "tags": {},
+            }
+
+        sql_tags = (
+            "SELECT schema_name, tag_name, tag_value "
+            "FROM system.information_schema.schema_tags "
+            f"WHERE catalog_name = '{cat}'"
+        )
+        if schema_filter:
+            sch = schema_filter.replace("'", "''")
+            sql_tags += f" AND schema_name = '{sch}'"
+        sql_tags += " ORDER BY schema_name, tag_name"
+        tag_rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql_tags,
+            warning=(
+                "Could not discover Unity schema tags from information_schema.schema_tags; "
+                "continuing without schema tags."
+            ),
+        )
+        for row in tag_rows:
+            schema_name = str(row.get("schema_name") or "")
+            tag_name = str(row.get("tag_name") or "")
+            if not schema_name or not tag_name:
+                continue
+            tag_value = row.get("tag_value")
+            metadata.setdefault(schema_name, {"comment": None, "tags": {}})["tags"][tag_name] = (
+                "" if tag_value is None else str(tag_value)
+            )
+
+        return metadata
 
     def _fetch_tables(
         self,
@@ -725,6 +912,47 @@ class UnityProvider(BaseProvider):
             sql += f" AND table_name = '{tbl}'"
         sql += " ORDER BY table_name"
         return self._execute_query(client, warehouse_id, sql)
+
+    def _fetch_views(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+        table_filter: str | None,
+    ) -> dict[str, dict[str, Any]]:
+        cat = catalog_name.replace("'", "''")
+        sch = schema_name.replace("'", "''")
+        sql = (
+            "SELECT table_name, view_definition, is_materialized "
+            "FROM system.information_schema.views "
+            f"WHERE table_catalog = '{cat}' "
+            f"AND table_schema = '{sch}'"
+        )
+        if table_filter:
+            tbl = table_filter.replace("'", "''")
+            sql += f" AND table_name = '{tbl}'"
+        sql += " ORDER BY table_name"
+        rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql,
+            warning=(
+                "Could not discover Unity view definitions from information_schema.views; "
+                "continuing with empty view definitions."
+            ),
+        )
+
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            table_name = str(row.get("table_name") or "")
+            if not table_name:
+                continue
+            grouped[table_name] = {
+                "definition": row.get("view_definition"),
+                "is_materialized": row.get("is_materialized"),
+            }
+        return grouped
 
     def _fetch_columns(
         self,
@@ -1034,6 +1262,45 @@ class UnityProvider(BaseProvider):
         grouped: dict[str, list[dict[str, Any]]] = {}
         for table_name, constraints in grouped_raw.items():
             grouped[table_name] = list(constraints.values())
+
+        sql_checks = (
+            "SELECT tc.table_name, tc.constraint_name, cc.check_clause "
+            "FROM system.information_schema.table_constraints tc "
+            "JOIN system.information_schema.check_constraints cc "
+            "ON tc.constraint_catalog = cc.constraint_catalog "
+            "AND tc.constraint_schema = cc.constraint_schema "
+            "AND tc.constraint_name = cc.constraint_name "
+            f"WHERE tc.table_catalog = '{cat}' "
+            f"AND tc.table_schema = '{sch}' "
+            "AND tc.constraint_type = 'CHECK'"
+        )
+        if table_filter:
+            tbl = table_filter.replace("'", "''")
+            sql_checks += f" AND tc.table_name = '{tbl}'"
+        sql_checks += " ORDER BY tc.table_name, tc.constraint_name"
+        check_rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql_checks,
+            warning=(
+                "Could not discover check constraints from information_schema.check_constraints; "
+                "continuing without imported check constraints."
+            ),
+        )
+        for row in check_rows:
+            table_name = str(row.get("table_name") or "")
+            constraint_name = str(row.get("constraint_name") or "")
+            check_clause = row.get("check_clause")
+            if not table_name or not constraint_name or check_clause in (None, ""):
+                continue
+            grouped.setdefault(table_name, []).append(
+                {
+                    "name": constraint_name,
+                    "type": "CHECK",
+                    "columns": [],
+                    "expression": None if check_clause is None else str(check_clause),
+                }
+            )
         return grouped
 
     def _build_table_constraints(
@@ -1053,7 +1320,7 @@ class UnityProvider(BaseProvider):
                 for col_name in raw.get("columns", [])
                 if col_name in column_id_by_name
             ]
-            if not columns:
+            if constraint_type != "CHECK" and not columns:
                 continue
 
             constraint_id = self._stable_id(
@@ -1107,8 +1374,139 @@ class UnityProvider(BaseProvider):
                         "onDelete": str(raw.get("on_delete") or "NO_ACTION").upper(),
                     }
                 )
+                continue
+
+            if constraint_type == "CHECK":
+                constraints.append(
+                    {
+                        "id": constraint_id,
+                        "type": "check",
+                        "name": constraint_name,
+                        "columns": columns,
+                        "expression": raw.get("expression"),
+                    }
+                )
 
         return constraints
+
+    def _merge_check_constraints_from_properties(
+        self,
+        constraints_by_table: dict[str, list[dict[str, Any]]],
+        properties_by_table: dict[str, dict[str, str]],
+    ) -> dict[str, list[dict[str, Any]]]:
+        merged: dict[str, list[dict[str, Any]]] = {
+            table_name: list(constraints)
+            for table_name, constraints in constraints_by_table.items()
+        }
+        prefix = "delta.constraints."
+
+        for table_name, properties in properties_by_table.items():
+            existing_names = {
+                str(constraint.get("name") or "")
+                for constraint in merged.get(table_name, [])
+                if str(constraint.get("type") or "").upper() == "CHECK"
+            }
+            for key, value in properties.items():
+                if not key.startswith(prefix):
+                    continue
+                constraint_name = key[len(prefix) :]
+                if not constraint_name or constraint_name in existing_names:
+                    continue
+                merged.setdefault(table_name, []).append(
+                    {
+                        "name": constraint_name,
+                        "type": "CHECK",
+                        "columns": [],
+                        "expression": value,
+                    }
+                )
+
+        return merged
+
+    def _fetch_table_details(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+        table_name: str,
+    ) -> dict[str, Any]:
+        cat = catalog_name.replace("`", "``")
+        sch = schema_name.replace("`", "``")
+        tbl = table_name.replace("`", "``")
+        sql = f"DESCRIBE DETAIL `{cat}`.`{sch}`.`{tbl}`"
+        rows = self._execute_query(client, warehouse_id, sql)
+        if not rows:
+            return {}
+        row = rows[0]
+        return {
+            "format": row.get("format") or row.get("FORMAT"),
+            "location": row.get("location") or row.get("LOCATION"),
+            "partitionColumns": self._coerce_string_list(
+                row.get("partitionColumns") or row.get("PARTITIONCOLUMNS")
+            ),
+            "clusterColumns": self._coerce_string_list(
+                row.get("clusteringColumns") or row.get("CLUSTERINGCOLUMNS")
+            ),
+        }
+
+    def _fetch_table_details_for_tables(
+        self,
+        config: ExecutionConfig,
+        catalog_name: str,
+        schema_name: str,
+        table_names: list[str],
+    ) -> dict[str, dict[str, Any]]:
+        if not table_names:
+            return {}
+
+        unique_names = sorted(set(table_names))
+        if len(unique_names) == 1:
+            client = self._get_import_thread_client(config.profile)
+            table_name = unique_names[0]
+            try:
+                details = self._fetch_table_details(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_name,
+                )
+            except Exception:
+                details = {}
+            return {table_name: details}
+
+        configured = os.getenv("SCHEMATIC_IMPORT_DETAILS_WORKERS", "").strip()
+        max_workers = self.DEFAULT_IMPORT_PROPERTIES_WORKERS
+        if configured:
+            try:
+                parsed = int(configured)
+                if parsed > 0:
+                    max_workers = parsed
+            except ValueError:
+                pass
+        cpu_count = os.cpu_count() or self.DEFAULT_IMPORT_PROPERTIES_WORKERS
+        max_workers = max(1, min(max_workers, cpu_count * 2, len(unique_names)))
+
+        def _load(table_name: str) -> tuple[str, dict[str, Any]]:
+            client = self._get_import_thread_client(config.profile)
+            try:
+                details = self._fetch_table_details(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_name,
+                )
+            except Exception:
+                details = {}
+            return table_name, details
+
+        details_by_table: dict[str, dict[str, Any]] = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for table_name, details in executor.map(_load, unique_names):
+                details_by_table[table_name] = details
+        return details_by_table
 
     def _fetch_table_properties_for_tables(
         self,
@@ -1156,7 +1554,7 @@ class UnityProvider(BaseProvider):
                     schema_name,
                     table_name,
                 )
-            except RuntimeError:
+            except Exception:
                 props = {}
             return table_name, props
 
@@ -1354,6 +1752,30 @@ class UnityProvider(BaseProvider):
         except Exception:
             self._last_import_warnings.append(warning)
             return []
+
+    def _coerce_string_list(self, value: Any) -> list[str] | None:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return [str(v) for v in value]
+        if isinstance(value, tuple):
+            return [str(v) for v in value]
+        if not isinstance(value, str):
+            return [str(value)]
+
+        text = value.strip()
+        if not text:
+            return []
+
+        for parser in (json.loads, literal_eval):
+            try:
+                parsed = parser(text)
+                if isinstance(parsed, (list, tuple)):
+                    return [str(v) for v in parsed]
+            except Exception:
+                continue
+
+        return [text]
 
     def validate_execution_config(self, config: ExecutionConfig) -> ValidationResult:
         """Validate execution configuration for Unity Catalog

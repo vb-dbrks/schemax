@@ -21,6 +21,8 @@ CREATE CATALOG IF NOT EXISTS test_import_fixture
 MANAGED LOCATION '__MANAGED_ROOT__/catalogs/test_import_fixture';
 CREATE CATALOG IF NOT EXISTS test_import_aux
 MANAGED LOCATION '__MANAGED_ROOT__/catalogs/test_import_aux';
+COMMENT ON CATALOG test_import_fixture IS 'Schematic live import fixture catalog';
+COMMENT ON CATALOG test_import_aux IS 'Schematic live import auxiliary catalog';
 
 ALTER CATALOG test_import_fixture SET TAGS (
   'sf_fixture' = 'schematic-import',
@@ -40,6 +42,9 @@ CREATE SCHEMA IF NOT EXISTS test_import_fixture.staging
 MANAGED LOCATION '__MANAGED_ROOT__/schemas/test_import_fixture/staging';
 CREATE SCHEMA IF NOT EXISTS test_import_aux.aux
 MANAGED LOCATION '__MANAGED_ROOT__/schemas/test_import_aux/aux';
+COMMENT ON SCHEMA test_import_fixture.core IS 'Core schema for fixture entities';
+COMMENT ON SCHEMA test_import_fixture.analytics IS 'Analytics schema for fixture views';
+COMMENT ON SCHEMA test_import_fixture.staging IS 'Staging schema for fixture landing objects';
 
 ALTER SCHEMA test_import_fixture.core SET TAGS (
   'sf_domain' = 'commerce',
@@ -97,12 +102,15 @@ CREATE OR REPLACE TABLE test_import_fixture.core.orders (
     REFERENCES test_import_fixture.core.users(user_id)
 )
 USING DELTA
+PARTITIONED BY (order_date)
 COMMENT 'Order fact table'
 TBLPROPERTIES (
   'quality' = 'silver',
   'sensitivity' = 'medium',
   'ingestion_mode' = 'batch'
 );
+ALTER TABLE test_import_fixture.core.orders
+ADD CONSTRAINT chk_order_amount_non_negative CHECK (order_amount >= 0);
 
 ALTER TABLE test_import_fixture.core.orders SET TAGS (
   'sf_entity' = 'order',
@@ -111,6 +119,20 @@ ALTER TABLE test_import_fixture.core.orders SET TAGS (
 
 ALTER TABLE test_import_fixture.core.orders ALTER COLUMN order_amount SET TAGS (
   'sf_metric' = 'revenue'
+);
+
+CREATE OR REPLACE TABLE test_import_fixture.core.orders_clustered (
+  order_id BIGINT NOT NULL,
+  status STRING,
+  order_amount DECIMAL(12,2),
+  PRIMARY KEY (order_id)
+)
+USING DELTA
+CLUSTER BY (status)
+COMMENT 'Orders table with liquid clustering for import metadata coverage'
+TBLPROPERTIES (
+  'quality' = 'silver',
+  'fixture' = 'clustered'
 );
 
 CREATE OR REPLACE TABLE test_import_fixture.staging.events_raw (
@@ -184,6 +206,10 @@ JOIN test_import_fixture.core.users u
 ALTER VIEW test_import_fixture.analytics.v_orders_enriched SET TBLPROPERTIES (
   'comment' = 'Orders enriched with user attributes'
 );
+ALTER VIEW test_import_fixture.analytics.v_orders_enriched SET TAGS (
+  'sf_consumer' = 'bi',
+  'sf_purpose' = 'semantic'
+);
 
 CREATE OR REPLACE VIEW test_import_fixture.analytics.v_orders_by_country AS
 SELECT
@@ -197,6 +223,10 @@ GROUP BY u.country_code;
 
 ALTER VIEW test_import_fixture.analytics.v_orders_by_country SET TBLPROPERTIES (
   'comment' = 'Country-level aggregate of orders'
+);
+ALTER VIEW test_import_fixture.analytics.v_orders_by_country SET TAGS (
+  'sf_consumer' = 'finance',
+  'sf_purpose' = 'aggregation'
 );
 
 -- Minimal seed rows (optional for smoke checks; not required for import metadata).

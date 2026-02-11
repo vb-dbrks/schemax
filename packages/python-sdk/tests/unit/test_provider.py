@@ -582,6 +582,243 @@ class TestUnityProvider:
         assert event_id_col["tags"] == {"classification": "public"}
         assert payload_col["tags"] == {}
 
+    def test_discover_state_imports_catalog_schema_view_and_check_metadata(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+
+        def _execute_statement(warehouse_id: str, statement: str, wait_timeout: str):
+            del warehouse_id, wait_timeout
+            normalized = " ".join(statement.strip().split())
+            if normalized.startswith("SELECT catalog_name FROM system.information_schema.catalogs"):
+                return self._mock_query_response(["catalog_name"], [["main"]])
+            if normalized.startswith(
+                "SELECT catalog_name, comment FROM system.information_schema.catalogs"
+            ):
+                return self._mock_query_response(
+                    ["catalog_name", "comment"], [["main", "Main catalog comment"]]
+                )
+            if "FROM system.information_schema.catalog_tags" in normalized:
+                return self._mock_query_response(
+                    ["catalog_name", "tag_name", "tag_value"],
+                    [["main", "domain", "core"]],
+                )
+            if normalized.startswith("SELECT schema_name FROM system.information_schema.schemata"):
+                return self._mock_query_response(["schema_name"], [["analytics"]])
+            if normalized.startswith(
+                "SELECT schema_name, comment FROM system.information_schema.schemata"
+            ):
+                return self._mock_query_response(
+                    ["schema_name", "comment"], [["analytics", "Analytics schema comment"]]
+                )
+            if "FROM system.information_schema.schema_tags" in normalized:
+                return self._mock_query_response(
+                    ["schema_name", "tag_name", "tag_value"],
+                    [["analytics", "tier", "gold"]],
+                )
+            if "FROM system.information_schema.tables" in normalized:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "table_type",
+                        "comment",
+                        "data_source_format",
+                        "storage_path",
+                    ],
+                    [
+                        ["users", "BASE TABLE", "users table", "DELTA", None],
+                        ["active_users", "VIEW", "active users view", None, None],
+                    ],
+                )
+            if "FROM system.information_schema.views" in normalized:
+                return self._mock_query_response(
+                    ["table_name", "view_definition", "is_materialized"],
+                    [["active_users", "SELECT user_id FROM main.analytics.users", "NO"]],
+                )
+            if "FROM system.information_schema.columns" in normalized:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "column_name",
+                        "data_type",
+                        "is_nullable",
+                        "comment",
+                        "ordinal_position",
+                    ],
+                    [["users", "user_id", "BIGINT", "NO", None, "1"]],
+                )
+            if "FROM system.information_schema.table_tags" in normalized:
+                return self._mock_query_response(
+                    ["table_name", "tag_name", "tag_value"],
+                    [["active_users", "consumer", "bi"]],
+                )
+            if "FROM system.information_schema.column_tags" in normalized:
+                return self._mock_query_response(
+                    ["table_name", "column_name", "tag_name", "tag_value"],
+                    [],
+                )
+            if "AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')" in normalized:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "constraint_name",
+                        "constraint_type",
+                        "child_column_name",
+                        "child_ordinal_position",
+                        "parent_table_name",
+                        "parent_column_name",
+                        "parent_ordinal_position",
+                        "update_rule",
+                        "delete_rule",
+                    ],
+                    [],
+                )
+            if "information_schema.check_constraints" in normalized:
+                return self._mock_query_response(
+                    ["table_name", "constraint_name", "check_clause"],
+                    [["users", "ck_user_id_positive", "(user_id > 0)"]],
+                )
+            if normalized == "SHOW TBLPROPERTIES `main`.`analytics`.`users`":
+                return self._mock_query_response(["key", "value"], [["quality", "gold"]])
+            if normalized == "SHOW TBLPROPERTIES `main`.`analytics`.`active_users`":
+                return self._mock_query_response(["key", "value"], [["comment", "View comment"]])
+            if normalized == "DESCRIBE DETAIL `main`.`analytics`.`users`":
+                return self._mock_query_response(
+                    ["format", "location", "partitionColumns", "clusteringColumns"],
+                    [
+                        [
+                            "delta",
+                            "abfss://test@storage/path/users",
+                            '["user_id"]',
+                            '["user_id"]',
+                        ]
+                    ],
+                )
+            raise AssertionError(f"Unexpected query: {statement}")
+
+        mock_client.statement_execution.execute_statement = _execute_statement
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+            state = unity_provider.discover_state(
+                config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
+                scope={"catalog": "main", "schema": "analytics"},
+            )
+
+        catalog = state["catalogs"][0]
+        schema = catalog["schemas"][0]
+        table = schema["tables"][0]
+        view = schema["views"][0]
+
+        assert catalog["comment"] == "Main catalog comment"
+        assert catalog["tags"] == {"domain": "core"}
+        assert schema["comment"] == "Analytics schema comment"
+        assert schema["tags"] == {"tier": "gold"}
+
+        assert table["partitionColumns"] == ["user_id"]
+        assert table["clusterColumns"] == ["user_id"]
+        check_constraints = [c for c in table["constraints"] if c["type"] == "check"]
+        assert len(check_constraints) == 1
+        assert check_constraints[0]["expression"] == "(user_id > 0)"
+
+        assert view["definition"] == "SELECT user_id FROM main.analytics.users"
+        assert view["comment"] == "active users view"
+        assert view["tags"] == {"consumer": "bi"}
+        assert view["properties"] == {"comment": "View comment"}
+        assert view["extractedDependencies"] is not None
+        assert "main.analytics.users" in view["extractedDependencies"]["all"]
+
+    def test_discover_state_imports_check_constraints_from_delta_properties(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+
+        def _execute_statement(warehouse_id: str, statement: str, wait_timeout: str):
+            del warehouse_id, wait_timeout
+            if "information_schema.catalogs" in statement:
+                return self._mock_query_response(["catalog_name"], [["main"]])
+            if "information_schema.schemata" in statement:
+                return self._mock_query_response(["schema_name"], [["analytics"]])
+            if "information_schema.tables" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "table_type",
+                        "comment",
+                        "data_source_format",
+                        "storage_path",
+                    ],
+                    [["orders", "BASE TABLE", "orders table", "DELTA", None]],
+                )
+            if "information_schema.columns" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "column_name",
+                        "data_type",
+                        "is_nullable",
+                        "comment",
+                        "ordinal_position",
+                    ],
+                    [
+                        ["orders", "order_id", "BIGINT", "NO", None, "1"],
+                        ["orders", "order_amount", "DECIMAL(12,2)", "YES", None, "2"],
+                    ],
+                )
+            if "information_schema.table_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "tag_name", "tag_value"],
+                    [],
+                )
+            if "information_schema.column_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "column_name", "tag_name", "tag_value"],
+                    [],
+                )
+            if "AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY')" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "constraint_name",
+                        "constraint_type",
+                        "child_column_name",
+                        "child_ordinal_position",
+                        "parent_table_name",
+                        "parent_column_name",
+                        "parent_ordinal_position",
+                        "update_rule",
+                        "delete_rule",
+                    ],
+                    [],
+                )
+            if "information_schema.check_constraints" in statement:
+                return self._mock_query_response(
+                    ["table_name", "constraint_name", "check_clause"],
+                    [],
+                )
+            if statement.strip() == "SHOW TBLPROPERTIES `main`.`analytics`.`orders`":
+                return self._mock_query_response(
+                    ["key", "value"],
+                    [["delta.constraints.chk_order_amount_non_negative", "order_amount >= 0"]],
+                )
+            if statement.strip() == "DESCRIBE DETAIL `main`.`analytics`.`orders`":
+                return self._mock_query_response(
+                    ["format", "location", "partitionColumns", "clusteringColumns"],
+                    [["delta", None, "[]", "[]"]],
+                )
+            raise AssertionError(f"Unexpected query: {statement}")
+
+        mock_client.statement_execution.execute_statement = _execute_statement
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+            state = unity_provider.discover_state(
+                config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
+                scope={"catalog": "main", "schema": "analytics"},
+            )
+
+        table = state["catalogs"][0]["schemas"][0]["tables"][0]
+        check_constraints = [c for c in table["constraints"] if c["type"] == "check"]
+        assert len(check_constraints) == 1
+        assert check_constraints[0]["name"] == "chk_order_amount_non_negative"
+        assert check_constraints[0]["expression"] == "order_amount >= 0"
+
     def test_discover_state_raises_on_failed_query(self, unity_provider):
         mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
         mock_client.statement_execution.execute_statement = lambda **_: self._mock_query_response(
