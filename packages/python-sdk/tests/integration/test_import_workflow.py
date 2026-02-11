@@ -60,9 +60,10 @@ class _FakeDeploymentTracker:
 
 
 @pytest.mark.integration
-def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, temp_workspace):
-    ensure_project_file(temp_workspace, provider_id="unity")
-    state, _, _, _ = load_current_state(temp_workspace, validate=False)
+def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, schematic_demo_workspace):
+    # Ensure fixture is initialized correctly if test data is refreshed manually.
+    ensure_project_file(schematic_demo_workspace, provider_id="unity")
+    state, _, _, _ = load_current_state(schematic_demo_workspace, validate=False)
 
     provider = ProviderRegistry.get("unity")
     assert provider is not None
@@ -84,7 +85,7 @@ def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, temp_workspa
     monkeypatch.setattr("schematic.commands.apply.DeploymentTracker", _FakeDeploymentTracker)
 
     summary = import_from_provider(
-        workspace=temp_workspace,
+        workspace=schematic_demo_workspace,
         target_env="dev",
         profile="",
         warehouse_id="wh_123",
@@ -97,7 +98,7 @@ def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, temp_workspa
     assert summary["deployment_id"].startswith("deploy_import_")
 
     result = apply_to_environment(
-        workspace=temp_workspace,
+        workspace=schematic_demo_workspace,
         target_env="dev",
         profile="",
         warehouse_id="wh_123",

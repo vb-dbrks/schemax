@@ -1,4 +1,6 @@
 from datetime import UTC, datetime
+from pathlib import Path
+from shutil import copytree
 
 import pytest
 
@@ -26,6 +28,28 @@ def temp_workspace(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     return workspace
+
+
+@pytest.fixture
+def resource_workspace(tmp_path):
+    """Factory fixture that copies a checked-in resource project to a temp workspace."""
+
+    def _load(project_name: str) -> Path:
+        resources_root = Path(__file__).parent / "resources" / "projects"
+        source = resources_root / project_name
+        if not source.exists():
+            raise FileNotFoundError(f"Test resource project not found: {source}")
+        destination = tmp_path / project_name
+        copytree(source, destination)
+        return destination
+
+    return _load
+
+
+@pytest.fixture
+def schematic_demo_workspace(resource_workspace):
+    """Workspace loaded from tests/resources/projects/schematic_demo."""
+    return resource_workspace("schematic_demo")
 
 
 @pytest.fixture
