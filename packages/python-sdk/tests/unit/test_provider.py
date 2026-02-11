@@ -487,6 +487,101 @@ class TestUnityProvider:
             "tbl", "main", "analytics", "users"
         )
 
+    def test_discover_state_imports_column_tags_and_external_table_metadata(self, unity_provider):
+        mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
+
+        def _execute_statement(warehouse_id: str, statement: str, wait_timeout: str):
+            del warehouse_id, wait_timeout
+            if "information_schema.catalogs" in statement:
+                return self._mock_query_response(["catalog_name"], [["main"]])
+            if "information_schema.schemata" in statement:
+                return self._mock_query_response(["schema_name"], [["analytics"]])
+            if "information_schema.tables" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "table_type",
+                        "comment",
+                        "data_source_format",
+                        "storage_path",
+                    ],
+                    [
+                        [
+                            "events_ext",
+                            "EXTERNAL",
+                            "external events",
+                            "DELTA",
+                            "abfss://bucket/path",
+                        ],
+                    ],
+                )
+            if "information_schema.columns" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "column_name",
+                        "data_type",
+                        "is_nullable",
+                        "comment",
+                        "ordinal_position",
+                    ],
+                    [
+                        ["events_ext", "event_id", "STRING", "NO", None, "1"],
+                        ["events_ext", "payload", "STRING", "YES", None, "2"],
+                    ],
+                )
+            if "information_schema.table_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "tag_name", "tag_value"],
+                    [["events_ext", "layer", "bronze"]],
+                )
+            if "information_schema.column_tags" in statement:
+                return self._mock_query_response(
+                    ["table_name", "column_name", "tag_name", "tag_value"],
+                    [["events_ext", "event_id", "classification", "public"]],
+                )
+            if "information_schema.table_constraints" in statement:
+                return self._mock_query_response(
+                    [
+                        "table_name",
+                        "constraint_name",
+                        "constraint_type",
+                        "child_column_name",
+                        "child_ordinal_position",
+                        "parent_table_name",
+                        "parent_column_name",
+                        "parent_ordinal_position",
+                        "update_rule",
+                        "delete_rule",
+                    ],
+                    [],
+                )
+            if statement.strip() == "SHOW TBLPROPERTIES `main`.`analytics`.`events_ext`":
+                return self._mock_query_response(["key", "value"], [["quality", "bronze"]])
+            raise AssertionError(f"Unexpected query: {statement}")
+
+        mock_client.statement_execution.execute_statement = _execute_statement
+
+        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+            mock_factory.return_value = mock_client
+            state = unity_provider.discover_state(
+                config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
+                scope={"catalog": "main", "schema": "analytics"},
+            )
+
+        table = state["catalogs"][0]["schemas"][0]["tables"][0]
+        assert table["name"] == "events_ext"
+        assert table["format"] == "delta"
+        assert table["external"] is True
+        assert table["path"] == "abfss://bucket/path"
+        assert table["tags"] == {"layer": "bronze"}
+        assert table["properties"] == {"quality": "bronze"}
+
+        event_id_col = next(col for col in table["columns"] if col["name"] == "event_id")
+        payload_col = next(col for col in table["columns"] if col["name"] == "payload")
+        assert event_id_col["tags"] == {"classification": "public"}
+        assert payload_col["tags"] == {}
+
     def test_discover_state_raises_on_failed_query(self, unity_provider):
         mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
         mock_client.statement_execution.execute_statement = lambda **_: self._mock_query_response(

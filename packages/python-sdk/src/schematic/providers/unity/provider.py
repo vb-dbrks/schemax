@@ -286,6 +286,8 @@ class UnityProvider(BaseProvider):
     ) -> ProviderState:
         """Discover live Unity Catalog state for import workflows."""
         self._last_import_warnings = []
+        # Reset per-run cached clients to avoid cross-run leakage.
+        self._import_thread_local = threading.local()
         client = create_databricks_client(config.profile)
         scope = scope or {}
 
@@ -317,6 +319,13 @@ class UnityProvider(BaseProvider):
                     table_filter,
                 )
                 tags_by_table = self._fetch_table_tags(
+                    client,
+                    config.warehouse_id,
+                    catalog_name,
+                    schema_name,
+                    table_filter,
+                )
+                column_tags_by_table = self._fetch_column_tags(
                     client,
                     config.warehouse_id,
                     catalog_name,
@@ -376,6 +385,7 @@ class UnityProvider(BaseProvider):
                         continue
 
                     column_rows = columns_by_table.get(table_name, [])
+                    column_tags = column_tags_by_table.get(table_name, {})
                     columns: list[dict[str, Any]] = []
                     column_id_by_name: dict[str, str] = {}
                     for col in column_rows:
@@ -392,13 +402,30 @@ class UnityProvider(BaseProvider):
                                 "type": col_type,
                                 "nullable": nullable,
                                 "comment": col.get("comment"),
-                                "tags": {},
+                                "tags": column_tags.get(col_name, {}),
                                 "maskId": None,
                             }
                         )
                         column_id_by_name[col_name] = col_id
 
                     properties = properties_by_table.get(table_name, {})
+                    data_source_format = str(
+                        row.get("data_source_format") or row.get("DATA_SOURCE_FORMAT") or "DELTA"
+                    ).lower()
+                    if data_source_format not in {"delta", "iceberg"}:
+                        self._last_import_warnings.append(
+                            "Unsupported Unity table format discovered during import and skipped: "
+                            f"{catalog_name}.{schema_name}.{table_name} ({data_source_format})."
+                        )
+                        continue
+                    storage_path = row.get("storage_path")
+                    if storage_path is None:
+                        storage_path = row.get("STORAGE_PATH")
+                    table_external: bool | None = None
+                    if table_kind in {"EXTERNAL"}:
+                        table_external = True
+                    elif table_kind in {"MANAGED", "BASE TABLE", "BASE_TABLE"}:
+                        table_external = False
                     constraints = self._build_table_constraints(
                         catalog_name,
                         schema_name,
@@ -411,10 +438,10 @@ class UnityProvider(BaseProvider):
                         {
                             "id": self._stable_id("tbl", catalog_name, schema_name, table_name),
                             "name": table_name,
-                            "format": "delta",
-                            "external": None,
+                            "format": data_source_format,
+                            "external": table_external,
                             "externalLocationName": None,
-                            "path": None,
+                            "path": None if storage_path is None else str(storage_path),
                             "partitionColumns": None,
                             "clusterColumns": None,
                             "columnMapping": None,
@@ -688,7 +715,7 @@ class UnityProvider(BaseProvider):
         cat = catalog_name.replace("'", "''")
         sch = schema_name.replace("'", "''")
         sql = (
-            "SELECT table_name, table_type, comment "
+            "SELECT table_name, table_type, comment, data_source_format, storage_path "
             "FROM system.information_schema.tables "
             f"WHERE table_catalog = '{cat}' "
             f"AND table_schema = '{sch}'"
@@ -787,6 +814,70 @@ class UnityProvider(BaseProvider):
             if tag_value is None:
                 tag_value = row.get("TAG_VALUE")
             grouped.setdefault(table_name, {})[tag_name] = (
+                "" if tag_value is None else str(tag_value)
+            )
+        return grouped
+
+    def _fetch_column_tags(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+        table_filter: str | None,
+    ) -> dict[str, dict[str, dict[str, str]]]:
+        cat = catalog_name.replace("'", "''")
+        sch = schema_name.replace("'", "''")
+        sql_primary = (
+            "SELECT table_name, column_name, tag_name, tag_value "
+            "FROM system.information_schema.column_tags "
+            f"WHERE catalog_name = '{cat}' "
+            f"AND schema_name = '{sch}'"
+        )
+        sql_fallback = (
+            "SELECT table_name, column_name, tag_name, tag_value "
+            "FROM system.information_schema.column_tags "
+            f"WHERE table_catalog = '{cat}' "
+            f"AND table_schema = '{sch}'"
+        )
+        if table_filter:
+            tbl = table_filter.replace("'", "''")
+            sql_primary += f" AND table_name = '{tbl}'"
+            sql_fallback += f" AND table_name = '{tbl}'"
+        sql_primary += " ORDER BY table_name, column_name, tag_name"
+        sql_fallback += " ORDER BY table_name, column_name, tag_name"
+
+        rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql_primary,
+            warning=(
+                "Could not discover Unity column tags from information_schema.column_tags; "
+                "retrying with alternate column names."
+            ),
+        )
+        if not rows:
+            rows = self._execute_query_optional(
+                client,
+                warehouse_id,
+                sql_fallback,
+                warning=(
+                    "Could not discover Unity column tags from information_schema.column_tags; "
+                    "continuing without column tags."
+                ),
+            )
+
+        grouped: dict[str, dict[str, dict[str, str]]] = {}
+        for row in rows:
+            table_name = str(row.get("table_name") or row.get("TABLE_NAME") or "")
+            column_name = str(row.get("column_name") or row.get("COLUMN_NAME") or "")
+            tag_name = str(row.get("tag_name") or row.get("TAG_NAME") or "")
+            if not table_name or not column_name or not tag_name:
+                continue
+            tag_value = row.get("tag_value")
+            if tag_value is None:
+                tag_value = row.get("TAG_VALUE")
+            grouped.setdefault(table_name, {}).setdefault(column_name, {})[tag_name] = (
                 "" if tag_value is None else str(tag_value)
             )
         return grouped
@@ -1260,7 +1351,7 @@ class UnityProvider(BaseProvider):
     ) -> list[dict[str, Any]]:
         try:
             return self._execute_query(client, warehouse_id, sql)
-        except RuntimeError:
+        except Exception:
             self._last_import_warnings.append(warning)
             return []
 
