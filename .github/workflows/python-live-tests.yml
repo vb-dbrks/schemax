@@ -1,0 +1,42 @@
+name: Python Live Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+jobs:
+  live-tests:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'run-live-python-tests')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        working-directory: packages/python-sdk
+        run: uv sync --all-extras
+
+      - name: Run live command matrix tests
+        working-directory: packages/python-sdk
+        env:
+          SCHEMATIC_RUN_LIVE_COMMAND_TESTS: '1'
+          SCHEMATIC_RUN_LIVE_IMPORT_TESTS: '1'
+          DATABRICKS_PROFILE: ${{ secrets.DATABRICKS_PROFILE }}
+          DATABRICKS_WAREHOUSE_ID: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+          DATABRICKS_MANAGED_LOCATION: ${{ secrets.DATABRICKS_MANAGED_LOCATION }}
+          SCHEMATIC_LIVE_RESOURCE_PREFIX: schematic_live_ci
+          SCHEMATIC_LIVE_TEST_TIMEOUT_SECONDS: '300'
+        run: |
+          uv run pytest tests/integration/test_live_command_matrix.py -v
+          uv run pytest tests/integration/test_import_live_databricks.py -v

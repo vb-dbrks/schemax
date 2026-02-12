@@ -339,7 +339,7 @@ export class DependencyGraph {
   /**
    * Extract target object ID from operation
    */
-  private getTargetObjectId(op: Operation): string | null {
+  private readonly getTargetObjectId = (op: Operation): string | null => {
     // Most operations have a target field
     if (op.target) {
       return op.target;
@@ -355,6 +355,5 @@ export class DependencyGraph {
     }
 
     return null;
-  }
+  };
 }
-
