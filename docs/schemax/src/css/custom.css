@@ -3,6 +3,17 @@
  * Infima is bundled by the classic template.
  */
 
+/* Navbar logo: compact size and alignment */
+.navbar__logo {
+  height: 32px;
+  width: auto;
+  margin-right: 0.5rem;
+}
+
+.navbar__brand {
+  align-items: center;
+}
+
 .header-github-link::before {
   content: '';
   width: 24px;

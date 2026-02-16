@@ -59,7 +59,7 @@ const config: Config = {
       title: 'SchemaX',
       logo: {
         alt: 'SchemaX',
-        src: 'img/schemax_logo.svg',
+        src: 'img/schemax_favicon.svg',
       },
       items: [
         {
@@ -81,7 +81,7 @@ const config: Config = {
           items: [
             {
               label: 'Python SDK (PyPI)',
-              href: 'https://pypi.org/project/schemax-py/',
+              href: 'https://pypi.org/project/schemaxpy/',
             },
             {
               label: 'VS Code Extension (Marketplace)',
