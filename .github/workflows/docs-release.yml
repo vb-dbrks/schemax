@@ -1,13 +1,17 @@
-# Build and deploy Docusaurus docs to GitHub Pages (same pattern as DQX).
+# Build and deploy Docusaurus docs to GitHub Pages.
 # Enable in repo: Settings → Pages → Source: GitHub Actions.
-# Runs on: version tags (v1.2.3), or manually via Actions → Docs Release → Run workflow.
+# Runs on: push to main (when docs change), or manually via Actions → Docs Release → Run workflow.
+# Note: If github-pages environment has protection rules, allow branch "main" for deployments.
 
 name: Docs Release
 
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+    branches:
+      - main
+    paths:
+      - 'docs/schemax/**'
+      - '.github/workflows/docs-release.yml'
   workflow_dispatch:
 
 jobs:

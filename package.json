@@ -12,9 +12,10 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "build:extension": "npm run build -w vscode-extension",
+    "build:extension": "npm run build -w schemax-vscode",
+    "deploy:extension": "npm run build -w schemax-vscode && npm run deploy -w schemax-vscode",
     "build:all": "npm run build --workspaces --if-present",
-    "dev:extension": "npm run watch -w vscode-extension",
+    "dev:extension": "npm run watch -w schemax-vscode",
     "test": "npm run test --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present && rm -rf node_modules"
   },
