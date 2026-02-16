@@ -15,6 +15,7 @@ import {
   UnityConstraint,
   UnityRowFilter,
   UnityColumnMask,
+  UnityGrant,
   UnityView,
 } from './models';
 import { UNITY_OPERATIONS } from './operations';
@@ -39,6 +40,7 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         comment: op.payload.comment,
         tags: op.payload.tags || {},
         schemas: [],
+        grants: [],
       };
       newState.catalogs.push(catalog);
       break;
@@ -82,6 +84,7 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
           tags: op.payload.tags || {},
           tables: [],
           views: [],
+          grants: [],
         };
         catalog.schemas.push(schema);
       }
@@ -184,6 +187,7 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
             extractedDependencies: op.payload.extractedDependencies,
             tags: {},
             properties: {},
+            grants: [],
           };
           if (!schema.views) {
             schema.views = [];
@@ -476,8 +480,40 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
       }
       break;
     }
+
+    // Grant operations
+    case 'add_grant': {
+      const { targetType, targetId, principal, privileges = [] } = op.payload;
+      if (!targetType || !targetId || principal == null) break;
+      const obj = findGrantTarget(newState, targetType, targetId);
+      if (obj && obj.grants) {
+        const grant: UnityGrant = { principal, privileges: [...privileges] };
+        const existing = obj.grants.filter(g => g.principal !== principal);
+        existing.push(grant);
+        obj.grants = existing;
+      }
+      break;
+    }
+    case 'revoke_grant': {
+      const { targetType, targetId, principal, privileges: privilegesToRemove } = op.payload;
+      if (!targetType || !targetId || principal == null) break;
+      const obj = findGrantTarget(newState, targetType, targetId);
+      if (obj && obj.grants) {
+        if (privilegesToRemove == null || privilegesToRemove.length === 0) {
+          obj.grants = obj.grants.filter(g => g.principal !== principal);
+        } else {
+          const setRemove = new Set(privilegesToRemove);
+          obj.grants = obj.grants.flatMap(g => {
+            if (g.principal !== principal) return [g];
+            const remaining = g.privileges.filter(p => !setRemove.has(p));
+            return remaining.length ? [{ principal: g.principal, privileges: remaining }] : [];
+          });
+        }
+      }
+      break;
+    }
   }
-  
+
   return newState;
 }
 
@@ -517,6 +553,31 @@ function findView(state: UnityState, viewId: string): UnityView | undefined {
       }
     }
   }
+  return undefined;
+}
+
+type GrantTarget = UnityCatalog | UnitySchema | UnityTable | UnityView;
+
+/**
+ * Find a securable object by type and ID for grant operations
+ */
+function findGrantTarget(
+  state: UnityState,
+  targetType: string,
+  targetId: string
+): GrantTarget | undefined {
+  if (targetType === 'catalog') {
+    return state.catalogs.find(c => c.id === targetId);
+  }
+  if (targetType === 'schema') {
+    for (const catalog of state.catalogs) {
+      const schema = catalog.schemas.find(s => s.id === targetId);
+      if (schema) return schema;
+    }
+    return undefined;
+  }
+  if (targetType === 'table') return findTable(state, targetId);
+  if (targetType === 'view') return findView(state, targetId);
   return undefined;
 }
 

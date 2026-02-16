@@ -59,6 +59,9 @@ UNITY_OPERATIONS = {
     "ADD_COLUMN_MASK": "unity.add_column_mask",
     "UPDATE_COLUMN_MASK": "unity.update_column_mask",
     "REMOVE_COLUMN_MASK": "unity.remove_column_mask",
+    # Grant operations
+    "ADD_GRANT": "unity.add_grant",
+    "REVOKE_GRANT": "unity.revoke_grant",
 }
 
 # Export operation metadata for UI and validation
@@ -451,5 +454,24 @@ unity_operation_metadata = [
         required_fields=["tableId"],
         optional_fields=[],
         is_destructive=True,
+    ),
+    # Grant operations
+    OperationMetadata(
+        type=UNITY_OPERATIONS["ADD_GRANT"],
+        display_name="Add Grant",
+        description="Grant privileges on a catalog, schema, table, or view to a principal",
+        category=OperationCategory.SECURITY,
+        required_fields=["targetType", "targetId", "principal", "privileges"],
+        optional_fields=[],
+        is_destructive=False,
+    ),
+    OperationMetadata(
+        type=UNITY_OPERATIONS["REVOKE_GRANT"],
+        display_name="Revoke Grant",
+        description="Revoke privileges from a principal on a catalog, schema, table, or view",
+        category=OperationCategory.SECURITY,
+        required_fields=["targetType", "targetId", "principal"],
+        optional_fields=["privileges"],
+        is_destructive=False,
     ),
 ]

@@ -918,6 +918,59 @@ class TestColumnMaskSQL:
         assert "DROP MASK" in result.sql
 
 
+class TestGrantSQL:
+    """Test SQL generation for grant operations (add_grant, revoke_grant)"""
+
+    def test_add_grant_on_catalog(self, sample_unity_state, assert_sql):
+        """Test GRANT on CATALOG SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_grant(
+            "catalog", "cat_123", "data_engineers", ["USE CATALOG", "CREATE SCHEMA"], op_id="op_g1"
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "GRANT" in result.sql
+        assert "ON CATALOG" in result.sql
+        assert "TO" in result.sql
+        assert "data_engineers" in result.sql or "`data_engineers`" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_grant_on_table(self, sample_unity_state, assert_sql):
+        """Test GRANT on TABLE SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_grant("table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g2")
+        result = generator.generate_sql_for_operation(op)
+        assert "GRANT" in result.sql
+        assert "ON TABLE" in result.sql
+        assert "TO" in result.sql
+        assert_sql(result.sql)
+
+    def test_revoke_grant_all(self, sample_unity_state, assert_sql):
+        """Test REVOKE ALL PRIVILEGES SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.revoke_grant("table", "table_789", "analysts", privileges=None, op_id="op_g3")
+        result = generator.generate_sql_for_operation(op)
+        assert "REVOKE" in result.sql
+        assert "ALL PRIVILEGES" in result.sql
+        assert "FROM" in result.sql
+        assert_sql(result.sql)
+
+    def test_revoke_grant_partial(self, sample_unity_state, assert_sql):
+        """Test REVOKE specific privileges SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.revoke_grant(
+            "schema", "schema_456", "analysts", privileges=["CREATE TABLE"], op_id="op_g4"
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "REVOKE" in result.sql
+        assert "ON SCHEMA" in result.sql
+        assert "FROM" in result.sql
+        assert_sql(result.sql)
+
+
 class TestViewSQL:
     """Test SQL generation for view operations and view dependencies"""
 

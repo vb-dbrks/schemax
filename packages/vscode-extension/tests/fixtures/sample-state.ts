@@ -10,6 +10,7 @@ export const sampleStateWithCatalog: UnityState = {
       id: 'cat_001',
       name: '__implicit__',
       schemas: [],
+      grants: [],
     },
   ],
 };
@@ -25,8 +26,10 @@ export const sampleStateWithSchema: UnityState = {
           name: 'test_schema',
           catalogId: 'cat_001',
           tables: [],
+          grants: [],
         },
       ],
+      grants: [],
     },
   ],
 };
@@ -41,6 +44,7 @@ export const sampleStateWithTable: UnityState = {
           id: 'schema_001',
           name: 'test_schema',
           catalogId: 'cat_001',
+          grants: [],
           tables: [
             {
               id: 'table_001',
@@ -69,6 +73,7 @@ export const sampleStateWithTable: UnityState = {
           ],
         },
       ],
+      grants: [],
     },
   ],
 };
@@ -78,11 +83,13 @@ export const sampleStateWithConstraints: UnityState = {
     {
       id: 'cat_001',
       name: '__implicit__',
+      grants: [],
       schemas: [
         {
           id: 'schema_001',
           name: 'test_schema',
           catalogId: 'cat_001',
+          grants: [],
           tables: [
             {
               id: 'table_001',
@@ -117,6 +124,7 @@ export const sampleStateWithConstraints: UnityState = {
           ],
         },
       ],
+      grants: [],
     },
   ],
 };

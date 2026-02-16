@@ -1071,9 +1071,9 @@ class TestOperationMetadata:
         # Verify all Unity operations have metadata
         unity_ops = [op for op in caps.supported_operations if op.startswith("unity.")]
 
-        assert len(unity_ops) == 40  # All 40 Unity operations (4+4+6+7+7+2+2+2+3+3)
-        # 4 catalog (add, rename, update, drop), 4 schema (add, rename, update, drop)
-        # 6 table, 7 column, 7 view, 2 constraint, 2 tag, 2 row filter, 3 column mask, 3 property
+        assert len(unity_ops) == 42  # All 42 Unity operations (4+4+6+7+7+2+2+2+3+3+2)
+        # 4 catalog, 4 schema, 6 table, 7 column, 7 view, 2 constraint, 2 tag, 2 row filter,
+        # 3 column mask, 3 property, 2 grant (add_grant, revoke_grant)
 
 
 class TestProviderIntegration:

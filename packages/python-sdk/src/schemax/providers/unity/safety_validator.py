@@ -62,6 +62,9 @@ class SafetyValidator:
             return self._validate_drop_column(op, catalog_mapping)
         elif op_type == UNITY_OPERATIONS["CHANGE_COLUMN_TYPE"]:
             return self._validate_change_column_type(op, catalog_mapping)
+        elif op_type in (UNITY_OPERATIONS["ADD_GRANT"], UNITY_OPERATIONS["REVOKE_GRANT"]):
+            # Grant operations are non-destructive (permission changes only)
+            return self._safe_operation(op)
         else:
             # Non-destructive operations (renames, comments, tags, etc.)
             return self._safe_operation(op)

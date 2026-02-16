@@ -68,6 +68,10 @@ export const UNITY_OPERATIONS = {
   ADD_COLUMN_MASK: 'unity.add_column_mask',
   UPDATE_COLUMN_MASK: 'unity.update_column_mask',
   REMOVE_COLUMN_MASK: 'unity.remove_column_mask',
+
+  // Grant operations
+  ADD_GRANT: 'unity.add_grant',
+  REVOKE_GRANT: 'unity.revoke_grant',
 } as const;
 
 // Export operation metadata for UI and validation
@@ -450,6 +454,26 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId'],
     optionalFields: [],
     isDestructive: true,
+  },
+
+  // Grant operations
+  {
+    type: UNITY_OPERATIONS.ADD_GRANT,
+    displayName: 'Add Grant',
+    description: 'Grant privileges on a catalog, schema, table, or view to a principal',
+    category: OperationCategory.Security,
+    requiredFields: ['targetType', 'targetId', 'principal', 'privileges'],
+    optionalFields: [],
+    isDestructive: false,
+  },
+  {
+    type: UNITY_OPERATIONS.REVOKE_GRANT,
+    displayName: 'Revoke Grant',
+    description: 'Revoke privileges from a principal on a catalog, schema, table, or view',
+    category: OperationCategory.Security,
+    requiredFields: ['targetType', 'targetId', 'principal'],
+    optionalFields: ['privileges'],
+    isDestructive: false,
   },
 ];
 

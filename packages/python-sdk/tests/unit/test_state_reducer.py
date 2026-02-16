@@ -10,6 +10,7 @@ Tests all 31 Unity Catalog operations:
 - Constraints (2): add, drop
 - Row filters (3): add, update, remove
 - Column masks (3): add, update, remove
+- Grants (2): add_grant, revoke_grant
 """
 
 from schemax.providers.base.operations import Operation
@@ -487,6 +488,74 @@ class TestRowFilterOperations:
 
         table = new_state.catalogs[0].schemas[0].tables[0]
         assert table.row_filters == [] or table.row_filters is None
+
+
+class TestGrantOperations:
+    """Test grant operations (add_grant, revoke_grant)"""
+
+    def test_add_grant_on_catalog(self, sample_unity_state):
+        """Test adding a grant on a catalog"""
+        builder = OperationBuilder()
+        op = builder.add_grant(
+            "catalog",
+            "cat_123",
+            "data_engineers",
+            ["USE CATALOG", "CREATE SCHEMA"],
+            op_id="op_grant_001",
+        )
+        new_state = apply_operation(sample_unity_state, op)
+        catalog = new_state.catalogs[0]
+        assert len(catalog.grants) == 1
+        assert catalog.grants[0].principal == "data_engineers"
+        assert set(catalog.grants[0].privileges) == {"USE CATALOG", "CREATE SCHEMA"}
+
+    def test_add_grant_on_table(self, sample_unity_state):
+        """Test adding a grant on a table"""
+        builder = OperationBuilder()
+        op = builder.add_grant(
+            "table",
+            "table_789",
+            "analysts",
+            ["SELECT", "MODIFY"],
+            op_id="op_grant_002",
+        )
+        new_state = apply_operation(sample_unity_state, op)
+        table = new_state.catalogs[0].schemas[0].tables[0]
+        assert len(table.grants) == 1
+        assert table.grants[0].principal == "analysts"
+        assert set(table.grants[0].privileges) == {"SELECT", "MODIFY"}
+
+    def test_add_grant_merge_principal(self, sample_unity_state):
+        """Test that add_grant for same principal replaces privileges"""
+        builder = OperationBuilder()
+        add1 = builder.add_grant("table", "table_789", "analysts", ["SELECT"], op_id="op_g1")
+        state = apply_operation(sample_unity_state, add1)
+        add2 = builder.add_grant("table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g2")
+        new_state = apply_operation(state, add2)
+        table = new_state.catalogs[0].schemas[0].tables[0]
+        assert len(table.grants) == 1
+        assert set(table.grants[0].privileges) == {"SELECT", "MODIFY"}
+
+    def test_revoke_grant_all(self, sample_unity_state):
+        """Test revoking all privileges for a principal"""
+        builder = OperationBuilder()
+        add_op = builder.add_grant("table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g1")
+        state = apply_operation(sample_unity_state, add_op)
+        revoke_op = builder.revoke_grant("table", "table_789", "analysts", privileges=None, op_id="op_g2")
+        new_state = apply_operation(state, revoke_op)
+        table = new_state.catalogs[0].schemas[0].tables[0]
+        assert len(table.grants) == 0
+
+    def test_revoke_grant_partial(self, sample_unity_state):
+        """Test revoking only some privileges for a principal"""
+        builder = OperationBuilder()
+        add_op = builder.add_grant("table", "table_789", "analysts", ["SELECT", "MODIFY", "READ VOLUME"], op_id="op_g1")
+        state = apply_operation(sample_unity_state, add_op)
+        revoke_op = builder.revoke_grant("table", "table_789", "analysts", privileges=["MODIFY"], op_id="op_g2")
+        new_state = apply_operation(state, revoke_op)
+        table = new_state.catalogs[0].schemas[0].tables[0]
+        assert len(table.grants) == 1
+        assert set(table.grants[0].privileges) == {"SELECT", "READ VOLUME"}
 
 
 class TestColumnMaskOperations:

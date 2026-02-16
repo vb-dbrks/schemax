@@ -91,6 +91,7 @@ export interface UnityView extends BaseObject {
   // Metadata
   tags: Record<string, string>; // VIEW TAGS (Unity Catalog governance)
   properties: Record<string, string>; // View properties
+  grants: UnityGrant[];
 }
 
 // Schema definition
@@ -100,6 +101,7 @@ export interface UnitySchema extends BaseObject {
   tags?: Record<string, string>; // Schema tags (Unity Catalog governance)
   tables: UnityTable[];
   views: UnityView[]; // Views stored alongside tables in schema
+  grants: UnityGrant[];
 }
 
 // Catalog definition
@@ -108,6 +110,7 @@ export interface UnityCatalog extends BaseObject {
   comment?: string; // Catalog comment
   tags?: Record<string, string>; // Catalog tags (Unity Catalog governance)
   schemas: UnitySchema[];
+  grants: UnityGrant[];
 }
 
 // Unity Catalog State

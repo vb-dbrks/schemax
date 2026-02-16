@@ -755,8 +755,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
                 raise CircularDependencyError(cycle_paths)
 
-            # Use topological sort
-            return graph.topological_sort(), warnings
+            # Use topological sort (only includes ops with a target object in the graph)
+            sorted_ops = graph.topological_sort()
+            # Include ops without a target (e.g. add_grant, revoke_grant) - append after CREATEs
+            op_ids_in_result = {op.id for op in sorted_ops}
+            for op in ops:
+                if op.id not in op_ids_in_result:
+                    sorted_ops.append(op)
+            return sorted_ops, warnings
 
         except CircularDependencyError:
             # Re-raise to be handled by caller
@@ -1072,6 +1078,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._update_column_mask(op)
         elif op_type == "remove_column_mask":
             return self._remove_column_mask(op)
+
+        # Grant operations
+        elif op_type == "add_grant":
+            return self._add_grant(op)
+        elif op_type == "revoke_grant":
+            return self._revoke_grant(op)
 
         raise ValueError(f"Unsupported operation type: {op_type}")
 
@@ -2919,3 +2931,59 @@ class UnitySQLGenerator(BaseSQLGenerator):
         )
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {fqn_esc} ALTER COLUMN {col_esc} DROP MASK"
+
+    # Grant operations (Unity: GRANT / REVOKE on CATALOG | SCHEMA | TABLE | VIEW)
+    def _grant_object_kind(self, target_type: str) -> str:
+        """Map targetType to SQL object kind (uppercase)."""
+        return {"catalog": "CATALOG", "schema": "SCHEMA", "table": "TABLE", "view": "VIEW"}.get(
+            target_type, "TABLE"
+        )
+
+    def _grant_fqn(self, target_type: str, target_id: str) -> str:
+        """Resolve fully-qualified name for grant target from id_name_map."""
+        fqn = self.id_name_map.get(target_id, "")
+        if not fqn:
+            return ""
+        parts = fqn.split(".")
+        return self._build_fqn(*parts) if len(parts) >= 1 else self.escape_identifier(fqn)
+
+    def _escape_principal(self, principal: str) -> str:
+        """Escape principal for GRANT/REVOKE (backticks if special characters)."""
+        if not principal:
+            return self.escape_identifier("unknown")
+        return self.escape_identifier(principal)
+
+    def _add_grant(self, op: Operation) -> str:
+        target_type = op.payload.get("targetType", "table")
+        target_id = op.payload.get("targetId")
+        principal = op.payload.get("principal", "")
+        privileges = op.payload.get("privileges") or []
+        if not target_id:
+            return "-- Error: add_grant missing targetId"
+        kind = self._grant_object_kind(target_type)
+        fqn = self._grant_fqn(target_type, target_id)
+        if not fqn:
+            return f"-- Error: could not resolve FQN for targetId {target_id}"
+        principal_esc = self._escape_principal(principal)
+        priv_list = ", ".join(self.escape_identifier(p) for p in privileges)
+        if not priv_list:
+            return "-- No privileges specified for add_grant"
+        return f"GRANT {priv_list} ON {kind} {fqn} TO {principal_esc}"
+
+    def _revoke_grant(self, op: Operation) -> str:
+        target_type = op.payload.get("targetType", "table")
+        target_id = op.payload.get("targetId")
+        principal = op.payload.get("principal", "")
+        privileges = op.payload.get("privileges")  # None or list; None = revoke all
+        if not target_id:
+            return "-- Error: revoke_grant missing targetId"
+        kind = self._grant_object_kind(target_type)
+        fqn = self._grant_fqn(target_type, target_id)
+        if not fqn:
+            return f"-- Error: could not resolve FQN for targetId {target_id}"
+        principal_esc = self._escape_principal(principal)
+        if not privileges or len(privileges) == 0:
+            priv_clause = "ALL PRIVILEGES"
+        else:
+            priv_clause = ", ".join(self.escape_identifier(p) for p in privileges)
+        return f"REVOKE {priv_clause} ON {kind} {fqn} FROM {principal_esc}"
