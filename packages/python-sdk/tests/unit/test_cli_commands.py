@@ -6,9 +6,9 @@ from types import SimpleNamespace
 
 from click.testing import CliRunner
 
-from schematic.cli import cli
-from schematic.commands import SQLGenerationError
-from schematic.providers.registry import ProviderRegistry
+from schemax.cli import cli
+from schemax.commands import SQLGenerationError
+from schemax.providers.registry import ProviderRegistry
 
 
 def test_init_fails_for_unknown_provider(temp_workspace: Path) -> None:
@@ -34,7 +34,7 @@ def test_init_success_routes_to_storage(monkeypatch, temp_workspace: Path) -> No
         called["workspace"] = workspace
         called["provider_id"] = provider_id
 
-    monkeypatch.setattr("schematic.cli.ensure_project_file", _ensure)
+    monkeypatch.setattr("schemax.cli.ensure_project_file", _ensure)
 
     result = runner.invoke(cli, ["init", "--provider", "unity", str(temp_workspace)])
 
@@ -51,7 +51,7 @@ def test_sql_routes_arguments(monkeypatch, temp_workspace: Path) -> None:
         captured.update(kwargs)
         return "SELECT 1"
 
-    monkeypatch.setattr("schematic.cli.generate_sql_migration", _generate)
+    monkeypatch.setattr("schemax.cli.generate_sql_migration", _generate)
 
     output = temp_workspace / "out.sql"
     result = runner.invoke(
@@ -84,7 +84,7 @@ def test_sql_returns_error_code_on_command_error(monkeypatch, temp_workspace: Pa
     def _raise(**kwargs):  # noqa: ARG001
         raise SQLGenerationError("boom")
 
-    monkeypatch.setattr("schematic.cli.generate_sql_migration", _raise)
+    monkeypatch.setattr("schemax.cli.generate_sql_migration", _raise)
 
     result = runner.invoke(cli, ["sql", str(temp_workspace)])
     assert result.exit_code == 1
@@ -100,7 +100,7 @@ def test_validate_routes_json_option(monkeypatch, temp_workspace: Path) -> None:
         captured["json_output"] = json_output
         return True
 
-    monkeypatch.setattr("schematic.cli.validate_project", _validate)
+    monkeypatch.setattr("schemax.cli.validate_project", _validate)
 
     result = runner.invoke(cli, ["validate", "--json", str(temp_workspace)])
     assert result.exit_code == 0
@@ -116,7 +116,7 @@ def test_diff_routes_arguments(monkeypatch, temp_workspace: Path) -> None:
         captured.update(kwargs)
         return []
 
-    monkeypatch.setattr("schematic.cli.generate_diff", _diff)
+    monkeypatch.setattr("schemax.cli.generate_diff", _diff)
 
     result = runner.invoke(
         cli,
@@ -154,7 +154,7 @@ def test_apply_uses_status_to_set_exit_code(monkeypatch, temp_workspace: Path) -
     runner = CliRunner()
 
     monkeypatch.setattr(
-        "schematic.cli.apply_to_environment",
+        "schemax.cli.apply_to_environment",
         lambda **kwargs: SimpleNamespace(status="success"),
     )
     ok = runner.invoke(
@@ -174,7 +174,7 @@ def test_apply_uses_status_to_set_exit_code(monkeypatch, temp_workspace: Path) -
     assert ok.exit_code == 0
 
     monkeypatch.setattr(
-        "schematic.cli.apply_to_environment",
+        "schemax.cli.apply_to_environment",
         lambda **kwargs: SimpleNamespace(status="failed"),
     )
     fail = runner.invoke(
@@ -206,7 +206,7 @@ def test_rollback_complete_routes_to_command(monkeypatch, temp_workspace: Path) 
     runner = CliRunner()
 
     monkeypatch.setattr(
-        "schematic.cli.rollback_complete",
+        "schemax.cli.rollback_complete",
         lambda **kwargs: SimpleNamespace(
             success=True, operations_rolled_back=0, error_message=None
         ),
@@ -234,7 +234,7 @@ def test_rollback_complete_routes_to_command(monkeypatch, temp_workspace: Path) 
 def test_snapshot_create_no_ops_is_graceful(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
 
-    monkeypatch.setattr("schematic.core.storage.read_changelog", lambda _workspace: {"ops": []})
+    monkeypatch.setattr("schemax.core.storage.read_changelog", lambda _workspace: {"ops": []})
 
     result = runner.invoke(
         cli,
@@ -248,7 +248,7 @@ def test_snapshot_create_no_ops_is_graceful(monkeypatch, temp_workspace: Path) -
 def test_snapshot_rebase_routes_to_command(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     monkeypatch.setattr(
-        "schematic.commands.snapshot_rebase.rebase_snapshot",
+        "schemax.commands.snapshot_rebase.rebase_snapshot",
         lambda **kwargs: SimpleNamespace(success=True, applied_count=0, conflict_count=0),
     )
 
@@ -264,7 +264,7 @@ def test_snapshot_rebase_routes_to_command(monkeypatch, temp_workspace: Path) ->
 def test_snapshot_validate_json_output(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     monkeypatch.setattr(
-        "schematic.commands.snapshot_rebase.detect_stale_snapshots",
+        "schemax.commands.snapshot_rebase.detect_stale_snapshots",
         lambda _workspace, json_output=False: [],
     )
 

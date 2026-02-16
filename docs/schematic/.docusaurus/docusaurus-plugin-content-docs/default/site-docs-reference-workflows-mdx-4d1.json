@@ -1,0 +1,28 @@
+{
+  "id": "reference/workflows",
+  "title": "Workflows",
+  "description": "This document describes where Schematic fits in data and analytics projects and the end-to-end situations it supports. Schematic is built for individual data projects: one repo = one schema project, with one or more environments (dev, test, prod). It focuses on the schema layer—defining and versioning catalogs, schemas, tables, and governance—within the broader data ops flow.",
+  "source": "@site/docs/reference/workflows.mdx",
+  "sourceDirName": "reference",
+  "slug": "/reference/workflows",
+  "permalink": "/schemax-vscode/reference/workflows",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/schematic/schemax-vscode/tree/main/docs/schematic/docs/reference/workflows.mdx",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 100,
+  "frontMatter": {
+    "sidebar_position": 100,
+    "title": "Workflows"
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Development",
+    "permalink": "/schemax-vscode/guide/development"
+  },
+  "next": {
+    "title": "CLI Reference",
+    "permalink": "/schemax-vscode/reference/cli"
+  }
+}

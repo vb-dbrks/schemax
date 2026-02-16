@@ -4,7 +4,7 @@ Unit tests for base optimization algorithms.
 Tests the generic column reorder optimizer that works across all providers.
 """
 
-from schematic.providers.base.optimization import ColumnReorderOptimizer
+from schemax.providers.base.optimization import ColumnReorderOptimizer
 
 
 class TestColumnReorderOptimizer:

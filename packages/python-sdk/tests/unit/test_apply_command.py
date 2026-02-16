@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from schematic.commands.apply import apply_to_environment
+from schemax.commands.apply import apply_to_environment
 
 
 class TestApplyCommand:
@@ -19,9 +19,9 @@ class TestApplyCommand:
     @pytest.fixture
     def workspace_with_uncommitted_ops(self, temp_workspace):
         """Create workspace with uncommitted operations in changelog"""
-        # Create .schematic directory
-        schematic_dir = temp_workspace / ".schematic"
-        schematic_dir.mkdir()
+        # Create .schemax directory
+        schemax_dir = temp_workspace / ".schemax"
+        schemax_dir.mkdir()
 
         # Create project.json (v4)
         project = {
@@ -37,7 +37,7 @@ class TestApplyCommand:
                         "allowDrift": True,
                         "requireSnapshot": False,
                         "autoCreateTopLevel": True,
-                        "autoCreateSchematicSchema": True,
+                        "autoCreateSchemaxSchema": True,
                     }
                 },
             },
@@ -48,7 +48,7 @@ class TestApplyCommand:
             "settings": {"versionPrefix": "v"},
             "latestSnapshot": "v0.1.0",
         }
-        (schematic_dir / "project.json").write_text(json.dumps(project, indent=2))
+        (schemax_dir / "project.json").write_text(json.dumps(project, indent=2))
 
         # Create changelog.json with uncommitted operations
         changelog = {
@@ -71,10 +71,10 @@ class TestApplyCommand:
             ],
             "lastModified": "2025-11-03T19:00:00.000000+00:00",
         }
-        (schematic_dir / "changelog.json").write_text(json.dumps(changelog, indent=2))
+        (schemax_dir / "changelog.json").write_text(json.dumps(changelog, indent=2))
 
         # Create snapshots directory with v0.1.0 snapshot
-        snapshots_dir = schematic_dir / "snapshots"
+        snapshots_dir = schemax_dir / "snapshots"
         snapshots_dir.mkdir()
 
         snapshot = {
@@ -100,14 +100,12 @@ class TestApplyCommand:
         This is critical for CI/CD pipelines - the command must not hang
         waiting for user input when --no-interaction flag is used.
         """
-        with patch("schematic.commands.apply.Prompt.ask") as mock_prompt:
+        with patch("schemax.commands.apply.Prompt.ask") as mock_prompt:
             with patch("builtins.input") as mock_input:
-                with patch("schematic.commands.apply.load_current_state") as mock_load:
-                    with patch("schematic.commands.apply.create_snapshot") as mock_snapshot:
-                        with patch("schematic.providers.unity.auth.create_databricks_client"):
-                            with patch(
-                                "schematic.commands.apply.DeploymentTracker"
-                            ) as mock_tracker:
+                with patch("schemax.commands.apply.load_current_state") as mock_load:
+                    with patch("schemax.commands.apply.create_snapshot") as mock_snapshot:
+                        with patch("schemax.providers.unity.auth.create_databricks_client"):
+                            with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                                 # Mock database query to return None (first deployment)
                                 mock_tracker.return_value.get_latest_deployment.return_value = None
 
@@ -172,11 +170,11 @@ class TestApplyCommand:
 
         Users should have choice: create snapshot, continue without, or abort.
         """
-        with patch("schematic.commands.apply.Prompt.ask") as mock_prompt:
-            with patch("schematic.commands.apply.load_current_state") as mock_load:
-                with patch("schematic.commands.apply.create_snapshot"):
-                    with patch("schematic.providers.unity.auth.create_databricks_client"):
-                        with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
+        with patch("schemax.commands.apply.Prompt.ask") as mock_prompt:
+            with patch("schemax.commands.apply.load_current_state") as mock_load:
+                with patch("schemax.commands.apply.create_snapshot"):
+                    with patch("schemax.providers.unity.auth.create_databricks_client"):
+                        with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                             # Mock database query
                             mock_tracker.return_value.get_latest_deployment.return_value = None
 
@@ -221,11 +219,11 @@ class TestApplyCommand:
 
     def test_interactive_mode_create_snapshot(self, workspace_with_uncommitted_ops):
         """Test that interactive mode creates snapshot when user chooses 'create'"""
-        with patch("schematic.commands.apply.Prompt.ask") as mock_prompt:
-            with patch("schematic.commands.apply.load_current_state") as mock_load:
-                with patch("schematic.commands.apply.create_snapshot") as mock_snapshot:
-                    with patch("schematic.providers.unity.auth.create_databricks_client"):
-                        with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
+        with patch("schemax.commands.apply.Prompt.ask") as mock_prompt:
+            with patch("schemax.commands.apply.load_current_state") as mock_load:
+                with patch("schemax.commands.apply.create_snapshot") as mock_snapshot:
+                    with patch("schemax.providers.unity.auth.create_databricks_client"):
+                        with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                             # Mock database query
                             mock_tracker.return_value.get_latest_deployment.return_value = None
 
@@ -277,7 +275,7 @@ class TestApplyCommand:
 
         # Read the apply.py source to verify patterns
         apply_file = (
-            Path(__file__).parent.parent.parent / "src" / "schematic" / "commands" / "apply.py"
+            Path(__file__).parent.parent.parent / "src" / "schemax" / "commands" / "apply.py"
         )
         content = apply_file.read_text()
 
@@ -288,9 +286,9 @@ class TestApplyCommand:
 
     def test_workspace_without_uncommitted_ops(self, temp_workspace):
         """Test that apply works when there are no uncommitted operations"""
-        # Create .schematic directory
-        schematic_dir = temp_workspace / ".schematic"
-        schematic_dir.mkdir()
+        # Create .schemax directory
+        schemax_dir = temp_workspace / ".schemax"
+        schemax_dir.mkdir()
 
         # Create project.json
         project = {
@@ -305,7 +303,7 @@ class TestApplyCommand:
                         "allowDrift": True,
                         "requireSnapshot": False,
                         "autoCreateTopLevel": True,
-                        "autoCreateSchematicSchema": True,
+                        "autoCreateSchemaxSchema": True,
                     }
                 },
             },
@@ -316,7 +314,7 @@ class TestApplyCommand:
             "settings": {},
             "latestSnapshot": "v0.1.0",
         }
-        (schematic_dir / "project.json").write_text(json.dumps(project, indent=2))
+        (schemax_dir / "project.json").write_text(json.dumps(project, indent=2))
 
         # Create empty changelog
         changelog = {
@@ -325,10 +323,10 @@ class TestApplyCommand:
             "ops": [],  # No uncommitted operations
             "lastModified": "2025-11-03T19:00:00.000000+00:00",
         }
-        (schematic_dir / "changelog.json").write_text(json.dumps(changelog, indent=2))
+        (schemax_dir / "changelog.json").write_text(json.dumps(changelog, indent=2))
 
         # Create snapshot
-        snapshots_dir = schematic_dir / "snapshots"
+        snapshots_dir = schemax_dir / "snapshots"
         snapshots_dir.mkdir()
         snapshot = {
             "id": "snap1",
@@ -344,10 +342,10 @@ class TestApplyCommand:
         }
         (snapshots_dir / "v0.1.0.json").write_text(json.dumps(snapshot, indent=2))
 
-        with patch("schematic.commands.apply.Prompt.ask") as mock_prompt:
-            with patch("schematic.commands.apply.load_current_state") as mock_load:
-                with patch("schematic.providers.unity.auth.create_databricks_client"):
-                    with patch("schematic.commands.apply.DeploymentTracker") as mock_tracker:
+        with patch("schemax.commands.apply.Prompt.ask") as mock_prompt:
+            with patch("schemax.commands.apply.load_current_state") as mock_load:
+                with patch("schemax.providers.unity.auth.create_databricks_client"):
+                    with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                         # Mock database query
                         mock_tracker.return_value.get_latest_deployment.return_value = None
 

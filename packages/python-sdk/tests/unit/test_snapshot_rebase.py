@@ -4,10 +4,10 @@ Tests for snapshot rebase functionality
 
 import pytest
 
-from schematic.commands.snapshot_rebase import (
+from schemax.commands.snapshot_rebase import (
     detect_stale_snapshots,
 )
-from schematic.core.version import (
+from schemax.core.version import (
     SemanticVersion,
     get_next_version,
     get_versions_between,
@@ -115,7 +115,7 @@ class TestSnapshotRebase:
     def test_detect_stale_snapshots(self, tmp_path):
         """Test detecting stale snapshots after git rebase"""
         # Create project with snapshots
-        project_file = tmp_path / ".schematic" / "project.json"
+        project_file = tmp_path / ".schemax" / "project.json"
         project_file.parent.mkdir(parents=True)
 
         import json
@@ -145,7 +145,7 @@ class TestSnapshotRebase:
 
     def test_detect_no_stale_snapshots(self, tmp_path):
         """Test when all snapshots are up to date"""
-        project_file = tmp_path / ".schematic" / "project.json"
+        project_file = tmp_path / ".schemax" / "project.json"
         project_file.parent.mkdir(parents=True)
 
         import json

@@ -1,6 +1,6 @@
-# Schematic Docs (Docusaurus)
+# SchemaX Docs (Docusaurus)
 
-Documentation site for Schematic, built with [Docusaurus](https://docusaurus.io/), matching the setup used for DQX.
+Documentation site for SchemaX, built with [Docusaurus](https://docusaurus.io/), matching the setup used for DQX.
 
 ## Prerequisites
 

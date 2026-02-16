@@ -1,10 +1,10 @@
 # Architecture
 
-This document describes the technical architecture and design decisions behind Schematic.
+This document describes the technical architecture and design decisions behind SchemaX.
 
 ## Overview
 
-Schematic implements a **provider-based**, snapshot-driven schema versioning system. The core principle is to maintain an append-only operation log with periodic snapshots, enabling both state-based and change-based workflows across multiple catalog types (Unity Catalog, Hive Metastore, PostgreSQL, etc.).
+SchemaX implements a **provider-based**, snapshot-driven schema versioning system. The core principle is to maintain an append-only operation log with periodic snapshots, enabling both state-based and change-based workflows across multiple catalog types (Unity Catalog, Hive Metastore, PostgreSQL, etc.).
 
 ## Design Goals
 
@@ -20,11 +20,11 @@ Schematic implements a **provider-based**, snapshot-driven schema versioning sys
 
 ## Architectural Patterns
 
-Schematic follows several well-established architectural patterns that work together to provide a robust, maintainable, and extensible system.
+SchemaX follows several well-established architectural patterns that work together to provide a robust, maintainable, and extensible system.
 
 ### Primary Pattern: Event Sourcing
 
-The foundation of Schematic is **Event Sourcing** - all changes are stored as immutable events (operations) in an append-only log.
+The foundation of SchemaX is **Event Sourcing** - all changes are stored as immutable events (operations) in an append-only log.
 
 **Implementation:**
 
@@ -188,7 +188,7 @@ function applyOperation(state: ProviderState, operation: Operation): ProviderSta
 // Redux
 newState = reducer(state, action)
 
-// Schematic
+// SchemaX
 newState = provider.applyOperation(state, operation)
 ```
 
@@ -395,7 +395,7 @@ def sql(workspace: str):
 
 ## Architectural Style: Functional Core, Imperative Shell
 
-Schematic follows the **Functional Core, Imperative Shell** pattern:
+SchemaX follows the **Functional Core, Imperative Shell** pattern:
 
 **Functional Core (Pure Logic):**
 
@@ -489,7 +489,7 @@ Schematic follows the **Functional Core, Imperative Shell** pattern:
 
 ## Architecture Inspirations
 
-Schematic's architecture draws inspiration from:
+SchemaX's architecture draws inspiration from:
 
 1. **Redux** (State Management)
     - Immutable state
@@ -522,7 +522,7 @@ Schematic's architecture draws inspiration from:
 
 ### What is a Provider?
 
-A **Provider** is a plugin that adds support for a specific catalog system. Each provider implements a standard interface that Schematic uses for:
+A **Provider** is a plugin that adds support for a specific catalog system. Each provider implements a standard interface that SchemaX uses for:
 
 - **State Management** - How objects are stored and modified
 - **Operations** - What actions users can perform
@@ -549,7 +549,7 @@ Providers are registered at startup:
 import './providers'; // Auto-registers Unity provider
 
 // Python
-from schematic.providers import unity_provider
+from schemax.providers import unity_provider
 # Unity provider auto-registered on import
 ```
 
@@ -791,7 +791,7 @@ workspace-root/
 
 ### 1. Operations
 
-Operations are the fundamental unit of change in Schematic. Every user action generates one or more operations.
+Operations are the fundamental unit of change in SchemaX. Every user action generates one or more operations.
 
 **Operation Structure:**
 
@@ -1077,7 +1077,7 @@ src/
 ### Python (SDK/CLI)
 
 ```text
-src/schematic/
+src/schemax/
 ├── providers/
 │   ├── base/
 │   │   ├── provider.py
@@ -1272,7 +1272,7 @@ async function migrateV2ToV3(
 
 ### SQL Generation
 
-SQL generation in Schematic uses a **dependency-aware system** that ensures DDL statements are generated in the correct execution order.
+SQL generation in SchemaX uses a **dependency-aware system** that ensures DDL statements are generated in the correct execution order.
 
 #### Dependency-Aware Ordering
 
@@ -1341,7 +1341,7 @@ enum DependencyEnforcement {
 
 #### View Dependency Extraction
 
-Views are the primary use case for dependency-aware ordering. Schematic extracts dependencies from view SQL:
+Views are the primary use case for dependency-aware ordering. SchemaX extracts dependencies from view SQL:
 
 **Python (SQLGlot):**
 
@@ -1615,12 +1615,12 @@ if (expectedHash !== actualHash) {
 
 ## Multi-Environment Support (v4)
 
-Schematic v4 introduces comprehensive multi-environment support, enabling users to design schemas once and deploy them to multiple environments (dev, test, prod) with different physical catalog names.
+SchemaX v4 introduces comprehensive multi-environment support, enabling users to design schemas once and deploy them to multiple environments (dev, test, prod) with different physical catalog names.
 
 ### Logical vs Physical Naming
 
 **Design Pattern:**
-- **Logical names** stored in Schematic state (environment-agnostic)
+- **Logical names** stored in SchemaX state (environment-agnostic)
 - **Physical names** generated at SQL generation time (environment-specific)
 - **Mapping** defined in `project.json` environment configuration
 
@@ -1644,8 +1644,8 @@ Schematic v4 introduces comprehensive multi-environment support, enabling users 
 }
 
 // Generated SQL
-schematic sql --target dev  → CREATE SCHEMA `dev_my_analytics`.`customer_360`;
-schematic sql --target prod → CREATE SCHEMA `prod_my_analytics`.`customer_360`;
+schemax sql --target dev  → CREATE SCHEMA `dev_my_analytics`.`customer_360`;
+schemax sql --target prod → CREATE SCHEMA `prod_my_analytics`.`customer_360`;
 ```
 
 ### Project Schema v4
@@ -1684,7 +1684,7 @@ schematic sql --target prod → CREATE SCHEMA `prod_my_analytics`.`customer_360`
 |---------|------|-------------|
 | `catalog` | string | Physical catalog name in target system |
 | `description` | string | Human-readable description |
-| `allowDrift` | boolean | Allow actual state to differ from Schematic |
+| `allowDrift` | boolean | Allow actual state to differ from SchemaX |
 | `requireSnapshot` | boolean | Require snapshot before deployment |
 | `autoCreateCatalog` | boolean | Create catalog if it doesn't exist |
 | `autoCreateSchematicSchema` | boolean | Auto-create tracking schema |
@@ -1729,7 +1729,7 @@ constructor(state: UnityState, catalogNameMapping?: Record<string, string>) {
 
 ### Implicit Catalog Mode
 
-For single-catalog projects (the vast majority), Schematic uses **implicit catalog mode** to simplify the user experience.
+For single-catalog projects (the vast majority), SchemaX uses **implicit catalog mode** to simplify the user experience.
 
 **User Experience:**
 
@@ -1779,7 +1779,7 @@ Users now experience:
 
 ### Deployment Tracking
 
-Schematic tracks deployments in the target catalog itself using a dedicated `schematic` schema:
+SchemaX tracks deployments in the target catalog itself using a dedicated `schematic` schema:
 
 ```sql
 -- Auto-created on first deployment
@@ -1821,16 +1821,16 @@ CREATE TABLE <catalog>.schematic.deployment_ops (
 
 ```bash
 # Generate SQL for dev
-schematic sql --target dev --output migration.sql
+schemax sql --target dev --output migration.sql
 
 # Preview changes (dry run)
-schematic apply --target dev --profile DEV --warehouse-id abc123 --dry-run
+schemax apply --target dev --profile DEV --warehouse-id abc123 --dry-run
 
 # Apply with confirmation
-schematic apply --target dev --profile DEV --warehouse-id abc123
+schemax apply --target dev --profile DEV --warehouse-id abc123
 
 # Non-interactive (CI/CD)
-schematic apply --target dev --profile DEV --warehouse-id abc123 --no-interaction
+schemax apply --target dev --profile DEV --warehouse-id abc123 --no-interaction
 ```
 
 **Execution Flow:**
@@ -1855,11 +1855,11 @@ schematic apply --target dev --profile DEV --warehouse-id abc123 --no-interactio
 
 ### Advanced Features
 
-1. **Drift Detection** - Compare deployed state vs Schematic state
+1. **Drift Detection** - Compare deployed state vs SchemaX state
 2. **Impact Analysis** - Show what a change will affect
 3. **Rollback Support** - Revert to previous snapshots
 4. **State Diffs** - Visual comparison between versions
-5. **Schema Import** - Reverse-engineer existing catalogs into Schematic
+5. **Schema Import** - Reverse-engineer existing catalogs into SchemaX
 6. **DAB Generation** - Export as Databricks Asset Bundles
 
 ---
@@ -1868,11 +1868,11 @@ schematic apply --target dev --profile DEV --warehouse-id abc123 --no-interactio
 
 ### Test Coverage
 
-Schematic includes comprehensive test suites for both Python and TypeScript implementations:
+SchemaX includes comprehensive test suites for both Python and TypeScript implementations:
 
 **Python SDK Test Status:**
 - ✅ 124 passing tests (91.2%)
-- ⏸️ 12 skipped tests (8.8%) - documented in GitHub issues [#19](https://github.com/vb-dbrks/schematic-vscode/issues/19), [#20](https://github.com/vb-dbrks/schematic-vscode/issues/20)
+- ⏸️ 12 skipped tests (8.8%) - documented in GitHub issues [#19](https://github.com/vb-dbrks/schemax-vscode/issues/19), [#20](https://github.com/vb-dbrks/schemax-vscode/issues/20)
 - Test Categories:
   - Storage operations (28 tests)
   - State reducer (29 tests)
@@ -1894,7 +1894,7 @@ op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
 
 ### SQL Validation
 
-Schematic includes optional **SQLGlot** integration for validating generated SQL:
+SchemaX includes optional **SQLGlot** integration for validating generated SQL:
 
 ```python
 import sqlglot
@@ -1914,14 +1914,14 @@ assert parsed is not None  # Valid SQL
 ```bash
 pip install sqlglot>=20.0.0
 # or
-pip install "schematic[validation]"
+pip install "schemax[validation]"
 ```
 
 ---
 
 ## Conclusion
 
-Schematic's provider-based architecture provides:
+SchemaX's provider-based architecture provides:
 
 ✅ **Extensibility** - Easy to add new catalog types  
 ✅ **Flexibility** - Each provider can have unique features  

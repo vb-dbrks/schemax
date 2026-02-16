@@ -1,0 +1,28 @@
+{
+  "id": "guide/quickstart",
+  "title": "Quickstart",
+  "description": "Complete guide to get started with Schematic - both the VS Code extension and Python SDK/CLI.",
+  "source": "@site/docs/guide/quickstart.mdx",
+  "sourceDirName": "guide",
+  "slug": "/guide/quickstart",
+  "permalink": "/schemax-vscode/guide/quickstart",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/schematic/schemax-vscode/tree/main/docs/schematic/docs/guide/quickstart.mdx",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 10,
+  "frontMatter": {
+    "sidebar_position": 10,
+    "title": "Quickstart"
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Introduction",
+    "permalink": "/schemax-vscode/"
+  },
+  "next": {
+    "title": "Architecture",
+    "permalink": "/schemax-vscode/guide/architecture"
+  }
+}

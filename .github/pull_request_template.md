@@ -25,7 +25,7 @@
 - 
 
 ## Provider / Surface Area Impact
-<!-- Especially useful for Schematic’s provider architecture -->
+<!-- Especially useful for SchemaX’s provider architecture -->
 ### Affected Surfaces
 - [ ] CLI
 - [ ] Python SDK

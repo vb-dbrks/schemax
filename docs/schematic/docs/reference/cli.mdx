@@ -1,43 +1,43 @@
 ---
 sidebar_position: 101
 title: CLI Reference
-description: Schematic CLI commands and options
+description: SchemaX CLI commands and options
 ---
 
 # CLI Reference
 
-Summary of the Schematic CLI. Run `schematic --help` and `schematic &lt;command&gt; --help` for full options.
+Summary of the SchemaX CLI. Run `schemax --help` and `schemax &lt;command&gt; --help` for full options.
 
 ## Project and validation
 
 | Command | Description |
 |---------|-------------|
-| `schematic init` | Initialize a new Schematic project (or use VS Code Designer once). |
-| `schematic validate [workspace]` | Validate `.schematic/` project files and dependency graph. |
+| `schemax init` | Initialize a new SchemaX project (or use VS Code Designer once). |
+| `schemax validate [workspace]` | Validate `.schemax/` project files and dependency graph. |
 
 ## SQL and snapshots
 
 | Command | Description |
 |---------|-------------|
-| `schematic sql [--output FILE] [--target ENV]` | Generate SQL migration from changelog (optional env for catalog mapping). |
-| `schematic snapshot create --name NAME [--version v0.2.0] [--comment "..."] [--tags t1 t2]` | Create snapshot from current changelog; changelog cleared. |
-| `schematic snapshot validate [workspace]` | Detect stale snapshots after Git rebase. |
-| `schematic snapshot rebase VERSION [--base BASE]` | Rebase snapshot onto new base after rebase. |
+| `schemax sql [--output FILE] [--target ENV]` | Generate SQL migration from changelog (optional env for catalog mapping). |
+| `schemax snapshot create --name NAME [--version v0.2.0] [--comment "..."] [--tags t1 t2]` | Create snapshot from current changelog; changelog cleared. |
+| `schemax snapshot validate [workspace]` | Detect stale snapshots after Git rebase. |
+| `schemax snapshot rebase VERSION [--base BASE]` | Rebase snapshot onto new base after rebase. |
 
 ## Diff
 
 | Command | Description |
 |---------|-------------|
-| `schematic diff --from v0.1.0 --to v0.2.0 [--show-sql] [--target ENV]` | Show diff operations (and optional SQL) between two snapshot versions. |
+| `schemax diff --from v0.1.0 --to v0.2.0 [--show-sql] [--target ENV]` | Show diff operations (and optional SQL) between two snapshot versions. |
 
 ## Deploy and rollback
 
 | Command | Description |
 |---------|-------------|
-| `schematic apply --target ENV --profile PROFILE --warehouse-id ID [--dry-run] [--no-interaction] [--auto-rollback]` | Execute SQL against target; records deployment. |
-| `schematic rollback --deployment ID --partial --target ENV --profile P --warehouse-id W` | Undo successful ops from a failed deployment. |
-| `schematic rollback --to-snapshot VERSION --target ENV --profile P --warehouse-id W [--force]` | Complete rollback to a previous snapshot. |
-| `schematic import --target ENV --profile P --warehouse-id W [--catalog NAME] [--adopt-baseline]` | Import existing catalog into changelog; optional baseline. |
+| `schemax apply --target ENV --profile PROFILE --warehouse-id ID [--dry-run] [--no-interaction] [--auto-rollback]` | Execute SQL against target; records deployment. |
+| `schemax rollback --deployment ID --partial --target ENV --profile P --warehouse-id W` | Undo successful ops from a failed deployment. |
+| `schemax rollback --to-snapshot VERSION --target ENV --profile P --warehouse-id W [--force]` | Complete rollback to a previous snapshot. |
+| `schemax import --target ENV --profile P --warehouse-id W [--catalog NAME] [--adopt-baseline]` | Import existing catalog into changelog; optional baseline. |
 
 ## Common options
 

@@ -1,4 +1,4 @@
-from schematic.providers.base.hierarchy import Hierarchy, HierarchyLevel
+from schemax.providers.base.hierarchy import Hierarchy, HierarchyLevel
 
 
 def test_hierarchy_depth():

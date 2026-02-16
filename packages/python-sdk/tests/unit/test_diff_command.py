@@ -5,8 +5,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from schematic.commands.diff import DiffError, generate_diff
-from schematic.providers.base.operations import Operation
+from schemax.commands.diff import DiffError, generate_diff
+from schemax.providers.base.operations import Operation
 
 
 def _make_op(op_id: str = "op_1") -> Operation:
@@ -31,14 +31,14 @@ def test_generate_diff_rejects_same_version() -> None:
 
 def test_generate_diff_raises_when_provider_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "schematic.commands.diff.read_snapshot",
+        "schemax.commands.diff.read_snapshot",
         lambda _workspace, _version: {"state": {"catalogs": []}},
     )
     monkeypatch.setattr(
-        "schematic.commands.diff.read_project",
+        "schemax.commands.diff.read_project",
         lambda _workspace: {"provider": {"type": "missing"}},
     )
-    monkeypatch.setattr("schematic.commands.diff.ProviderRegistry.get", lambda _provider_id: None)
+    monkeypatch.setattr("schemax.commands.diff.ProviderRegistry.get", lambda _provider_id: None)
 
     with pytest.raises(DiffError, match="Provider 'missing' not found"):
         generate_diff(workspace=Path("."), from_version="v0.1.0", to_version="v0.2.0")
@@ -57,21 +57,19 @@ def test_generate_diff_with_sql_and_target_mapping(monkeypatch: pytest.MonkeyPat
     provider.get_sql_generator.return_value = sql_gen
 
     monkeypatch.setattr(
-        "schematic.commands.diff.read_snapshot",
+        "schemax.commands.diff.read_snapshot",
         lambda _workspace, _version: {"state": {"catalogs": [{"name": "demo"}]}, "operations": []},
     )
     monkeypatch.setattr(
-        "schematic.commands.diff.read_project",
+        "schemax.commands.diff.read_project",
         lambda _workspace: {
             "provider": {"type": "unity"},
             "environments": {"dev": {"topLevelName": "dev_demo"}},
         },
     )
+    monkeypatch.setattr("schemax.commands.diff.ProviderRegistry.get", lambda _provider_id: provider)
     monkeypatch.setattr(
-        "schematic.commands.diff.ProviderRegistry.get", lambda _provider_id: provider
-    )
-    monkeypatch.setattr(
-        "schematic.commands.diff.get_environment_config",
+        "schemax.commands.diff.get_environment_config",
         lambda _project, _env: {
             "topLevelName": "dev_demo",
             "catalogMappings": {"demo": "dev_demo"},
@@ -95,7 +93,7 @@ def test_generate_diff_missing_snapshot_error_has_context(monkeypatch: pytest.Mo
     def _raise_missing(_workspace: Path, version: str) -> dict:
         raise FileNotFoundError(f"{version}.json")
 
-    monkeypatch.setattr("schematic.commands.diff.read_snapshot", _raise_missing)
+    monkeypatch.setattr("schemax.commands.diff.read_snapshot", _raise_missing)
 
     with pytest.raises(DiffError, match="Source snapshot not found"):
         generate_diff(workspace=Path("."), from_version="v0.1.0", to_version="v0.2.0")

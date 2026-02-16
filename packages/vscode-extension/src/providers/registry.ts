@@ -26,7 +26,7 @@ class ProviderRegistryClass {
     }
     
     this.providers.set(provider.info.id, provider);
-    console.log(`[Schematic] Registered provider: ${provider.info.name} (${provider.info.id})`);
+    console.log(`[SchemaX] Registered provider: ${provider.info.name} (${provider.info.id})`);
   }
   
   /**

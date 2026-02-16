@@ -1,6 +1,6 @@
 # DevOps
 
-This directory contains CI/CD pipelines and DevOps automation scripts for Schematic.
+This directory contains CI/CD pipelines and DevOps automation scripts for SchemaX.
 
 ## Quick Start
 

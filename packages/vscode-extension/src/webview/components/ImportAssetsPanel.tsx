@@ -155,7 +155,7 @@ export function ImportAssetsPanel({
 
         <div className="modal-body">
           <p className="section-description">
-            Import objects from your provider into Schematic. Start with dry-run to preview operations.
+            Import objects from your provider into SchemaX. Start with dry-run to preview operations.
           </p>
 
           <div className="modal-field">
@@ -247,7 +247,7 @@ export function ImportAssetsPanel({
           <div className="modal-field">
             <FieldLabel
               text="Catalog mappings (optional)"
-              help="Map Schematic logical catalog names to physical catalog names in this environment. Format: logical=physical."
+              help="Map SchemaX logical catalog names to physical catalog names in this environment. Format: logical=physical."
             />
             <textarea
               className="import-bindings-textarea"
@@ -257,7 +257,7 @@ export function ImportAssetsPanel({
                 setCatalogMappingsText(event.target.value);
                 setBindingsTouched(true);
               }}
-              placeholder={'schematic_demo=dev_schematic_demo\ncore=dev_finance_core'}
+              placeholder={'schemax_demo=dev_schemax_demo\ncore=dev_finance_core'}
               disabled={isRunning}
             />
             <p className="field-help">
@@ -314,7 +314,7 @@ export function ImportAssetsPanel({
           </div>
           <p className="field-help">
             {dryRun
-              ? 'Execution summary: preview only. Schematic will discover assets and show operations without writing files.'
+              ? 'Execution summary: preview only. SchemaX will discover assets and show operations without writing files.'
               : (adoptBaseline
                   ? 'Execution summary: write import operations and adopt the imported snapshot as deployed baseline.'
                   : 'Execution summary: write import operations without adopting baseline.')}

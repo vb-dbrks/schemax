@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from schematic.core.storage import append_ops, ensure_project_file, load_current_state
-from schematic.providers import ProviderRegistry
-from schematic.providers.base.executor import ExecutionConfig
+from schemax.core.storage import append_ops, ensure_project_file, load_current_state
+from schemax.providers import ProviderRegistry
+from schemax.providers.base.executor import ExecutionConfig
 from tests.utils import OperationBuilder
 from tests.utils.cli_helpers import invoke_cli
 from tests.utils.live_databricks import (
@@ -29,7 +29,7 @@ def _write_project_env_overrides(
     top_level_name: str,
     catalog_mappings: dict[str, str],
 ) -> None:
-    project_path = workspace / ".schematic" / "project.json"
+    project_path = workspace / ".schemax" / "project.json"
     project = json.loads(project_path.read_text())
     dev_env = project["provider"]["environments"]["dev"]
     dev_env["topLevelName"] = top_level_name
@@ -87,7 +87,7 @@ def test_live_command_matrix(tmp_path: Path) -> None:
     fixture_path = (
         Path(__file__).resolve().parents[1] / "resources" / "sql" / "unity_command_fixture.sql"
     )
-    managed_root = f"{config.managed_location.rstrip('/')}/schematic-command-live/{suffix}"
+    managed_root = f"{config.managed_location.rstrip('/')}/schemax-command-live/{suffix}"
 
     statements = load_sql_fixture(
         fixture_path,
@@ -197,7 +197,7 @@ def test_live_command_matrix(tmp_path: Path) -> None:
         assert snapshot_2.exit_code == 0, snapshot_2.output
 
         # Keep environment mappings complete for all logical catalogs in state.
-        project_path = workspace / ".schematic" / "project.json"
+        project_path = workspace / ".schemax" / "project.json"
         project = json.loads(project_path.read_text())
         dev_env = project["provider"]["environments"]["dev"]
         mappings = dict(dev_env.get("catalogMappings") or {})
@@ -291,7 +291,7 @@ def test_live_apply_and_rollback_non_dry_run(tmp_path: Path) -> None:
     try:
         executor = create_executor(config)
         managed_root = (
-            f"{config.managed_location.rstrip('/')}/schematic-command-live/mutating/{suffix}"
+            f"{config.managed_location.rstrip('/')}/schemax-command-live/mutating/{suffix}"
         )
         preseed = executor.execute_statements(
             statements=[
@@ -307,7 +307,7 @@ def test_live_apply_and_rollback_non_dry_run(tmp_path: Path) -> None:
 
         # Remove init-time implicit catalog op from changelog to keep test deterministic
         # in workspaces where CREATE CATALOG without MANAGED LOCATION is not allowed.
-        changelog_path = workspace / ".schematic" / "changelog.json"
+        changelog_path = workspace / ".schemax" / "changelog.json"
         changelog = json.loads(changelog_path.read_text())
         changelog["ops"] = []
         changelog_path.write_text(json.dumps(changelog, indent=2))
@@ -329,7 +329,7 @@ def test_live_apply_and_rollback_non_dry_run(tmp_path: Path) -> None:
         )
         assert import_result.exit_code == 0, import_result.output
 
-        project_path = workspace / ".schematic" / "project.json"
+        project_path = workspace / ".schemax" / "project.json"
         project = json.loads(project_path.read_text())
         baseline_version = project.get("latestSnapshot")
         assert baseline_version, "Baseline snapshot version not found after import adoption"

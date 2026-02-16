@@ -9,9 +9,9 @@ Tests end-to-end dependency system:
 5. Circular dependency detection
 """
 
-from schematic.providers.base.sql_parser import extract_dependencies_from_view
-from schematic.providers.unity.models import UnityState
-from schematic.providers.unity.state_reducer import apply_operation, apply_operations
+from schemax.providers.base.sql_parser import extract_dependencies_from_view
+from schemax.providers.unity.models import UnityState
+from schemax.providers.unity.state_reducer import apply_operation, apply_operations
 from tests.utils.operation_builders import OperationBuilder
 
 
@@ -503,7 +503,7 @@ class TestViewSQLBatching:
         2. Update the view's SQL in the same changeset
         3. SQL generator should produce single CREATE OR REPLACE VIEW statement
         """
-        from schematic.providers.unity.sql_generator import UnitySQLGenerator
+        from schemax.providers.unity.sql_generator import UnitySQLGenerator
 
         state = UnityState(catalogs=[])
         builder = OperationBuilder()
@@ -571,7 +571,7 @@ class TestViewSQLBatching:
         2. Update it multiple times in the same changeset
         3. Final SQL should use the last update's definition
         """
-        from schematic.providers.unity.sql_generator import UnitySQLGenerator
+        from schemax.providers.unity.sql_generator import UnitySQLGenerator
 
         state = UnityState(catalogs=[])
         builder = OperationBuilder()
@@ -644,7 +644,7 @@ class TestViewFQNQualification:
         The problem was unqualified table names in view SQL.
         The fix qualifies them with full catalog.schema.table and backticks.
         """
-        from schematic.providers.unity.sql_generator import UnitySQLGenerator
+        from schemax.providers.unity.sql_generator import UnitySQLGenerator
 
         state = UnityState(catalogs=[])
         builder = OperationBuilder()
@@ -696,7 +696,7 @@ class TestViewFQNQualification:
 
     def test_view_with_multiple_tables_all_qualified(self):
         """Test that views referencing multiple tables get all refs qualified"""
-        from schematic.providers.unity.sql_generator import UnitySQLGenerator
+        from schemax.providers.unity.sql_generator import UnitySQLGenerator
 
         state = UnityState(catalogs=[])
         builder = OperationBuilder()

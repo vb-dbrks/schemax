@@ -45,6 +45,6 @@ jobs:
       - name: Upload VSIX
         uses: actions/upload-artifact@v4
         with:
-          name: schematic-vscode-extension
+          name: schemax-vscode-extension
           path: packages/vscode-extension/*.vsix
 

@@ -3,7 +3,7 @@ import type { Config } from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'Schematic',
+  title: 'SchemaX',
   tagline:
     'Open source: multi-provider data catalog schema management with version control. Python SDK on PyPI · VS Code extension on Marketplace.',
   favicon: 'img/favicon.svg',
@@ -13,7 +13,7 @@ const config: Config = {
   baseUrl: process.env.GITHUB_PAGES_BASE_URL || '/schemax-vscode/',
   trailingSlash: true,
 
-  organizationName: process.env.GITHUB_REPOSITORY_OWNER || 'schematic',
+  organizationName: process.env.GITHUB_REPOSITORY_OWNER || 'vb-dbrks',
   projectName: process.env.GITHUB_REPOSITORY?.split('/')[1] || 'schemax-vscode',
 
   onBrokenLinks: 'throw',
@@ -40,7 +40,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/schematic/schemax-vscode/tree/main/docs/schematic/',
+          editUrl: 'https://github.com/vb-dbrks/schemax-vscode/tree/main/docs/schematic/',
         },
         blog: false,
         theme: {
@@ -56,9 +56,9 @@ const config: Config = {
       respectPrefersColorScheme: false,
     },
     navbar: {
-      title: 'Schematic',
+      title: 'SchemaX',
       logo: {
-        alt: 'Schematic',
+        alt: 'SchemaX',
         src: 'img/logo.svg',
       },
       items: [
@@ -67,7 +67,7 @@ const config: Config = {
           position: 'right',
         },
         {
-          href: `https://github.com/${process.env.GITHUB_REPOSITORY_OWNER || 'schematic'}/schemax-vscode`,
+          href: `https://github.com/${process.env.GITHUB_REPOSITORY_OWNER || 'vb-dbrks'}/schemax-vscode`,
           position: 'right',
           className: 'header-github-link',
           'aria-label': 'GitHub repository',
@@ -85,7 +85,7 @@ const config: Config = {
             },
             {
               label: 'VS Code Extension (Marketplace)',
-              href: 'https://marketplace.visualstudio.com/items?itemName=Schematic.schematic',
+              href: 'https://marketplace.visualstudio.com/items?itemName=varunbhandary.schemax-vscode',
             },
           ],
         },
@@ -94,12 +94,12 @@ const config: Config = {
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/schematic/schemax-vscode',
+              href: 'https://github.com/vb-dbrks/schemax-vscode',
             },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Schematic. Open source. Docs built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} SchemaX. Open source. Docs built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.oneLight,

@@ -7,8 +7,8 @@ node_modules/
 packages/vscode-extension/dist/
 packages/vscode-extension/media/
 
-# Docusaurus build/cache (docs/schematic)
-docs/schematic/.docusaurus/
+# Docusaurus build/cache (docs/schemax)
+docs/schemax/.docusaurus/
 docs/schematic/build/
 
 # Python
@@ -48,6 +48,7 @@ venv.bak/
 .coverage
 .tox/
 htmlcov/
+packages/vscode-extension/coverage/
 
 # IDE
 .vscode/

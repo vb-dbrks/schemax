@@ -14,8 +14,8 @@ from unittest.mock import patch
 import pytest
 from databricks.sdk.service.sql import StatementState
 
-from schematic.providers import Operation, ProviderRegistry
-from schematic.providers.base.executor import ExecutionConfig
+from schemax.providers import Operation, ProviderRegistry
+from schemax.providers.base.executor import ExecutionConfig
 from tests.utils import OperationBuilder
 
 
@@ -273,7 +273,7 @@ class TestUnityProvider:
 
         mock_client.statement_execution.execute_statement = _execute_statement
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
 
             state = unity_provider.discover_state(
@@ -357,7 +357,7 @@ class TestUnityProvider:
 
         mock_client.statement_execution.execute_statement = _execute_statement
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
             cfg = ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123")
             state_1 = unity_provider.discover_state(config=cfg, scope={"catalog": "main"})
@@ -463,7 +463,7 @@ class TestUnityProvider:
 
         mock_client.statement_execution.execute_statement = _execute_statement
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
             state = unity_provider.discover_state(
                 config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
@@ -562,7 +562,7 @@ class TestUnityProvider:
 
         mock_client.statement_execution.execute_statement = _execute_statement
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
             state = unity_provider.discover_state(
                 config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
@@ -696,7 +696,7 @@ class TestUnityProvider:
 
         mock_client.statement_execution.execute_statement = _execute_statement
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
             state = unity_provider.discover_state(
                 config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
@@ -806,7 +806,7 @@ class TestUnityProvider:
 
         mock_client.statement_execution.execute_statement = _execute_statement
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
             state = unity_provider.discover_state(
                 config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
@@ -825,7 +825,7 @@ class TestUnityProvider:
             ["catalog_name"], [], state=StatementState.FAILED
         )
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
             with pytest.raises(RuntimeError, match="Unity metadata discovery query failed"):
                 unity_provider.discover_state(
@@ -891,7 +891,7 @@ class TestUnityProvider:
 
         mock_client.statement_execution.execute_statement = _execute_statement
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
             state = unity_provider.discover_state(
                 config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),
@@ -959,7 +959,7 @@ class TestUnityProvider:
 
         mock_client.statement_execution.execute_statement = _execute_statement
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
             config = ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123")
             state = unity_provider.discover_state(
@@ -1038,7 +1038,7 @@ class TestUnityProvider:
 
         mock_client.statement_execution.execute_statement = _execute_statement
 
-        with patch("schematic.providers.unity.provider.create_databricks_client") as mock_factory:
+        with patch("schemax.providers.unity.provider.create_databricks_client") as mock_factory:
             mock_factory.return_value = mock_client
             state = unity_provider.discover_state(
                 config=ExecutionConfig(target_env="dev", profile="DEFAULT", warehouse_id="wh_123"),

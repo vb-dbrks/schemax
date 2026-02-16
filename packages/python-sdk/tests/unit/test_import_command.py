@@ -8,10 +8,10 @@ from unittest.mock import Mock, patch
 import pytest
 from click.testing import CliRunner
 
-from schematic.cli import cli
-from schematic.commands.import_assets import ImportError, import_from_provider
-from schematic.providers.base.models import ValidationError, ValidationResult
-from schematic.providers.base.operations import Operation
+from schemax.cli import cli
+from schemax.commands.import_assets import ImportError, import_from_provider
+from schemax.providers.base.models import ValidationError, ValidationResult
+from schemax.providers.base.operations import Operation
 
 
 def _make_op(op_id: str) -> Operation:
@@ -92,7 +92,7 @@ def _make_project() -> dict:
             "environments": {
                 "dev": {
                     "topLevelName": "dev_demo_project",
-                    "autoCreateSchematicSchema": True,
+                    "autoCreateSchemaxSchema": True,
                     "catalogMappings": {},
                 }
             }
@@ -104,9 +104,9 @@ class TestImportFromProvider:
     def test_dry_run_does_not_append_ops(self):
         provider = _make_provider(diff_ops=[_make_op("op_1"), _make_op("op_2")])
 
-        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
-            with patch("schematic.commands.import_assets.append_ops") as mock_append:
-                with patch("schematic.commands.import_assets.read_project") as mock_project:
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            with patch("schemax.commands.import_assets.append_ops") as mock_append:
+                with patch("schemax.commands.import_assets.read_project") as mock_project:
                     mock_project.return_value = _make_project()
                     mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
 
@@ -127,9 +127,9 @@ class TestImportFromProvider:
         ops = [_make_op("op_1")]
         provider = _make_provider(diff_ops=ops)
 
-        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
-            with patch("schematic.commands.import_assets.append_ops") as mock_append:
-                with patch("schematic.commands.import_assets.read_project") as mock_project:
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            with patch("schemax.commands.import_assets.append_ops") as mock_append:
+                with patch("schemax.commands.import_assets.read_project") as mock_project:
                     mock_project.return_value = _make_project()
                     mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
 
@@ -150,7 +150,7 @@ class TestImportFromProvider:
     def test_invalid_execution_config_raises_import_error(self):
         provider = _make_provider(valid_config=False)
 
-        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
             mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
 
             try:
@@ -171,7 +171,7 @@ class TestImportFromProvider:
             NotImplementedError("discovery not implemented")
         )
 
-        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
             mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
 
             try:
@@ -187,7 +187,7 @@ class TestImportFromProvider:
 
     def test_information_schema_scope_is_rejected(self):
         provider = _make_provider()
-        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
             mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
             with pytest.raises(ImportError, match="information_schema"):
                 import_from_provider(
@@ -203,12 +203,12 @@ class TestImportFromProvider:
         provider = _make_provider(diff_ops=[_make_op("op_1")])
         provider.adopt_import_baseline = Mock(return_value="deploy_import_1234")
 
-        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
-            with patch("schematic.commands.import_assets.append_ops") as mock_append:
-                with patch("schematic.commands.import_assets.read_project") as mock_project:
-                    with patch("schematic.commands.import_assets.create_snapshot") as mock_snapshot:
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            with patch("schemax.commands.import_assets.append_ops") as mock_append:
+                with patch("schemax.commands.import_assets.read_project") as mock_project:
+                    with patch("schemax.commands.import_assets.create_snapshot") as mock_snapshot:
                         with patch(
-                            "schematic.commands.import_assets.write_project"
+                            "schemax.commands.import_assets.write_project"
                         ) as mock_write_project:
                             mock_load.return_value = (
                                 {"catalogs": []},
@@ -245,8 +245,8 @@ class TestImportFromProvider:
 
     def test_adopt_baseline_rejected_when_provider_capability_missing(self):
         provider = _make_provider(supports_baseline_adoption=False)
-        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
-            with patch("schematic.commands.import_assets.read_project") as mock_project:
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            with patch("schemax.commands.import_assets.read_project") as mock_project:
                 mock_project.return_value = _make_project()
                 mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
                 with pytest.raises(ImportError, match="does not support baseline adoption"):
@@ -261,15 +261,13 @@ class TestImportFromProvider:
 
     def test_import_uses_provider_prepared_state_and_mappings(self):
         discovered_state = {
-            "catalogs": [{"id": "cat_phys", "name": "dev_schematic_demo", "schemas": []}]
+            "catalogs": [{"id": "cat_phys", "name": "dev_schemax_demo", "schemas": []}]
         }
-        prepared_state = {
-            "catalogs": [{"id": "cat_local", "name": "schematic_demo", "schemas": []}]
-        }
+        prepared_state = {"catalogs": [{"id": "cat_local", "name": "schemax_demo", "schemas": []}]}
         provider = _make_provider(
             discovered_state=discovered_state,
             prepared_state=prepared_state,
-            prepared_mappings={"schematic_demo": "dev_schematic_demo"},
+            prepared_mappings={"schemax_demo": "dev_schemax_demo"},
             diff_ops=[],
         )
         provider.get_state_differ = Mock(
@@ -277,8 +275,8 @@ class TestImportFromProvider:
         )
 
         project = _make_project()
-        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
-            with patch("schematic.commands.import_assets.read_project") as mock_project:
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            with patch("schemax.commands.import_assets.read_project") as mock_project:
                 mock_project.return_value = project
                 mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
 
@@ -290,13 +288,13 @@ class TestImportFromProvider:
                     dry_run=True,
                 )
 
-        assert summary["catalog_mappings"] == {"schematic_demo": "dev_schematic_demo"}
+        assert summary["catalog_mappings"] == {"schemax_demo": "dev_schemax_demo"}
         kwargs = provider.get_state_differ.call_args.kwargs
         assert kwargs["new_state"] == prepared_state
 
     def test_non_dry_run_persists_catalog_mappings_via_provider_hook(self):
         provider = _make_provider(
-            prepared_mappings={"schematic_demo": "dev_schematic_demo"},
+            prepared_mappings={"schemax_demo": "dev_schemax_demo"},
             mappings_updated=True,
             diff_ops=[],
         )
@@ -307,9 +305,9 @@ class TestImportFromProvider:
         )
 
         project = _make_project()
-        with patch("schematic.commands.import_assets.load_current_state") as mock_load:
-            with patch("schematic.commands.import_assets.read_project") as mock_project:
-                with patch("schematic.commands.import_assets.write_project") as mock_write_project:
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            with patch("schemax.commands.import_assets.read_project") as mock_project:
+                with patch("schemax.commands.import_assets.write_project") as mock_write_project:
                     mock_project.return_value = project
                     mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
 
@@ -325,7 +323,7 @@ class TestImportFromProvider:
         assert mock_write_project.call_count == 1
         persisted_project = mock_write_project.call_args.args[1]
         assert persisted_project["provider"]["environments"]["dev"]["catalogMappings"] == {
-            "schematic_demo": "dev_schematic_demo"
+            "schemax_demo": "dev_schemax_demo"
         }
 
 
@@ -352,7 +350,7 @@ class TestImportCli:
     def test_import_cli_rejects_information_schema(self):
         runner = CliRunner()
         with patch(
-            "schematic.cli.import_from_provider",
+            "schemax.cli.import_from_provider",
             side_effect=ImportError("Schema 'information_schema' is system-managed"),
         ):
             result = runner.invoke(
@@ -376,7 +374,7 @@ class TestImportCli:
 
     def test_import_cli_routes_to_command(self):
         runner = CliRunner()
-        with patch("schematic.cli.import_from_provider") as mock_import:
+        with patch("schemax.cli.import_from_provider") as mock_import:
             result = runner.invoke(
                 cli,
                 [
@@ -404,7 +402,7 @@ class TestImportCli:
 
     def test_import_cli_passes_catalog_mapping_overrides(self):
         runner = CliRunner()
-        with patch("schematic.cli.import_from_provider") as mock_import:
+        with patch("schemax.cli.import_from_provider") as mock_import:
             result = runner.invoke(
                 cli,
                 [
@@ -416,14 +414,14 @@ class TestImportCli:
                     "--warehouse-id",
                     "wh_123",
                     "--catalog-map",
-                    "schematic_demo=dev_schematic_demo",
+                    "schemax_demo=dev_schemax_demo",
                     "--dry-run",
                 ],
             )
 
             assert result.exit_code == 0
             kwargs = mock_import.call_args.kwargs
-            assert kwargs["catalog_mappings_override"] == {"schematic_demo": "dev_schematic_demo"}
+            assert kwargs["catalog_mappings_override"] == {"schemax_demo": "dev_schemax_demo"}
 
     def test_import_cli_rejects_invalid_catalog_mapping_format(self):
         runner = CliRunner()
@@ -447,7 +445,7 @@ class TestImportCli:
     def test_import_cli_prints_summary_from_import_result(self):
         runner = CliRunner()
         with patch(
-            "schematic.cli.import_from_provider",
+            "schemax.cli.import_from_provider",
             return_value={
                 "operations_generated": 12,
                 "dry_run": True,

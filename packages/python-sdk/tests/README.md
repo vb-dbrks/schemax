@@ -6,15 +6,15 @@ This folder contains deterministic unit/integration tests and opt-in live Databr
 ## Live Test Env
 Required for live command matrix tests:
 
-- `SCHEMATIC_RUN_LIVE_COMMAND_TESTS=1`
+- `SCHEMAX_RUN_LIVE_COMMAND_TESTS=1`
 - `DATABRICKS_PROFILE`
 - `DATABRICKS_WAREHOUSE_ID`
 - `DATABRICKS_MANAGED_LOCATION`
 
 Optional:
 
-- `SCHEMATIC_LIVE_RESOURCE_PREFIX` (default: `schematic_live`)
-- `SCHEMATIC_LIVE_TEST_TIMEOUT_SECONDS` (default: `300`)
+- `SCHEMAX_LIVE_RESOURCE_PREFIX` (default: `schemax_live`)
+- `SCHEMAX_LIVE_TEST_TIMEOUT_SECONDS` (default: `300`)
 
 ## Issue #19 Coverage Gap Ledger
 The following tests are intentionally skipped until issue #19 feature gaps are implemented:
@@ -37,4 +37,4 @@ Unblock criteria:
 - Implement issue #19 features and remove skip markers with passing assertions.
 
 Owner:
-- Schematic SDK maintainers.
+- SchemaX SDK maintainers.

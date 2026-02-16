@@ -4,8 +4,8 @@ Unit tests for catalog name mapping (logical → physical)
 
 import pytest
 
-from schematic.commands.sql import SQLGenerationError, build_catalog_mapping
-from schematic.providers.unity.sql_generator import UnitySQLGenerator
+from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
+from schemax.providers.unity.sql_generator import UnitySQLGenerator
 
 
 class TestCatalogMapping:
@@ -98,7 +98,7 @@ class TestSQLGeneratorWithMapping:
         generator = UnitySQLGenerator(state, catalog_mapping)
 
         # Generate SQL for schema
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         op = Operation(
             id="op_1",
@@ -131,7 +131,7 @@ class TestSQLGeneratorWithMapping:
         # No mapping
         generator = UnitySQLGenerator(state, {})
 
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         op = Operation(
             id="op_1",
@@ -186,7 +186,7 @@ class TestSQLGeneratorWithMapping:
 
         generator = UnitySQLGenerator(state, catalog_mapping)
 
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         op = Operation(
             id="op_1",
@@ -226,7 +226,7 @@ class TestEnvironmentSpecificSQL:
             ]
         }
 
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         op = Operation(
             id="op_1",
@@ -275,7 +275,7 @@ class TestEnvironmentSpecificSQL:
             ]
         }
 
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         # Create a view
         op = Operation(
@@ -340,7 +340,7 @@ class TestEnvironmentSpecificSQL:
             ]
         }
 
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         # Create 3 views with dependencies: view3 → view2 → view1 → base_table
         ops = [
@@ -452,7 +452,7 @@ class TestEnvironmentSpecificSQL:
             ]
         }
 
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         # Complex view with CTEs, JOINs, subqueries, window functions, UNION
         complex_sql = """
@@ -570,7 +570,7 @@ class TestEnvironmentSpecificSQL:
             ]
         }
 
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         # Test different view operations
         test_cases = [

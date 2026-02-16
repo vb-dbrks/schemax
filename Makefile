@@ -9,7 +9,7 @@ fmt format lint typecheck test check ci pre-commit all:
 	$(MAKE) -C $(PYTHON_SDK) $@
 
 help:
-	@echo "Schematic - run from repo root"
+	@echo "SchemaX - run from repo root"
 	@echo ""
 	@echo "  make fmt         - Format Python code (Ruff)"
 	@echo "  make format      - Same as fmt"

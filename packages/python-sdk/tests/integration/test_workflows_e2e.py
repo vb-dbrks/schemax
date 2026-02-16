@@ -15,11 +15,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from schematic.commands.diff import generate_diff
-from schematic.commands.rollback import RollbackError, rollback_complete
-from schematic.commands.sql import generate_sql_migration
-from schematic.commands.validate import validate_project
-from schematic.core.storage import (
+from schemax.commands.diff import generate_diff
+from schemax.commands.rollback import RollbackError, rollback_complete
+from schemax.commands.sql import generate_sql_migration
+from schemax.commands.validate import validate_project
+from schemax.core.storage import (
     append_ops,
     create_snapshot,
     ensure_project_file,
@@ -104,7 +104,7 @@ class TestWorkflowS1GreenfieldSingleDev:
         )
 
         with patch(
-            "schematic.cli.apply_to_environment",
+            "schemax.cli.apply_to_environment",
             return_value=SimpleNamespace(status="success"),
         ):
             result = invoke_cli(
@@ -148,7 +148,7 @@ class TestWorkflowS2GreenfieldMultiDev:
 
     def test_snapshot_rebase_workflow(self, initialized_workspace, sample_operations) -> None:
         """Snapshot rebase: create v0.1.0, v0.2.0, rebase v0.2.0 onto v0.1.0."""
-        from schematic.commands.snapshot_rebase import rebase_snapshot
+        from schemax.commands.snapshot_rebase import rebase_snapshot
 
         append_ops(initialized_workspace, sample_operations)
         create_snapshot(initialized_workspace, "Base", version="v0.1.0")
@@ -193,9 +193,9 @@ class TestWorkflowS3Brownfield:
         self, monkeypatch, initialized_workspace
     ) -> None:
         """Import with adopt-baseline stores importBaselineSnapshot per env."""
-        from schematic.commands.import_assets import import_from_provider
-        from schematic.core.storage import load_current_state
-        from schematic.providers import ProviderRegistry
+        from schemax.commands.import_assets import import_from_provider
+        from schemax.core.storage import load_current_state
+        from schemax.providers import ProviderRegistry
 
         state, _, _, _ = load_current_state(initialized_workspace, validate=False)
         provider = ProviderRegistry.get("unity")
@@ -203,7 +203,7 @@ class TestWorkflowS3Brownfield:
 
         monkeypatch.setattr(provider, "discover_state", lambda config, scope: state)
         monkeypatch.setattr(
-            "schematic.providers.unity.provider.create_databricks_client",
+            "schemax.providers.unity.provider.create_databricks_client",
             lambda _: object(),
         )
 
@@ -226,7 +226,7 @@ class TestWorkflowS3Brownfield:
             def complete_deployment(self, *args, **kwargs) -> None:
                 pass
 
-        monkeypatch.setattr("schematic.core.deployment.DeploymentTracker", FakeTracker)
+        monkeypatch.setattr("schemax.core.deployment.DeploymentTracker", FakeTracker)
 
         summary = import_from_provider(
             workspace=initialized_workspace,
@@ -256,7 +256,7 @@ class TestWorkflowS3Brownfield:
         project["provider"]["environments"]["dev"]["importBaselineSnapshot"] = "v0.1.0"
         write_project(initialized_workspace, project)
 
-        with patch("schematic.commands.rollback.get_environment_config") as mock_cfg:
+        with patch("schemax.commands.rollback.get_environment_config") as mock_cfg:
             mock_cfg.return_value = {
                 "topLevelName": "dev_catalog",
                 "importBaselineSnapshot": "v0.1.0",
@@ -291,32 +291,32 @@ class TestWorkflowS3Brownfield:
         mock_provider = Mock()
         mock_provider.get_state_differ.return_value = mock_differ
 
-        with patch("schematic.commands.rollback.read_project") as mock_read:
+        with patch("schemax.commands.rollback.read_project") as mock_read:
             mock_read.return_value = project
-        with patch("schematic.commands.rollback.get_environment_config") as mock_cfg:
+        with patch("schemax.commands.rollback.get_environment_config") as mock_cfg:
             mock_cfg.return_value = {
                 "topLevelName": "dev_catalog",
                 "importBaselineSnapshot": "v0.1.0",
             }
-        with patch("schematic.core.storage.read_snapshot") as mock_snap:
+        with patch("schemax.core.storage.read_snapshot") as mock_snap:
             mock_snap.return_value = {
                 "version": "v0.0.5",
                 "state": {"catalogs": []},
                 "operations": [],
             }
-        with patch("schematic.providers.unity.auth.create_databricks_client"):
-            with patch("schematic.commands.rollback.DeploymentTracker") as mock_tracker_cls:
+        with patch("schemax.providers.unity.auth.create_databricks_client"):
+            with patch("schemax.commands.rollback.DeploymentTracker") as mock_tracker_cls:
                 tracker = Mock()
                 mock_tracker_cls.return_value = tracker
                 tracker.get_latest_deployment.return_value = None
-            with patch("schematic.commands.rollback.load_current_state") as mock_load:
+            with patch("schemax.commands.rollback.load_current_state") as mock_load:
                 mock_load.return_value = (
                     {"catalogs": []},
                     {},
                     mock_provider,
                     None,
                 )
-            with patch("schematic.commands.diff._build_catalog_mapping") as mock_map:
+            with patch("schemax.commands.diff._build_catalog_mapping") as mock_map:
                 mock_map.return_value = {"__implicit__": "dev_catalog"}
                 result = rollback_complete(
                     workspace=initialized_workspace,
@@ -355,7 +355,7 @@ class TestWorkflowS4ApplyFailureAndRollback:
         create_snapshot(temp_workspace, "v1", version="v0.1.0")
 
         with patch(
-            "schematic.cli.apply_to_environment",
+            "schemax.cli.apply_to_environment",
             return_value=SimpleNamespace(status="success"),
         ):
             r1 = invoke_cli(
@@ -372,7 +372,7 @@ class TestWorkflowS4ApplyFailureAndRollback:
             )
         assert r1.exit_code == 0
 
-        with patch("schematic.cli.rollback_complete") as mock_rollback:
+        with patch("schemax.cli.rollback_complete") as mock_rollback:
             mock_rollback.return_value = SimpleNamespace(
                 success=True, operations_rolled_back=0, error_message=None
             )
@@ -419,14 +419,14 @@ class TestWorkflowS4ApplyFailureAndRollback:
         mock_tracker.get_deployment_by_id.return_value = fake_deployment
 
         with patch(
-            "schematic.providers.unity.auth.create_databricks_client",
+            "schemax.providers.unity.auth.create_databricks_client",
             return_value=Mock(),
         ):
             with patch(
-                "schematic.core.deployment.DeploymentTracker",
+                "schemax.core.deployment.DeploymentTracker",
                 return_value=mock_tracker,
             ):
-                with patch("schematic.commands.rollback.rollback_partial") as mock_partial:
+                with patch("schemax.commands.rollback.rollback_partial") as mock_partial:
                     mock_partial.return_value = SimpleNamespace(
                         success=True, operations_rolled_back=2, error_message=None
                     )
@@ -459,12 +459,12 @@ class TestWorkflowS5DiffValidateSqlOnly:
     """Situation 5: diff, validate, sql — no Databricks connection required."""
 
     def test_validate_succeeds_no_db(self, initialized_workspace) -> None:
-        """schematic validate succeeds without any DB."""
+        """schemax validate succeeds without any DB."""
         result = invoke_cli("validate", str(initialized_workspace))
         assert result.exit_code == 0
 
     def test_sql_generates_file_no_db(self, initialized_workspace, sample_operations) -> None:
-        """schematic sql --output FILE succeeds and writes SQL (no DB)."""
+        """schemax sql --output FILE succeeds and writes SQL (no DB)."""
         append_ops(initialized_workspace, sample_operations)
         sql_file = initialized_workspace / "migration.sql"
         result = invoke_cli("sql", "--output", str(sql_file), str(initialized_workspace))
@@ -476,7 +476,7 @@ class TestWorkflowS5DiffValidateSqlOnly:
         )
 
     def test_diff_succeeds_no_db(self, initialized_workspace, sample_operations) -> None:
-        """schematic diff --from X --to Y succeeds (no DB)."""
+        """schemax diff --from X --to Y succeeds (no DB)."""
         append_ops(initialized_workspace, sample_operations)
         create_snapshot(initialized_workspace, "v1", version="v0.1.0")
         builder = OperationBuilder()

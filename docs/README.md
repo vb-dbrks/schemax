@@ -1,7 +1,7 @@
-# Schematic Documentation
+# SchemaX Documentation
 
 - **Markdown reference** — `QUICKSTART.md`, `ARCHITECTURE.md`, `DEVELOPMENT.md`, `WORKFLOWS.md`, `TESTING.md`, etc. are the source for detailed content.
-- **Docusaurus site** — A built documentation site (like DQX) lives in `schematic/` and can be run locally or deployed.
+- **Docusaurus site** — A built documentation site (like DQX) lives in `docs/schematic/` and can be run locally or deployed.
 
 ## Run the docs site locally
 

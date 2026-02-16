@@ -13,7 +13,7 @@ It creates:
 - table and column tags
 - dependent views
 
-Use this when validating `schematic import` behavior end-to-end.
+Use this when validating `schemax import` behavior end-to-end.
 
 ### `unity_command_fixture.sql`
 
@@ -35,7 +35,7 @@ There are opt-in pytest integration tests that apply these fixture SQL files and
 
 Required environment variables:
 
-- `SCHEMATIC_RUN_LIVE_COMMAND_TESTS=1`
+- `SCHEMAX_RUN_LIVE_COMMAND_TESTS=1`
 - `DATABRICKS_PROFILE`
 - `DATABRICKS_WAREHOUSE_ID`
 - `DATABRICKS_MANAGED_LOCATION` (example: `abfss://test@mneudlsdevashish001.dfs.core.windows.net/`)

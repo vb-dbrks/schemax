@@ -126,8 +126,8 @@ export const App: React.FC = () => {
   if (loading) {
     return (
       <div className="app app--loading">
-        <VSCodeProgressRing aria-label="Loading Schematic Designer" />
-        <p className="loading-copy">Loading Schematic Designer…</p>
+        <VSCodeProgressRing aria-label="Loading SchemaX Designer" />
+        <p className="loading-copy">Loading SchemaX Designer…</p>
         <p className="loading-subcopy">If this persists, open the developer tools (Help → Toggle Developer Tools).</p>
       </div>
     );
@@ -138,7 +138,7 @@ export const App: React.FC = () => {
       <header className="app-header">
         <div className="app-header__info">
           <div className="app-header__title-row">
-            <h1 className="app-header__title">{project?.name || 'Schematic Project'}</h1>
+            <h1 className="app-header__title">{project?.name || 'SchemaX Project'}</h1>
             {hasProjectSettings && (
               <VSCodeButton
                 type="button"

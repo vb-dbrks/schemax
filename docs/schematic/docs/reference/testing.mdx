@@ -4,11 +4,11 @@ title: Testing
 ---
 # Testing Guide
 
-This document describes how to run tests for the Schematic project.
+This document describes how to run tests for the SchemaX project.
 
 ## Overview
 
-Schematic uses different testing frameworks for different components:
+SchemaX uses different testing frameworks for different components:
 
 - **Coverage checklist**: For release-ready test coverage, every scenario in this guide should have a corresponding passing test or CI/smoke step. See [Test Coverage Checklist](/reference/test-coverage-checklist) for a scenario-by-scenario checklist aligned with this document.
 - **Python SDK**: pytest with coverage reporting (306 tests)
@@ -42,10 +42,10 @@ pytest tests/unit/test_sql_generator.py -v
 pytest tests/unit/test_sql_generator.py::TestCatalogSQL::test_add_catalog -xvs
 
 # Run with coverage
-pytest tests/ --cov=src/schematic --cov-report=term-missing
+pytest tests/ --cov=src/schemax --cov-report=term-missing
 
 # Run with coverage HTML report
-pytest tests/ --cov=src/schematic --cov-report=html
+pytest tests/ --cov=src/schemax --cov-report=html
 open htmlcov/index.html
 ```
 
@@ -89,7 +89,7 @@ packages/python-sdk/tests/
 
 ### Apply Command Tests
 
-The `test_apply_command.py` test suite ensures the `schematic apply` command works correctly in both interactive and non-interactive modes. This is critical for CI/CD pipelines where user prompts would cause the command to hang.
+The `test_apply_command.py` test suite ensures the `schemax apply` command works correctly in both interactive and non-interactive modes. This is critical for CI/CD pipelines where user prompts would cause the command to hang.
 
 **Tests included:**
 1. ✅ `test_noninteractive_mode_auto_creates_snapshot` - Verifies snapshot auto-creation without prompting
@@ -360,10 +360,10 @@ coverageThreshold: {
 cd examples/basic-schema
 
 # Validate schema
-schematic validate
+schemax validate
 
 # Generate SQL
-schematic sql --output test-migration.sql
+schemax sql --output test-migration.sql
 ```
 
 ### CI/CD Integration
@@ -525,7 +525,7 @@ npm run test:watch
 
 ### Common Issues
 
-**Issue**: `ModuleNotFoundError: No module named 'schematic'`  
+**Issue**: `ModuleNotFoundError: No module named 'schemax'`  
 **Solution**: Install SDK in editable mode: `pip install -e ".[dev]"`
 
 **Issue**: Jest tests fail with "Cannot find module 'vscode'"  

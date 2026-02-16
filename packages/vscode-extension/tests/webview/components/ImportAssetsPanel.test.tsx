@@ -23,7 +23,7 @@ const makeProject = (overrides?: Partial<ProjectFile>): ProjectFile => ({
     catalogs: [
       {
         id: 'cat_1',
-        name: 'schematic_demo',
+        name: 'schemax_demo',
         schemas: [],
       },
     ],
@@ -93,7 +93,7 @@ describe('ImportAssetsPanel', () => {
     fireEvent.input(schemaInput, { target: { value: '  analytics  ' } });
     fireEvent.input(tableInput, { target: { value: '  users  ' } });
     fireEvent.change(bindingsInput, {
-      target: { value: 'schematic_demo=dev_schematic_demo\ncore=dev_core' },
+      target: { value: 'schemax_demo=dev_schemax_demo\ncore=dev_core' },
     });
 
     fireEvent.click(importRunTypeRadio);
@@ -109,7 +109,7 @@ describe('ImportAssetsPanel', () => {
       schema: 'analytics',
       table: 'users',
       catalogMappings: {
-        schematic_demo: 'dev_schematic_demo',
+        schemax_demo: 'dev_schemax_demo',
         core: 'dev_core',
       },
       dryRun: false,
@@ -151,7 +151,7 @@ describe('ImportAssetsPanel', () => {
           dev: {
             topLevelName: 'dev_demo',
             catalogMappings: {
-              schematic_demo: 'dev_schematic_demo',
+              schemax_demo: 'dev_schemax_demo',
               core: 'dev_core',
             },
           },
@@ -171,7 +171,7 @@ describe('ImportAssetsPanel', () => {
     );
 
     const bindingsInput = screen.getByLabelText('Catalog mappings (optional)') as HTMLTextAreaElement;
-    expect(bindingsInput.value).toBe('core=dev_core\nschematic_demo=dev_schematic_demo');
+    expect(bindingsInput.value).toBe('core=dev_core\nschemax_demo=dev_schemax_demo');
   });
 
   test('prefills single-catalog mapping from topLevelName when no explicit bindings exist', () => {
@@ -187,7 +187,7 @@ describe('ImportAssetsPanel', () => {
     );
 
     const bindingsInput = screen.getByLabelText('Catalog mappings (optional)') as HTMLTextAreaElement;
-    expect(bindingsInput.value).toBe('schematic_demo=dev_demo');
+    expect(bindingsInput.value).toBe('schemax_demo=dev_demo');
   });
 
   test('does not overwrite manual binding edits when environment changes', () => {

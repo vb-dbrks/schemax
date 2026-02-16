@@ -6,8 +6,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from schematic.core.deployment import DeploymentTracker
-from schematic.providers.base.executor import StatementResult
+from schemax.core.deployment import DeploymentTracker
+from schemax.providers.base.executor import StatementResult
 
 
 class TestDeploymentTracker:
@@ -37,7 +37,7 @@ class TestDeploymentTracker:
     def test_tracker_initialization(self, tracker):
         """Should initialize with executor and catalog"""
         assert tracker.catalog == "test_catalog"
-        assert tracker.schema == "`test_catalog`.`schematic`"
+        assert tracker.schema == "`test_catalog`.`schemax`"
         assert tracker.warehouse_id == "test_wh"
 
     # Note: Full deployment tracker tests require actual Databricks SDK integration.

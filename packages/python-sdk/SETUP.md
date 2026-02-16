@@ -1,6 +1,6 @@
 # Development Setup
 
-Complete setup guide for the Schematic Python SDK development environment.
+Complete setup guide for the SchemaX Python SDK development environment.
 
 ---
 
@@ -47,7 +47,7 @@ pip install -e ".[dev]"
 ```
 
 **What gets installed:**
-- Schematic SDK in editable mode
+- SchemaX SDK in editable mode
 - pytest, pytest-cov (testing)
 - ruff (formatting & linting)
 - mypy (type checking)
@@ -267,7 +267,7 @@ If mypy reports type errors:
 
 ```bash
 # Check specific file
-mypy src/schematic/your_file.py
+mypy src/schemax/your_file.py
 
 # Check all files
 mypy src/

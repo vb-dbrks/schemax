@@ -1,10 +1,10 @@
-# Schematic Workflows & Data Project Lifecycle
+# SchemaX Workflows & Data Project Lifecycle
 
-This document describes **where Schematic fits in data and analytics projects** and the **end-to-end situations** it supports. Schematic is built for **individual data projects**: one repo = one schema project, with one or more environments (dev, test, prod). It focuses on the **schema layer**—defining and versioning catalogs, schemas, tables, and governance—within the broader data ops flow.
+This document describes **where SchemaX fits in data and analytics projects** and the **end-to-end situations** it supports. SchemaX is built for **individual data projects**: one repo = one schema project, with one or more environments (dev, test, prod). It focuses on the **schema layer**—defining and versioning catalogs, schemas, tables, and governance—within the broader data ops flow.
 
 ---
 
-## Data Projects and Where Schematic Fits
+## Data Projects and Where SchemaX Fits
 
 In **data** or **data analytics projects**, the typical flow is:
 
@@ -13,11 +13,11 @@ In **data** or **data analytics projects**, the typical flow is:
 3. **Schema / storage** — Catalogs, schemas, and tables define where and how data is stored and who can access it (Unity Catalog, Hive, etc.).
 4. **Consumption** — BI, ML, or apps query the tables.
 
-**Schematic sits in step 3.** It version-controls and deploys the **schema layer** (catalogs, schemas, tables, views, constraints, row filters, column masks) so that:
+**SchemaX sits in step 3.** It version-controls and deploys the **schema layer** (catalogs, schemas, tables, views, constraints, row filters, column masks) so that:
 
 - Schema changes are declarative, reviewed in Git, and applied in order (dev → test → prod).
 - Rollback and diff are possible when something goes wrong or when comparing environments.
-- Existing catalogs created outside Schematic can be **imported** and then managed going forward.
+- Existing catalogs created outside SchemaX can be **imported** and then managed going forward.
 
 The rest of this doc describes the **five situations** (greenfield single-dev, greenfield multi-dev, brownfield import, apply failure and rollback, and diff/validate/SQL-only) as **sequence diagrams** and tables, so you can see exactly who does what and when.
 
@@ -27,7 +27,7 @@ The rest of this doc describes the **five situations** (greenfield single-dev, g
 
 - **One data project** = one `.schematic/` directory (one `project.json`, one changelog, one snapshot chain). Usually one repo per analytics domain or product.
 - **Environments** = dev, test, prod with per-environment catalog mappings (e.g. logical `__implicit__` → physical `dev_myapp`, `prod_myapp`).
-- **Single vs multi-dev** = same repo; multiple data engineers or analysts work on the same schema via Git (branches, merge, rebase). Schematic does not manage multiple tenants or org-wide catalogs.
+- **Single vs multi-dev** = same repo; multiple data engineers or analysts work on the same schema via Git (branches, merge, rebase). SchemaX does not manage multiple tenants or org-wide catalogs.
 
 ---
 
@@ -52,12 +52,12 @@ sequenceDiagram
   CLI->>Storage: append_ops (changelog.json)
   Storage-->>CLI: ok
 
-  Dev->>CLI: schematic snapshot create
+  Dev->>CLI: schemax snapshot create
   CLI->>Storage: create_snapshot (v0.1.0), clear changelog
   Storage-->>CLI: snapshot ref
   CLI-->>Dev: v0.1.0 created
 
-  Dev->>CLI: schematic apply --target dev
+  Dev->>CLI: schemax apply --target dev
   CLI->>Storage: load_current_state, read project
   Storage-->>CLI: state, env_config
   CLI->>Provider: get_sql_generator, generate SQL
@@ -67,7 +67,7 @@ sequenceDiagram
   CLI->>DB: record deployment
   CLI-->>Dev: applied to dev
 
-  Dev->>CLI: schematic apply --target test, then prod
+  Dev->>CLI: schemax apply --target test, then prod
   CLI->>DB: execute SQL per env
   DB-->>CLI: success
   CLI-->>Dev: promoted to test, prod
@@ -78,9 +78,9 @@ sequenceDiagram
 | **Start** | No schema; new repo or new data project folder. | — |
 | **Init** | Create `.schematic/` with project.json, empty changelog, dev/test/prod env config (catalogMappings). | `schematic init` or VS Code + first “Open Designer”. |
 | **Design** | Add catalogs, schemas, tables, columns, constraints, etc. | VS Code Designer (emits ops to changelog) or manual ops. |
-| **Checkpoint** | Create first snapshot (e.g. v0.1.0). Changelog cleared, state in snapshot. | `schematic snapshot create` or extension. |
-| **Deploy dev** | Generate SQL from changelog/snapshot, apply to dev. | `schematic apply --target dev --profile … --warehouse-id …` (optionally `--dry-run`). |
-| **Promote** | Apply same or newer snapshot to test, then prod. | `schematic apply --target test …`, then `--target prod …`. |
+| **Checkpoint** | Create first snapshot (e.g. v0.1.0). Changelog cleared, state in snapshot. | `schemax snapshot create` or extension. |
+| **Deploy dev** | Generate SQL from changelog/snapshot, apply to dev. | `schemax apply --target dev --profile … --warehouse-id …` (optionally `--dry-run`). |
+| **Promote** | Apply same or newer snapshot to test, then prod. | `schemax apply --target test …`, then `--target prod …`. |
 
 **Timeline:** Init → Ops → Snapshot → Apply (dev → test → prod). Single developer owns the schema layer.
 
@@ -107,13 +107,13 @@ sequenceDiagram
   Git->>Storage: merge project.json, changelog, snapshots
   Note over Git,Storage: conflicts possible in JSON
 
-  DevA->>CLI: schematic validate
+  DevA->>CLI: schemax validate
   CLI->>Storage: load_current_state, check snapshot chain, deps
   Storage-->>CLI: state, warnings
   CLI-->>DevA: valid or stale snapshot warning
 
   alt Stale snapshot after rebase
-    DevA->>CLI: schematic snapshot rebase VERSION
+    DevA->>CLI: schemax snapshot rebase VERSION
     CLI->>Storage: read snapshots, replay ops, detect conflicts
     Storage-->>CLI: rebased or conflicts
     CLI-->>DevA: chain fixed or resolve conflicts
@@ -122,10 +122,10 @@ sequenceDiagram
 
 | Phase   | What happens | Commands / UI |
 |--------|---------------|----------------|
-| **Parallel work** | Dev A and Dev B: branch, add ops, snapshot, apply to dev. | Designer + `schematic snapshot create` + `schematic apply --target dev`. |
+| **Parallel work** | Dev A and Dev B: branch, add ops, snapshot, apply to dev. | Designer + `schemax snapshot create` + `schemax apply --target dev`. |
 | **Merge** | Merge Git branches. Conflicts possible in `project.json` / `changelog.json` / snapshots. | Git merge; resolve conflicts in JSON. |
-| **Validate** | Check project files, snapshot chain, dependency graph. | `schematic validate`; `schematic snapshot validate` (lists stale). |
-| **Rebase** | After Git rebase, snapshot chain may be broken. Replay snapshot onto new base. | `schematic snapshot rebase <version>`. Fix conflicts if any. |
+| **Validate** | Check project files, snapshot chain, dependency graph. | `schemax validate`; `schemax snapshot validate` (lists stale). |
+| **Rebase** | After Git rebase, snapshot chain may be broken. Replay snapshot onto new base. | `schemax snapshot rebase <version>`. Fix conflicts if any. |
 
 **Timeline:** Same as single-dev, plus **Validate** after merge/rebase and **Snapshot rebase** when the chain is broken.
 
@@ -133,7 +133,7 @@ sequenceDiagram
 
 ## Situation 3: Brownfield (Existing Catalog in Databricks) — Import Then Normal Flow
 
-**Context:** Catalog/schemas/tables already exist (e.g. created manually or by another tool). Data team wants to bring them under Schematic and then manage changes via snapshot/apply.
+**Context:** Catalog/schemas/tables already exist (e.g. created manually or by another tool). Data team wants to bring them under SchemaX and then manage changes via snapshot/apply.
 
 ```mermaid
 sequenceDiagram
@@ -184,7 +184,7 @@ sequenceDiagram
 
 ### Rollback to before baseline (brownfield)
 
-After **adopt-baseline**, the imported snapshot (e.g. v0.1.0) is the **deployment baseline** for that environment: it represents the first state Schematic considers “deployed” for that env. Snapshots older than the baseline (if any exist in the chain) are either pre-import or from a different history.
+After **adopt-baseline**, the imported snapshot (e.g. v0.1.0) is the **deployment baseline** for that environment: it represents the first state SchemaX considers “deployed” for that env. Snapshots older than the baseline (if any exist in the chain) are either pre-import or from a different history.
 
 **Scenario:** Someone runs `schematic rollback --target prod --to-snapshot v0.0.5` and the baseline for prod is v0.1.0 (the imported snapshot). So v0.0.5 is **before** the baseline.
 
@@ -192,7 +192,7 @@ After **adopt-baseline**, the imported snapshot (e.g. v0.1.0) is the **deploymen
 
 - Rolling back to a snapshot **before** the baseline would undo the imported state (catalogs/schemas/tables that were brought in by import). The live catalog would no longer match any snapshot that Schematic “owns.”
 - The project’s notion of “current state” and the actual DB would diverge; future applies could recreate objects that were just dropped, or assume objects that no longer exist.
-- In brownfield, the baseline is the agreed “first version” under Schematic; going before it is equivalent to abandoning that agreement for that env.
+- In brownfield, the baseline is the agreed “first version” under SchemaX; going before it is equivalent to abandoning that agreement for that env.
 
 **Recommended behavior:**
 
@@ -236,7 +236,7 @@ sequenceDiagram
   participant Provider as Provider
   participant DB as Databricks
 
-  Dev->>CLI: schematic apply --target prod
+  Dev->>CLI: schemax apply --target prod
   CLI->>Storage: load_current_state, project
   CLI->>Provider: generate SQL
   CLI->>DB: execute stmt 1
@@ -268,12 +268,12 @@ sequenceDiagram
 
 | Phase   | What happens | Commands / UI |
 |--------|---------------|----------------|
-| **Apply** | Apply runs N statements; one fails (e.g. statement 3 of 5). | `schematic apply --target prod …` |
+| **Apply** | Apply runs N statements; one fails (e.g. statement 3 of 5). | `schemax apply --target prod …` |
 | **State** | Deployment recorded as partial/failed; first 2 statements applied. | DB + `project.json` deployments. |
 | **Partial rollback** | Undo only the successful operations from that deployment. | `schematic rollback --deployment <id> --partial --target prod …` (or `--dry-run`). |
 | **Complete rollback** | Revert environment to a previous snapshot (e.g. v0.1.0). | `schematic rollback --target prod --to-snapshot v0.1.0 …` |
 
-**Timeline:** Apply (failure) → **Partial rollback** or **Complete rollback** → fix schema/ops → Snapshot → Apply again. Auto-rollback on failure: `schematic apply --auto-rollback`.
+**Timeline:** Apply (failure) → **Partial rollback** or **Complete rollback** → fix schema/ops → Snapshot → Apply again. Auto-rollback on failure: `schemax apply --auto-rollback`.
 
 ---
 
@@ -299,8 +299,8 @@ sequenceDiagram
   end
 
   rect rgb(255, 248, 240)
-    Note over Dev,Provider: schematic validate
-    Dev->>CLI: schematic validate
+    Note over Dev,Provider: schemax validate
+    Dev->>CLI: schemax validate
     CLI->>Storage: load_current_state, read project, snapshots
     Storage-->>CLI: state, changelog, snapshot list
     CLI->>Provider: dependency graph, cycle check
@@ -309,8 +309,8 @@ sequenceDiagram
   end
 
   rect rgb(240, 255, 240)
-    Note over Dev,Provider: schematic sql
-    Dev->>CLI: schematic sql --output migration.sql
+    Note over Dev,Provider: schemax sql
+    Dev->>CLI: schemax sql --output migration.sql
     CLI->>Storage: load_current_state
     Storage-->>CLI: state, changelog
     CLI->>Provider: get_sql_generator, generate SQL
@@ -323,53 +323,53 @@ sequenceDiagram
 | Use case | What it does | Command |
 |----------|----------------|--------|
 | **Diff** | Compare two snapshot versions; show ops or SQL to go from one to the other. | `schematic diff --from-version v0.1.0 --to-version v0.2.0` (optional `--target`). |
-| **Validate** | Check project files, snapshot chain, dependency graph (e.g. circular refs). | `schematic validate` |
-| **SQL only** | Generate migration SQL from changelog or snapshot without applying. | `schematic sql --output migration.sql` (optional `--target`, `--from-version`). |
+| **Validate** | Check project files, snapshot chain, dependency graph (e.g. circular refs). | `schemax validate` |
+| **SQL only** | Generate migration SQL from changelog or snapshot without applying. | `schemax sql --output migration.sql` (optional `--target`, `--from-version`). |
 
 These fit at any point: after snapshot create, before apply, or in CI for review.
 
 ---
 
-## High-Level Data Ops Flow (Where Schematic Fits)
+## High-Level Data Ops Flow (Where SchemaX Fits)
 
-End-to-end flow for a **data project**: from no schema to deployed and recoverable. Schematic covers the “Schema / storage” and “Deploy / rollback” steps.
+End-to-end flow for a **data project**: from no schema to deployed and recoverable. SchemaX covers the “Schema / storage” and “Deploy / rollback” steps.
 
 ```mermaid
 sequenceDiagram
   participant Team as Data team
-  participant Schematic as Schematic
+  participant SchemaX as SchemaX
   participant Storage as .schematic
   participant Catalog as Unity Catalog
 
   Note over Team,Catalog: 1. Project start (greenfield or brownfield)
-  Team->>Schematic: init or import
-  Schematic->>Storage: project.json, changelog or import ops
-  Schematic->>Catalog: import only: discover state
+  Team->>SchemaX: init or import
+  SchemaX->>Storage: project.json, changelog or import ops
+  SchemaX->>Catalog: import only: discover state
 
   Note over Team,Catalog: 2. Design and version
-  Team->>Schematic: design (Designer or ops), snapshot create
-  Schematic->>Storage: append_ops, create_snapshot
+  Team->>SchemaX: design (Designer or ops), snapshot create
+  SchemaX->>Storage: append_ops, create_snapshot
 
   Note over Team,Catalog: 3. Deploy per environment
-  Team->>Schematic: apply --target dev, then test, then prod
-  Schematic->>Storage: load state, env config
-  Schematic->>Catalog: generate SQL, execute, record deployment
+  Team->>SchemaX: apply --target dev, then test, then prod
+  SchemaX->>Storage: load state, env config
+  SchemaX->>Catalog: generate SQL, execute, record deployment
 
   Note over Team,Catalog: 4. Optional: review or recover
-  Team->>Schematic: diff, validate, sql (no DB)
-  Schematic->>Storage: read snapshots, changelog
-  Schematic-->>Team: ops, SQL, or validation result
-  Team->>Schematic: rollback --partial or --to-snapshot (on failure)
-  Schematic->>Catalog: execute rollback SQL
-  Catalog-->>Schematic: ok
-  Schematic-->>Team: rolled back
+  Team->>SchemaX: diff, validate, sql (no DB)
+  SchemaX->>Storage: read snapshots, changelog
+  SchemaX-->>Team: ops, SQL, or validation result
+  Team->>SchemaX: rollback --partial or --to-snapshot (on failure)
+  SchemaX->>Catalog: execute rollback SQL
+  Catalog-->>SchemaX: ok
+  SchemaX-->>Team: rolled back
 ```
 
 ---
 
 ## Environment Matrix (Per Data Project)
 
-Schematic supports multiple **environments** per project (e.g. dev, test, prod). Each environment has:
+SchemaX supports multiple **environments** per project (e.g. dev, test, prod). Each environment has:
 
 - **Catalog mapping**: logical catalog name → physical catalog name (e.g. `__implicit__` → `dev_myapp`).
 - **Config**: allowDrift, requireSnapshot, autoCreateTopLevel, etc.
@@ -403,7 +403,7 @@ Schematic supports multiple **environments** per project (e.g. dev, test, prod).
 
 ## Note: Import Baseline and Rollback (Implemented)
 
-When you use **import with adopt-baseline**, Schematic records the imported snapshot as the deployment baseline for that environment.
+When you use **import with adopt-baseline**, SchemaX records the imported snapshot as the deployment baseline for that environment.
 
 **Implemented behavior:**
 

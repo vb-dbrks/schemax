@@ -4,7 +4,7 @@ from shutil import copytree
 
 import pytest
 
-from schematic.providers.unity.models import (
+from schemax.providers.unity.models import (
     UnityCatalog,
     UnityColumn,
     UnitySchema,
@@ -47,17 +47,17 @@ def resource_workspace(tmp_path):
 
 
 @pytest.fixture
-def schematic_demo_workspace(resource_workspace):
-    """Workspace loaded from tests/resources/projects/schematic_demo."""
-    return resource_workspace("schematic_demo")
+def schemax_demo_workspace(resource_workspace):
+    """Workspace loaded from tests/resources/projects/schemax_demo."""
+    return resource_workspace("schemax_demo")
 
 
 @pytest.fixture
-def schematic_dir(temp_workspace):
-    """Create .schematic directory"""
-    schematic = temp_workspace / ".schematic"
-    schematic.mkdir()
-    return schematic
+def schemax_dir(temp_workspace):
+    """Create .schemax directory"""
+    schemax = temp_workspace / ".schemax"
+    schemax.mkdir()
+    return schemax
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ def sample_project_v4():
                     "allowDrift": True,
                     "requireSnapshot": False,
                     "autoCreateCatalog": True,
-                    "autoCreateSchematicSchema": True,
+                    "autoCreateSchemaxSchema": True,
                 },
                 "test": {
                     "catalog": "test_test_project",
@@ -84,7 +84,7 @@ def sample_project_v4():
                     "allowDrift": False,
                     "requireSnapshot": True,
                     "autoCreateCatalog": True,
-                    "autoCreateSchematicSchema": True,
+                    "autoCreateSchemaxSchema": True,
                 },
                 "prod": {
                     "catalog": "prod_test_project",
@@ -93,7 +93,7 @@ def sample_project_v4():
                     "requireSnapshot": True,
                     "requireApproval": False,
                     "autoCreateCatalog": False,
-                    "autoCreateSchematicSchema": True,
+                    "autoCreateSchemaxSchema": True,
                 },
             },
         },
@@ -204,8 +204,8 @@ def empty_unity_state():
 
 @pytest.fixture
 def initialized_workspace(temp_workspace):
-    """Workspace with initialized .schematic project (v4)"""
-    from schematic.core.storage import ensure_project_file
+    """Workspace with initialized .schemax project (v4)"""
+    from schemax.core.storage import ensure_project_file
 
     ensure_project_file(temp_workspace, provider_id="unity")
     return temp_workspace
@@ -214,7 +214,7 @@ def initialized_workspace(temp_workspace):
 @pytest.fixture
 def workspace_with_operations(initialized_workspace, sample_operations):
     """Workspace with operations in changelog"""
-    from schematic.core.storage import append_ops
+    from schemax.core.storage import append_ops
 
     append_ops(initialized_workspace, sample_operations)
     return initialized_workspace

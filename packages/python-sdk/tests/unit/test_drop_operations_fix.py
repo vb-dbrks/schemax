@@ -9,8 +9,8 @@ processor expected CREATE operations. This caused 0 SQL statements to be
 generated for rollback operations like drop_schema.
 """
 
-from schematic.providers.unity.models import UnityState
-from schematic.providers.unity.sql_generator import UnitySQLGenerator
+from schemax.providers.unity.models import UnityState
+from schemax.providers.unity.sql_generator import UnitySQLGenerator
 from tests.utils.operation_builders import OperationBuilder
 
 

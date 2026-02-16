@@ -1,0 +1,28 @@
+{
+  "id": "guide/architecture",
+  "title": "Architecture",
+  "description": "This document describes the technical architecture and design decisions behind Schematic.",
+  "source": "@site/docs/guide/architecture.mdx",
+  "sourceDirName": "guide",
+  "slug": "/guide/architecture",
+  "permalink": "/schemax-vscode/guide/architecture",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/schematic/schemax-vscode/tree/main/docs/schematic/docs/guide/architecture.mdx",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 20,
+  "frontMatter": {
+    "sidebar_position": 20,
+    "title": "Architecture"
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Quickstart",
+    "permalink": "/schemax-vscode/guide/quickstart"
+  },
+  "next": {
+    "title": "Development",
+    "permalink": "/schemax-vscode/guide/development"
+  }
+}

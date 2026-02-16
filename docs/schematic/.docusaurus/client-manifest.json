@@ -1,0 +1,287 @@
+{
+  "entrypoints": [
+    "main"
+  ],
+  "origins": {
+    "237": [
+      237
+    ],
+    "278": [
+      869,
+      278
+    ],
+    "577": [
+      591,
+      577
+    ],
+    "591": [
+      577,
+      591
+    ],
+    "17896441": [
+      869,
+      401
+    ],
+    "main": [
+      354,
+      869,
+      792
+    ],
+    "runtime~main": [
+      792,
+      869,
+      354
+    ],
+    "24ca2884": [
+      751
+    ],
+    "3fc5751d": [
+      799
+    ],
+    "4d19cf9f": [
+      931
+    ],
+    "5e95c892": [
+      647
+    ],
+    "64caf195": [
+      720
+    ],
+    "97cd4883": [
+      165
+    ],
+    "a7bd4aaa": [
+      98
+    ],
+    "a94703ab": [
+      869,
+      48
+    ],
+    "aba21aa0": [
+      742
+    ],
+    "db74feca": [
+      435
+    ],
+    "dba39453": [
+      286
+    ],
+    "deb7ea58": [
+      930
+    ],
+    "f00b5562": [
+      565
+    ],
+    "f8409a7e": [
+      903
+    ],
+    "styles": [
+      48,
+      278,
+      354,
+      401,
+      792,
+      869
+    ]
+  },
+  "assets": {
+    "48": {
+      "js": [
+        {
+          "file": "assets/js/a94703ab.60897f5f.js",
+          "hash": "0ba35b4cf9dd8013",
+          "publicPath": "/schemax-vscode/assets/js/a94703ab.60897f5f.js"
+        }
+      ]
+    },
+    "98": {
+      "js": [
+        {
+          "file": "assets/js/a7bd4aaa.72235d66.js",
+          "hash": "3c3e622b73febbd5",
+          "publicPath": "/schemax-vscode/assets/js/a7bd4aaa.72235d66.js"
+        }
+      ]
+    },
+    "165": {
+      "js": [
+        {
+          "file": "assets/js/97cd4883.135e36ec.js",
+          "hash": "8a56ab76d2bf9e55",
+          "publicPath": "/schemax-vscode/assets/js/97cd4883.135e36ec.js"
+        }
+      ]
+    },
+    "237": {
+      "js": [
+        {
+          "file": "assets/js/237.51bb302b.js",
+          "hash": "1c1241cebc01c682",
+          "publicPath": "/schemax-vscode/assets/js/237.51bb302b.js"
+        }
+      ]
+    },
+    "278": {
+      "js": [
+        {
+          "file": "assets/js/278.b2a5b665.js",
+          "hash": "3ac44eddd086c4cf",
+          "publicPath": "/schemax-vscode/assets/js/278.b2a5b665.js"
+        }
+      ]
+    },
+    "286": {
+      "js": [
+        {
+          "file": "assets/js/dba39453.4d5db9f9.js",
+          "hash": "d16d9976036f5605",
+          "publicPath": "/schemax-vscode/assets/js/dba39453.4d5db9f9.js"
+        }
+      ]
+    },
+    "354": {
+      "js": [
+        {
+          "file": "assets/js/runtime~main.7d19ce62.js",
+          "hash": "f3a27d9270181d5c",
+          "publicPath": "/schemax-vscode/assets/js/runtime~main.7d19ce62.js"
+        }
+      ]
+    },
+    "401": {
+      "js": [
+        {
+          "file": "assets/js/17896441.46196048.js",
+          "hash": "70f71ba1e686f28a",
+          "publicPath": "/schemax-vscode/assets/js/17896441.46196048.js"
+        }
+      ]
+    },
+    "435": {
+      "js": [
+        {
+          "file": "assets/js/db74feca.edd8d621.js",
+          "hash": "6badb74dba0eac82",
+          "publicPath": "/schemax-vscode/assets/js/db74feca.edd8d621.js"
+        }
+      ]
+    },
+    "565": {
+      "js": [
+        {
+          "file": "assets/js/f00b5562.2270fbab.js",
+          "hash": "caa665f7c61bbe22",
+          "publicPath": "/schemax-vscode/assets/js/f00b5562.2270fbab.js"
+        }
+      ]
+    },
+    "577": {
+      "js": [
+        {
+          "file": "assets/js/577.9c6b649c.js",
+          "hash": "489434cad0707929",
+          "publicPath": "/schemax-vscode/assets/js/577.9c6b649c.js"
+        }
+      ]
+    },
+    "591": {
+      "js": [
+        {
+          "file": "assets/js/591.8e09af9e.js",
+          "hash": "2dbd165d48879a26",
+          "publicPath": "/schemax-vscode/assets/js/591.8e09af9e.js"
+        }
+      ]
+    },
+    "647": {
+      "js": [
+        {
+          "file": "assets/js/5e95c892.a30a9add.js",
+          "hash": "75fd2637e833de50",
+          "publicPath": "/schemax-vscode/assets/js/5e95c892.a30a9add.js"
+        }
+      ]
+    },
+    "720": {
+      "js": [
+        {
+          "file": "assets/js/64caf195.66970559.js",
+          "hash": "415f9cdab0a821e6",
+          "publicPath": "/schemax-vscode/assets/js/64caf195.66970559.js"
+        }
+      ]
+    },
+    "742": {
+      "js": [
+        {
+          "file": "assets/js/aba21aa0.34d890c6.js",
+          "hash": "e1796025c4e0bf16",
+          "publicPath": "/schemax-vscode/assets/js/aba21aa0.34d890c6.js"
+        }
+      ]
+    },
+    "751": {
+      "js": [
+        {
+          "file": "assets/js/24ca2884.1b7e20c1.js",
+          "hash": "e0eb736f830f8d0a",
+          "publicPath": "/schemax-vscode/assets/js/24ca2884.1b7e20c1.js"
+        }
+      ]
+    },
+    "792": {
+      "js": [
+        {
+          "file": "assets/js/main.a84b06a9.js",
+          "hash": "55c2b05f4b6b5610",
+          "publicPath": "/schemax-vscode/assets/js/main.a84b06a9.js"
+        }
+      ]
+    },
+    "799": {
+      "js": [
+        {
+          "file": "assets/js/3fc5751d.a0167581.js",
+          "hash": "5907c914e5350d2c",
+          "publicPath": "/schemax-vscode/assets/js/3fc5751d.a0167581.js"
+        }
+      ]
+    },
+    "869": {
+      "css": [
+        {
+          "file": "assets/css/styles.9d82c46d.css",
+          "hash": "0716e01b6bc1c607",
+          "publicPath": "/schemax-vscode/assets/css/styles.9d82c46d.css"
+        }
+      ]
+    },
+    "903": {
+      "js": [
+        {
+          "file": "assets/js/f8409a7e.41cf768a.js",
+          "hash": "3c1987f012537809",
+          "publicPath": "/schemax-vscode/assets/js/f8409a7e.41cf768a.js"
+        }
+      ]
+    },
+    "930": {
+      "js": [
+        {
+          "file": "assets/js/deb7ea58.eab8d4b7.js",
+          "hash": "73e2a89f29ae7330",
+          "publicPath": "/schemax-vscode/assets/js/deb7ea58.eab8d4b7.js"
+        }
+      ]
+    },
+    "931": {
+      "js": [
+        {
+          "file": "assets/js/4d19cf9f.88b81f27.js",
+          "hash": "d1564d6ab1a4b451",
+          "publicPath": "/schemax-vscode/assets/js/4d19cf9f.88b81f27.js"
+        }
+      ]
+    }
+  }
+}

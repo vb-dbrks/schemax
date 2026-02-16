@@ -3,11 +3,11 @@
 Example: Compare two schema versions
 
 This script demonstrates how to load and compare different schema versions
-using the Schematic Python SDK with provider-based architecture.
+using the SchemaX Python SDK with provider-based architecture.
 """
 
 from pathlib import Path
-from schematic.storage_v3 import read_snapshot, read_project
+from schemax.core.storage import read_snapshot, read_project
 
 
 def main():

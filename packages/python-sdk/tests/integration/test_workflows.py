@@ -10,7 +10,7 @@ Tests end-to-end workflows including:
 
 import pytest
 
-from schematic.core.storage import (
+from schemax.core.storage import (
     append_ops,
     create_snapshot,
     ensure_project_file,
@@ -496,7 +496,7 @@ class TestDiffWorkflow:
 
         # Get provider and generate diff
         project = read_project(initialized_workspace)
-        from schematic.providers import ProviderRegistry
+        from schemax.providers import ProviderRegistry
 
         provider = ProviderRegistry.get(project["provider"]["type"])
         assert provider is not None
@@ -535,7 +535,7 @@ class TestDiffWorkflow:
         snap_v2 = read_snapshot(initialized_workspace, "v0.2.0")
 
         # Generate diff
-        from schematic.providers import ProviderRegistry
+        from schemax.providers import ProviderRegistry
 
         project = read_project(initialized_workspace)
         provider = ProviderRegistry.get(project["provider"]["type"])
@@ -592,7 +592,7 @@ class TestDiffWorkflow:
         snap_v1 = read_snapshot(initialized_workspace, "v0.1.0")
         snap_v2 = read_snapshot(initialized_workspace, "v0.2.0")
 
-        from schematic.providers import ProviderRegistry
+        from schemax.providers import ProviderRegistry
 
         project = read_project(initialized_workspace)
         provider = ProviderRegistry.get(project["provider"]["type"])
@@ -646,7 +646,7 @@ class TestDiffWorkflow:
         create_snapshot(initialized_workspace, "v2", version="v0.2.0")
 
         # Use public API
-        from schematic import generate_diff_operations
+        from schemax import generate_diff_operations
 
         ops = generate_diff_operations(
             workspace_path=initialized_workspace,
@@ -667,7 +667,7 @@ class TestDiffWorkflow:
         create_snapshot(initialized_workspace, "v1 copy", version="v0.2.0")
 
         # Generate diff
-        from schematic import generate_diff_operations
+        from schemax import generate_diff_operations
 
         ops = generate_diff_operations(
             workspace_path=initialized_workspace,

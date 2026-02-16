@@ -2,7 +2,7 @@
 Live Databricks integration test for import workflow.
 
 This test is opt-in and skipped by default. It seeds Unity Catalog objects via
-SQL fixture, then validates `schematic import` against real provider state.
+SQL fixture, then validates `schemax import` against real provider state.
 """
 
 import os
@@ -12,12 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from schematic.commands.import_assets import import_from_provider
-from schematic.core.storage import ensure_project_file
-from schematic.providers import ProviderRegistry
-from schematic.providers.base.executor import ExecutionConfig
-from schematic.providers.unity.auth import create_databricks_client
-from schematic.providers.unity.executor import UnitySQLExecutor
+from schemax.commands.import_assets import import_from_provider
+from schemax.core.storage import ensure_project_file
+from schemax.providers import ProviderRegistry
+from schemax.providers.base.executor import ExecutionConfig
+from schemax.providers.unity.auth import create_databricks_client
+from schemax.providers.unity.executor import UnitySQLExecutor
 
 
 def _require_env(var_name: str) -> str:
@@ -70,8 +70,8 @@ def _make_random(length: int = 8) -> str:
 
 @pytest.mark.integration
 def test_import_from_live_databricks_fixture_sql(temp_workspace):
-    if os.getenv("SCHEMATIC_RUN_LIVE_IMPORT_TESTS") != "1":
-        pytest.skip("Set SCHEMATIC_RUN_LIVE_IMPORT_TESTS=1 to run live Databricks import test")
+    if os.getenv("SCHEMAX_RUN_LIVE_IMPORT_TESTS") != "1":
+        pytest.skip("Set SCHEMAX_RUN_LIVE_IMPORT_TESTS=1 to run live Databricks import test")
 
     profile = _require_env("DATABRICKS_PROFILE")
     warehouse_id = _require_env("DATABRICKS_WAREHOUSE_ID")
@@ -89,7 +89,7 @@ def test_import_from_live_databricks_fixture_sql(temp_workspace):
     sql_text = fixture_sql_path.read_text()
     sql_text = sql_text.replace("test_import_fixture", main_catalog)
     sql_text = sql_text.replace("test_import_aux", aux_catalog)
-    managed_run_root = f"{managed_location_root.rstrip('/')}/schematic-import-live/{suffix}"
+    managed_run_root = f"{managed_location_root.rstrip('/')}/schemax-import-live/{suffix}"
     sql_text = sql_text.replace("__MANAGED_ROOT__", managed_run_root)
     statements = _split_sql_statements(sql_text)
 

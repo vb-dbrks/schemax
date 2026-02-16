@@ -1,11 +1,11 @@
 {
-  "name": "schematic",
+  "name": "schemax",
   "version": "0.1.0",
   "private": true,
-  "description": "Schematic - Databricks Unity Catalog schema management with version control",
+  "description": "SchemaX - Databricks Unity Catalog schema management with version control",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vb-dbrks/Schematic.git"
+    "url": "https://github.com/vb-dbrks/schemax.git"
   },
   "workspaces": [
     "packages/*"

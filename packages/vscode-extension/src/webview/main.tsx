@@ -18,7 +18,7 @@ if (container) {
   const root = createRoot(container);
   root.render(<App />);
 } else {
-  console.error('[Schematic Webview] ERROR: Root container not found!');
+  console.error('[SchemaX Webview] ERROR: Root container not found!');
   document.body.innerHTML = '<div style="padding: 20px; color: red;">ERROR: Root container not found. Check console.</div>';
 }
 

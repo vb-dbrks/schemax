@@ -1,4 +1,4 @@
-# Schematic Python SDK & CLI
+# SchemaX Python SDK & CLI
 
 **Declarative schema management** for modern data catalogs. Version control your schemas, generate SQL migrations, and deploy with confidence across multiple environments.
 
@@ -15,7 +15,7 @@
 - **CI/CD Ready**: Designed for GitHub Actions, GitLab CI, and other pipelines
 - **Extensible**: Plugin architecture for custom catalog providers
 
-## Why Schematic?
+## Why SchemaX?
 
 **Provider-agnostic design**: Write your schema once, deploy to any catalog system. Start with Unity Catalog (Databricks) and easily extend to Hive, PostgreSQL, Snowflake, or custom providers.
 
@@ -34,8 +34,8 @@ pip install schemax-py
 ### Development Install
 
 ```bash
-git clone https://github.com/vb-dbrks/schematic.git
-cd schematic/packages/python-sdk
+git clone https://github.com/vb-dbrks/schemax-vscode.git
+cd schemax-vscode/packages/python-sdk
 pip install -e ".[dev]"
 ```
 
@@ -45,21 +45,21 @@ pip install -e ".[dev]"
 
 ```bash
 # Unity Catalog (Databricks) - default
-schematic init
+schemax init
 
 # PostgreSQL
-schematic init --provider postgres
+schemax init --provider postgres
 
 # Hive Metastore
-schematic init --provider hive
+schemax init --provider hive
 ```
 
-This creates a `.schematic/` directory with your project configuration.
+This creates a `.schemax/` directory with your project configuration.
 
 ### 2. Validate Your Schema
 
 ```bash
-schematic validate
+schemax validate
 ```
 
 Validates project structure, provider compatibility, and schema correctness.
@@ -68,35 +68,35 @@ Validates project structure, provider compatibility, and schema correctness.
 
 ```bash
 # Generate SQL from changelog
-schematic sql --output migration.sql
+schemax sql --output migration.sql
 
 # Generate for specific environment (with catalog mapping)
-schematic sql --target dev --output dev-migration.sql
+schemax sql --target dev --output dev-migration.sql
 ```
 
 ### 4. Apply Changes (Unity Catalog)
 
 ```bash
 # Preview changes
-schematic apply --target dev --profile my-databricks --warehouse-id abc123 --dry-run
+schemax apply --target dev --profile my-databricks --warehouse-id abc123 --dry-run
 
 # Apply with automatic rollback on failure (MVP feature!)
-schematic apply --target dev --profile my-databricks --warehouse-id abc123 --auto-rollback
+schemax apply --target dev --profile my-databricks --warehouse-id abc123 --auto-rollback
 
 # Apply to environment
-schematic apply --target dev --profile my-databricks --warehouse-id abc123
+schemax apply --target dev --profile my-databricks --warehouse-id abc123
 ```
 
 ### 5. Track Deployments
 
 ```bash
 # Record deployment (works for all providers)
-schematic record-deployment --environment prod --version v1.0.0 --mark-deployed
+schemax record-deployment --environment prod --version v1.0.0 --mark-deployed
 ```
 
 ## CLI Commands
 
-### `schematic sql`
+### `schemax sql`
 
 Generate SQL DDL migration scripts from schema changes.
 
@@ -107,16 +107,16 @@ Generate SQL DDL migration scripts from schema changes.
 **Examples:**
 ```bash
 # Output to stdout
-schematic sql
+schemax sql
 
 # Save to file
-schematic sql --output migration.sql
+schemax sql --output migration.sql
 
 # Generate for specific environment
-schematic sql --target prod --output prod-migration.sql
+schemax sql --target prod --output prod-migration.sql
 ```
 
-### `schematic apply` (Unity Catalog only)
+### `schemax apply` (Unity Catalog only)
 
 Execute SQL migrations against a Databricks Unity Catalog environment with automatic deployment tracking and optional rollback.
 
@@ -132,45 +132,45 @@ Execute SQL migrations against a Databricks Unity Catalog environment with autom
 **Features:**
 - Interactive snapshot prompts (create snapshot before deployment)
 - SQL preview with statement-by-statement display
-- Database-backed deployment tracking in `{catalog}.schematic`
+- Database-backed deployment tracking in `{catalog}.schemax`
 - Automatic rollback on partial failures (with `--auto-rollback`)
 
 **Examples:**
 ```bash
 # Preview changes
-schematic apply --target dev --profile default --warehouse-id abc123 --dry-run
+schemax apply --target dev --profile default --warehouse-id abc123 --dry-run
 
 # Apply with automatic rollback on failure
-schematic apply --target dev --profile default --warehouse-id abc123 --auto-rollback
+schemax apply --target dev --profile default --warehouse-id abc123 --auto-rollback
 
 # Apply with confirmation
-schematic apply --target prod --profile prod --warehouse-id xyz789
+schemax apply --target prod --profile prod --warehouse-id xyz789
 
 # Non-interactive (CI/CD)
-schematic apply --target prod --profile prod --warehouse-id xyz789 --no-interaction
+schemax apply --target prod --profile prod --warehouse-id xyz789 --no-interaction
 ```
 
-### `schematic rollback` (Unity Catalog only)
+### `schemax rollback` (Unity Catalog only)
 
 Rollback failed or unwanted deployments with safety validation. Idempotent design prevents redundant operations by checking database state.
 
 **Partial Rollback** - Revert successful operations from a failed deployment:
 ```bash
-schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
+schemax rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
 
 # With dry-run
-schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id> --dry-run
+schemax rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id> --dry-run
 
 # Only safe operations
-schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id> --safe-only
+schemax rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id> --safe-only
 ```
 
 **Complete Rollback** - Rollback to a previous snapshot:
 ```bash
-schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
+schemax rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
 
 # With dry-run
-schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id> --dry-run
+schemax rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id> --dry-run
 ```
 
 **Options:**
@@ -193,32 +193,32 @@ schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehou
 - **SQL Preview**: Shows exact SQL statements before execution (matches `apply` UX)
 - **Database as Source of Truth**: Queries deployment tracking table for accurate state
 
-### `schematic snapshot`
+### `schemax snapshot`
 
 Manage schema snapshots with lifecycle commands.
 
 **Create Snapshot:**
 ```bash
 # Auto-generate version
-schematic snapshot create --name "Initial schema"
+schemax snapshot create --name "Initial schema"
 
 # Specify version manually
-schematic snapshot create --name "Production release" --version v1.0.0
+schemax snapshot create --name "Production release" --version v1.0.0
 
 # With tags
-schematic snapshot create --name "Hotfix" --version v0.2.1 --tags hotfix,urgent
+schemax snapshot create --name "Hotfix" --version v0.2.1 --tags hotfix,urgent
 ```
 
 **Validate Snapshots:**
 ```bash
 # Detect stale snapshots after git rebase
-schematic snapshot validate
+schemax snapshot validate
 ```
 
 **Rebase Snapshot:**
 ```bash
 # Rebase a stale snapshot onto new base
-schematic snapshot rebase v0.3.0
+schemax snapshot rebase v0.3.0
 ```
 
 **Features:**
@@ -228,20 +228,20 @@ schematic snapshot rebase v0.3.0
 - Conflict detection with manual UI resolution
 - Validates snapshot lineage
 
-### `schematic validate`
+### `schemax validate`
 
-Validate `.schematic/` project files for correctness and provider compatibility.
+Validate `.schemax/` project files for correctness and provider compatibility.
 
 **Examples:**
 ```bash
 # Validate current directory
-schematic validate
+schemax validate
 
 # Validate specific directory
-schematic validate /path/to/project
+schemax validate /path/to/project
 ```
 
-### `schematic record-deployment`
+### `schemax record-deployment`
 
 Manually record deployment metadata (useful for non-Unity Catalog providers).
 
@@ -253,26 +253,26 @@ Manually record deployment metadata (useful for non-Unity Catalog providers).
 **Examples:**
 ```bash
 # Record successful deployment
-schematic record-deployment --environment prod --version v1.0.0 --mark-deployed
+schemax record-deployment --environment prod --version v1.0.0 --mark-deployed
 ```
 
-### `schematic diff`
+### `schemax diff`
 
 Compare two schema versions and show the operations needed to transform one into the other.
 
 **Examples:**
 ```bash
 # Basic diff
-schematic diff --from v0.1.0 --to v0.2.0
+schemax diff --from v0.1.0 --to v0.2.0
 
 # Show generated SQL with logical catalog names
-schematic diff --from v0.1.0 --to v0.2.0 --show-sql
+schemax diff --from v0.1.0 --to v0.2.0 --show-sql
 
 # Show SQL with environment-specific catalog names
-schematic diff --from v0.1.0 --to v0.2.0 --show-sql --target dev
+schemax diff --from v0.1.0 --to v0.2.0 --show-sql --target dev
 
 # Show detailed operation payloads
-schematic diff --from v0.1.0 --to v0.2.0 --show-details
+schemax diff --from v0.1.0 --to v0.2.0 --show-details
 ```
 
 ## Python API
@@ -281,8 +281,8 @@ schematic diff --from v0.1.0 --to v0.2.0 --show-details
 
 ```python
 from pathlib import Path
-from schematic.storage_v4 import load_current_state, read_project, get_environment_config
-from schematic.providers.base.operations import Operation
+from schemax.core.storage import load_current_state, read_project, get_environment_config
+from schemax.providers.base.operations import Operation
 
 # Load schema with provider
 workspace = Path.cwd()
@@ -304,7 +304,7 @@ print(sql)
 
 ```python
 from pathlib import Path
-from schematic.storage_v4 import load_current_state, read_project, get_environment_config
+from schemax.core.storage import load_current_state, read_project, get_environment_config
 
 workspace = Path.cwd()
 state, changelog, provider = load_current_state(workspace)
@@ -333,7 +333,7 @@ print(sql)  # Contains prod catalog names
 ### Working with Multiple Providers
 
 ```python
-from schematic.providers import ProviderRegistry
+from schemax.providers import ProviderRegistry
 
 # List available providers
 providers = ProviderRegistry.get_all_ids()
@@ -351,7 +351,7 @@ if unity_provider:
 
 ```python
 from pathlib import Path
-from schematic.storage_v4 import read_project, load_current_state
+from schemax.core.storage import read_project, load_current_state
 
 try:
     workspace = Path.cwd()
@@ -391,14 +391,14 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install Schematic
+      - name: Install SchemaX
         run: pip install schemax-py
       
       - name: Validate Schema
-        run: schematic validate
+        run: schemax validate
       
       - name: Generate SQL Preview
-        run: schematic sql --target prod --output migration.sql
+        run: schemax sql --target prod --output migration.sql
       
       - name: Upload SQL
         uses: actions/upload-artifact@v3
@@ -426,18 +426,18 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install Schematic
+      - name: Install SchemaX
         run: pip install schemax-py
       
       - name: Validate Schema
-        run: schematic validate
+        run: schemax validate
       
       - name: Apply to Production
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
-          schematic apply \
+          schemax apply \
             --target prod \
             --profile default \
             --warehouse-id ${{ secrets.WAREHOUSE_ID }} \
@@ -452,8 +452,8 @@ validate-schema:
   image: python:3.11
   script:
     - pip install schemax-py
-    - schematic validate
-    - schematic sql --target prod --output migration.sql
+    - schemax validate
+    - schemax sql --target prod --output migration.sql
   artifacts:
     paths:
       - migration.sql
@@ -464,7 +464,7 @@ validate-schema:
 
 | Provider | Status | Operations | Apply Command | Notes |
 |----------|--------|------------|---------------|-------|
-| **Unity Catalog** | ✅ Stable | 29 | ✅ `schematic apply` | Full Databricks integration |
+| **Unity Catalog** | ✅ Stable | 29 | ✅ `schemax apply` | Full Databricks integration |
 | **Hive Metastore** | 🚧 Planned | TBD | Manual | SQL generation only |
 | **PostgreSQL** | 🚧 Planned | TBD | Manual | SQL generation only |
 
@@ -473,7 +473,7 @@ Want to add a provider? See [PROVIDER_CONTRACT.md](../../docs/PROVIDER_CONTRACT.
 ## Requirements
 
 - **Python 3.11+**
-- A Schematic project (`.schematic/` directory)
+- A SchemaX project (`.schemax/` directory)
 - For Unity Catalog: Databricks workspace with SQL Warehouse access
 
 ## Documentation
@@ -510,8 +510,8 @@ MIT License - see [LICENSE](../../LICENSE) for details.
 
 ## Links
 
-- **Repository**: https://github.com/vb-dbrks/Schematic
-- **Issues**: https://github.com/vb-dbrks/Schematic/issues
-- **VS Code Extension**: [schematic-vscode](../vscode-extension/)
+- **Repository**: https://github.com/vb-dbrks/schemax-vscode
+- **Issues**: https://github.com/vb-dbrks/schemax-vscode/issues
+- **VS Code Extension**: [schemax-vscode](../vscode-extension/)
 - **PyPI**: https://pypi.org/project/schemax-py/
 

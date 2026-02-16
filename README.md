@@ -5,7 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Schematic is an extensible toolkit for managing data catalog schemas (Unity Catalog, Hive Metastore, PostgreSQL) using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
+SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalog, Hive Metastore, PostgreSQL) using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
 
 **Current Support:** Databricks Unity Catalog (v1.0) | **Coming Soon:** Hive Metastore, PostgreSQL/Lakebase
 
@@ -57,20 +57,20 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 
 1. **Launch Extension Development Host**:
    ```bash
-   cd schematic
+   cd schemax-vscode
    code .
    # Press F5 (or Fn+F5)
    ```
 
 2. **In the new window**:
    - Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
-   - Type: **Schematic: Open Designer**
+   - Type: **SchemaX: Open Designer**
    - Start designing your schema!
 
 3. **Generate SQL**:
    - After making changes
    - Press `Cmd+Shift+P`
-   - Type: **Schematic: Generate SQL Migration**
+   - Type: **SchemaX: Generate SQL Migration**
 
 ### Python CLI
 
@@ -83,41 +83,41 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 2. **Use CLI**:
    ```bash
    # Initialize new project with provider
-   schematic init --provider unity
+   schemax init --provider unity
    
    # Validate schema files
-   schematic validate
+   schemax validate
    
    # Create a snapshot
-   schematic snapshot create --name "Initial schema" --version v0.1.0
+   schemax snapshot create --name "Initial schema" --version v0.1.0
    
    # Generate SQL migration
-   schematic sql --output migration.sql --target dev
+   schemax sql --output migration.sql --target dev
    
    # Apply schema changes to environment
-   schematic apply --target dev --profile DEFAULT --warehouse-id <id>
+   schemax apply --target dev --profile DEFAULT --warehouse-id <id>
    
    # Apply with automatic rollback on failure
-   schematic apply --target dev --profile DEFAULT --warehouse-id <id> --auto-rollback
+   schemax apply --target dev --profile DEFAULT --warehouse-id <id> --auto-rollback
    
    # Rollback a failed deployment (partial)
-   schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
+   schemax rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
    
    # Rollback to a previous snapshot (complete)
-   schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
+   schemax rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
    
    # Validate snapshots after git rebase
-   schematic snapshot validate
+   schemax snapshot validate
    
    # Rebase a stale snapshot
-   schematic snapshot rebase v0.3.0
+   schemax snapshot rebase v0.3.0
    ```
 
 3. **Python API**:
    ```python
    from pathlib import Path
-   from schematic.storage_v4 import load_current_state
-   from schematic.providers.base.operations import Operation
+   from schemax.core.storage import load_current_state
+   from schemax.providers.base.operations import Operation
    
    # Load with provider
    state, changelog, provider = load_current_state(Path.cwd())
@@ -131,7 +131,7 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 
 ## Deployment & Rollback ✨ NEW
 
-Schematic provides robust deployment tracking and rollback capabilities for safe schema migrations:
+SchemaX provides robust deployment tracking and rollback capabilities for safe schema migrations:
 
 ### 🚀 Apply Command
 Deploy schema changes with confidence:
@@ -142,7 +142,7 @@ Deploy schema changes with confidence:
 - **Dry-run mode** - Test without making changes (`--dry-run`)
 
 ```bash
-schematic apply --target dev --profile DEFAULT --warehouse-id <id> --auto-rollback
+schemax apply --target dev --profile DEFAULT --warehouse-id <id> --auto-rollback
 ```
 
 ### ⏪ Rollback Command
@@ -150,12 +150,12 @@ Recover from failed deployments:
 
 **Partial Rollback** - Revert successful operations from a failed deployment:
 ```bash
-schematic rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
+schemax rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
 ```
 
 **Complete Rollback** - Rollback to a previous snapshot:
 ```bash
-schematic rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
+schemax rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
 ```
 
 Both support:
@@ -168,13 +168,13 @@ Manage schema versions after Git operations:
 
 ```bash
 # Create snapshot manually
-schematic snapshot create --name "Production release" --version v1.0.0
+schemax snapshot create --name "Production release" --version v1.0.0
 
 # Detect stale snapshots after git rebase
-schematic snapshot validate
+schemax snapshot validate
 
 # Rebase snapshot onto new base
-schematic snapshot rebase v0.3.0
+schemax snapshot rebase v0.3.0
 ```
 
 **Features:**
@@ -213,7 +213,7 @@ schematic/
 │   │   └── package.json
 │   │
 │   └── python-sdk/             # Python SDK & CLI
-│       ├── src/schematic/
+│       ├── src/schemax/
 │       │   ├── providers/            # Provider system (V4)
 │       │   │   ├── base/             # Base interfaces
 │       │   │   ├── unity/            # Unity Catalog provider
@@ -292,7 +292,7 @@ ADD COLUMN `customer_id` BIGINT NOT NULL;
 Execute SQL on Databricks and track deployment:
 ```bash
 # Generate SQL
-schematic sql --environment prod --output deploy.sql
+schemax sql --environment prod --output deploy.sql
 
 # Execute on Databricks
 databricks sql execute --file deploy.sql --warehouse-id <id>
@@ -303,7 +303,7 @@ schematic deploy --environment prod --version v1.0.0 --mark-deployed
 
 ## Unity Catalog Support
 
-Schematic supports all major Unity Catalog features:
+SchemaX supports all major Unity Catalog features:
 
 ### Core Objects
 - ✅ Catalogs (CREATE, ALTER, DROP, MANAGED LOCATION)
@@ -392,14 +392,14 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install Schematic
+      - name: Install SchemaX
         run: pip install schemax-py
       
       - name: Validate Schema
-        run: schematic validate
+        run: schemax validate
       
       - name: Generate SQL
-        run: schematic sql --environment prod --output migration.sql
+        run: schemax sql --environment prod --output migration.sql
       
       - name: Deploy to Databricks
         env:
@@ -454,7 +454,7 @@ cd packages/python-sdk
 pytest
 
 # Run with coverage
-pytest --cov=schematic --cov-report=term-missing
+pytest --cov=schemax --cov-report=term-missing
 
 # Run specific test file
 pytest tests/unit/test_sql_generator.py -v
@@ -462,7 +462,7 @@ pytest tests/unit/test_sql_generator.py -v
 
 **Current Status:**
 - ✅ 124 passing tests (91.2%)
-- ⏸️ 12 skipped tests (documented in [issues #19](https://github.com/vb-dbrks/schematic-vscode/issues/19), [#20](https://github.com/vb-dbrks/schematic-vscode/issues/20))
+- ⏸️ 12 skipped tests (documented in [issues #19](https://github.com/vb-dbrks/schemax-vscode/issues/19), [#20](https://github.com/vb-dbrks/schemax-vscode/issues/20))
 - Test Coverage: Unit tests, integration tests, provider tests
 
 ### Manual Testing
@@ -473,8 +473,8 @@ See [TESTING.md](TESTING.md) for comprehensive testing guide.
 
 ```bash
 cd examples/basic-schema
-schematic validate
-schematic sql
+schemax validate
+schemax sql
 ```
 
 ## Requirements
@@ -516,7 +516,7 @@ cd packages/vscode-extension && npm run build
 cd packages/python-sdk && pytest
 
 # Python tests with coverage
-cd packages/python-sdk && pytest --cov=schematic
+cd packages/python-sdk && pytest --cov=schemax
 
 # SQL validation (optional - requires SQLGlot)
 pip install sqlglot>=20.0.0
@@ -570,12 +570,12 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/vb-dbrks/schematic/issues)
+- **Issues**: [GitHub Issues](https://github.com/vb-dbrks/schemax-vscode/issues)
 - **Documentation**: [docs/](docs/)
 - **Examples**: [examples/](examples/)
 
 ---
 
-**Schematic** - Making data catalog schema management declarative, extensible, and version-controlled. 🚀
+**SchemaX** - Making data catalog schema management declarative, extensible, and version-controlled. 🚀
 
 **Current**: Unity Catalog | **Coming Soon**: Hive Metastore, PostgreSQL | **Extensible**: Add your own provider!
