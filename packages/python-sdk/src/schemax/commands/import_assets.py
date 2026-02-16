@@ -170,7 +170,7 @@ def import_from_provider(
 
         snapshot_version = project.get("latestSnapshot")
         if import_ops or not snapshot_version:
-            _, snapshot = create_snapshot(
+            project, snapshot = create_snapshot(
                 workspace,
                 name=f"Imported baseline for {target_env}",
                 comment=(
@@ -180,6 +180,7 @@ def import_from_provider(
                 tags=["import", "baseline"],
             )
             snapshot_version = snapshot["version"]
+            env_config = get_environment_config(project, target_env)
             console.print(f"[green]✓[/green] Created baseline snapshot: {snapshot_version}")
         else:
             console.print(

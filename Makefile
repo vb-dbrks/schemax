@@ -25,8 +25,6 @@ clean:
 	rm -rf packages/vscode-extension/coverage
 	rm -rf $(DOCS_DIR)/.docusaurus
 	rm -rf $(DOCS_DIR)/build
-	rm -rf docs/schematic/.docusaurus
-	rm -rf docs/schematic/build
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	rm -rf $(PYTHON_SDK)/.pytest_cache
