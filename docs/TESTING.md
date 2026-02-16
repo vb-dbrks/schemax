@@ -6,7 +6,7 @@ This document describes how to run tests for the SchemaX project.
 
 SchemaX uses different testing frameworks for different components:
 
-- **Coverage checklist**: For release-ready test coverage, every scenario in this guide should have a corresponding passing test or CI/smoke step. See [TEST_COVERAGE_CHECKLIST.md](TEST_COVERAGE_CHECKLIST.md) for a scenario-by-scenario checklist aligned with this document.
+- **Release checklist**: Before a release, use the [Release checklist](#release-checklist) section below to confirm coverage aligns with this guide.
 - **Python SDK**: pytest with coverage reporting (306 tests)
 - **VS Code Extension**: Jest with React Testing Library
 - **Integration**: End-to-end workflow tests
@@ -532,6 +532,18 @@ npm run test:watch
 
 **Issue**: Coverage thresholds not met  
 **Solution**: Add tests for uncovered code or adjust thresholds in `jest.config.js`
+
+## Release checklist
+
+Use before a release. Every area below should have passing tests or a CI/smoke step.
+
+**Python SDK:** Storage V4, SQL generator (catalog/schema/table/column/constraint/row filter/column mask/tags/properties/views), state reducer & differ, catalog mapping, apply command, view dependencies, dependency graph, executor & deployment tracker, integration workflows.
+
+**VS Code Extension:** Storage V4, ColumnGrid/Sidebar/TableConstraints/hierarchy, fixtures & mocks; coverage and TESTING.md numbers updated.
+
+**Integration & Smoke:** Smoke (build extension, validate package, install SDK, validate example); `devops/run-checks.sh` runs format, lint, pytest, Jest, smoke.
+
+**Docs:** TESTING.md "Last Updated", test count, and status match current runs.
 
 ## Resources
 

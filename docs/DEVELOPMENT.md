@@ -207,7 +207,7 @@ SchemaX includes optional SQLGlot integration for validating generated SQL:
 
 ```bash
 # Install SQLGlot
-pip install "schemax-py[validation]"
+pip install "schemaxpy[validation]"
 # or
 pip install sqlglot>=20.0.0
 

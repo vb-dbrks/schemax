@@ -187,11 +187,10 @@ schemax snapshot rebase v0.3.0
 | Document | Description |
 |----------|-------------|
 | **[Quickstart Guide](docs/QUICKSTART.md)** | Complete getting started guide |
-| **[External Tables](docs/EXTERNAL_TABLES.md)** | **NEW**: Guide for external tables, partitioning, and clustering |
 | **[Architecture](docs/ARCHITECTURE.md)** | **V4** provider-based technical design with multi-environment support |
 | **[Development](docs/DEVELOPMENT.md)** | Contributing, building, **provider development** |
 | **[Provider Contract](docs/PROVIDER_CONTRACT.md)** | Guide for implementing providers |
-| **[Testing Guide](TESTING.md)** | How to test all components |
+| **[Testing Guide](docs/TESTING.md)** | How to test all components |
 | **[VS Code Extension](packages/vscode-extension/README.md)** | Extension-specific documentation |
 | **[Python SDK](packages/python-sdk/README.md)** | SDK and CLI reference |
 
@@ -392,7 +391,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install SchemaX
-        run: pip install schemax-py
+        run: pip install schemaxpy
       
       - name: Validate Schema
         run: schemax validate
@@ -466,7 +465,7 @@ pytest tests/unit/test_sql_generator.py -v
 
 ### Manual Testing
 
-See [TESTING.md](TESTING.md) for comprehensive testing guide.
+See [docs/TESTING.md](docs/TESTING.md) for comprehensive testing guide.
 
 ### Example Project
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.2] - 2025-02-18
+
+### Changed
+
+- Version aligned with SchemaX Python SDK 0.1.2. Single-tag release flow: push tag `v0.1.2` to publish extension, PyPI package, and docs together.
+
 ## [0.1.1] - 2025-02-17
 
 ### Changed

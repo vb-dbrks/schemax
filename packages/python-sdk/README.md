@@ -28,7 +28,7 @@
 ## Installation
 
 ```bash
-pip install schemax-py
+pip install schemaxpy
 ```
 
 ### Development Install
@@ -392,7 +392,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install SchemaX
-        run: pip install schemax-py
+        run: pip install schemaxpy
       
       - name: Validate Schema
         run: schemax validate
@@ -427,7 +427,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install SchemaX
-        run: pip install schemax-py
+        run: pip install schemaxpy
       
       - name: Validate Schema
         run: schemax validate
@@ -451,7 +451,7 @@ validate-schema:
   stage: test
   image: python:3.11
   script:
-    - pip install schemax-py
+    - pip install schemaxpy
     - schemax validate
     - schemax sql --target prod --output migration.sql
   artifacts:
@@ -468,7 +468,7 @@ validate-schema:
 | **Hive Metastore** | 🚧 Planned | TBD | Manual | SQL generation only |
 | **PostgreSQL** | 🚧 Planned | TBD | Manual | SQL generation only |
 
-Want to add a provider? See [PROVIDER_CONTRACT.md](../../docs/PROVIDER_CONTRACT.md).
+Want to add a provider? See [Provider Contract](https://github.com/vb-dbrks/schemax-vscode/blob/main/docs/PROVIDER_CONTRACT.md).
 
 ## Requirements
 
@@ -478,14 +478,14 @@ Want to add a provider? See [PROVIDER_CONTRACT.md](../../docs/PROVIDER_CONTRACT.
 
 ## Documentation
 
-- [Quick Start Guide](../../docs/QUICKSTART.md)
-- [Architecture Overview](../../docs/ARCHITECTURE.md)
-- [Development Guide](./SETUP.md)
-- [Provider Contract](../../docs/PROVIDER_CONTRACT.md)
+- [Quick Start Guide](https://github.com/vb-dbrks/schemax-vscode/blob/main/docs/QUICKSTART.md)
+- [Architecture Overview](https://github.com/vb-dbrks/schemax-vscode/blob/main/docs/ARCHITECTURE.md)
+- [Development Guide](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/SETUP.md)
+- [Provider Contract](https://github.com/vb-dbrks/schemax-vscode/blob/main/docs/PROVIDER_CONTRACT.md)
 
 ## Development
 
-See [SETUP.md](./SETUP.md) for complete development setup instructions.
+See [SETUP.md](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/SETUP.md) for complete development setup instructions.
 
 **Quick setup:**
 ```bash
@@ -506,12 +506,12 @@ make all         # Run all checks
 
 ## License
 
-Apache License 2.0 - see [LICENSE](../../LICENSE) for details.
+Apache License 2.0 - see [LICENSE](https://github.com/vb-dbrks/schemax-vscode/blob/main/LICENSE) for details.
 
 ## Links
 
 - **Repository**: https://github.com/vb-dbrks/schemax-vscode
 - **Issues**: https://github.com/vb-dbrks/schemax-vscode/issues
-- **VS Code Extension**: [schemax-vscode](../vscode-extension/)
-- **PyPI**: https://pypi.org/project/schemax-py/
+- **VS Code Extension**: [schemax-vscode](https://github.com/vb-dbrks/schemax-vscode/tree/main/packages/vscode-extension)
+- **PyPI**: https://pypi.org/project/schemaxpy/
 

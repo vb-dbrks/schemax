@@ -3,14 +3,14 @@
   "displayName": "SchemaX",
   "description": "Design and manage Databricks Unity Catalog schemas visually. Version control, SQL generation, apply/rollback/import via CLI. Install Python SDK (pip install schemaxpy) for full features.",
   "publisher": "schematic-dev",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "Field Engineering"
   },
   "contributors": [
     {
-      "name": "Varun Bhandary",
-      "url": "https://github.com/vb-dbrks"
+      "name": "SchemaX Contributors",
+      "url": "https://github.com/vb-dbrks/schemax/graphs/contributors"
     }
   ],
   "license": "Apache-2.0",

@@ -1,13 +1,13 @@
 [project]
 name = "schemaxpy"
-version = "0.1.0"
+version = "0.1.2"
 description = "Python SDK and CLI for Databricks Unity Catalog schema management"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
-authors = [
-    {name = "Field Engineering"},
-    {name = "Varun Bhandary", email = "varun.bhandary@databricks.com"}
+maintainers = [
+    {name = "Hari Gopinath", url = "https://github.com/harig24"},
+    {name = "Varun Bhandary", url = "https://github.com/vb-dbrks"}
 ]
 keywords = [
     "databricks",
@@ -57,6 +57,7 @@ Homepage = "https://github.com/vb-dbrks/schemax-vscode"
 Documentation = "https://github.com/vb-dbrks/schemax-vscode/tree/main/docs"
 Repository = "https://github.com/vb-dbrks/schemax-vscode"
 Issues = "https://github.com/vb-dbrks/schemax-vscode/issues"
+Contributors = "https://github.com/vb-dbrks/schemax/graphs/contributors"
 
 [build-system]
 requires = ["hatchling"]

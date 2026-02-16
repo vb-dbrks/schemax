@@ -1,0 +1,30 @@
+# Publish SchemaX VS Code extension to the Marketplace.
+name: Publish VS Code Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    name: Publish to Marketplace
+    runs-on: ubuntu-latest
+    environment: vscode-marketplace
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and publish extension
+        working-directory: packages/vscode-extension
+        run: npm run build && npm run deploy
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

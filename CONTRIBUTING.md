@@ -907,7 +907,7 @@ By contributing, you agree that your contributions will be licensed under the MI
 ## Recognition
 
 Contributors are recognized in:
-- GitHub contributors list
+- [GitHub contributors list](https://github.com/vb-dbrks/schemax/graphs/contributors)
 - Release notes for significant contributions
 - Special mentions in README for major features
 
