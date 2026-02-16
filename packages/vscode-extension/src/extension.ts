@@ -1029,7 +1029,10 @@ async function openDesigner(context: vscode.ExtensionContext) {
     {
       enableScripts: true,
       retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')],
+      localResourceRoots: [
+        vscode.Uri.joinPath(context.extensionUri, 'media'),
+        vscode.Uri.joinPath(context.extensionUri, 'images'),
+      ],
       enableForms: true,
     }
   );
@@ -1550,6 +1553,9 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
   const styleUri = webview.asWebviewUri(
     vscode.Uri.joinPath(context.extensionUri, 'media', 'assets', 'index.css')
   );
+  const logoUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(context.extensionUri, 'images', 'schemax_logo.svg')
+  );
 
   // Use a nonce to only allow specific scripts to be run
   const nonce = getNonce();
@@ -1559,13 +1565,13 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https:; font-src ${webview.cspSource} https:; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline' https:; font-src ${webview.cspSource} https:; script-src 'nonce-${nonce}';">
   <link href="https://cdn.jsdelivr.net/npm/@vscode/codicons@0.0.36/dist/codicon.css" rel="stylesheet">
   <link href="${styleUri}" rel="stylesheet">
   <title>SchemaX Designer</title>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root" data-logo-uri="${logoUri}"></div>
   <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

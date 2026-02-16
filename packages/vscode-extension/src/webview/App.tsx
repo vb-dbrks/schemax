@@ -122,6 +122,10 @@ export const App: React.FC = () => {
   const pendingOps = project?.ops?.length ?? 0;
   const snapshotCount = project?.snapshots?.length ?? 0;
   const hasProjectSettings = Boolean(project);
+  const logoUri =
+    typeof document !== 'undefined'
+      ? document.getElementById('root')?.getAttribute('data-logo-uri') ?? ''
+      : '';
 
   if (loading) {
     return (
@@ -138,6 +142,15 @@ export const App: React.FC = () => {
       <header className="app-header">
         <div className="app-header__info">
           <div className="app-header__title-row">
+            {logoUri ? (
+              <img
+                src={logoUri}
+                alt="SchemaX"
+                className="app-header__logo"
+                width={28}
+                height={28}
+              />
+            ) : null}
             <h1 className="app-header__title">{project?.name || 'SchemaX Project'}</h1>
             {hasProjectSettings && (
               <VSCodeButton
