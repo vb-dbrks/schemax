@@ -28,7 +28,7 @@
 ## Installation
 
 ```bash
-pip install schematic-py
+pip install schemax-py
 ```
 
 ### Development Install
@@ -392,7 +392,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install Schematic
-        run: pip install schematic-py
+        run: pip install schemax-py
       
       - name: Validate Schema
         run: schematic validate
@@ -427,7 +427,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install Schematic
-        run: pip install schematic-py
+        run: pip install schemax-py
       
       - name: Validate Schema
         run: schematic validate
@@ -451,7 +451,7 @@ validate-schema:
   stage: test
   image: python:3.11
   script:
-    - pip install schematic-py
+    - pip install schemax-py
     - schematic validate
     - schematic sql --target prod --output migration.sql
   artifacts:
@@ -513,5 +513,5 @@ MIT License - see [LICENSE](../../LICENSE) for details.
 - **Repository**: https://github.com/vb-dbrks/Schematic
 - **Issues**: https://github.com/vb-dbrks/Schematic/issues
 - **VS Code Extension**: [schematic-vscode](../vscode-extension/)
-- **PyPI**: https://pypi.org/project/schematic-py/ (coming soon)
+- **PyPI**: https://pypi.org/project/schemax-py/
 

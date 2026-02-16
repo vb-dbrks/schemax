@@ -81,7 +81,7 @@ const config: Config = {
           items: [
             {
               label: 'Python SDK (PyPI)',
-              href: 'https://pypi.org/project/schematic-py/',
+              href: 'https://pypi.org/project/schemax-py/',
             },
             {
               label: 'VS Code Extension (Marketplace)',

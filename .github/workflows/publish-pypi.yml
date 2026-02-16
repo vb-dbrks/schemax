@@ -1,4 +1,4 @@
-# Publish schematic-py to PyPI using Trusted Publishing (OIDC).
+# Publish schemax-py to PyPI using Trusted Publishing (OIDC).
 # No API token needed: add a trusted publisher on PyPI pointing at this workflow.
 # See docs/PYPI_TRUSTED_PUBLISHER.md for PyPI form values.
 #

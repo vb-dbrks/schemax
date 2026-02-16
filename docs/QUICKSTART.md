@@ -176,7 +176,7 @@ pip install -e .
 **Option 2**: Install from PyPI (When Published)
 
 ```bash
-pip install schematic-py
+pip install schemax-py
 ```
 
 ### Verify Installation
@@ -440,7 +440,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install Schematic
-        run: pip install schematic-py
+        run: pip install schemax-py
       
       - name: Validate Schema
         run: schematic validate
@@ -477,7 +477,7 @@ jobs:
       
       - name: Track Deployment
         run: |
-          pip install schematic-py
+          pip install schemax-py
           schematic deploy \
             --environment dev \
             --version ${{ github.sha }} \
@@ -507,7 +507,7 @@ jobs:
       
       - name: Track Deployment
         run: |
-          pip install schematic-py
+          pip install schemax-py
           schematic deploy \
             --environment prod \
             --version ${{ github.sha }} \
@@ -528,7 +528,7 @@ validate-schema:
   stage: validate
   image: python:3.11
   script:
-    - pip install schematic-py
+    - pip install schemax-py
     - schematic validate
     - schematic sql --output migration.sql
   artifacts:
@@ -540,7 +540,7 @@ deploy-dev:
   stage: deploy-dev
   image: python:3.11
   script:
-    - pip install schematic-py databricks-cli
+    - pip install schemax-py databricks-cli
     - databricks sql execute --file migration.sql
     - schematic deploy --environment dev --mark-deployed
   only:
@@ -550,7 +550,7 @@ deploy-prod:
   stage: deploy-prod
   image: python:3.11
   script:
-    - pip install schematic-py databricks-cli
+    - pip install schemax-py databricks-cli
     - databricks sql execute --file migration.sql
     - schematic deploy --environment prod --mark-deployed
   only:

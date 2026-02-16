@@ -24,7 +24,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install Schematic CLI
-        run: pip install schematic-py
+        run: pip install schemax-py
       
       - name: Validate schema
         run: schematic validate

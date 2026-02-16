@@ -315,7 +315,7 @@ npm install
 npm run build
 
 # Reinstall SDK
-pip uninstall schematic-py
+pip uninstall schemax-py
 cd packages/python-sdk
 pip install -e .
 ```
