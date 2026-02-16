@@ -1,6 +1,6 @@
 [project]
 name = "schemax-py"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python SDK and CLI for Databricks Unity Catalog schema management"
 readme = "README.md"
 requires-python = ">=3.11"
