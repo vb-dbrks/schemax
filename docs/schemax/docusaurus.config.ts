@@ -6,7 +6,7 @@ const config: Config = {
   title: 'SchemaX',
   tagline:
     'Open source: multi-provider data catalog schema management with version control. Python SDK on PyPI · VS Code extension on Marketplace.',
-  favicon: 'img/favicon.png',
+  favicon: 'img/schemax_favicon.svg',
 
   // CI sets these for GitHub Pages; fallbacks for local build
   url: process.env.GITHUB_PAGES_URL || 'https://github.com',
@@ -59,7 +59,7 @@ const config: Config = {
       title: 'SchemaX',
       logo: {
         alt: 'SchemaX',
-        src: 'img/logo.svg',
+        src: 'img/schemax_logo.svg',
       },
       items: [
         {
