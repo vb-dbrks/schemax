@@ -23,7 +23,7 @@ interface EnvironmentConfig {
   requireSnapshot: boolean;
   requireApproval?: boolean;
   autoCreateTopLevel: boolean;
-  autoCreateSchematicSchema: boolean;
+  autoCreateSchemaxSchema: boolean;
 }
 
 interface LocationModalData {
@@ -478,7 +478,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                           className="import-bindings-textarea"
                           value={mappingTextByEnv[envName] ?? ''}
                           onChange={(e) => updateCatalogMappings(envName, e.target.value)}
-                          placeholder={'schematic_demo=dev_schematic_demo\nsamples=dev_samples'}
+                          placeholder={'schemax_demo=dev_schemax_demo\nsamples=dev_samples'}
                         />
                         <p className="field-help">
                           One mapping per line. SQL/apply requires mappings for all logical catalogs.

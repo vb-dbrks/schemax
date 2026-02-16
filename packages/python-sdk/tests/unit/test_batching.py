@@ -6,8 +6,8 @@ Tests the generic operation batcher that works across all providers.
 
 import pytest
 
-from schematic.providers.base.batching import BatchInfo, OperationBatcher
-from schematic.providers.base.operations import Operation
+from schemax.providers.base.batching import BatchInfo, OperationBatcher
+from schemax.providers.base.operations import Operation
 
 
 class TestOperationBatcher:

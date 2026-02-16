@@ -11,7 +11,7 @@ interface EnvironmentConfig {
   requireSnapshot?: boolean;
   requireApproval?: boolean;
   autoCreateCatalog?: boolean;
-  autoCreateSchematicSchema?: boolean;
+  autoCreateSchemaxSchema?: boolean;
   [key: string]: unknown;
 }
 
@@ -82,7 +82,7 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
               {config.requireSnapshot && <span className="chip-flag chip-flag--accent">Snapshot required</span>}
               {config.requireApproval && <span className="chip-flag chip-flag--info">Approval required</span>}
               {config.autoCreateCatalog && <span className="chip-flag chip-flag--neutral">Auto-create catalog</span>}
-              {config.autoCreateSchematicSchema && (
+              {config.autoCreateSchemaxSchema && (
                 <span className="chip-flag chip-flag--neutral">Auto-create schema</span>
               )}
             </div>

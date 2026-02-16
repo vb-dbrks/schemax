@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from schematic.core.storage import append_ops, ensure_project_file
+from schemax.core.storage import append_ops, ensure_project_file
 from tests.utils import OperationBuilder
 from tests.utils.cli_helpers import invoke_cli
 
@@ -78,11 +78,11 @@ class TestCommandWorkflows:
         ensure_project_file(temp_workspace, provider_id="unity")
 
         monkeypatch.setattr(
-            "schematic.cli.apply_to_environment",
+            "schemax.cli.apply_to_environment",
             lambda **kwargs: SimpleNamespace(status="success"),
         )
         monkeypatch.setattr(
-            "schematic.cli.rollback_complete",
+            "schemax.cli.rollback_complete",
             lambda **kwargs: SimpleNamespace(
                 success=True, operations_rolled_back=0, error_message=None
             ),

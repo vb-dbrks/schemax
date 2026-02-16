@@ -7,16 +7,16 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from schematic.commands.rollback import RollbackError, rollback_complete, rollback_partial
-from schematic.providers.base.executor import ExecutionResult
-from schematic.providers.base.operations import Operation
-from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
+from schemax.commands.rollback import RollbackError, rollback_complete, rollback_partial
+from schemax.providers.base.executor import ExecutionResult
+from schemax.providers.base.operations import Operation
+from schemax.providers.base.reverse_generator import SafetyLevel, SafetyReport
 
 
 class TestRollbackPartial:
     """Test partial rollback functionality"""
 
-    @patch("schematic.commands.rollback.load_current_state")
+    @patch("schemax.commands.rollback.load_current_state")
     def test_no_operations_to_rollback(self, mock_load_state):
         """Test rollback with no operations"""
         mock_load_state.return_value = ({}, None, None, None)
@@ -35,10 +35,10 @@ class TestRollbackPartial:
         assert result.success is True
         assert result.operations_rolled_back == 0
 
-    @patch("schematic.commands.rollback.DeploymentTracker")
-    @patch("schematic.commands.rollback.get_environment_config")
-    @patch("schematic.commands.rollback.read_project")
-    @patch("schematic.commands.rollback.load_current_state")
+    @patch("schemax.commands.rollback.DeploymentTracker")
+    @patch("schemax.commands.rollback.get_environment_config")
+    @patch("schemax.commands.rollback.read_project")
+    @patch("schemax.commands.rollback.load_current_state")
     def test_rollback_with_safe_operations(
         self,
         mock_load_state,
@@ -78,7 +78,7 @@ class TestRollbackPartial:
         }
         mock_get_env_config.return_value = {
             "topLevelName": "dev_catalog",
-            "autoCreateSchematicSchema": True,
+            "autoCreateSchemaxSchema": True,
         }
 
         # Mock deployment tracker
@@ -114,7 +114,7 @@ class TestRollbackPartial:
 
         # Mock SQL generator
         # Mock generate_sql_with_mapping to return SQLGenerationResult
-        from schematic.providers.base.sql_generator import SQLGenerationResult, StatementInfo
+        from schemax.providers.base.sql_generator import SQLGenerationResult, StatementInfo
 
         mock_sql_generator.generate_sql_with_mapping.return_value = SQLGenerationResult(
             sql="DROP CATALOG test;",
@@ -124,7 +124,7 @@ class TestRollbackPartial:
         )
 
         # Mock executor - successful execution with statement_results
-        from schematic.providers.base.executor import StatementResult
+        from schemax.providers.base.executor import StatementResult
 
         stmt_result = StatementResult(
             statement_id="stmt_1",
@@ -145,7 +145,7 @@ class TestRollbackPartial:
         )
 
         # Mock safety validator to return SAFE
-        with patch("schematic.commands.rollback.SafetyValidator") as mock_validator_class:
+        with patch("schemax.commands.rollback.SafetyValidator") as mock_validator_class:
             mock_validator = Mock()
             mock_validator_class.return_value = mock_validator
             mock_validator.validate.return_value = SafetyReport(
@@ -187,10 +187,10 @@ class TestRollbackPartial:
         mock_tracker.record_operation.assert_called_once()
         mock_tracker.complete_deployment.assert_called_once()
 
-    @patch("schematic.commands.rollback.DeploymentTracker")
-    @patch("schematic.commands.rollback.get_environment_config")
-    @patch("schematic.commands.rollback.read_project")
-    @patch("schematic.commands.rollback.load_current_state")
+    @patch("schemax.commands.rollback.DeploymentTracker")
+    @patch("schemax.commands.rollback.get_environment_config")
+    @patch("schemax.commands.rollback.read_project")
+    @patch("schemax.commands.rollback.load_current_state")
     def test_rollback_blocks_on_destructive(
         self, mock_load_state, mock_read_project, mock_get_env_config, mock_tracker_class
     ):
@@ -216,7 +216,7 @@ class TestRollbackPartial:
         }
         mock_get_env_config.return_value = {
             "topLevelName": "prod_catalog",
-            "autoCreateSchematicSchema": True,
+            "autoCreateSchemaxSchema": True,
         }
 
         # Mock deployment tracker
@@ -246,7 +246,7 @@ class TestRollbackPartial:
         mock_state_differ.generate_diff_operations.return_value = [rollback_op]
 
         # Mock safety validator to return DESTRUCTIVE
-        with patch("schematic.commands.rollback.SafetyValidator") as mock_validator_class:
+        with patch("schemax.commands.rollback.SafetyValidator") as mock_validator_class:
             mock_validator = Mock()
             mock_validator_class.return_value = mock_validator
             mock_validator.validate.return_value = SafetyReport(
@@ -278,10 +278,10 @@ class TestRollbackPartial:
                     from_version=None,  # First deployment (empty initial state)
                 )
 
-    @patch("schematic.commands.rollback.DeploymentTracker")
-    @patch("schematic.commands.rollback.get_environment_config")
-    @patch("schematic.commands.rollback.read_project")
-    @patch("schematic.commands.rollback.load_current_state")
+    @patch("schemax.commands.rollback.DeploymentTracker")
+    @patch("schemax.commands.rollback.get_environment_config")
+    @patch("schemax.commands.rollback.read_project")
+    @patch("schemax.commands.rollback.load_current_state")
     def test_rollback_execution_failure(
         self,
         mock_load_state,
@@ -316,7 +316,7 @@ class TestRollbackPartial:
         }
         mock_get_env_config.return_value = {
             "topLevelName": "dev_catalog",
-            "autoCreateSchematicSchema": True,
+            "autoCreateSchemaxSchema": True,
         }
 
         # Mock deployment tracker
@@ -347,7 +347,7 @@ class TestRollbackPartial:
         mock_state_differ.generate_diff_operations.return_value = [rollback_op]
 
         # Mock generate_sql_with_mapping
-        from schematic.providers.base.sql_generator import SQLGenerationResult, StatementInfo
+        from schemax.providers.base.sql_generator import SQLGenerationResult, StatementInfo
 
         mock_sql_generator.generate_sql_with_mapping.return_value = SQLGenerationResult(
             sql="DROP CATALOG test;",
@@ -359,7 +359,7 @@ class TestRollbackPartial:
         )
 
         # Mock executor - failed execution
-        from schematic.providers.base.executor import StatementResult
+        from schemax.providers.base.executor import StatementResult
 
         stmt_result = StatementResult(
             statement_id="stmt_1",
@@ -379,7 +379,7 @@ class TestRollbackPartial:
             error_message="Catalog does not exist",
         )
 
-        with patch("schematic.commands.rollback.SafetyValidator") as mock_validator_class:
+        with patch("schemax.commands.rollback.SafetyValidator") as mock_validator_class:
             mock_validator = Mock()
             mock_validator_class.return_value = mock_validator
             mock_validator.validate.return_value = SafetyReport(
@@ -417,10 +417,10 @@ class TestRollbackPartial:
         mock_tracker.start_deployment.assert_called_once()
         mock_tracker.complete_deployment.assert_called_once()
 
-    @patch("schematic.commands.rollback.DeploymentTracker")
-    @patch("schematic.commands.rollback.get_environment_config")
-    @patch("schematic.commands.rollback.read_project")
-    @patch("schematic.commands.rollback.load_current_state")
+    @patch("schemax.commands.rollback.DeploymentTracker")
+    @patch("schemax.commands.rollback.get_environment_config")
+    @patch("schemax.commands.rollback.read_project")
+    @patch("schemax.commands.rollback.load_current_state")
     def test_rollback_skips_recording_when_deployment_catalog_dropped(
         self,
         mock_load_state,
@@ -445,7 +445,7 @@ class TestRollbackPartial:
         }
         mock_get_env_config.return_value = {
             "topLevelName": "dev_catalog",
-            "autoCreateSchematicSchema": True,
+            "autoCreateSchemaxSchema": True,
         }
 
         mock_tracker = Mock()
@@ -471,7 +471,7 @@ class TestRollbackPartial:
         )
         mock_state_differ.generate_diff_operations.return_value = [rollback_op]
 
-        from schematic.providers.base.sql_generator import SQLGenerationResult, StatementInfo
+        from schemax.providers.base.sql_generator import SQLGenerationResult, StatementInfo
 
         mock_sql_generator.generate_sql_with_mapping.return_value = SQLGenerationResult(
             sql="DROP CATALOG dev_catalog;",
@@ -484,7 +484,7 @@ class TestRollbackPartial:
             ],
         )
 
-        from schematic.providers.base.executor import StatementResult
+        from schemax.providers.base.executor import StatementResult
 
         mock_executor.execute_statements.return_value = ExecutionResult(
             deployment_id="test_deploy",
@@ -505,7 +505,7 @@ class TestRollbackPartial:
             error_message=None,
         )
 
-        with patch("schematic.commands.rollback.SafetyValidator") as mock_validator_class:
+        with patch("schemax.commands.rollback.SafetyValidator") as mock_validator_class:
             mock_validator_class.return_value.validate.return_value = SafetyReport(
                 level=SafetyLevel.SAFE, reason="Safe", data_at_risk=0
             )
@@ -542,8 +542,8 @@ class TestRollbackPartial:
 class TestRollbackCompleteBaselineGuard:
     """Test rollback_complete baseline guard (block rollback before import baseline)."""
 
-    @patch("schematic.commands.rollback.get_environment_config")
-    @patch("schematic.commands.rollback.read_project")
+    @patch("schemax.commands.rollback.get_environment_config")
+    @patch("schemax.commands.rollback.read_project")
     def test_rollback_before_baseline_raises_without_force(
         self, mock_read_project, mock_get_env_config
     ):
@@ -566,9 +566,9 @@ class TestRollbackCompleteBaselineGuard:
         assert "v0.1.0" in str(exc_info.value)
         assert "force" in str(exc_info.value).lower()
 
-    @patch("schematic.core.storage.read_snapshot")
-    @patch("schematic.commands.rollback.get_environment_config")
-    @patch("schematic.commands.rollback.read_project")
+    @patch("schemax.core.storage.read_snapshot")
+    @patch("schemax.commands.rollback.get_environment_config")
+    @patch("schemax.commands.rollback.read_project")
     def test_rollback_before_baseline_proceeds_with_force_and_no_interaction(
         self, mock_read_project, mock_get_env_config, mock_read_snapshot
     ):
@@ -587,19 +587,19 @@ class TestRollbackCompleteBaselineGuard:
         mock_differ.generate_diff_operations.return_value = []
         mock_provider = Mock()
         mock_provider.get_state_differ.return_value = mock_differ
-        with patch("schematic.providers.unity.auth.create_databricks_client"):
-            with patch("schematic.commands.rollback.DeploymentTracker") as mock_tracker_class:
+        with patch("schemax.providers.unity.auth.create_databricks_client"):
+            with patch("schemax.commands.rollback.DeploymentTracker") as mock_tracker_class:
                 mock_tracker = Mock()
                 mock_tracker_class.return_value = mock_tracker
                 mock_tracker.get_latest_deployment.return_value = None
-                with patch("schematic.commands.rollback.load_current_state") as mock_load:
+                with patch("schemax.commands.rollback.load_current_state") as mock_load:
                     mock_load.return_value = (
                         {"catalogs": []},
                         {},
                         mock_provider,
                         None,
                     )
-                    with patch("schematic.commands.diff._build_catalog_mapping") as mock_build_map:
+                    with patch("schemax.commands.diff._build_catalog_mapping") as mock_build_map:
                         mock_build_map.return_value = {"__implicit__": "dev_catalog"}
                         result = rollback_complete(
                             workspace=Path("/tmp"),
@@ -614,8 +614,8 @@ class TestRollbackCompleteBaselineGuard:
         assert result.operations_rolled_back == 0
         mock_read_snapshot.assert_called()
 
-    @patch("schematic.commands.rollback.get_environment_config")
-    @patch("schematic.commands.rollback.read_project")
+    @patch("schemax.commands.rollback.get_environment_config")
+    @patch("schemax.commands.rollback.read_project")
     def test_rollback_at_or_after_baseline_allowed(self, mock_read_project, mock_get_env_config):
         """When to_snapshot is at or after baseline, no RollbackError (baseline check passes)."""
         mock_read_project.return_value = {"name": "p", "provider": {"environments": {}}}
@@ -627,20 +627,20 @@ class TestRollbackCompleteBaselineGuard:
         mock_differ.generate_diff_operations.return_value = []
         mock_provider = Mock()
         mock_provider.get_state_differ.return_value = mock_differ
-        with patch("schematic.core.storage.read_snapshot") as mock_read_snapshot:
+        with patch("schemax.core.storage.read_snapshot") as mock_read_snapshot:
             mock_read_snapshot.return_value = {
                 "version": "v0.1.0",
                 "state": {"catalogs": []},
                 "operations": [],
             }
-            with patch("schematic.providers.unity.auth.create_databricks_client"):
-                with patch("schematic.commands.rollback.DeploymentTracker") as mock_tracker_class:
+            with patch("schemax.providers.unity.auth.create_databricks_client"):
+                with patch("schemax.commands.rollback.DeploymentTracker") as mock_tracker_class:
                     mock_tracker = Mock()
                     mock_tracker_class.return_value = mock_tracker
                     mock_tracker.get_latest_deployment.return_value = {
                         "version": "v0.2.0",
                     }
-                    with patch("schematic.commands.rollback.load_current_state") as mock_load:
+                    with patch("schemax.commands.rollback.load_current_state") as mock_load:
                         mock_load.return_value = (
                             {"catalogs": []},
                             {},
@@ -648,7 +648,7 @@ class TestRollbackCompleteBaselineGuard:
                             None,
                         )
                         with patch(
-                            "schematic.commands.diff._build_catalog_mapping"
+                            "schemax.commands.diff._build_catalog_mapping"
                         ) as mock_build_map:
                             mock_build_map.return_value = {"__implicit__": "dev_catalog"}
                             result = rollback_complete(

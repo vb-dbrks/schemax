@@ -6,8 +6,8 @@ Tests state comparison, diff generation, and rename detection.
 
 from datetime import UTC, datetime
 
-from schematic.providers.base.operations import Operation
-from schematic.providers.unity.state_differ import UnityStateDiffer
+from schemax.providers.base.operations import Operation
+from schemax.providers.unity.state_differ import UnityStateDiffer
 
 
 class TestUnityStateDiffer:
@@ -1857,7 +1857,7 @@ class TestUnityStateDifferViewRegression:
         Root cause: _add_all_schemas_in_catalog() called _add_all_tables_in_schema()
         but not _add_all_views_in_schema().
 
-        Impact: schematic apply from empty state would show "0 operations" even
+        Impact: schemax apply from empty state would show "0 operations" even
         when snapshot contained views.
         """
         old_state = {"catalogs": []}  # Empty state (first deployment)

@@ -819,7 +819,7 @@ wheels = [
 ]
 
 [[package]]
-name = "schematic-py"
+name = "schemax-py"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

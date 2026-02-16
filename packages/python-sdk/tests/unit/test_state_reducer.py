@@ -12,8 +12,8 @@ Tests all 31 Unity Catalog operations:
 - Column masks (3): add, update, remove
 """
 
-from schematic.providers.base.operations import Operation
-from schematic.providers.unity.state_reducer import apply_operation, apply_operations
+from schemax.providers.base.operations import Operation
+from schemax.providers.unity.state_reducer import apply_operation, apply_operations
 from tests.utils import OperationBuilder
 
 

@@ -11,7 +11,7 @@
         "allowDrift": true,
         "requireSnapshot": false,
         "autoCreateCatalog": true,
-        "autoCreateSchematicSchema": true
+        "autoCreateSchemaxSchema": true
       },
       "prod": {
         "catalog": "prod_catalog",
@@ -20,7 +20,7 @@
         "requireSnapshot": true,
         "requireApproval": true,
         "autoCreateCatalog": false,
-        "autoCreateSchematicSchema": true
+        "autoCreateSchemaxSchema": true
       }
     }
   },

@@ -6,10 +6,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from schematic.commands.validate import ValidationError, validate_dependencies, validate_project
-from schematic.providers.base.models import ValidationError as ProviderValidationError
-from schematic.providers.base.models import ValidationResult
-from schematic.providers.base.operations import Operation
+from schemax.commands.validate import ValidationError, validate_dependencies, validate_project
+from schemax.providers.base.models import ValidationError as ProviderValidationError
+from schemax.providers.base.models import ValidationResult
+from schemax.providers.base.operations import Operation
 
 
 def _op(op_id: str = "op_1") -> Operation:
@@ -50,7 +50,7 @@ def test_validate_project_json_success(
     provider.validate_state.return_value = ValidationResult(valid=True, errors=[])
 
     monkeypatch.setattr(
-        "schematic.commands.validate.read_project",
+        "schemax.commands.validate.read_project",
         lambda _workspace: {
             "version": 4,
             "name": "demo",
@@ -58,15 +58,15 @@ def test_validate_project_json_success(
         },
     )
     monkeypatch.setattr(
-        "schematic.commands.validate.load_current_state",
+        "schemax.commands.validate.load_current_state",
         lambda _workspace, validate=False: ({"catalogs": []}, {"ops": []}, provider, None),
     )
     monkeypatch.setattr(
-        "schematic.commands.validate.validate_dependencies",
+        "schemax.commands.validate.validate_dependencies",
         lambda _state, _ops, _provider: ([], []),
     )
     monkeypatch.setattr(
-        "schematic.commands.snapshot_rebase.detect_stale_snapshots",
+        "schemax.commands.snapshot_rebase.detect_stale_snapshots",
         lambda _workspace: [],
     )
 
@@ -85,7 +85,7 @@ def test_validate_project_raises_on_invalid_state(monkeypatch: pytest.MonkeyPatc
     )
 
     monkeypatch.setattr(
-        "schematic.commands.validate.read_project",
+        "schemax.commands.validate.read_project",
         lambda _workspace: {
             "version": 4,
             "name": "demo",
@@ -93,7 +93,7 @@ def test_validate_project_raises_on_invalid_state(monkeypatch: pytest.MonkeyPatc
         },
     )
     monkeypatch.setattr(
-        "schematic.commands.validate.load_current_state",
+        "schemax.commands.validate.load_current_state",
         lambda _workspace, validate=False: ({"catalogs": []}, {"ops": []}, provider, None),
     )
 
@@ -109,7 +109,7 @@ def test_validate_project_returns_false_when_stale_snapshots(
     provider.validate_state.return_value = ValidationResult(valid=True, errors=[])
 
     monkeypatch.setattr(
-        "schematic.commands.validate.read_project",
+        "schemax.commands.validate.read_project",
         lambda _workspace: {
             "version": 4,
             "name": "demo",
@@ -117,15 +117,15 @@ def test_validate_project_returns_false_when_stale_snapshots(
         },
     )
     monkeypatch.setattr(
-        "schematic.commands.validate.load_current_state",
+        "schemax.commands.validate.load_current_state",
         lambda _workspace, validate=False: ({"catalogs": []}, {"ops": []}, provider, None),
     )
     monkeypatch.setattr(
-        "schematic.commands.validate.validate_dependencies",
+        "schemax.commands.validate.validate_dependencies",
         lambda _state, _ops, _provider: ([], []),
     )
     monkeypatch.setattr(
-        "schematic.commands.snapshot_rebase.detect_stale_snapshots",
+        "schemax.commands.snapshot_rebase.detect_stale_snapshots",
         lambda _workspace: [
             {
                 "version": "v0.2.0",

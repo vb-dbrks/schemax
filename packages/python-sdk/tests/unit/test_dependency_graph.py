@@ -6,7 +6,7 @@ Tests the NetworkX-based dependency graph implementation for SQL generation.
 
 import pytest
 
-from schematic.providers.base.dependency_graph import (
+from schemax.providers.base.dependency_graph import (
     DependencyEnforcement,
     DependencyGraph,
     DependencyNode,

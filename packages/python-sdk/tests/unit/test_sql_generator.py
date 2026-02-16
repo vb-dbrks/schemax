@@ -5,8 +5,8 @@ Tests SQL generation for all 31 Unity Catalog operations.
 Verifies SQL idempotency, correctness, and proper escaping.
 """
 
-from schematic.providers.base.operations import Operation
-from schematic.providers.unity.sql_generator import UnitySQLGenerator
+from schemax.providers.base.operations import Operation
+from schemax.providers.unity.sql_generator import UnitySQLGenerator
 from tests.utils import OperationBuilder
 
 
@@ -796,7 +796,7 @@ class TestConstraintSQL:
         )
 
         # Apply the add operation to state (pass Pydantic model, not dict)
-        from schematic.providers.unity.state_reducer import apply_operation
+        from schemax.providers.unity.state_reducer import apply_operation
 
         state_with_constraint = apply_operation(sample_unity_state, add_op)
 
@@ -1300,7 +1300,7 @@ class TestSQLOptimization:
         """Test that column operations can be batched"""
         builder = OperationBuilder()
         # Create base state with table
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         setup_ops = [
             builder.add_catalog("cat_123", "test", op_id="setup_001"),
@@ -1341,7 +1341,7 @@ class TestSQLOptimization:
     def test_batch_multiple_add_columns_existing_table(self, empty_unity_state):
         """Test that multiple ADD COLUMN operations are batched into single ALTER TABLE"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with existing table
         setup_ops = [
@@ -1405,7 +1405,7 @@ class TestSQLOptimization:
     def test_create_table_with_comment_and_columns_batched(self, empty_unity_state):
         """Test that CREATE TABLE with comment and columns are batched together"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with catalog and schema
         setup_ops = [
@@ -1453,7 +1453,7 @@ class TestSQLOptimization:
     def test_create_table_with_tags_generates_alter_statements(self, empty_unity_state):
         """Test that CREATE TABLE with tags generates ALTER TABLE SET TAGS statements"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with catalog and schema
         setup_ops = [
@@ -1486,7 +1486,7 @@ class TestSQLOptimization:
     def test_create_table_with_column_tags_generates_alter_statements(self, empty_unity_state):
         """Test that columns with tags generate ALTER TABLE ALTER COLUMN SET TAGS statements"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with catalog and schema
         setup_ops = [
@@ -1523,8 +1523,8 @@ class TestSQLOptimization:
 
     def test_column_tags_via_state_differ(self, empty_unity_state):
         """Test that column tags are detected by state differ and generate correct SQL"""
-        from schematic.providers.unity.state_differ import UnityStateDiffer
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_differ import UnityStateDiffer
+        from schemax.providers.unity.state_reducer import apply_operations
 
         builder = OperationBuilder()
 
@@ -1575,7 +1575,7 @@ class TestSQLOptimization:
     def test_single_add_column_not_batched(self, empty_unity_state):
         """Test that single ADD COLUMN operation works normally (no regression)"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with existing table
         setup_ops = [
@@ -1604,7 +1604,7 @@ class TestSQLOptimization:
     def test_multiple_tables_separate_statements(self, empty_unity_state):
         """Test that ADD COLUMN operations on different tables remain separate"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with two tables
         setup_ops = [
@@ -1646,7 +1646,7 @@ class TestSQLOptimization:
     def test_mixed_operations_partial_batching(self, empty_unity_state):
         """Test that mixed operations (ADD + DROP) are handled correctly"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with table that has existing columns
         setup_ops = [
@@ -1700,7 +1700,7 @@ class TestSQLOptimization:
     def test_single_column_move_to_first(self, empty_unity_state):
         """Test that moving a single column to FIRST generates optimal SQL"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with table and multiple columns (simulating post-snapshot state)
         setup_ops = [
@@ -1754,7 +1754,7 @@ class TestSQLOptimization:
     def test_single_column_move_to_middle(self, empty_unity_state):
         """Test that moving a single column to middle position generates optimal SQL"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with table and multiple columns
         setup_ops = [
@@ -1806,7 +1806,7 @@ class TestSQLOptimization:
     def test_multiple_columns_move_uses_general_algorithm(self, empty_unity_state):
         """Test that moving multiple columns uses the general algorithm (not optimized)"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Create base state with table and multiple columns
         setup_ops = [
@@ -1856,7 +1856,7 @@ class TestOperationCancellation:
     def test_table_create_drop_cancellation(self, empty_unity_state):
         """Test that create+drop table operations cancel out"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Setup: catalog and schema
         setup_ops = [
@@ -1921,7 +1921,7 @@ class TestOperationCancellation:
     def test_schema_create_drop_cancellation(self, empty_unity_state):
         """Test that create+drop schema operations cancel out"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Setup: catalog
         setup_ops = [builder.add_catalog("cat_123", "test", op_id="setup_001")]
@@ -1948,7 +1948,7 @@ class TestOperationCancellation:
     def test_table_create_without_drop_not_cancelled(self, empty_unity_state):
         """Test that create without drop is NOT cancelled"""
         builder = OperationBuilder()
-        from schematic.providers.unity.state_reducer import apply_operations
+        from schemax.providers.unity.state_reducer import apply_operations
 
         # Setup: catalog and schema
         setup_ops = [

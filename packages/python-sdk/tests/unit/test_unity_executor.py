@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from schematic.providers.unity.executor import UnitySQLExecutor
+from schemax.providers.unity.executor import UnitySQLExecutor
 
 
 class TestUnitySQLExecutor:
@@ -39,19 +39,19 @@ class TestUnitySQLExecutor:
 class TestAuthHelpers:
     """Test authentication helper functions"""
 
-    @patch("schematic.providers.unity.auth.WorkspaceClient")
+    @patch("schemax.providers.unity.auth.WorkspaceClient")
     def test_create_databricks_client_with_profile(self, mock_workspace_client):
         """Should create client with specified profile"""
-        from schematic.providers.unity.auth import create_databricks_client
+        from schemax.providers.unity.auth import create_databricks_client
 
         create_databricks_client(profile="DEV")
 
         mock_workspace_client.assert_called_once_with(profile="DEV")
 
-    @patch("schematic.providers.unity.auth.WorkspaceClient")
+    @patch("schemax.providers.unity.auth.WorkspaceClient")
     def test_create_databricks_client_default_profile(self, mock_workspace_client):
         """Should use default profile if not specified"""
-        from schematic.providers.unity.auth import create_databricks_client
+        from schemax.providers.unity.auth import create_databricks_client
 
         create_databricks_client()
 
@@ -62,7 +62,7 @@ class TestAuthHelpers:
     @patch("builtins.open", create=True)
     def test_check_profile_exists_success(self, mock_open, mock_exists):
         """Should return True if profile exists in .databrickscfg"""
-        from schematic.providers.unity.auth import check_profile_exists
+        from schemax.providers.unity.auth import check_profile_exists
 
         # Mock config file exists and has profile
         mock_exists.return_value = True
@@ -78,7 +78,7 @@ class TestAuthHelpers:
     @patch("builtins.open", create=True)
     def test_check_profile_exists_not_found(self, mock_open, mock_exists):
         """Should return False if profile doesn't exist"""
-        from schematic.providers.unity.auth import check_profile_exists
+        from schemax.providers.unity.auth import check_profile_exists
 
         # Mock config file exists but no profile
         mock_exists.return_value = True
@@ -93,7 +93,7 @@ class TestAuthHelpers:
     @patch("os.path.exists")
     def test_check_profile_exists_no_config_file(self, mock_exists):
         """Should return False if config file doesn't exist"""
-        from schematic.providers.unity.auth import check_profile_exists
+        from schemax.providers.unity.auth import check_profile_exists
 
         # Mock config file doesn't exist
         mock_exists.return_value = False

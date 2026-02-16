@@ -1,0 +1,70 @@
+{
+  "version": 4,
+  "name": "schemax_demo",
+  "provider": {
+    "type": "unity",
+    "version": "1.0.0",
+    "environments": {
+      "dev": {
+        "topLevelName": "dev_schemax_demo",
+        "description": "Development environment",
+        "allowDrift": true,
+        "requireSnapshot": false,
+        "autoCreateTopLevel": true,
+        "autoCreateSchemaxSchema": true,
+        "catalogMappings": {
+          "samples": "samples",
+          "schemax_demo": "dev_schemax_demo",
+          "test_import": "test_import"
+        }
+      },
+      "test": {
+        "topLevelName": "test_schemax_demo",
+        "description": "Test/staging environment",
+        "allowDrift": false,
+        "requireSnapshot": true,
+        "autoCreateTopLevel": true,
+        "autoCreateSchemaxSchema": true,
+        "catalogMappings": {
+          "schemax_demo": "test_schemax_demo"
+        }
+      },
+      "prod": {
+        "topLevelName": "prod_schemax_demo",
+        "description": "Production environment",
+        "allowDrift": false,
+        "requireSnapshot": true,
+        "requireApproval": false,
+        "autoCreateTopLevel": false,
+        "autoCreateSchemaxSchema": true,
+        "catalogMappings": {
+          "schemax_demo": "prod_schemax_demo"
+        }
+      }
+    }
+  },
+  "snapshots": [
+    {
+      "id": "snap_2be26359-29f6-49c0-9bde-bb8a11136bcc",
+      "version": "v0.1.0",
+      "name": "Imported baseline for dev",
+      "ts": "2026-02-10T23:57:34.585383+00:00",
+      "createdBy": "test-user",
+      "file": ".schemax/snapshots/v0.1.0.json",
+      "previousSnapshot": null,
+      "opsCount": 2214,
+      "hash": "8045746c2867fc50ec0e168d853024a342ee4db4f3e5456aafc06204cb369103",
+      "tags": [
+        "import",
+        "baseline"
+      ],
+      "comment": "Imported existing provider assets for dev and adopted as deployment baseline."
+    }
+  ],
+  "deployments": [],
+  "settings": {
+    "autoIncrementVersion": true,
+    "versionPrefix": "v"
+  },
+  "latestSnapshot": "v0.1.0"
+}

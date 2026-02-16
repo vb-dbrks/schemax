@@ -16,7 +16,7 @@ import { Provider } from './providers/base/provider';
 import { Operation } from './providers/base/operations';
 import { ProviderState } from './providers/base/models';
 
-const SCHEMATIC_DIR = '.schematic';
+const SCHEMAX_DIR = '.schemax';
 const PROJECT_FILENAME = 'project.json';
 const CHANGELOG_FILENAME = 'changelog.json';
 const SNAPSHOTS_DIR = 'snapshots';
@@ -35,7 +35,7 @@ export interface EnvironmentConfig {
   requireSnapshot: boolean;
   requireApproval?: boolean;
   autoCreateTopLevel: boolean;
-  autoCreateSchematicSchema: boolean;
+  autoCreateSchemaxSchema: boolean;
 }
 
 // Project File V4 Types
@@ -118,49 +118,49 @@ export interface SnapshotFile {
 }
 
 /**
- * Get schematic directory path
+ * Get schemax directory path
  */
-function getSchematicDir(workspaceUri: vscode.Uri): vscode.Uri {
-  return vscode.Uri.joinPath(workspaceUri, SCHEMATIC_DIR);
+function getSchemaxDir(workspaceUri: vscode.Uri): vscode.Uri {
+  return vscode.Uri.joinPath(workspaceUri, SCHEMAX_DIR);
 }
 
 /**
  * Get project file path
  */
 function getProjectFilePath(workspaceUri: vscode.Uri): vscode.Uri {
-  return vscode.Uri.joinPath(workspaceUri, SCHEMATIC_DIR, PROJECT_FILENAME);
+  return vscode.Uri.joinPath(workspaceUri, SCHEMAX_DIR, PROJECT_FILENAME);
 }
 
 /**
  * Get changelog file path
  */
 function getChangelogFilePath(workspaceUri: vscode.Uri): vscode.Uri {
-  return vscode.Uri.joinPath(workspaceUri, SCHEMATIC_DIR, CHANGELOG_FILENAME);
+  return vscode.Uri.joinPath(workspaceUri, SCHEMAX_DIR, CHANGELOG_FILENAME);
 }
 
 /**
  * Get snapshots directory path
  */
 function getSnapshotsDir(workspaceUri: vscode.Uri): vscode.Uri {
-  return vscode.Uri.joinPath(workspaceUri, SCHEMATIC_DIR, SNAPSHOTS_DIR);
+  return vscode.Uri.joinPath(workspaceUri, SCHEMAX_DIR, SNAPSHOTS_DIR);
 }
 
 /**
  * Get snapshot file path
  */
 function getSnapshotFilePath(workspaceUri: vscode.Uri, version: string): vscode.Uri {
-  return vscode.Uri.joinPath(workspaceUri, SCHEMATIC_DIR, SNAPSHOTS_DIR, `${version}.json`);
+  return vscode.Uri.joinPath(workspaceUri, SCHEMAX_DIR, SNAPSHOTS_DIR, `${version}.json`);
 }
 
 /**
- * Ensure .schematic/ directory structure exists
+ * Ensure .schemax/ directory structure exists
  */
-export async function ensureSchematicDir(workspaceUri: vscode.Uri): Promise<void> {
-  const schematicDir = getSchematicDir(workspaceUri);
+export async function ensureSchemaxDir(workspaceUri: vscode.Uri): Promise<void> {
+  const schemaxDir = getSchemaxDir(workspaceUri);
   const snapshotsDir = getSnapshotsDir(workspaceUri);
 
   try {
-    await vscode.workspace.fs.createDirectory(schematicDir);
+    await vscode.workspace.fs.createDirectory(schemaxDir);
     await vscode.workspace.fs.createDirectory(snapshotsDir);
   } catch (error) {
     // Directory might already exist, ignore
@@ -186,12 +186,12 @@ export async function ensureProjectFile(
     const project = JSON.parse(content.toString()) as ProjectFileV4;
     
     if (project.version === 4) {
-      outputChannel.appendLine('[Schematic] Project file already exists (v4)');
+      outputChannel.appendLine('[SchemaX] Project file already exists (v4)');
       return;
     } else {
       throw new Error(
         `Project version ${project.version} not supported. ` +
-        'This version of Schematic requires v4 projects. ' +
+        'This version of SchemaX requires v4 projects. ' +
         'Please create a new project or manually migrate to v4.'
       );
     }
@@ -228,7 +228,7 @@ export async function ensureProjectFile(
           allowDrift: true,
           requireSnapshot: false,
           autoCreateTopLevel: true,
-          autoCreateSchematicSchema: true,
+          autoCreateSchemaxSchema: true,
         },
         test: {
           topLevelName: `test_${workspaceName}`,
@@ -237,7 +237,7 @@ export async function ensureProjectFile(
           allowDrift: false,
           requireSnapshot: true,
           autoCreateTopLevel: true,
-          autoCreateSchematicSchema: true,
+          autoCreateSchemaxSchema: true,
         },
         prod: {
           topLevelName: `prod_${workspaceName}`,
@@ -247,7 +247,7 @@ export async function ensureProjectFile(
           requireSnapshot: true,
           requireApproval: false,
           autoCreateTopLevel: false,
-          autoCreateSchematicSchema: true,
+          autoCreateSchemaxSchema: true,
         },
       },
     },
@@ -267,7 +267,7 @@ export async function ensureProjectFile(
     lastModified: new Date().toISOString(),
   };
 
-  await ensureSchematicDir(workspaceUri);
+  await ensureSchemaxDir(workspaceUri);
 
   // Write project file
   const projectContent = Buffer.from(JSON.stringify(newProject, null, 2), 'utf8');
@@ -278,9 +278,9 @@ export async function ensureProjectFile(
   const changelogContent = Buffer.from(JSON.stringify(newChangelog, null, 2), 'utf8');
   await vscode.workspace.fs.writeFile(changelogPath, changelogContent);
 
-  outputChannel.appendLine(`[Schematic] Initialized new v4 project: ${workspaceName}`);
-  outputChannel.appendLine(`[Schematic] Provider: ${provider.info.name}`);
-  outputChannel.appendLine('[Schematic] Environments: dev, test, prod');
+  outputChannel.appendLine(`[SchemaX] Initialized new v4 project: ${workspaceName}`);
+  outputChannel.appendLine(`[SchemaX] Provider: ${provider.info.name}`);
+  outputChannel.appendLine('[SchemaX] Environments: dev, test, prod');
 }
 
 /**
@@ -297,7 +297,7 @@ export async function readProject(workspaceUri: vscode.Uri): Promise<ProjectFile
     if (project.version !== 4) {
       throw new Error(
         `Project version ${project.version} not supported. ` +
-        'This version of Schematic requires v4 projects. ' +
+        'This version of SchemaX requires v4 projects. ' +
         'Please create a new project or manually migrate to v4.'
       );
     }
@@ -385,7 +385,7 @@ export async function writeSnapshot(
   workspaceUri: vscode.Uri,
   snapshot: SnapshotFile
 ): Promise<void> {
-  await ensureSchematicDir(workspaceUri);
+  await ensureSchemaxDir(workspaceUri);
   const snapshotPath = getSnapshotFilePath(workspaceUri, snapshot.version);
   const content = Buffer.from(JSON.stringify(snapshot, null, 2), 'utf8');
   await vscode.workspace.fs.writeFile(snapshotPath, content);
@@ -434,7 +434,7 @@ export async function loadCurrentState(
   // Apply changelog ops using provider's state reducer
   state = provider.applyOperations(state, changelog.ops);
 
-  // Optionally validate state and dependencies (calls Python SDK: schematic validate --json)
+  // Optionally validate state and dependencies (calls Python SDK: schemax validate --json)
   let validationResult: ValidationResult | null = null;
   if (validate) {
     validationResult = await validateDependenciesInternal(workspaceUri);
@@ -457,8 +457,8 @@ async function validateDependenciesInternal(
     const { promisify } = require('util');
     const execAsync = promisify(exec);
 
-    // Call schematic validate with --json flag
-    const { stdout } = await execAsync('schematic validate --json', {
+    // Call schemax validate with --json flag
+    const { stdout } = await execAsync('schemax validate --json', {
       cwd: workspaceUri.fsPath,
     });
 
@@ -490,7 +490,7 @@ async function validateDependenciesInternal(
       // Check if it's just CLI not installed (common case - not an error)
       const errorMsg = error.message || '';
       if (errorMsg.includes('command not found') || 
-          errorMsg.includes('schematic: command not found') ||
+          errorMsg.includes('schemax: command not found') ||
           errorMsg.includes('ENOENT')) {
         // Silently skip - CLI validation is optional
         // User can install Python SDK later if they want validation features
@@ -593,7 +593,7 @@ export async function createSnapshot(
     name,
     ts: snapshotFile.ts,
     createdBy: snapshotFile.createdBy,
-    file: `.schematic/snapshots/${snapshotVersion}.json`,
+    file: `.schemax/snapshots/${snapshotVersion}.json`,
     previousSnapshot: project.latestSnapshot,
     opsCount: opsWithIds.length,
     hash: stateHash,

@@ -1,4 +1,4 @@
-# Schematic VS Code Extension
+# SchemaX VS Code Extension
 
 Visual designer for Databricks Unity Catalog schema definitions with version control.
 
@@ -18,7 +18,7 @@ Visual designer for Databricks Unity Catalog schema definitions with version con
 
 1. Open VS Code
 2. Go to Extensions (Cmd+Shift+X)
-3. Search for "Schematic"
+3. Search for "SchemaX"
 4. Click Install
 
 ### From VSIX (Development)
@@ -31,24 +31,24 @@ Visual designer for Databricks Unity Catalog schema definitions with version con
 ## Quick Start
 
 1. Open a workspace folder in VS Code
-2. Press `Cmd+Shift+P` and run **Schematic: Open Designer**
+2. Press `Cmd+Shift+P` and run **SchemaX: Open Designer**
 3. Click "Add Catalog" to create your first catalog
 4. Build your schema using the visual designer
-5. Create a snapshot: **Schematic: Create Snapshot**
+5. Create a snapshot: **SchemaX: Create Snapshot**
 
 ## Commands
 
-- `Schematic: Open Designer` - Open the visual schema designer
-- `Schematic: Create Snapshot` - Create a version snapshot
-- `Schematic: Show Last Emitted Changes` - View recent operations
-- `Schematic: Generate SQL Migration` - Generate SQL from changes
+- `SchemaX: Open Designer` - Open the visual schema designer
+- `SchemaX: Create Snapshot` - Create a version snapshot
+- `SchemaX: Show Last Emitted Changes` - View recent operations
+- `SchemaX: Generate SQL Migration` - Generate SQL from changes
 
 ## File Structure
 
-Schematic creates a `.schematic` directory in your workspace:
+SchemaX creates a `.schemax` directory in your workspace:
 
 ```
-.schematic/
+.schemax/
 ├── project.json           # Project metadata
 ├── changelog.json         # Uncommitted changes
 └── snapshots/
@@ -82,7 +82,7 @@ Configure Delta Lake behavior:
 
 ## Development
 
-See the [main repository](https://github.com/vb-dbrks/schematic) for:
+See the [main repository](https://github.com/vb-dbrks/schemax-vscode) for:
 - Building from source
 - Contributing guidelines
 - Architecture documentation
@@ -98,7 +98,7 @@ MIT License - see [LICENSE](../../LICENSE) for details.
 
 ## Links
 
-- **Repository**: https://github.com/vb-dbrks/schematic
-- **Issues**: https://github.com/vb-dbrks/schematic/issues
-- **Documentation**: https://github.com/vb-dbrks/schematic/tree/main/docs
+- **Repository**: https://github.com/vb-dbrks/schemax-vscode
+- **Issues**: https://github.com/vb-dbrks/schemax-vscode/issues
+- **Documentation**: https://github.com/vb-dbrks/schemax-vscode/tree/main/docs
 

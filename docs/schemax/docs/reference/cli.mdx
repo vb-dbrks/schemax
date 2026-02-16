@@ -1,0 +1,46 @@
+---
+sidebar_position: 101
+title: CLI Reference
+description: SchemaX CLI commands and options
+---
+
+# CLI Reference
+
+Summary of the SchemaX CLI. Run `schemax --help` and `schemax &lt;command&gt; --help` for full options.
+
+## Project and validation
+
+| Command | Description |
+|---------|-------------|
+| `schemax init` | Initialize a new SchemaX project (or use VS Code Designer once). |
+| `schemax validate [workspace]` | Validate `.schemax/` project files and dependency graph. |
+
+## SQL and snapshots
+
+| Command | Description |
+|---------|-------------|
+| `schemax sql [--output FILE] [--target ENV]` | Generate SQL migration from changelog (optional env for catalog mapping). |
+| `schemax snapshot create --name NAME [--version v0.2.0] [--comment "..."] [--tags t1 t2]` | Create snapshot from current changelog; changelog cleared. |
+| `schemax snapshot validate [workspace]` | Detect stale snapshots after Git rebase. |
+| `schemax snapshot rebase VERSION [--base BASE]` | Rebase snapshot onto new base after rebase. |
+
+## Diff
+
+| Command | Description |
+|---------|-------------|
+| `schemax diff --from v0.1.0 --to v0.2.0 [--show-sql] [--target ENV]` | Show diff operations (and optional SQL) between two snapshot versions. |
+
+## Deploy and rollback
+
+| Command | Description |
+|---------|-------------|
+| `schemax apply --target ENV --profile PROFILE --warehouse-id ID [--dry-run] [--no-interaction] [--auto-rollback]` | Execute SQL against target; records deployment. |
+| `schemax rollback --deployment ID --partial --target ENV --profile P --warehouse-id W` | Undo successful ops from a failed deployment. |
+| `schemax rollback --to-snapshot VERSION --target ENV --profile P --warehouse-id W [--force]` | Complete rollback to a previous snapshot. |
+| `schemax import --target ENV --profile P --warehouse-id W [--catalog NAME] [--adopt-baseline]` | Import existing catalog into changelog; optional baseline. |
+
+## Common options
+
+- `--dry-run` — Preview without executing (apply, rollback).
+- `--no-interaction` — Skip prompts (CI/CD).
+- `--force` — Override baseline guard for complete rollback (use with care).

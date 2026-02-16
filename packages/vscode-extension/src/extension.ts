@@ -42,42 +42,42 @@ let activeImportProcess: ChildProcess | null = null;
 let activeImportCancelled = false;
 
 export function activate(context: vscode.ExtensionContext) {
-  outputChannel = vscode.window.createOutputChannel('Schematic');
-  outputChannel.appendLine('[Schematic] Extension activating...');
-  outputChannel.appendLine('[Schematic] Extension Activated!');
-  outputChannel.appendLine(`[Schematic] Extension path: ${context.extensionPath}`);
+  outputChannel = vscode.window.createOutputChannel('SchemaX');
+  outputChannel.appendLine('[SchemaX] Extension activating...');
+  outputChannel.appendLine('[SchemaX] Extension Activated!');
+  outputChannel.appendLine(`[SchemaX] Extension path: ${context.extensionPath}`);
 
   // Register commands
   const openDesignerCommand = vscode.commands.registerCommand(
-    'schematic.openDesigner',
+    'schemax.openDesigner',
     () => openDesigner(context)
   );
 
   const showLastOpsCommand = vscode.commands.registerCommand(
-    'schematic.showLastOps',
+    'schemax.showLastOps',
     () => showLastOps()
   );
 
   const createSnapshotCommand = vscode.commands.registerCommand(
-    'schematic.createSnapshot',
+    'schemax.createSnapshot',
     () => createSnapshotCommand_impl()
   );
 
   const generateSQLCommand = vscode.commands.registerCommand(
-    'schematic.generateSQL',
+    'schemax.generateSQL',
     () => generateSQLMigration()
   );
 
   const importAssetsCommand = vscode.commands.registerCommand(
-    'schematic.importAssets',
+    'schemax.importAssets',
     () => runImportFromPrompts()
   );
 
   context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, generateSQLCommand, importAssetsCommand, outputChannel);
 
-  outputChannel.appendLine('[Schematic] Extension activated successfully!');
-  outputChannel.appendLine('[Schematic] Commands registered: schematic.openDesigner, schematic.showLastOps, schematic.createSnapshot, schematic.generateSQL, schematic.importAssets');
-  vscode.window.showInformationMessage('Schematic Extension Activated!');
+  outputChannel.appendLine('[SchemaX] Extension activated successfully!');
+  outputChannel.appendLine('[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps, schemax.createSnapshot, schemax.generateSQL, schemax.importAssets');
+  vscode.window.showInformationMessage('SchemaX Extension Activated!');
   trackEvent('extension_activated');
 }
 
@@ -157,9 +157,9 @@ async function executeImport(
   if (request.adoptBaseline) importArgs.push('--adopt-baseline');
 
   const candidates: Array<{ cmd: string; args: string[] }> = [
-    { cmd: 'schematic', args: importArgs },
-    { cmd: 'python3', args: ['-m', 'schematic.cli', ...importArgs] },
-    { cmd: 'python', args: ['-m', 'schematic.cli', ...importArgs] },
+    { cmd: 'schemax', args: importArgs },
+    { cmd: 'python3', args: ['-m', 'schemax.cli', ...importArgs] },
+    { cmd: 'python', args: ['-m', 'schemax.cli', ...importArgs] },
   ];
 
   let lastResult: ImportExecutionResult = {
@@ -327,7 +327,7 @@ function parseImportProgressLine(line: string): ImportProgressUpdate | null {
   const trimmed = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
   if (!trimmed) return null;
 
-  if (trimmed.includes('Schematic Import')) {
+  if (trimmed.includes('SchemaX Import')) {
     return { phase: 'start', message: 'Import started', percent: 25, level: 'info' };
   }
   if (trimmed.includes('Provider:')) {
@@ -364,7 +364,7 @@ async function promptImportRequest(workspaceUri: vscode.Uri): Promise<ImportRequ
   const project = await storageV4.readProject(workspaceUri);
   const envNames = Object.keys(project.provider.environments || {});
   if (envNames.length === 0) {
-    vscode.window.showErrorMessage('Schematic: No environments configured in project.json');
+    vscode.window.showErrorMessage('SchemaX: No environments configured in project.json');
     return null;
   }
 
@@ -435,7 +435,7 @@ async function promptImportRequest(workspaceUri: vscode.Uri): Promise<ImportRequ
 
   const bindingsInput = await vscode.window.showInputBox({
     prompt: 'Catalog mappings (optional): logical=physical, comma-separated',
-    placeHolder: 'schematic_demo=dev_schematic_demo',
+    placeHolder: 'schemax_demo=dev_schemax_demo',
     ignoreFocusOut: true
   });
   if (bindingsInput === undefined) return null;
@@ -479,7 +479,7 @@ function parseCatalogMappingsInput(input: string): Record<string, string> | unde
 async function runImportFromPrompts(): Promise<void> {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
-    vscode.window.showErrorMessage('Schematic: Please open a workspace folder first.');
+    vscode.window.showErrorMessage('SchemaX: Please open a workspace folder first.');
     return;
   }
 
@@ -488,7 +488,7 @@ async function runImportFromPrompts(): Promise<void> {
     if (!request) return;
     await runImportWithRequest(workspaceFolder, request);
   } catch (error) {
-    vscode.window.showErrorMessage(`Schematic import failed: ${error}`);
+    vscode.window.showErrorMessage(`SchemaX import failed: ${error}`);
   }
 }
 
@@ -497,8 +497,8 @@ async function runImportWithRequest(
   request: ImportRequest,
   panel?: vscode.WebviewPanel
 ): Promise<ImportExecutionResult> {
-  outputChannel.appendLine('[Schematic] Running import workflow...');
-  outputChannel.appendLine(`[Schematic] Import request: ${JSON.stringify(request)}`);
+  outputChannel.appendLine('[SchemaX] Running import workflow...');
+  outputChannel.appendLine(`[SchemaX] Import request: ${JSON.stringify(request)}`);
 
   const result = await vscode.window.withProgress(
     {
@@ -522,16 +522,16 @@ async function runImportWithRequest(
   );
 
   if (result.stdout) {
-    outputChannel.appendLine('[Schematic] Import stdout:');
+    outputChannel.appendLine('[SchemaX] Import stdout:');
     outputChannel.appendLine(result.stdout);
   }
   if (result.stderr) {
-    outputChannel.appendLine('[Schematic] Import stderr:');
+    outputChannel.appendLine('[SchemaX] Import stderr:');
     outputChannel.appendLine(result.stderr);
   }
 
   if (result.cancelled) {
-    vscode.window.showInformationMessage('Schematic import cancelled');
+    vscode.window.showInformationMessage('SchemaX import cancelled');
     trackEvent('import_cancelled', {
       dryRun: request.dryRun,
       adoptBaseline: request.adoptBaseline,
@@ -540,8 +540,8 @@ async function runImportWithRequest(
   } else if (result.success) {
     vscode.window.showInformationMessage(
       request.dryRun
-        ? 'Schematic import dry-run completed'
-        : 'Schematic import completed successfully'
+        ? 'SchemaX import dry-run completed'
+        : 'SchemaX import completed successfully'
     );
     trackEvent('import_completed', {
       dryRun: request.dryRun,
@@ -549,7 +549,7 @@ async function runImportWithRequest(
       target: request.target,
     });
   } else {
-    vscode.window.showErrorMessage(`Schematic import failed. See Output > Schematic for details.`);
+    vscode.window.showErrorMessage(`SchemaX import failed. See Output > SchemaX for details.`);
     trackEvent('import_failed', {
       dryRun: request.dryRun,
       adoptBaseline: request.adoptBaseline,
@@ -612,7 +612,7 @@ const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       allowDrift: true,
       requireSnapshot: false,
       autoCreateTopLevel: true,
-      autoCreateSchematicSchema: true,
+      autoCreateSchemaxSchema: true,
     }
   },
   {
@@ -622,7 +622,7 @@ const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       allowDrift: false,
       requireSnapshot: true,
       autoCreateTopLevel: true,
-      autoCreateSchematicSchema: true,
+      autoCreateSchemaxSchema: true,
     }
   },
   {
@@ -632,7 +632,7 @@ const ENVIRONMENT_PRESETS: EnvironmentPreset[] = [
       allowDrift: false,
       requireSnapshot: true,
       autoCreateTopLevel: false,
-      autoCreateSchematicSchema: true,
+      autoCreateSchemaxSchema: true,
     }
   }
 ];
@@ -647,7 +647,7 @@ async function configureCustomEnvironments(
 ): Promise<Record<string, storageV4.EnvironmentConfig> | null> {
   const customEnvironments: Record<string, storageV4.EnvironmentConfig> = {};
   
-  outputChannel.appendLine('[Schematic] Starting custom environment configuration...');
+  outputChannel.appendLine('[SchemaX] Starting custom environment configuration...');
   
   // Loop to add custom environments
   while (true) {
@@ -690,7 +690,7 @@ async function configureCustomEnvironments(
       continue; // User cancelled or invalid, try again
     }
     
-    outputChannel.appendLine(`[Schematic]   Adding environment: ${envName}`);
+    outputChannel.appendLine(`[SchemaX]   Adding environment: ${envName}`);
     
     // Step 2: Physical catalog name (with suggestion)
     const suggestedCatalog = `${envName}_${sanitizedProjectName}`;
@@ -714,7 +714,7 @@ async function configureCustomEnvironments(
       continue; // User cancelled, try again
     }
     
-    outputChannel.appendLine(`[Schematic]     Catalog: ${catalogName}`);
+    outputChannel.appendLine(`[SchemaX]     Catalog: ${catalogName}`);
     
     // Step 3: Select environment preset
     const presetOptions = ENVIRONMENT_PRESETS.map(preset => ({
@@ -732,7 +732,7 @@ async function configureCustomEnvironments(
       continue; // User cancelled, try again
     }
     
-    outputChannel.appendLine(`[Schematic]     Type: ${selectedPreset.label}`);
+    outputChannel.appendLine(`[SchemaX]     Type: ${selectedPreset.label}`);
     
     // Step 4: Optional description
     const description = await vscode.window.showInputBox({
@@ -749,11 +749,11 @@ async function configureCustomEnvironments(
       allowDrift: presetConfig.allowDrift ?? false,
       requireSnapshot: presetConfig.requireSnapshot ?? false,
       autoCreateTopLevel: presetConfig.autoCreateTopLevel ?? false,
-      autoCreateSchematicSchema: presetConfig.autoCreateSchematicSchema ?? true,
+      autoCreateSchemaxSchema: presetConfig.autoCreateSchemaxSchema ?? true,
       requireApproval: presetConfig.requireApproval,
     };
     
-    outputChannel.appendLine(`[Schematic]   ✓ Environment '${envName}' configured`);
+    outputChannel.appendLine(`[SchemaX]   ✓ Environment '${envName}' configured`);
   }
   
   return customEnvironments;
@@ -763,7 +763,7 @@ async function configureCustomEnvironments(
  * Prompt user for project setup (provider, environments, catalog names)
  */
 async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vscode.OutputChannel): Promise<boolean> {
-  outputChannel.appendLine('[Schematic] Starting project setup wizard...');
+  outputChannel.appendLine('[SchemaX] Starting project setup wizard...');
   
   // Step 1: Select provider (for now, only Unity is available)
   const providers = [
@@ -779,7 +779,7 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
     return false; // User cancelled
   }
   
-  outputChannel.appendLine(`[Schematic] Provider selected: ${selectedProvider.label}`);
+  outputChannel.appendLine(`[SchemaX] Provider selected: ${selectedProvider.label}`);
   
   // Step 2: Project name (default to workspace folder name)
   const workspaceName = path.basename(workspaceUri.fsPath);
@@ -794,7 +794,7 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
     return false; // User cancelled
   }
   
-  outputChannel.appendLine(`[Schematic] Project name: ${projectName}`);
+  outputChannel.appendLine(`[SchemaX] Project name: ${projectName}`);
   
   // Step 3: Configure environments and catalogs
   const useDefaultEnvs = await vscode.window.showQuickPick(
@@ -823,7 +823,7 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
       allowDrift: true,
       requireSnapshot: false,
       autoCreateTopLevel: true,
-      autoCreateSchematicSchema: true,
+      autoCreateSchemaxSchema: true,
     },
     test: {
       topLevelName: `test_${sanitizedName}`,
@@ -831,7 +831,7 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
       allowDrift: false,
       requireSnapshot: true,
       autoCreateTopLevel: true,
-      autoCreateSchematicSchema: true,
+      autoCreateSchemaxSchema: true,
     },
     prod: {
       topLevelName: `prod_${sanitizedName}`,
@@ -840,11 +840,11 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
       requireSnapshot: true,
       requireApproval: false,
       autoCreateTopLevel: false,
-      autoCreateSchematicSchema: true,
+      autoCreateSchemaxSchema: true,
     },
   };
   
-  outputChannel.appendLine('[Schematic] Default environments created:');
+  outputChannel.appendLine('[SchemaX] Default environments created:');
   outputChannel.appendLine(`  - dev → ${environments.dev.topLevelName}`);
   outputChannel.appendLine(`  - test → ${environments.test.topLevelName}`);
   outputChannel.appendLine(`  - prod → ${environments.prod.topLevelName}`);
@@ -888,15 +888,15 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
     };
   });
   
-  outputChannel.appendLine(`[Schematic] Logical catalog name: ${logicalCatalogName}`);
-  outputChannel.appendLine('[Schematic] Physical catalog mappings:');
+  outputChannel.appendLine(`[SchemaX] Logical catalog name: ${logicalCatalogName}`);
+  outputChannel.appendLine('[SchemaX] Physical catalog mappings:');
   Object.entries(environments).forEach(([env, config]) => {
     outputChannel.appendLine(`  - ${logicalCatalogName} → ${config.topLevelName} (${env})`);
   });
   
   // Step 5: Create the project
   try {
-    await storageV4.ensureSchematicDir(workspaceUri);
+    await storageV4.ensureSchemaxDir(workspaceUri);
     
     const provider = ProviderRegistry.get(selectedProvider.id);
     if (!provider) {
@@ -936,7 +936,7 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
       }
     });
     
-    outputChannel.appendLine(`[Schematic] Created logical catalog: ${logicalCatalogName}`);
+    outputChannel.appendLine(`[SchemaX] Created logical catalog: ${logicalCatalogName}`);
     
     const newChangelog: storageV4.ChangelogFile = {
       version: 1,
@@ -948,7 +948,7 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
     await storageV4.writeProject(workspaceUri, newProject);
     await storageV4.writeChangelog(workspaceUri, newChangelog);
     
-    outputChannel.appendLine('[Schematic] ✓ Project created successfully');
+    outputChannel.appendLine('[SchemaX] ✓ Project created successfully');
     
     // Show success message with next steps
     const envCount = Object.keys(environments).length;
@@ -962,7 +962,7 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
       })
       .join('\n');
     
-    const message = `Schematic project initialized!\n\n` +
+    const message = `SchemaX project initialized!\n\n` +
       `Project: ${projectName}\n` +
       `Provider: ${selectedProvider.label}\n` +
       `Environments: ${envCount} (${3} default${customCount > 0 ? ` + ${customCount} custom` : ''})\n\n` +
@@ -970,31 +970,31 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
       `Next steps:\n` +
       `  1. Design your schema in the visual designer\n` +
       `  2. Generate SQL for an environment (Cmd+Shift+P → "Generate SQL")\n` +
-      `  3. Apply changes with the CLI: schematic apply --target dev`;
+      `  3. Apply changes with the CLI: schemax apply --target dev`;
     
     vscode.window.showInformationMessage(message);
     
     return true;
     
   } catch (error) {
-    outputChannel.appendLine(`[Schematic] ERROR: Failed to create project: ${error}`);
+    outputChannel.appendLine(`[SchemaX] ERROR: Failed to create project: ${error}`);
     vscode.window.showErrorMessage(`Failed to initialize project: ${error}`);
     return false;
   }
 }
 
 /**
- * Open the Schematic Designer webview
+ * Open the SchemaX Designer webview
  */
 async function openDesigner(context: vscode.ExtensionContext) {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
-    vscode.window.showErrorMessage('Schematic: Please open a workspace folder first.');
+    vscode.window.showErrorMessage('SchemaX: Please open a workspace folder first.');
     return;
   }
 
   // Check if project already exists
-  const projectPath = vscode.Uri.joinPath(workspaceFolder.uri, '.schematic', 'project.json');
+  const projectPath = vscode.Uri.joinPath(workspaceFolder.uri, '.schemax', 'project.json');
   let projectExists = false;
   
   try {
@@ -1023,13 +1023,16 @@ async function openDesigner(context: vscode.ExtensionContext) {
 
   // Create webview panel
   currentPanel = vscode.window.createWebviewPanel(
-    'schematicDesigner',
-    'Schematic Designer',
+    'schemaxDesigner',
+    'SchemaX Designer',
     vscode.ViewColumn.One,
     {
       enableScripts: true,
       retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')],
+      localResourceRoots: [
+        vscode.Uri.joinPath(context.extensionUri, 'media'),
+        vscode.Uri.joinPath(context.extensionUri, 'images'),
+      ],
       enableForms: true,
     }
   );
@@ -1041,8 +1044,8 @@ async function openDesigner(context: vscode.ExtensionContext) {
       const { promisify } = require('util');
       const execAsync = promisify(exec);
 
-      // Call schematic CLI with --json flag
-      const { stdout } = await execAsync('schematic snapshot validate --json', {
+      // Call SchemaX CLI with --json flag
+      const { stdout } = await execAsync('schemax snapshot validate --json', {
         cwd: workspacePath,
       });
 
@@ -1061,11 +1064,11 @@ async function openDesigner(context: vscode.ExtensionContext) {
           const result = JSON.parse(jsonLine);
           return result.stale || [];
         } catch (parseError) {
-          outputChannel.appendLine(`[Schematic] Failed to parse stale snapshot output: ${parseError}`);
+          outputChannel.appendLine(`[SchemaX] Failed to parse stale snapshot output: ${parseError}`);
         }
       }
       
-      outputChannel.appendLine(`[Schematic] Failed to detect stale snapshots: ${error.message}`);
+      outputChannel.appendLine(`[SchemaX] Failed to detect stale snapshots: ${error.message}`);
       return [];
     }
   }
@@ -1082,7 +1085,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
       const { state, changelog, provider, validationResult } = await storageV4.loadCurrentState(workspaceFolder.uri, true);
 
       // Check for conflicts
-      const conflictsDir = vscode.Uri.joinPath(workspaceFolder.uri, '.schematic', 'conflicts');
+      const conflictsDir = vscode.Uri.joinPath(workspaceFolder.uri, '.schemax', 'conflicts');
       let conflicts = null;
       try {
         const conflictFiles = await vscode.workspace.fs.readDirectory(conflictsDir);
@@ -1091,7 +1094,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
           const conflictFilePath = vscode.Uri.joinPath(conflictsDir, latestConflictFile[0]);
           const conflictContent = await vscode.workspace.fs.readFile(conflictFilePath);
           conflicts = JSON.parse(Buffer.from(conflictContent).toString('utf8'));
-          outputChannel.appendLine(`[Schematic] - Rebase conflict detected: ${latestConflictFile[0]}`);
+          outputChannel.appendLine(`[SchemaX] - Rebase conflict detected: ${latestConflictFile[0]}`);
         }
       } catch (error) {
         // No conflicts directory or no conflicts - that's fine
@@ -1100,19 +1103,19 @@ async function openDesigner(context: vscode.ExtensionContext) {
       // Check for stale snapshots (using Python SDK)
       const staleSnapshots = await detectStaleSnapshots(workspaceFolder.uri.fsPath);
       if (staleSnapshots.length > 0) {
-        outputChannel.appendLine(`[Schematic] - Detected ${staleSnapshots.length} stale snapshot(s)`);
+        outputChannel.appendLine(`[SchemaX] - Detected ${staleSnapshots.length} stale snapshot(s)`);
       }
 
       // Log validation results
       if (validationResult) {
         if (validationResult.errors.length > 0) {
-          outputChannel.appendLine(`[Schematic] - Dependency validation ERRORS:`);
+          outputChannel.appendLine(`[SchemaX] - Dependency validation ERRORS:`);
           validationResult.errors.forEach((error) => {
             outputChannel.appendLine(`  ✗ ${error}`);
           });
         }
         if (validationResult.warnings.length > 0) {
-          outputChannel.appendLine(`[Schematic] - Dependency validation warnings:`);
+          outputChannel.appendLine(`[SchemaX] - Dependency validation warnings:`);
           validationResult.warnings.forEach((warning) => {
             outputChannel.appendLine(`  ⚠️  ${warning}`);
           });
@@ -1140,71 +1143,71 @@ async function openDesigner(context: vscode.ExtensionContext) {
         payload: payloadForWebview,
       });
     } catch (error) {
-      outputChannel.appendLine(`[Schematic] ERROR: Failed to reload project: ${error}`);
+      outputChannel.appendLine(`[SchemaX] ERROR: Failed to reload project: ${error}`);
     }
   }
 
   // Set webview content
-  outputChannel.appendLine('[Schematic] Setting webview HTML');
+  outputChannel.appendLine('[SchemaX] Setting webview HTML');
   currentPanel.webview.html = getWebviewContent(context, currentPanel.webview);
-  outputChannel.appendLine('[Schematic] Webview HTML set');
+  outputChannel.appendLine('[SchemaX] Webview HTML set');
 
   // Watch for conflict files and reload when they appear
   const conflictsPattern = new vscode.RelativePattern(
     workspaceFolder,
-    '.schematic/conflicts/*.json'
+    '.schemax/conflicts/*.json'
   );
   const conflictWatcher = vscode.workspace.createFileSystemWatcher(conflictsPattern);
 
   // Reload project when conflict files are created or deleted
   conflictWatcher.onDidCreate(async () => {
-    outputChannel.appendLine('[Schematic] Conflict file detected - reloading project');
+    outputChannel.appendLine('[SchemaX] Conflict file detected - reloading project');
     await reloadProject(workspaceFolder, currentPanel);
   });
 
   conflictWatcher.onDidDelete(async () => {
-    outputChannel.appendLine('[Schematic] Conflict file removed - reloading project');
+    outputChannel.appendLine('[SchemaX] Conflict file removed - reloading project');
     await reloadProject(workspaceFolder, currentPanel);
   });
 
   // Watch for snapshot file changes (to detect stale snapshots)
   const snapshotsPattern = new vscode.RelativePattern(
     workspaceFolder,
-    '.schematic/snapshots/*.json'
+    '.schemax/snapshots/*.json'
   );
   const snapshotsWatcher = vscode.workspace.createFileSystemWatcher(snapshotsPattern);
 
   // Reload project when snapshots are created, changed, or deleted
   snapshotsWatcher.onDidCreate(async () => {
-    outputChannel.appendLine('[Schematic] Snapshot file created - reloading project');
+    outputChannel.appendLine('[SchemaX] Snapshot file created - reloading project');
     await reloadProject(workspaceFolder, currentPanel);
   });
 
   snapshotsWatcher.onDidChange(async () => {
-    outputChannel.appendLine('[Schematic] Snapshot file changed - reloading project');
+    outputChannel.appendLine('[SchemaX] Snapshot file changed - reloading project');
     await reloadProject(workspaceFolder, currentPanel);
   });
 
   snapshotsWatcher.onDidDelete(async () => {
-    outputChannel.appendLine('[Schematic] Snapshot file deleted - reloading project');
+    outputChannel.appendLine('[SchemaX] Snapshot file deleted - reloading project');
     await reloadProject(workspaceFolder, currentPanel);
   });
 
   // Watch for project.json changes (snapshot metadata)
   const projectJsonPattern = new vscode.RelativePattern(
     workspaceFolder,
-    '.schematic/project.json'
+    '.schemax/project.json'
   );
   const projectJsonWatcher = vscode.workspace.createFileSystemWatcher(projectJsonPattern);
 
   projectJsonWatcher.onDidChange(async () => {
-    outputChannel.appendLine('[Schematic] project.json changed - reloading project');
+    outputChannel.appendLine('[SchemaX] project.json changed - reloading project');
     await reloadProject(workspaceFolder, currentPanel);
   });
 
   // Reset when panel is closed
   currentPanel.onDidDispose(() => {
-    outputChannel.appendLine('[Schematic] Webview panel disposed');
+    outputChannel.appendLine('[SchemaX] Webview panel disposed');
     conflictWatcher.dispose();
     snapshotsWatcher.dispose();
     projectJsonWatcher.dispose();
@@ -1214,35 +1217,35 @@ async function openDesigner(context: vscode.ExtensionContext) {
   // Handle messages from webview
   currentPanel.webview.onDidReceiveMessage(
     async (message) => {
-      outputChannel.appendLine(`[Schematic] Received message from webview: ${message.type}`);
+      outputChannel.appendLine(`[SchemaX] Received message from webview: ${message.type}`);
       switch (message.type) {
         case 'refresh-project': {
-          outputChannel.appendLine('[Schematic] Manual refresh requested');
+          outputChannel.appendLine('[SchemaX] Manual refresh requested');
           await reloadProject(workspaceFolder, currentPanel);
           break;
         }
 
         case 'load-project': {
           try {
-            outputChannel.appendLine(`[Schematic] Loading project from: ${workspaceFolder.uri.fsPath}`);
+            outputChannel.appendLine(`[SchemaX] Loading project from: ${workspaceFolder.uri.fsPath}`);
             
             // Load v3: project metadata + current state (snapshot + changelog) + provider
             const project = await storageV4.readProject(workspaceFolder.uri);
             const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
             
-            outputChannel.appendLine(`[Schematic] Project loaded successfully (v${project.version})`);
-            outputChannel.appendLine(`[Schematic] - Provider: ${provider.info.name} v${provider.info.version}`);
-            outputChannel.appendLine(`[Schematic] - Snapshots: ${project.snapshots.length}`);
-            outputChannel.appendLine(`[Schematic] - Latest snapshot: ${project.latestSnapshot || 'none'}`);
-            outputChannel.appendLine(`[Schematic] - Changelog ops: ${changelog.ops.length}`);
+            outputChannel.appendLine(`[SchemaX] Project loaded successfully (v${project.version})`);
+            outputChannel.appendLine(`[SchemaX] - Provider: ${provider.info.name} v${provider.info.version}`);
+            outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots.length}`);
+            outputChannel.appendLine(`[SchemaX] - Latest snapshot: ${project.latestSnapshot || 'none'}`);
+            outputChannel.appendLine(`[SchemaX] - Changelog ops: ${changelog.ops.length}`);
             
             // For Unity provider, log catalog count (provider-specific)
             if (state && 'catalogs' in state) {
-              outputChannel.appendLine(`[Schematic] - Catalogs: ${(state as any).catalogs.length}`);
+              outputChannel.appendLine(`[SchemaX] - Catalogs: ${(state as any).catalogs.length}`);
             }
             
             // Check for rebase conflicts
-            const conflictsDir = vscode.Uri.joinPath(workspaceFolder.uri, '.schematic', 'conflicts');
+            const conflictsDir = vscode.Uri.joinPath(workspaceFolder.uri, '.schemax', 'conflicts');
             let conflicts = null;
             try {
               const conflictFiles = await vscode.workspace.fs.readDirectory(conflictsDir);
@@ -1252,7 +1255,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
                 const conflictFilePath = vscode.Uri.joinPath(conflictsDir, latestConflictFile[0]);
                 const conflictContent = await vscode.workspace.fs.readFile(conflictFilePath);
                 conflicts = JSON.parse(Buffer.from(conflictContent).toString('utf8'));
-                outputChannel.appendLine(`[Schematic] - Rebase conflict detected: ${latestConflictFile[0]}`);
+                outputChannel.appendLine(`[SchemaX] - Rebase conflict detected: ${latestConflictFile[0]}`);
               }
             } catch (error) {
               // No conflicts directory or no conflicts - that's fine
@@ -1273,9 +1276,9 @@ async function openDesigner(context: vscode.ExtensionContext) {
               },
             };
             
-            outputChannel.appendLine(`[Schematic] Sending to webview:`);
-            outputChannel.appendLine(`[Schematic] - Provider: ${provider.info.name}`);
-            outputChannel.appendLine(`[Schematic] - Project version: ${project.version}`);
+            outputChannel.appendLine(`[SchemaX] Sending to webview:`);
+            outputChannel.appendLine(`[SchemaX] - Provider: ${provider.info.name}`);
+            outputChannel.appendLine(`[SchemaX] - Project version: ${project.version}`);
             
             currentPanel?.webview.postMessage({
               type: 'project-loaded',
@@ -1283,7 +1286,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             });
             trackEvent('project_loaded', { provider: provider.info.id });
           } catch (error) {
-            outputChannel.appendLine(`[Schematic] ERROR: Failed to load project: ${error}`);
+            outputChannel.appendLine(`[SchemaX] ERROR: Failed to load project: ${error}`);
             vscode.window.showErrorMessage(`Failed to load project: ${error}`);
           }
           break;
@@ -1309,14 +1312,14 @@ async function openDesigner(context: vscode.ExtensionContext) {
               `Resolution:\n` +
               `1. Review the conflicting change in the designer\n` +
               `2. Manually apply your changes in the UI\n` +
-              `3. Run: schematic snapshot create --version ${conflictInfo.snapshot_version}`;
+              `3. Run: schemax snapshot create --version ${conflictInfo.snapshot_version}`;
             
             vscode.window.showWarningMessage(
               '⚠️ Snapshot Rebase Conflict',
               { modal: true, detail: detailMessage }
             ).then((choice) => {
               // User acknowledged the conflict
-              outputChannel.appendLine('[Schematic] User acknowledged rebase conflict');
+              outputChannel.appendLine('[SchemaX] User acknowledged rebase conflict');
             });
           }
           break;
@@ -1336,14 +1339,14 @@ async function openDesigner(context: vscode.ExtensionContext) {
               detailLines + '\n\n' +
               `Resolution:\n` +
               `Run the following command(s) in terminal:\n` +
-              staleSnapshots.map((snap: any) => `  schematic snapshot rebase ${snap.version}`).join('\n');
+              staleSnapshots.map((snap: any) => `  schemax snapshot rebase ${snap.version}`).join('\n');
             
             vscode.window.showWarningMessage(
               '⚠️ Stale Snapshots Detected',
               { modal: true, detail: detailMessage }
             ).then((choice) => {
               // User acknowledged the stale snapshots
-              outputChannel.appendLine('[Schematic] User acknowledged stale snapshots');
+              outputChannel.appendLine('[SchemaX] User acknowledged stale snapshots');
             });
           }
           break;
@@ -1354,7 +1357,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             const fragment = message.payload?.fragment as string | undefined;
 
             if (!docPath) {
-              vscode.window.showWarningMessage('Schematic: Documentation path was not provided.');
+              vscode.window.showWarningMessage('SchemaX: Documentation path was not provided.');
               break;
             }
 
@@ -1375,15 +1378,15 @@ async function openDesigner(context: vscode.ExtensionContext) {
 
             trackEvent('docs_opened', { path: docPath });
           } catch (error) {
-            outputChannel.appendLine(`[Schematic] ERROR: Failed to open docs: ${error}`);
-            vscode.window.showErrorMessage('Schematic: Unable to open documentation.');
+            outputChannel.appendLine(`[SchemaX] ERROR: Failed to open docs: ${error}`);
+            vscode.window.showErrorMessage('SchemaX: Unable to open documentation.');
           }
           break;
         }
         case 'append-ops': {
           try {
             const ops: Operation[] = message.payload;
-            outputChannel.appendLine(`[Schematic] Appending ${ops.length} operation(s) to changelog`);
+            outputChannel.appendLine(`[SchemaX] Appending ${ops.length} operation(s) to changelog`);
             
             // Append to changelog (v3 validates operations via provider)
             await storageV4.appendOps(workspaceFolder.uri, ops);
@@ -1392,9 +1395,9 @@ async function openDesigner(context: vscode.ExtensionContext) {
             const project = await storageV4.readProject(workspaceFolder.uri);
             const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
             
-            outputChannel.appendLine(`[Schematic] Operations appended successfully`);
-            outputChannel.appendLine(`[Schematic] - Changelog ops: ${changelog.ops.length}`);
-            outputChannel.appendLine(`[Schematic] - Snapshots: ${project.snapshots.length}`);
+            outputChannel.appendLine(`[SchemaX] Operations appended successfully`);
+            outputChannel.appendLine(`[SchemaX] - Changelog ops: ${changelog.ops.length}`);
+            outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots.length}`);
             
             // Send updated data to webview including provider info
             const payloadForWebview = {
@@ -1416,7 +1419,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             });
             trackEvent('ops_appended', { count: ops.length, provider: provider.info.id });
           } catch (error) {
-            outputChannel.appendLine(`[Schematic] ERROR: Failed to append operations: ${error}`);
+            outputChannel.appendLine(`[SchemaX] ERROR: Failed to append operations: ${error}`);
             vscode.window.showErrorMessage(`Failed to append operations: ${error}`);
           }
           break;
@@ -1424,7 +1427,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         case 'update-project-config': {
           try {
             const updatedProject = message.payload;
-            outputChannel.appendLine(`[Schematic] Updating project configuration`);
+            outputChannel.appendLine(`[SchemaX] Updating project configuration`);
             
             // Write updated project to disk
             await storageV4.writeProject(workspaceFolder.uri, updatedProject);
@@ -1433,7 +1436,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             const project = await storageV4.readProject(workspaceFolder.uri);
             const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
             
-            outputChannel.appendLine(`[Schematic] Project configuration updated successfully`);
+            outputChannel.appendLine(`[SchemaX] Project configuration updated successfully`);
             
             // Send updated data to webview
             const payloadForWebview = {
@@ -1454,10 +1457,10 @@ async function openDesigner(context: vscode.ExtensionContext) {
               payload: payloadForWebview,
             });
             
-            vscode.window.showInformationMessage('Schematic: Project settings saved successfully');
+            vscode.window.showInformationMessage('SchemaX: Project settings saved successfully');
             trackEvent('project_config_updated', { provider: provider.info.id });
           } catch (error) {
-            outputChannel.appendLine(`[Schematic] ERROR: Failed to update project config: ${error}`);
+            outputChannel.appendLine(`[SchemaX] ERROR: Failed to update project config: ${error}`);
             vscode.window.showErrorMessage(`Failed to save project settings: ${error}`);
           }
           break;
@@ -1473,7 +1476,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
               await reloadProject(workspaceFolder, currentPanel);
             }
           } catch (error) {
-            outputChannel.appendLine(`[Schematic] ERROR: Import run failed: ${error}`);
+            outputChannel.appendLine(`[SchemaX] ERROR: Import run failed: ${error}`);
             currentPanel?.webview.postMessage({
               type: 'import-result',
               payload: {
@@ -1488,7 +1491,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         }
         case 'cancel-import': {
           cancelActiveImport();
-          outputChannel.appendLine('[Schematic] Import cancellation requested from webview');
+          outputChannel.appendLine('[SchemaX] Import cancellation requested from webview');
           break;
         }
       }
@@ -1497,7 +1500,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
     context.subscriptions
   );
 
-  outputChannel.appendLine('[Schematic] Designer opened successfully');
+  outputChannel.appendLine('[SchemaX] Designer opened successfully');
   trackEvent('designer_opened');
 }
 
@@ -1507,7 +1510,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
 async function showLastOps() {
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
-    vscode.window.showErrorMessage('Schematic: Please open a workspace folder first.');
+    vscode.window.showErrorMessage('SchemaX: Please open a workspace folder first.');
     return;
   }
 
@@ -1517,7 +1520,7 @@ async function showLastOps() {
     const lastOps = changelog.ops.slice(-20);
 
     outputChannel.clear();
-    outputChannel.appendLine('Schematic: Last 20 Emitted Changes');
+    outputChannel.appendLine('SchemaX: Last 20 Emitted Changes');
     outputChannel.appendLine('='.repeat(80));
     outputChannel.appendLine(`Provider: ${project.provider.type}`);
     outputChannel.appendLine('');
@@ -1550,6 +1553,9 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
   const styleUri = webview.asWebviewUri(
     vscode.Uri.joinPath(context.extensionUri, 'media', 'assets', 'index.css')
   );
+  const logoUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(context.extensionUri, 'images', 'schemax_logo.svg')
+  );
 
   // Use a nonce to only allow specific scripts to be run
   const nonce = getNonce();
@@ -1559,13 +1565,13 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline' https:; font-src ${webview.cspSource} https:; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline' https:; font-src ${webview.cspSource} https:; script-src 'nonce-${nonce}';">
   <link href="https://cdn.jsdelivr.net/npm/@vscode/codicons@0.0.36/dist/codicon.css" rel="stylesheet">
   <link href="${styleUri}" rel="stylesheet">
-  <title>Schematic Designer</title>
+  <title>SchemaX Designer</title>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root" data-logo-uri="${logoUri}"></div>
   <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
@@ -1584,27 +1590,27 @@ function getNonce() {
  * Create snapshot command implementation
  */
 async function createSnapshotCommand_impl() {
-  outputChannel.appendLine('[Schematic] Create snapshot command invoked');
+  outputChannel.appendLine('[SchemaX] Create snapshot command invoked');
   
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
-    outputChannel.appendLine('[Schematic] ERROR: No workspace folder open');
-    vscode.window.showErrorMessage('Schematic: Please open a workspace folder first.');
+    outputChannel.appendLine('[SchemaX] ERROR: No workspace folder open');
+    vscode.window.showErrorMessage('SchemaX: Please open a workspace folder first.');
     return;
   }
 
   try {
-    outputChannel.appendLine(`[Schematic] Reading project from: ${workspaceFolder.uri.fsPath}`);
+    outputChannel.appendLine(`[SchemaX] Reading project from: ${workspaceFolder.uri.fsPath}`);
     const project = await storageV4.readProject(workspaceFolder.uri);
     const changelog = await storageV4.readChangelog(workspaceFolder.uri);
     const uncommittedOpsCount = changelog.ops.length;
     
-    outputChannel.appendLine(`[Schematic] Provider: ${project.provider.type}`);
-    outputChannel.appendLine(`[Schematic] Uncommitted operations: ${uncommittedOpsCount}`);
-    outputChannel.appendLine(`[Schematic] Existing snapshots: ${project.snapshots.length}`);
+    outputChannel.appendLine(`[SchemaX] Provider: ${project.provider.type}`);
+    outputChannel.appendLine(`[SchemaX] Uncommitted operations: ${uncommittedOpsCount}`);
+    outputChannel.appendLine(`[SchemaX] Existing snapshots: ${project.snapshots.length}`);
 
     if (uncommittedOpsCount === 0) {
-      outputChannel.appendLine('[Schematic] No uncommitted operations, aborting snapshot creation');
+      outputChannel.appendLine('[SchemaX] No uncommitted operations, aborting snapshot creation');
       vscode.window.showInformationMessage('No changes to snapshot. All operations are already included in the last snapshot.');
       return;
     }
@@ -1638,7 +1644,7 @@ async function createSnapshotCommand_impl() {
     });
 
     if (!name) {
-      outputChannel.appendLine('[Schematic] Snapshot creation cancelled by user');
+      outputChannel.appendLine('[SchemaX] Snapshot creation cancelled by user');
       return; // User cancelled
     }
 
@@ -1660,7 +1666,7 @@ async function createSnapshotCommand_impl() {
     });
 
     if (versionInput === undefined) {
-      outputChannel.appendLine('[Schematic] Snapshot creation cancelled by user');
+      outputChannel.appendLine('[SchemaX] Snapshot creation cancelled by user');
       return; // User cancelled
     }
 
@@ -1672,14 +1678,14 @@ async function createSnapshotCommand_impl() {
       placeHolder: 'Describe what changed in this snapshot'
     });
 
-    outputChannel.appendLine(`[Schematic] Creating snapshot: "${name}"`);
+    outputChannel.appendLine(`[SchemaX] Creating snapshot: "${name}"`);
     if (version) {
-      outputChannel.appendLine(`[Schematic] Version: "${version}"`);
+      outputChannel.appendLine(`[SchemaX] Version: "${version}"`);
     } else {
-      outputChannel.appendLine(`[Schematic] Version: auto-generated (${suggestedVersion})`);
+      outputChannel.appendLine(`[SchemaX] Version: auto-generated (${suggestedVersion})`);
     }
     if (comment) {
-      outputChannel.appendLine(`[Schematic] Comment: "${comment}"`);
+      outputChannel.appendLine(`[SchemaX] Comment: "${comment}"`);
     }
 
     // Create snapshot
@@ -1695,19 +1701,19 @@ async function createSnapshotCommand_impl() {
         comment
       );
       
-      outputChannel.appendLine(`[Schematic] Snapshot created successfully!`);
-      outputChannel.appendLine(`[Schematic] - ID: ${snapshot.id}`);
-      outputChannel.appendLine(`[Schematic] - Version: ${snapshot.version}`);
-      outputChannel.appendLine(`[Schematic] - Name: ${snapshot.name}`);
-      outputChannel.appendLine(`[Schematic] - Operations included: ${snapshot.operations.length}`);
-      outputChannel.appendLine(`[Schematic] - Total snapshots: ${updatedProject.snapshots.length}`);
-      outputChannel.appendLine(`[Schematic] - Snapshot file: ${updatedProject.snapshots[updatedProject.snapshots.length - 1].file}`);
+      outputChannel.appendLine(`[SchemaX] Snapshot created successfully!`);
+      outputChannel.appendLine(`[SchemaX] - ID: ${snapshot.id}`);
+      outputChannel.appendLine(`[SchemaX] - Version: ${snapshot.version}`);
+      outputChannel.appendLine(`[SchemaX] - Name: ${snapshot.name}`);
+      outputChannel.appendLine(`[SchemaX] - Operations included: ${snapshot.operations.length}`);
+      outputChannel.appendLine(`[SchemaX] - Total snapshots: ${updatedProject.snapshots.length}`);
+      outputChannel.appendLine(`[SchemaX] - Snapshot file: ${updatedProject.snapshots[updatedProject.snapshots.length - 1].file}`);
       
       progress.report({ increment: 100 });
       
       // Notify webview if it's open
       if (currentPanel) {
-        outputChannel.appendLine('[Schematic] Notifying webview of snapshot creation');
+        outputChannel.appendLine('[SchemaX] Notifying webview of snapshot creation');
         
         // Reload state and provider for webview
         const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
@@ -1729,7 +1735,7 @@ async function createSnapshotCommand_impl() {
           payload: payloadForWebview
         });
       } else {
-        outputChannel.appendLine('[Schematic] No webview panel open, skipping notification');
+        outputChannel.appendLine('[SchemaX] No webview panel open, skipping notification');
       }
       
       vscode.window.showInformationMessage(
@@ -1744,9 +1750,9 @@ async function createSnapshotCommand_impl() {
     });
 
   } catch (error) {
-    outputChannel.appendLine(`[Schematic] ERROR: Snapshot creation failed: ${error}`);
+    outputChannel.appendLine(`[SchemaX] ERROR: Snapshot creation failed: ${error}`);
     if (error instanceof Error) {
-      outputChannel.appendLine(`[Schematic] Stack trace: ${error.stack}`);
+      outputChannel.appendLine(`[SchemaX] Stack trace: ${error.stack}`);
     }
     vscode.window.showErrorMessage(`Failed to create snapshot: ${error}`);
   }
@@ -1789,32 +1795,32 @@ function buildCatalogMapping(state: any, envConfig: storageV4.EnvironmentConfig)
 }
 
 async function generateSQLMigration() {
-  outputChannel.appendLine('[Schematic] Generate SQL migration command invoked');
+  outputChannel.appendLine('[SchemaX] Generate SQL migration command invoked');
   
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
-    outputChannel.appendLine('[Schematic] ERROR: No workspace folder open');
-    vscode.window.showErrorMessage('Schematic: Please open a workspace folder first.');
+    outputChannel.appendLine('[SchemaX] ERROR: No workspace folder open');
+    vscode.window.showErrorMessage('SchemaX: Please open a workspace folder first.');
     return;
   }
 
   try {
-    outputChannel.appendLine(`[Schematic] Loading current state from: ${workspaceFolder.uri.fsPath}`);
+    outputChannel.appendLine(`[SchemaX] Loading current state from: ${workspaceFolder.uri.fsPath}`);
     
     // Load project and state
     const project = await storageV4.readProject(workspaceFolder.uri);
     const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
     
-    outputChannel.appendLine(`[Schematic] Provider: ${provider.info.name} v${provider.info.version}`);
-    outputChannel.appendLine(`[Schematic] Changelog operations: ${changelog.ops.length}`);
+    outputChannel.appendLine(`[SchemaX] Provider: ${provider.info.name} v${provider.info.version}`);
+    outputChannel.appendLine(`[SchemaX] Changelog operations: ${changelog.ops.length}`);
     
     // For Unity provider, log catalog count (provider-specific)
     if (state && 'catalogs' in state) {
-      outputChannel.appendLine(`[Schematic] Loaded state: ${(state as any).catalogs.length} catalogs`);
+      outputChannel.appendLine(`[SchemaX] Loaded state: ${(state as any).catalogs.length} catalogs`);
     }
 
     if (changelog.ops.length === 0) {
-      outputChannel.appendLine('[Schematic] No operations in changelog, nothing to generate');
+      outputChannel.appendLine('[SchemaX] No operations in changelog, nothing to generate');
       vscode.window.showInformationMessage('No changes to generate SQL for. Changelog is empty.');
       return;
     }
@@ -1832,17 +1838,17 @@ async function generateSQLMigration() {
     });
 
     if (!targetEnv) {
-      outputChannel.appendLine('[Schematic] SQL generation cancelled - no environment selected');
+      outputChannel.appendLine('[SchemaX] SQL generation cancelled - no environment selected');
       return;
     }
 
     const envConfig = storageV4.getEnvironmentConfig(project, targetEnv);
-    outputChannel.appendLine(`[Schematic] Target environment: ${targetEnv}`);
-    outputChannel.appendLine(`[Schematic] Tracking catalog: ${envConfig.topLevelName}`);
+    outputChannel.appendLine(`[SchemaX] Target environment: ${targetEnv}`);
+    outputChannel.appendLine(`[SchemaX] Tracking catalog: ${envConfig.topLevelName}`);
 
     // Build catalog name mapping (logical → physical)
     const catalogMapping = buildCatalogMapping(state, envConfig);
-    outputChannel.appendLine(`[Schematic] Catalog mapping: ${JSON.stringify(catalogMapping)}`);
+    outputChannel.appendLine(`[SchemaX] Catalog mapping: ${JSON.stringify(catalogMapping)}`);
 
     // Generate SQL using provider's SQL generator
     // Note: Catalog mapping is applied during SQL generation via the generator's internal mapping
@@ -1853,13 +1859,13 @@ async function generateSQLMigration() {
     });
     const sql = generator.generateSQL(changelog.ops);
     
-    outputChannel.appendLine(`[Schematic] Generated SQL (${sql.length} characters)`);
+    outputChannel.appendLine(`[SchemaX] Generated SQL (${sql.length} characters)`);
 
     // Create migrations directory
-    const migrationsDir = path.join(workspaceFolder.uri.fsPath, '.schematic', 'migrations');
+    const migrationsDir = path.join(workspaceFolder.uri.fsPath, '.schemax', 'migrations');
     if (!fs.existsSync(migrationsDir)) {
       fs.mkdirSync(migrationsDir, { recursive: true });
-      outputChannel.appendLine(`[Schematic] Created migrations directory: ${migrationsDir}`);
+      outputChannel.appendLine(`[SchemaX] Created migrations directory: ${migrationsDir}`);
     }
 
     // Generate filename with timestamp and environment
@@ -1869,7 +1875,7 @@ async function generateSQLMigration() {
     
     // Write SQL to file
     fs.writeFileSync(filepath, sql, 'utf8');
-    outputChannel.appendLine(`[Schematic] SQL written to: ${filepath}`);
+    outputChannel.appendLine(`[SchemaX] SQL written to: ${filepath}`);
 
     // Open the file in editor
     const doc = await vscode.workspace.openTextDocument(filepath);
@@ -1886,9 +1892,9 @@ async function generateSQLMigration() {
     });
 
   } catch (error) {
-    outputChannel.appendLine(`[Schematic] ERROR: SQL generation failed: ${error}`);
+    outputChannel.appendLine(`[SchemaX] ERROR: SQL generation failed: ${error}`);
     if (error instanceof Error) {
-      outputChannel.appendLine(`[Schematic] Stack trace: ${error.stack}`);
+      outputChannel.appendLine(`[SchemaX] Stack trace: ${error.stack}`);
     }
     vscode.window.showErrorMessage(`Failed to generate SQL: ${error}`);
   }

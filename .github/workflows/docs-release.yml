@@ -26,23 +26,23 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: docs/schematic/package-lock.json
+          cache-dependency-path: docs/schemax/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: docs/schematic
+        working-directory: docs/schemax
 
       - name: Build website
         env:
           GITHUB_PAGES_URL: https://${{ github.repository_owner }}.github.io
           GITHUB_PAGES_BASE_URL: /${{ github.event.repository.name }}/
         run: npm run build
-        working-directory: docs/schematic
+        working-directory: docs/schemax
 
       - name: Upload Build Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/schematic/build
+          path: docs/schemax/build
 
   deploy:
     name: Deploy to GitHub Pages

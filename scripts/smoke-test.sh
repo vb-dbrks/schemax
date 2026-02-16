@@ -1,12 +1,12 @@
 #!/bin/bash
-# Quick smoke test for Schematic
+# Quick smoke test for SchemaX
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "🧪 Schematic Smoke Test"
+echo "🧪 SchemaX Smoke Test"
 echo "====================="
 echo ""
 
@@ -61,9 +61,9 @@ echo ""
 # Test 3: CLI Available
 echo "Test 3: CLI Commands"
 echo "--------------------"
-if command -v schematic &> /dev/null; then
+if command -v schemax &> /dev/null; then
     print_success "CLI command available"
-    version=$(schematic --version 2>&1)
+    version=$(schemax --version 2>&1)
     print_success "Version: $version"
 else
     print_error "CLI command not found"
@@ -75,7 +75,7 @@ echo ""
 echo "Test 4: Example Project Validation"
 echo "-----------------------------------"
 cd "$ROOT_DIR/examples/basic-schema"
-if schematic validate > /dev/null 2>&1; then
+if schemax validate > /dev/null 2>&1; then
     print_success "Example project validates"
 else
     print_error "Example project validation failed"
@@ -86,8 +86,8 @@ echo ""
 # Test 5: SQL Generation
 echo "Test 5: SQL Generation"
 echo "----------------------"
-temp_sql="/tmp/schematic-test-$$.sql"
-if schematic sql --output "$temp_sql" 2>&1 | grep -q "No operations"; then
+temp_sql="/tmp/schemax-test-$$.sql"
+if schemax sql --output "$temp_sql" 2>&1 | grep -q "No operations"; then
     print_warning "No operations to generate SQL for (expected for example)"
 elif [ -f "$temp_sql" ]; then
     print_success "SQL generated to file"
@@ -112,7 +112,7 @@ else
     print_error "Python SDK pyproject.toml missing"
 fi
 
-if [ -f "$ROOT_DIR/examples/basic-schema/.schematic/project.json" ]; then
+if [ -f "$ROOT_DIR/examples/basic-schema/.schemax/project.json" ]; then
     print_success "Example project files exist"
 else
     print_error "Example project files missing"
@@ -125,7 +125,7 @@ echo -e "${GREEN}✅ All smoke tests passed!${NC}"
 echo ""
 echo "Next steps:"
 echo "  1. Test VS Code extension: Press F5 in VS Code"
-echo "  2. Create a test schema: schematic validate"
+echo "  2. Create a test schema: schemax validate"
 echo "  3. Read full testing guide: cat TESTING.md"
 echo ""
 

@@ -1,6 +1,6 @@
-# Contributing to Schematic
+# Contributing to SchemaX
 
-Thank you for your interest in contributing to Schematic! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to SchemaX! This document provides guidelines and instructions for contributing.
 
 ## Table of Contents
 
@@ -27,11 +27,11 @@ Before creating a bug report, please check existing issues to avoid duplicates.
 **When filing a bug report, include:**
 - VS Code version
 - Operating system and version
-- Schematic version
+- SchemaX version
 - Steps to reproduce the issue
 - Expected behavior
 - Actual behavior
-- Schematic output logs (View → Output → Schematic)
+- SchemaX output logs (View → Output → SchemaX)
 - Webview console errors (if applicable)
 
 ### Suggesting Features
@@ -44,7 +44,7 @@ We welcome feature suggestions! Please open an issue with:
 
 ### Contributing a Provider
 
-Schematic uses a provider-based architecture to support multiple data catalogs. Contributing a provider is a significant contribution!
+SchemaX uses a provider-based architecture to support multiple data catalogs. Contributing a provider is a significant contribution!
 
 **Before Starting:**
 1. Read [docs/PROVIDER_CONTRACT.md](docs/PROVIDER_CONTRACT.md) - Provider interface specification
@@ -104,8 +104,8 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed setup instructions.
 
 **Clone and Setup:**
 ```bash
-git clone https://github.com/vb-dbrks/schematic-vscode.git
-cd schematic-vscode
+git clone https://github.com/vb-dbrks/schemax-vscode.git
+cd schemax-vscode
 ```
 
 **VS Code Extension:**
@@ -120,7 +120,7 @@ npm run build
 ```bash
 cd packages/python-sdk
 pip install -e ".[dev]"
-schematic --version
+schemax --version
 ```
 
 ## Code Formatting
@@ -250,17 +250,17 @@ interface Options {
 export async function loadProject(uri: vscode.Uri, options?: Options): Promise<ProjectFile> {
   const name = options?.name ?? 'default';
   try {
-    const content = await fs.readFile(path.join(uri.fsPath, '.schematic', 'project.json'));
+    const content = await fs.readFile(path.join(uri.fsPath, '.schemax', 'project.json'));
     return JSON.parse(content);
   } catch (error) {
-    outputChannel.appendLine(`[Schematic] ERROR: Failed to load project: ${error}`);
+    outputChannel.appendLine(`[SchemaX] ERROR: Failed to load project: ${error}`);
     throw new Error(`Failed to load project: ${error}`);
   }
 }
 
 // ❌ Bad
 export function loadProject(uri: any) {
-  const content = fs.readFileSync(uri + '/.schematic/project.json');
+  const content = fs.readFileSync(uri + '/.schemax/project.json');
   return JSON.parse(content); // No error handling
 }
 ```
@@ -277,11 +277,11 @@ export function loadProject(uri: any) {
 try {
   const result = await dangerousOperation();
 } catch (error) {
-  outputChannel.appendLine(`[Schematic] ERROR: ${error}`);
+  outputChannel.appendLine(`[SchemaX] ERROR: ${error}`);
   if (error instanceof Error) {
-    outputChannel.appendLine(`[Schematic] Stack: ${error.stack}`);
+    outputChannel.appendLine(`[SchemaX] Stack: ${error.stack}`);
   }
-  vscode.window.showErrorMessage('Operation failed. See Schematic output for details.');
+  vscode.window.showErrorMessage('Operation failed. See SchemaX output for details.');
 }
 
 // ❌ Bad: Silent failure
@@ -293,11 +293,11 @@ try {
 **Logging:**
 ```typescript
 // Extension code - use output channel (NOT console.log)
-outputChannel.appendLine('[Schematic] Loading project...');
-outputChannel.appendLine(`[Schematic] Loaded ${catalogs.length} catalogs`);
+outputChannel.appendLine('[SchemaX] Loading project...');
+outputChannel.appendLine(`[SchemaX] Loaded ${catalogs.length} catalogs`);
 
 // Webview code - use console (development only)
-console.log('[Schematic Webview] Component mounted');
+console.log('[SchemaX Webview] Component mounted');
 ```
 
 ### Python
@@ -322,7 +322,7 @@ class Table(BaseModel):
     columns: List[Column] = []
 
 def load_project(workspace: Path, validate: bool = True) -> ProjectFile:
-    """Load project from .schematic/project.json.
+    """Load project from .schemax/project.json.
     
     Args:
         workspace: Path to workspace directory
@@ -335,7 +335,7 @@ def load_project(workspace: Path, validate: bool = True) -> ProjectFile:
         FileNotFoundError: If project.json doesn't exist
         ValidationError: If validation fails
     """
-    project_path = workspace / ".schematic" / "project.json"
+    project_path = workspace / ".schemax" / "project.json"
     if not project_path.exists():
         raise FileNotFoundError(f"Project file not found: {project_path}")
     
@@ -345,7 +345,7 @@ def load_project(workspace: Path, validate: bool = True) -> ProjectFile:
 
 # ❌ Bad
 def load_project(workspace):
-    return json.loads(open(workspace + "/.schematic/project.json").read())
+    return json.loads(open(workspace + "/.schemax/project.json").read())
 ```
 
 **Naming Conventions:**
@@ -381,7 +381,7 @@ We maintain a clean, focused documentation structure. **Do not create redundant 
 
 **Current Structure:**
 ```
-schematic/
+schemax-vscode/
 ├── README.md                    # Project overview
 ├── TESTING.md                   # Testing guide
 ├── CONTRIBUTING.md              # This file
@@ -528,13 +528,13 @@ def generate_sql(self, ops: List[Op]) -> str:
    ```bash
    cd packages/python-sdk
    pip install -e .
-   schematic validate examples/basic-schema/
+   schemax validate examples/basic-schema/
    ```
 
 4. **Manual Testing:**
    - Press F5, test in Extension Development Host
    - Try all modified features
-   - Check Schematic output logs
+   - Check SchemaX output logs
    - Verify no console errors
 
 ### Manual Testing Checklist
@@ -553,7 +553,7 @@ def generate_sql(self, ops: List[Op]) -> str:
 - [ ] Files persist correctly
 
 **Quality Checks:**
-- [ ] No errors in Schematic output
+- [ ] No errors in SchemaX output
 - [ ] No console errors in webview
 - [ ] No linter errors
 - [ ] Code is formatted (Black for Python)
@@ -605,8 +605,8 @@ Implements the "Generate SQL Migration" command that exports
 changelog operations to SQL DDL files.
 
 - Adds sql-generator.ts module
-- Registers schematic.generateSQL command
-- Saves SQL to .schematic/migrations/ directory
+- Registers schemax.generateSQL command
+- Saves SQL to .schemax/migrations/ directory
 - Opens generated file in editor
 
 Closes #42
@@ -859,7 +859,7 @@ When adding new operation types to a provider:
 
 2. **Update Python provider's ops:**
    ```python
-   # packages/python-sdk/src/schematic/providers/unity/operations.py
+   # packages/python-sdk/src/schemax/providers/unity/operations.py
    UNITY_OPERATIONS = [
        "add_column",
        "your_new_op",
@@ -888,7 +888,7 @@ When adding new operation types to a provider:
 
 ### File Format
 
-- All `.schematic/` files are JSON
+- All `.schemax/` files are JSON
 - Use consistent indentation (2 spaces)
 - Validate with Zod (TS) or Pydantic (Python)
 - Include version fields for compatibility
@@ -913,4 +913,4 @@ Contributors are recognized in:
 
 ---
 
-**Thank you for contributing to Schematic! 🚀**
+**Thank you for contributing to SchemaX! 🚀**

@@ -137,8 +137,8 @@ This document turns **every scenario documented in [TESTING.md](TESTING.md)** in
 
 | Scenario | Documented | Action |
 |----------|------------|--------|
-| From project root / example: validate schema | Yes | Smoke or integration test runs `schematic validate` in example |
-| Generate SQL (schematic sql) | Yes | Smoke or integration test runs `schematic sql` (or sql --output file) |
+| From project root / example: validate schema | Yes | Smoke or integration test runs `schemax validate` in example |
+| Generate SQL (schemax sql) | Yes | Smoke or integration test runs `schemax sql` (or sql --output file) |
 | CI: integration-tests.yml (build, install, CLI on example) | Yes | Ensure workflow runs and uses same scenarios |
 
 **Action**: Ensure at least one script or workflow runs validate + sql on example project; document in TESTING.md.

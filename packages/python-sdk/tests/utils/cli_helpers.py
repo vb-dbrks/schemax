@@ -1,4 +1,4 @@
-"""Helpers for invoking schematic CLI in tests."""
+"""Helpers for invoking SchemaX CLI in tests."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 from click.testing import CliRunner, Result
 
-from schematic.cli import cli
+from schemax.cli import cli
 
 
 def invoke_cli(*args: str, cwd: Path | None = None) -> Result:

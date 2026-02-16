@@ -4,10 +4,10 @@ Integration tests for import + baseline adoption workflows.
 
 import pytest
 
-from schematic.commands.apply import apply_to_environment
-from schematic.commands.import_assets import import_from_provider
-from schematic.core.storage import ensure_project_file, load_current_state
-from schematic.providers import ProviderRegistry
+from schemax.commands.apply import apply_to_environment
+from schemax.commands.import_assets import import_from_provider
+from schemax.core.storage import ensure_project_file, load_current_state
+from schemax.providers import ProviderRegistry
 
 
 class _FakeDeploymentTracker:
@@ -39,7 +39,7 @@ class _FakeDeploymentTracker:
         project_name: str,
         provider_type: str,
         provider_version: str,
-        schematic_version: str = "0.2.0",
+        schemax_version: str = "0.2.0",
         from_snapshot_version: str | None = None,
         previous_deployment_id: str | None = None,
     ) -> None:
@@ -47,7 +47,7 @@ class _FakeDeploymentTracker:
             project_name,
             provider_type,
             provider_version,
-            schematic_version,
+            schemax_version,
             from_snapshot_version,
             previous_deployment_id,
         )
@@ -60,10 +60,10 @@ class _FakeDeploymentTracker:
 
 
 @pytest.mark.integration
-def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, schematic_demo_workspace):
+def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, schemax_demo_workspace):
     # Ensure fixture is initialized correctly if test data is refreshed manually.
-    ensure_project_file(schematic_demo_workspace, provider_id="unity")
-    state, _, _, _ = load_current_state(schematic_demo_workspace, validate=False)
+    ensure_project_file(schemax_demo_workspace, provider_id="unity")
+    state, _, _, _ = load_current_state(schemax_demo_workspace, validate=False)
 
     provider = ProviderRegistry.get("unity")
     assert provider is not None
@@ -76,16 +76,16 @@ def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, schematic_de
 
     fake_client = object()
     monkeypatch.setattr(
-        "schematic.providers.unity.provider.create_databricks_client", lambda _: fake_client
+        "schemax.providers.unity.provider.create_databricks_client", lambda _: fake_client
     )
     monkeypatch.setattr(
-        "schematic.providers.unity.auth.create_databricks_client", lambda _: fake_client
+        "schemax.providers.unity.auth.create_databricks_client", lambda _: fake_client
     )
-    monkeypatch.setattr("schematic.core.deployment.DeploymentTracker", _FakeDeploymentTracker)
-    monkeypatch.setattr("schematic.commands.apply.DeploymentTracker", _FakeDeploymentTracker)
+    monkeypatch.setattr("schemax.core.deployment.DeploymentTracker", _FakeDeploymentTracker)
+    monkeypatch.setattr("schemax.commands.apply.DeploymentTracker", _FakeDeploymentTracker)
 
     summary = import_from_provider(
-        workspace=schematic_demo_workspace,
+        workspace=schemax_demo_workspace,
         target_env="dev",
         profile="",
         warehouse_id="wh_123",
@@ -98,7 +98,7 @@ def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, schematic_de
     assert summary["deployment_id"].startswith("deploy_import_")
 
     result = apply_to_environment(
-        workspace=schematic_demo_workspace,
+        workspace=schemax_demo_workspace,
         target_env="dev",
         profile="",
         warehouse_id="wh_123",

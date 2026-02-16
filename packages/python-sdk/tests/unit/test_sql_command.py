@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from schematic.commands.sql import SQLGenerationError, build_catalog_mapping, generate_sql_migration
+from schemax.commands.sql import SQLGenerationError, build_catalog_mapping, generate_sql_migration
 
 
 def _make_op(op_id: str = "op_1") -> dict:
@@ -42,7 +42,7 @@ def test_generate_sql_migration_returns_empty_when_no_ops(monkeypatch: pytest.Mo
     provider.info.version = "1.0.0"
 
     monkeypatch.setattr(
-        "schematic.commands.sql.read_project",
+        "schemax.commands.sql.read_project",
         lambda _workspace: {
             "provider": {"environments": {"dev": {"topLevelName": "dev_demo"}}},
             "managedLocations": {},
@@ -50,7 +50,7 @@ def test_generate_sql_migration_returns_empty_when_no_ops(monkeypatch: pytest.Mo
         },
     )
     monkeypatch.setattr(
-        "schematic.commands.sql.load_current_state",
+        "schemax.commands.sql.load_current_state",
         lambda _workspace, validate=False: ({"catalogs": []}, {"ops": []}, provider, None),
     )
 
@@ -76,13 +76,13 @@ def test_generate_sql_migration_with_target_and_output(
         "externalLocations": {},
     }
 
-    monkeypatch.setattr("schematic.commands.sql.read_project", lambda _workspace: project)
+    monkeypatch.setattr("schemax.commands.sql.read_project", lambda _workspace: project)
     monkeypatch.setattr(
-        "schematic.commands.sql.load_current_state",
+        "schemax.commands.sql.load_current_state",
         lambda _workspace, validate=False: (state, changelog, provider, None),
     )
     monkeypatch.setattr(
-        "schematic.commands.sql.get_environment_config",
+        "schemax.commands.sql.get_environment_config",
         lambda _project, _env: {
             "topLevelName": "dev_demo",
             "catalogMappings": {"demo": "dev_demo"},
@@ -101,7 +101,7 @@ def test_generate_sql_migration_snapshot_latest_requires_existing_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "schematic.commands.sql.read_project",
+        "schemax.commands.sql.read_project",
         lambda _workspace: {
             "latestSnapshot": None,
             "managedLocations": {},

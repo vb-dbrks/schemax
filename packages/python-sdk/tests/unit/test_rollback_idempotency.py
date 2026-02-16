@@ -8,19 +8,19 @@ that we're already at the target version and skips redundant execution.
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from schematic.commands.rollback import rollback_complete
-from schematic.core.deployment import DeploymentTracker
+from schemax.commands.rollback import rollback_complete
+from schemax.core.deployment import DeploymentTracker
 
 
 def test_rollback_detects_already_at_target_version(tmp_path: Path) -> None:
     """Test that rollback skips execution if already at target version in database"""
 
     # Create a simple project structure
-    schematic_dir = tmp_path / ".schematic"
-    schematic_dir.mkdir()
+    schemax_dir = tmp_path / ".schemax"
+    schemax_dir.mkdir()
 
     # Create project.json
-    project_file = schematic_dir / "project.json"
+    project_file = schemax_dir / "project.json"
     project_file.write_text("""{
         "version": 4,
         "name": "test_project",
@@ -33,7 +33,7 @@ def test_rollback_detects_already_at_target_version(tmp_path: Path) -> None:
                     "allowDrift": false,
                     "requireSnapshot": true,
                     "autoCreateTopLevel": true,
-                    "autoCreateSchematicSchema": true
+                    "autoCreateSchemaxSchema": true
                 }
             }
         },
@@ -48,7 +48,7 @@ def test_rollback_detects_already_at_target_version(tmp_path: Path) -> None:
     }""")
 
     # Create v0.1.0 snapshot
-    snapshots_dir = schematic_dir / "snapshots"
+    snapshots_dir = schemax_dir / "snapshots"
     snapshots_dir.mkdir()
     snapshot_file = snapshots_dir / "v0.1.0.json"
     snapshot_file.write_text("""{
@@ -64,7 +64,7 @@ def test_rollback_detects_already_at_target_version(tmp_path: Path) -> None:
     }""")
 
     # Create empty changelog
-    changelog_file = schematic_dir / "changelog.json"
+    changelog_file = schemax_dir / "changelog.json"
     changelog_file.write_text("""{
         "version": 1,
         "sinceSnapshot": "v0.1.0",
@@ -74,9 +74,9 @@ def test_rollback_detects_already_at_target_version(tmp_path: Path) -> None:
 
     # Mock Databricks client and tracker (patch at original location)
     with (
-        patch("schematic.providers.unity.auth.create_databricks_client") as mock_client_factory,
-        patch("schematic.commands.rollback.DeploymentTracker") as mock_tracker_class,
-        patch("schematic.commands.rollback.UnitySQLExecutor") as mock_executor_class,
+        patch("schemax.providers.unity.auth.create_databricks_client") as mock_client_factory,
+        patch("schemax.commands.rollback.DeploymentTracker") as mock_tracker_class,
+        patch("schemax.commands.rollback.UnitySQLExecutor") as mock_executor_class,
     ):
         mock_client = MagicMock()
         mock_client_factory.return_value = mock_client
@@ -119,10 +119,10 @@ def test_rollback_proceeds_when_not_at_target_version(tmp_path: Path) -> None:
     """Test that rollback proceeds normally when database is at different version"""
 
     # Create a simple project structure (same as above)
-    schematic_dir = tmp_path / ".schematic"
-    schematic_dir.mkdir()
+    schemax_dir = tmp_path / ".schemax"
+    schemax_dir.mkdir()
 
-    project_file = schematic_dir / "project.json"
+    project_file = schemax_dir / "project.json"
     project_file.write_text("""{
         "version": 4,
         "name": "test_project",
@@ -135,7 +135,7 @@ def test_rollback_proceeds_when_not_at_target_version(tmp_path: Path) -> None:
                     "allowDrift": false,
                     "requireSnapshot": true,
                     "autoCreateTopLevel": true,
-                    "autoCreateSchematicSchema": true
+                    "autoCreateSchemaxSchema": true
                 }
             }
         },
@@ -149,7 +149,7 @@ def test_rollback_proceeds_when_not_at_target_version(tmp_path: Path) -> None:
         "latestSnapshot": "v0.1.0"
     }""")
 
-    snapshots_dir = schematic_dir / "snapshots"
+    snapshots_dir = schemax_dir / "snapshots"
     snapshots_dir.mkdir()
     snapshot_file = snapshots_dir / "v0.1.0.json"
     snapshot_file.write_text("""{
@@ -164,7 +164,7 @@ def test_rollback_proceeds_when_not_at_target_version(tmp_path: Path) -> None:
         "previousSnapshot": null
     }""")
 
-    changelog_file = schematic_dir / "changelog.json"
+    changelog_file = schemax_dir / "changelog.json"
     changelog_file.write_text("""{
         "version": 1,
         "sinceSnapshot": "v0.1.0",
@@ -174,9 +174,9 @@ def test_rollback_proceeds_when_not_at_target_version(tmp_path: Path) -> None:
 
     # Mock: database is at v0.2.0, not v0.1.0
     with (
-        patch("schematic.providers.unity.auth.create_databricks_client") as mock_client_factory,
-        patch("schematic.commands.rollback.DeploymentTracker") as mock_tracker_class,
-        patch("schematic.commands.rollback.UnitySQLExecutor") as mock_executor_class,
+        patch("schemax.providers.unity.auth.create_databricks_client") as mock_client_factory,
+        patch("schemax.commands.rollback.DeploymentTracker") as mock_tracker_class,
+        patch("schemax.commands.rollback.UnitySQLExecutor") as mock_executor_class,
     ):
         mock_client = MagicMock()
         mock_client_factory.return_value = mock_client

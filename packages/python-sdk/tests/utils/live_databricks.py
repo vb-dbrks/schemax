@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from schematic.providers.base.executor import ExecutionConfig
-from schematic.providers.unity.auth import create_databricks_client
-from schematic.providers.unity.executor import UnitySQLExecutor
+from schemax.providers.base.executor import ExecutionConfig
+from schemax.providers.unity.auth import create_databricks_client
+from schemax.providers.unity.executor import UnitySQLExecutor
 
 
 @dataclass(frozen=True)
@@ -26,15 +26,15 @@ class LiveDatabricksConfig:
 
 def require_live_command_tests() -> LiveDatabricksConfig:
     """Return validated env config or skip test when live command testing is off."""
-    if os.getenv("SCHEMATIC_RUN_LIVE_COMMAND_TESTS") != "1":
-        pytest.skip("Set SCHEMATIC_RUN_LIVE_COMMAND_TESTS=1 to run live command tests")
+    if os.getenv("SCHEMAX_RUN_LIVE_COMMAND_TESTS") != "1":
+        pytest.skip("Set SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 to run live command tests")
 
     profile = _require_env("DATABRICKS_PROFILE")
     warehouse_id = _require_env("DATABRICKS_WAREHOUSE_ID")
     managed_location = _require_env("DATABRICKS_MANAGED_LOCATION")
-    resource_prefix = os.getenv("SCHEMATIC_LIVE_RESOURCE_PREFIX", "schematic_live")
+    resource_prefix = os.getenv("SCHEMAX_LIVE_RESOURCE_PREFIX", "schemax_live")
 
-    timeout_raw = os.getenv("SCHEMATIC_LIVE_TEST_TIMEOUT_SECONDS", "300")
+    timeout_raw = os.getenv("SCHEMAX_LIVE_TEST_TIMEOUT_SECONDS", "300")
     try:
         timeout_seconds = int(timeout_raw)
     except ValueError:

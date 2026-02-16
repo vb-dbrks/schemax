@@ -42,10 +42,10 @@ jobs:
         working-directory: examples/basic-schema
         run: |
           echo "Validating schema..."
-          schematic validate
+          schemax validate
           
           echo "Generating SQL..."
-          schematic sql --output test-migration.sql || echo "No operations to generate (expected for clean example)"
+          schemax sql --output test-migration.sql || echo "No operations to generate (expected for clean example)"
           
           echo "✓ Integration test passed"
       

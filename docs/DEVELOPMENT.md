@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide covers building, testing, and contributing to Schematic.
+This guide covers building, testing, and contributing to SchemaX.
 
 ## Prerequisites
 
@@ -33,8 +33,8 @@ This guide covers building, testing, and contributing to Schematic.
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/vb-dbrks/schematic-vscode.git
-cd schematic-vscode
+git clone https://github.com/vb-dbrks/schemax-vscode.git
+cd schemax-vscode
 ```
 
 ### 2. Choose Your Setup Path
@@ -112,7 +112,7 @@ npm run build  # Should complete without errors
 
 ```bash
 # Check CLI is installed
-schematic --version
+schemax --version
 
 # Run tests
 cd packages/python-sdk
@@ -150,8 +150,8 @@ This runs both extension and webview watchers concurrently.
 1. Open the project in VS Code
 2. Press `F5` to launch the Extension Development Host
 3. In the new window, open a test workspace
-4. Press `Cmd+Shift+P` and run **Schematic: Open Designer**
-5. Check logs: View → Output → Select "Schematic"
+4. Press `Cmd+Shift+P` and run **SchemaX: Open Designer**
+5. Check logs: View → Output → Select "SchemaX"
 
 #### Python SDK Development
 
@@ -169,7 +169,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pytest
 
 # Run with coverage
-pytest --cov=schematic --cov-report=term-missing
+pytest --cov=schemax --cov-report=term-missing
 
 # Run specific test file
 pytest tests/unit/test_sql_generator.py
@@ -184,8 +184,8 @@ pytest -xvs
 **Test Status:**
 - ✅ 124 passing tests (91.2% of total)
 - ⏸️ 12 skipped tests (8.8%)
-  - 6 tests: Governance SQL generation ([issue #19](https://github.com/vb-dbrks/schematic-vscode/issues/19))
-  - 2 tests: Constraint SQL fixes ([issue #20](https://github.com/vb-dbrks/schematic-vscode/issues/20))
+  - 6 tests: Governance SQL generation ([issue #19](https://github.com/vb-dbrks/schemax-vscode/issues/19))
+  - 2 tests: Constraint SQL fixes ([issue #20](https://github.com/vb-dbrks/schemax-vscode/issues/20))
   - 4 tests: Integration tests (blocked by above)
 
 **Linting and Type Checking:**
@@ -203,11 +203,11 @@ mypy src/
 
 **SQL Validation (Optional):**
 
-Schematic includes optional SQLGlot integration for validating generated SQL:
+SchemaX includes optional SQLGlot integration for validating generated SQL:
 
 ```bash
 # Install SQLGlot
-pip install "schematic[validation]"
+pip install "schemax-py[validation]"
 # or
 pip install sqlglot>=20.0.0
 
@@ -227,15 +227,15 @@ print('Valid SQL!' if parsed else 'Invalid SQL')
 cd ../../examples/basic-schema
 
 # Test CLI commands
-schematic validate
-schematic sql
-schematic sql --output test-migration.sql
+schemax validate
+schemax sql
+schemax sql --output test-migration.sql
 ```
 
 ## Project Structure
 
 ```
-schematic-vscode/
+schemax-vscode/
 ├── packages/
 │   ├── vscode-extension/          # VS Code Extension
 │   │   ├── src/
@@ -276,7 +276,7 @@ schematic-vscode/
 │   │   └── package.json
 │   │
 │   └── python-sdk/                # Python SDK & CLI
-│       ├── src/schematic/
+│       ├── src/schemax/
 │       │   ├── providers/                 # Provider system
 │       │   │   ├── base/
 │       │   │   │   ├── provider.py
@@ -307,7 +307,7 @@ schematic-vscode/
 
 ### Provider-Based System
 
-Schematic uses a **provider-based architecture** to support multiple catalog types (Unity Catalog, Hive, PostgreSQL, etc.). Each provider implements a standard interface.
+SchemaX uses a **provider-based architecture** to support multiple catalog types (Unity Catalog, Hive, PostgreSQL, etc.). Each provider implements a standard interface.
 
 **Key Components:**
 - **Provider Registry** - Manages available providers
@@ -355,12 +355,12 @@ User Action → Webview (React)
 
 ### Storage Architecture (V3)
 
-Schematic V3 adds provider awareness to the snapshot-based architecture:
+SchemaX V3 adds provider awareness to the snapshot-based architecture:
 
 **Files:**
-- `.schematic/project.json` - Metadata + **provider selection**
-- `.schematic/changelog.json` - Uncommitted **provider-prefixed** operations
-- `.schematic/snapshots/vX.Y.Z.json` - Full state snapshots
+- `.schemax/project.json` - Metadata + **provider selection**
+- `.schemax/changelog.json` - Uncommitted **provider-prefixed** operations
+- `.schemax/snapshots/vX.Y.Z.json` - Full state snapshots
 
 **Loading:**
 1. Read project.json → get provider type
@@ -414,7 +414,7 @@ Snapshots capture complete schema state:
   id: "snap_uuid",
   version: "v0.1.0",
   name: "Initial schema",
-  file: ".schematic/snapshots/v0.1.0.json",
+  file: ".schemax/snapshots/v0.1.0.json",
   opsCount: 15,
   ...
 }
@@ -455,7 +455,7 @@ Snapshots capture complete schema state:
 Always use the output channel for logging:
 
 ```typescript
-outputChannel.appendLine('[Schematic] Your message');
+outputChannel.appendLine('[SchemaX] Your message');
 ```
 
 Never use `console.log()` in extension code (it goes to Extension Host console, not visible to users).
@@ -475,7 +475,7 @@ const { state, changelog, provider } = await storageV3.loadCurrentState(workspac
 await storageV3.appendOps(workspaceUri, ops);
 
 // Bad - don't access files directly
-const content = await fs.readFile('.schematic/project.json');
+const content = await fs.readFile('.schemax/project.json');
 ```
 
 **Python (SDK):**
@@ -483,7 +483,7 @@ const content = await fs.readFile('.schematic/project.json');
 All file operations should go through `storage_v3.py`:
 
 ```python
-from schematic.storage_v3 import read_project, load_current_state, append_ops
+from schemax.storage_v3 import read_project, load_current_state, append_ops
 
 # Good
 project = read_project(workspace_path)
@@ -491,7 +491,7 @@ state, changelog, provider = load_current_state(workspace_path)
 append_ops(workspace_path, operations)
 
 # Bad - don't access files directly
-with open('.schematic/project.json') as f:
+with open('.schemax/project.json') as f:
     project = json.load(f)
 ```
 
@@ -531,7 +531,7 @@ const project = await storageV3.readProject(workspacePath);
 All external data must be validated. The storage layer handles validation internally:
 
 ```python
-from schematic.storage_v3 import read_project
+from schemax.storage_v3 import read_project
 
 # Validates and raises if invalid
 project = read_project(workspace_path)
@@ -581,17 +581,17 @@ Before submitting a pull request, verify:
 - [ ] Can create snapshots
 - [ ] Snapshots persist after reloading
 - [ ] Changelog clears after snapshot
-- [ ] Schematic output logs show no errors
+- [ ] SchemaX output logs show no errors
 
 ### Python SDK
 
 - [ ] All tests pass (`pytest`)
 - [ ] No new test failures (124 passing baseline)
-- [ ] Test coverage maintained at 30%+ (`pytest --cov=schematic --cov-fail-under=30`)
+- [ ] Test coverage maintained at 30%+ (`pytest --cov=schemax --cov-fail-under=30`)
 - [ ] No linting errors (`ruff check src/`)
 - [ ] Type checking passes (`mypy src/`)
 - [ ] Code is formatted (`ruff format src/`)
-- [ ] CLI commands work (`schematic validate`, `schematic sql`)
+- [ ] CLI commands work (`schemax validate`, `schemax sql`)
 - [ ] Documentation updated if API changed
 - [ ] SQL validated with SQLGlot (if modifying SQL generator)
 
@@ -635,7 +635,7 @@ op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
 
 ### Extension Logs
 
-View → Output → Select "Schematic" from dropdown
+View → Output → Select "SchemaX" from dropdown
 
 Shows:
 - Extension activation
@@ -648,7 +648,7 @@ Shows:
 
 1. With designer open: Help → Toggle Developer Tools
 2. Go to Console tab
-3. Look for `[Schematic Webview]` logs
+3. Look for `[SchemaX Webview]` logs
 
 ### Common Issues
 
@@ -658,8 +658,8 @@ Shows:
 - Rebuild webview: `npm run build:webview`
 
 **Operations not saving:**
-- Check Schematic output logs
-- Verify `.schematic/` directory exists
+- Check SchemaX output logs
+- Verify `.schemax/` directory exists
 - Check file permissions
 
 **Snapshots disappearing:**
@@ -673,7 +673,7 @@ Shows:
 
 ### Overview
 
-Adding a new provider to Schematic involves implementing the provider interface in both TypeScript and Python. This section guides you through the process.
+Adding a new provider to SchemaX involves implementing the provider interface in both TypeScript and Python. This section guides you through the process.
 
 **See also:** [PROVIDER_CONTRACT.md](PROVIDER_CONTRACT.md) for detailed API documentation.
 
@@ -687,8 +687,8 @@ mkdir -p packages/vscode-extension/src/providers/myprovider
 touch packages/vscode-extension/src/providers/myprovider/{index,models,operations,sql-generator,state-reducer,hierarchy,provider}.ts
 
 # Python
-mkdir -p packages/python-sdk/src/schematic/providers/myprovider
-touch packages/python-sdk/src/schematic/providers/myprovider/{__init__,models,operations,sql_generator,state_reducer,hierarchy,provider}.py
+mkdir -p packages/python-sdk/src/schemax/providers/myprovider
+touch packages/python-sdk/src/schemax/providers/myprovider/{__init__,models,operations,sql_generator,state_reducer,hierarchy,provider}.py
 ```
 
 **2. Define Provider Metadata**
@@ -949,7 +949,7 @@ initializeProviders();
 Follow the same structure in Python:
 
 ```python
-# packages/python-sdk/src/schematic/providers/myprovider/provider.py
+# packages/python-sdk/src/schemax/providers/myprovider/provider.py
 class MyProvider(BaseProvider):
     @property
     def info(self) -> ProviderInfo:
@@ -1085,7 +1085,7 @@ Before submitting a provider:
 When reporting bugs, include:
 - Steps to reproduce
 - Expected vs actual behavior
-- Schematic output logs
+- SchemaX output logs
 - Webview console errors (if any)
 - VS Code version
 - Operating system

@@ -1,13 +1,13 @@
 # Basic Schema Example
 
-This is a minimal example project demonstrating Schematic v4 project structure.
+This is a minimal example project demonstrating schemax v4 project structure.
 
 ## What's Inside
 
-- `.schematic/project.json` - V4 project configuration with multi-environment support
-- `.schematic/changelog.json` - Operation log (currently just the implicit catalog)
-- `.schematic/snapshots/` - Directory for snapshot files (empty for now)
-- `.schematic/migrations/` - Directory for generated SQL migrations (empty for now)
+- `.schemax/project.json` - V4 project configuration with multi-environment support
+- `.schemax/changelog.json` - Operation log (currently just the implicit catalog)
+- `.schemax/snapshots/` - Directory for snapshot files (empty for now)
+- `.schemax/migrations/` - Directory for generated SQL migrations (empty for now)
 
 ## Project Configuration
 
@@ -22,28 +22,28 @@ This is a minimal example project demonstrating Schematic v4 project structure.
 
 ### Validate Project
 ```bash
-schematic validate
+schemax validate
 ```
 
 ### Generate SQL
 ```bash
-schematic sql --output migration.sql --target dev
+schemax sql --output migration.sql --target dev
 ```
 
 ### Create Snapshot
 ```bash
 # After making changes via VS Code extension
-schematic snapshot create "Initial schema" --version v0.1.0
+schemax snapshot create "Initial schema" --version v0.1.0
 ```
 
 ### Apply to Environment
 ```bash
-schematic apply --target dev --profile my-profile --warehouse-id <warehouse-id>
+schemax apply --target dev --profile my-profile --warehouse-id <warehouse-id>
 ```
 
 ## Next Steps
 
 1. Open this directory in VS Code
-2. Run command: "Schematic: Open Designer"
+2. Run command: "schemax: Open Designer"
 3. Start designing your schema!
 

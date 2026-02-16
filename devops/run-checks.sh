@@ -11,7 +11,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 echo "======================================"
-echo "🔍 Schematic Quality Checks"
+echo "🔍 SchemaX Quality Checks"
 echo "======================================"
 echo ""
 

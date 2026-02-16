@@ -24,11 +24,11 @@ export function getVsCodeApi(): VsCodeApi {
     if (typeof acquireVsCodeApi !== 'undefined') {
       vsCodeApi = acquireVsCodeApi();
       (window as any).vsCodeApi = vsCodeApi;
-      console.log('[Schematic] VS Code API acquired successfully');
+      console.log('[SchemaX] VS Code API acquired successfully');
       return vsCodeApi;
     }
   } catch (error) {
-    console.warn('[Schematic] Could not acquire VS Code API:', error);
+    console.warn('[SchemaX] Could not acquire VS Code API:', error);
   }
 
   // Fallback mock for development

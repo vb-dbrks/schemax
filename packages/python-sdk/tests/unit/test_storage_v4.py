@@ -7,30 +7,30 @@ from datetime import datetime
 
 import pytest
 
-from schematic.core import storage
+from schemax.core import storage
 
 
 class TestPathHelpers:
     """Test path helper functions"""
 
-    def test_get_schematic_dir(self, tmp_path):
-        expected = tmp_path / ".schematic"
-        assert storage.get_schematic_dir(tmp_path) == expected
+    def test_get_schemax_dir(self, tmp_path):
+        expected = tmp_path / ".schemax"
+        assert storage.get_schemax_dir(tmp_path) == expected
 
     def test_get_project_file_path(self, tmp_path):
-        expected = tmp_path / ".schematic" / "project.json"
+        expected = tmp_path / ".schemax" / "project.json"
         assert storage.get_project_file_path(tmp_path) == expected
 
     def test_get_changelog_file_path(self, tmp_path):
-        expected = tmp_path / ".schematic" / "changelog.json"
+        expected = tmp_path / ".schemax" / "changelog.json"
         assert storage.get_changelog_file_path(tmp_path) == expected
 
     def test_get_snapshots_dir(self, tmp_path):
-        expected = tmp_path / ".schematic" / "snapshots"
+        expected = tmp_path / ".schemax" / "snapshots"
         assert storage.get_snapshots_dir(tmp_path) == expected
 
     def test_get_snapshot_file_path(self, tmp_path):
-        expected = tmp_path / ".schematic" / "snapshots" / "v1.0.0.json"
+        expected = tmp_path / ".schemax" / "snapshots" / "v1.0.0.json"
         assert storage.get_snapshot_file_path(tmp_path, "v1.0.0") == expected
 
 
@@ -41,7 +41,7 @@ class TestProjectInitialization:
         """Should create new v4 project with default environments"""
         storage.ensure_project_file(tmp_path, "unity")
 
-        project_file = tmp_path / ".schematic" / "project.json"
+        project_file = tmp_path / ".schemax" / "project.json"
         assert project_file.exists()
 
         with open(project_file) as f:
@@ -71,7 +71,7 @@ class TestProjectInitialization:
         """Should create implicit catalog operation in changelog"""
         storage.ensure_project_file(tmp_path, "unity")
 
-        changelog_file = tmp_path / ".schematic" / "changelog.json"
+        changelog_file = tmp_path / ".schemax" / "changelog.json"
         assert changelog_file.exists()
 
         with open(changelog_file) as f:
@@ -88,7 +88,7 @@ class TestProjectInitialization:
         """Should not recreate project if it already exists"""
         storage.ensure_project_file(tmp_path, "unity")
 
-        project_file = tmp_path / ".schematic" / "project.json"
+        project_file = tmp_path / ".schemax" / "project.json"
         mtime_before = project_file.stat().st_mtime
 
         # Call again
@@ -197,7 +197,7 @@ class TestStateLoading:
         storage.ensure_project_file(tmp_path, "unity")
 
         # Add schema operation
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         ops = [
             Operation(
@@ -231,7 +231,7 @@ class TestSnapshotCreation:
         storage.ensure_project_file(tmp_path, "unity")
 
         # Add some operations
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         ops = [
             Operation(
@@ -258,7 +258,7 @@ class TestSnapshotCreation:
         snapshot_version = project["latestSnapshot"]
         assert snapshot_version.startswith("v")
 
-        snapshot_file = tmp_path / ".schematic" / "snapshots" / f"{snapshot_version}.json"
+        snapshot_file = tmp_path / ".schemax" / "snapshots" / f"{snapshot_version}.json"
         assert snapshot_file.exists()
 
         # Read and check snapshot content from file
@@ -279,7 +279,7 @@ class TestSnapshotCreation:
         storage.ensure_project_file(tmp_path, "unity")
 
         # Add operations with full metadata
-        from schematic.providers.base.operations import Operation
+        from schemax.providers.base.operations import Operation
 
         ops = [
             Operation(

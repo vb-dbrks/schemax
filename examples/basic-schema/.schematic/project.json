@@ -11,7 +11,7 @@
         "allowDrift": true,
         "requireSnapshot": false,
         "autoCreateCatalog": true,
-        "autoCreateSchematicSchema": true
+        "autoCreateSchemaxSchema": true
       },
       "test": {
         "catalog": "test_example",
@@ -19,7 +19,7 @@
         "allowDrift": false,
         "requireSnapshot": true,
         "autoCreateCatalog": true,
-        "autoCreateSchematicSchema": true
+        "autoCreateSchemaxSchema": true
       },
       "prod": {
         "catalog": "prod_example",
@@ -28,7 +28,7 @@
         "requireSnapshot": true,
         "requireApproval": false,
         "autoCreateCatalog": false,
-        "autoCreateSchematicSchema": true
+        "autoCreateSchemaxSchema": true
       }
     }
   },

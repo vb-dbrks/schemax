@@ -1,6 +1,6 @@
--- Unity Catalog import fixture for Schematic integration testing.
+-- Unity Catalog import fixture for SchemaX integration testing.
 -- Purpose: create realistic metadata-only objects (no significant data load)
--- so `schematic import` can validate catalog/schema/table/view/metadata import.
+-- so `schemax import` can validate catalog/schema/table/view/metadata import.
 --
 -- Usage example:
 --   databricks sql statement execute \
@@ -10,7 +10,7 @@
 --
 -- Notes:
 -- - This script is idempotent for repeated test runs.
--- - It intentionally focuses on objects currently supported by Schematic import.
+-- - It intentionally focuses on objects currently supported by SchemaX import.
 -- - `__MANAGED_ROOT__` is replaced by the live integration test runner.
 
 -- Optional reset (uncomment if you want a clean slate before re-running):
@@ -21,16 +21,16 @@ CREATE CATALOG IF NOT EXISTS test_import_fixture
 MANAGED LOCATION '__MANAGED_ROOT__/catalogs/test_import_fixture';
 CREATE CATALOG IF NOT EXISTS test_import_aux
 MANAGED LOCATION '__MANAGED_ROOT__/catalogs/test_import_aux';
-COMMENT ON CATALOG test_import_fixture IS 'Schematic live import fixture catalog';
-COMMENT ON CATALOG test_import_aux IS 'Schematic live import auxiliary catalog';
+COMMENT ON CATALOG test_import_fixture IS 'SchemaX live import fixture catalog';
+COMMENT ON CATALOG test_import_aux IS 'SchemaX live import auxiliary catalog';
 
 ALTER CATALOG test_import_fixture SET TAGS (
-  'sf_fixture' = 'schematic-import',
+  'sf_fixture' = 'schemax-import',
   'sf_owner' = 'qa'
 );
 
 ALTER CATALOG test_import_aux SET TAGS (
-  'sf_fixture' = 'schematic-import',
+  'sf_fixture' = 'schemax-import',
   'sf_purpose' = 'multi-catalog'
 );
 
