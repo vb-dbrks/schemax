@@ -3,7 +3,7 @@
 # See docs/PYPI_TRUSTED_PUBLISHER.md for PyPI form values.
 #
 # To release: bump version in packages/python-sdk/pyproject.toml, commit, then:
-#   git tag py-v0.1.0 && git push origin py-v0.1.0
+#   git tag py-v0.1.1 && git push origin py-v0.1.1
 
 name: Publish to PyPI
 
@@ -37,7 +37,7 @@ jobs:
         run: python -m build
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@v1.13.0
         with:
           packages-dir: packages/python-sdk/dist/
           verbose: true
