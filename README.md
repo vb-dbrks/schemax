@@ -393,7 +393,7 @@ jobs:
           python-version: '3.11'
       
       - name: Install Schematic
-        run: pip install schematic-py
+        run: pip install schemax-py
       
       - name: Validate Schema
         run: schematic validate
