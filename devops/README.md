@@ -120,7 +120,7 @@ cd packages/python-sdk
 pytest tests/ -v
 
 # Run with coverage
-pytest tests/ --cov=src/schematic --cov-report=term-missing
+pytest tests/ --cov=src/schemax --cov-report=term-missing
 
 # Run specific test file
 pytest tests/unit/test_sql_generator.py -v
@@ -429,7 +429,7 @@ test:
 
 .PHONY: coverage
 coverage:
-	@cd packages/python-sdk && pytest tests/ --cov=src/schematic --cov-report=html
+	@cd packages/python-sdk && pytest tests/ --cov=src/schemax --cov-report=html
 	@open packages/python-sdk/htmlcov/index.html
 ```
 

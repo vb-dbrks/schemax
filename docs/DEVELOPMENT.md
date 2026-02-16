@@ -358,9 +358,9 @@ User Action → Webview (React)
 SchemaX V3 adds provider awareness to the snapshot-based architecture:
 
 **Files:**
-- `.schematic/project.json` - Metadata + **provider selection**
-- `.schematic/changelog.json` - Uncommitted **provider-prefixed** operations
-- `.schematic/snapshots/vX.Y.Z.json` - Full state snapshots
+- `.schemax/project.json` - Metadata + **provider selection**
+- `.schemax/changelog.json` - Uncommitted **provider-prefixed** operations
+- `.schemax/snapshots/vX.Y.Z.json` - Full state snapshots
 
 **Loading:**
 1. Read project.json → get provider type
@@ -414,7 +414,7 @@ Snapshots capture complete schema state:
   id: "snap_uuid",
   version: "v0.1.0",
   name: "Initial schema",
-  file: ".schematic/snapshots/v0.1.0.json",
+  file: ".schemax/snapshots/v0.1.0.json",
   opsCount: 15,
   ...
 }
@@ -475,7 +475,7 @@ const { state, changelog, provider } = await storageV3.loadCurrentState(workspac
 await storageV3.appendOps(workspaceUri, ops);
 
 // Bad - don't access files directly
-const content = await fs.readFile('.schematic/project.json');
+const content = await fs.readFile('.schemax/project.json');
 ```
 
 **Python (SDK):**
@@ -491,7 +491,7 @@ state, changelog, provider = load_current_state(workspace_path)
 append_ops(workspace_path, operations)
 
 # Bad - don't access files directly
-with open('.schematic/project.json') as f:
+with open('.schemax/project.json') as f:
     project = json.load(f)
 ```
 
@@ -659,7 +659,7 @@ Shows:
 
 **Operations not saving:**
 - Check SchemaX output logs
-- Verify `.schematic/` directory exists
+- Verify `.schemax/` directory exists
 - Check file permissions
 
 **Snapshots disappearing:**

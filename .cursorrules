@@ -1,7 +1,7 @@
-# Schematic - Project Context
+# schemax - Project Context
 
 ## Overview
-Schematic is a comprehensive toolkit for managing Databricks Unity Catalog schemas using a declarative, version-controlled approach. It consists of a VS Code extension for visual schema design and a Python SDK/CLI for automation and CI/CD integration.
+schemax is a comprehensive toolkit for managing Databricks Unity Catalog schemas using a declarative, version-controlled approach. It consists of a VS Code extension for visual schema design and a Python SDK/CLI for automation and CI/CD integration.
 
 ## 🔥 Quick Rules (Always Follow)
 
@@ -14,7 +14,7 @@ Schematic is a comprehensive toolkit for managing Databricks Unity Catalog schem
 ## Repository Structure (Monorepo)
 
 ```
-schematic/
+schemax/
 ├── packages/
 │   ├── vscode-extension/       # VS Code Extension (TypeScript + React)
 │   │   ├── src/
@@ -33,7 +33,7 @@ schematic/
 │   │   └── package.json
 │   │
 │   └── python-sdk/             # Python SDK & CLI
-│       ├── src/schematic/
+│       ├── src/schemax/
 │       │   ├── core/                  # Core infrastructure (NEW)
 │       │   │   ├── storage.py         # V4 file storage (multi-environment)
 │       │   │   ├── deployment.py      # Deployment tracking
@@ -96,10 +96,10 @@ schematic/
 
 ## Architecture (V4)
 
-### File Structure (.schematic/)
+### File Structure (.schemax/)
 ```
 project-root/
-└── .schematic/
+└── .schemax/
     ├── project.json           # Project metadata (version, snapshots list, settings)
     ├── changelog.json         # Working changes (ops since last snapshot)
     ├── snapshots/
@@ -124,7 +124,7 @@ project-root/
    - This is the "working directory" of changes
 
 3. **Snapshots**: Point-in-time full state captures
-   - Stored as separate files: `.schematic/snapshots/vX.Y.Z.json`
+   - Stored as separate files: `.schemax/snapshots/vX.Y.Z.json`
    - Contains complete state + list of ops included
    - Metadata stored in `project.json`, full state in snapshot file
    - Semantic versioning (v0.1.0, v0.2.0, etc.)
@@ -137,7 +137,7 @@ project-root/
 5. **SQL Generation**: 
    - Convert changelog ops to SQL DDL
    - Idempotent statements (safe to run multiple times)
-   - Saved to `.schematic/migrations/` directory
+   - Saved to `.schemax/migrations/` directory
 
 ### Data Models
 
@@ -157,7 +157,7 @@ project-root/
         requireSnapshot: boolean,
         requireApproval?: boolean,
         autoCreateTopLevel: boolean,
-        autoCreateSchematicSchema: boolean
+        autoCreateschemaxSchema: boolean
       }
     }
   },
@@ -196,7 +196,7 @@ project-root/
 }
 ```
 
-**Snapshot File** (`.schematic/snapshots/vX.Y.Z.json`):
+**Snapshot File** (`.schemax/snapshots/vX.Y.Z.json`):
 ```typescript
 {
   id: string,
@@ -334,10 +334,10 @@ Catalog
 ### Extension (`packages/vscode-extension/src/extension.ts`)
 
 **Commands**:
-1. `schematic.openDesigner` - Opens React webview
-2. `schematic.showLastOps` - Shows changelog ops
-3. `schematic.createSnapshot` - Creates new snapshot
-4. `schematic.generateSQL` - Generates SQL migration file
+1. `schemax.openDesigner` - Opens React webview
+2. `schemax.showLastOps` - Shows changelog ops
+3. `schemax.createSnapshot` - Creates new snapshot
+4. `schemax.generateSQL` - Generates SQL migration file
 
 **Message Flow**:
 - Webview → Extension: `load-project`, `append-ops`
@@ -417,42 +417,42 @@ Catalog
 
 ```bash
 # Generate SQL migration (with environment-specific catalog mapping)
-schematic sql [--output FILE] [--target ENV]
+schemax sql [--output FILE] [--target ENV]
 
 # Apply SQL to environment with deployment tracking
-schematic apply --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--sql FILE] [--dry-run] [--no-interaction] [--auto-rollback]
+schemax apply --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--sql FILE] [--dry-run] [--no-interaction] [--auto-rollback]
 
 # Rollback a failed/partial deployment
-schematic rollback --deployment DEPLOYMENT_ID --partial --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--dry-run]
+schemax rollback --deployment DEPLOYMENT_ID --partial --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--dry-run]
 
 # Rollback to a previous snapshot (complete rollback)
-schematic rollback --to-snapshot VERSION --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--dry-run]
+schemax rollback --to-snapshot VERSION --target ENV --profile PROFILE --warehouse-id WAREHOUSE_ID [--dry-run]
 
 # Validate schema files and detect stale snapshots
-schematic validate [workspace_path]
+schemax validate [workspace_path]
 
 # Create a snapshot from current changelog
-schematic snapshot create --name "Snapshot name" [--version v0.2.0] [--comment "Description"] [--tags tag1]
+schemax snapshot create --name "Snapshot name" [--version v0.2.0] [--comment "Description"] [--tags tag1]
 
 # Validate snapshots after Git rebase
-schematic snapshot validate
+schemax snapshot validate
 
 # Rebase a stale snapshot onto new base
-schematic snapshot rebase VERSION
+schemax snapshot rebase VERSION
 
 # Compare snapshots
-schematic diff --from-version V1 --to-version V2 [--target ENV]
+schemax diff --from-version V1 --to-version V2 [--target ENV]
 
 # Record deployment manually
-schematic record-deployment --target ENV [--version VERSION] [--mark-deployed]
+schemax record-deployment --target ENV [--version VERSION] [--mark-deployed]
 ```
 
 ### Python API
 
 ```python
 from pathlib import Path
-from schematic.core.storage import load_current_state, read_project, get_environment_config
-from schematic.providers.unity.sql_generator import UnitySQLGenerator
+from schemax.core.storage import load_current_state, read_project, get_environment_config
+from schemax.providers.unity.sql_generator import UnitySQLGenerator
 
 # Load schema
 state, changelog, provider = load_current_state(Path.cwd())
@@ -471,7 +471,7 @@ sql = generator.generate_sql(changelog["ops"])
 
 ### Deployment Tracking
 
-**Database-backed tracking** in `{catalog}.schematic` schema:
+**Database-backed tracking** in `{catalog}.schemax` schema:
 
 Tables:
 - `deployments` - Main deployment records
@@ -479,10 +479,10 @@ Tables:
 
 **Local tracking** in `project.json` → `deployments` array
 
-**Execution Flow** (`schematic apply`):
+**Execution Flow** (`schemax apply`):
 1. Authenticate with Databricks
 2. Execute SQL statements (creates catalog if needed)
-3. Create tracking schema in `{catalog}.schematic`
+3. Create tracking schema in `{catalog}.schemax`
 4. Record deployment to database
 5. Track individual operations
 6. Save deployment record to local `project.json`
@@ -602,7 +602,7 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ External location path resolution per environment
 
 **Databricks Integration**:
-- ✅ `schematic apply` command for executing SQL
+- ✅ `schemax apply` command for executing SQL
 - ✅ Databricks CLI profile authentication
 - ✅ SQL Statement Execution API integration
 - ✅ Fail-fast execution with error handling
@@ -610,7 +610,7 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ Dry-run mode and no-interaction mode
 
 **Deployment Tracking**:
-- ✅ Database-backed tracking in `{catalog}.schematic` schema
+- ✅ Database-backed tracking in `{catalog}.schemax` schema
 - ✅ `deployments` and `deployment_ops` tables
 - ✅ Local tracking in `project.json`
 - ✅ Deployment status tracking (success/failed/partial)
@@ -620,7 +620,7 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 **Rollback & Recovery** (NEW):
 - ✅ Partial rollback (revert successful operations from failed deployment)
 - ✅ Complete rollback (rollback to previous snapshot)
-- ✅ Auto-rollback option in `schematic apply --auto-rollback`
+- ✅ Auto-rollback option in `schemax apply --auto-rollback`
 - ✅ Safety validation (SAFE, RISKY, DESTRUCTIVE levels)
 - ✅ Rollback uses state_differ for accurate reverse operations
 - ✅ Database query for latest deployment (source of truth)
@@ -635,13 +635,13 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ Conflict detection and logging for manual UI resolution
 - ✅ Smart changelog management during rebase conflicts
 - ✅ Semantic versioning utilities (MAJOR.MINOR.PATCH)
-- ✅ `schematic snapshot create`, `validate`, and `rebase` commands
+- ✅ `schemax snapshot create`, `validate`, and `rebase` commands
 
 **CLI Improvements** (NEW):
-- ✅ Interactive snapshot prompts in `schematic apply` (with --no-interaction flag)
+- ✅ Interactive snapshot prompts in `schemax apply` (with --no-interaction flag)
 - ✅ Improved SQL preview (per-statement display, pagination)
-- ✅ `schematic rollback` command (--partial and --to-snapshot options)
-- ✅ `schematic diff` command for snapshot comparison
+- ✅ `schemax rollback` command (--partial and --to-snapshot options)
+- ✅ `schemax diff` command for snapshot comparison
 - ✅ Consistent `--target` flag across all commands
 
 **UI Improvements** (NEW):
@@ -692,7 +692,7 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 
 **Testing**:
 - Real integration tests against Databricks workspace
-- End-to-end tests for `schematic apply`
+- End-to-end tests for `schemax apply`
 - Performance tests for large schemas
 - Concurrency tests
 
@@ -740,7 +740,7 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 ### General Principles
 
 1. **Logging**: Always use `outputChannel.appendLine()` in extension, never `console.log()`
-2. **File Structure**: All Schematic files in `.schematic/` folder
+2. **File Structure**: All schemax files in `.schemax/` folder
 3. **Immutability**: Never mutate state directly, always create new objects
 4. **Op IDs**: Always generate UUIDs for new ops: `id: \`op_${uuidv4()}\``
 5. **Validation**: TypeScript (Zod) and Python (Pydantic) for all data models
@@ -779,10 +779,10 @@ export async function createTable(
 ): Promise<Table> {
   try {
     const table = await tableService.create(name, options);
-    outputChannel.appendLine(`[Schematic] Created table: ${name}`);
+    outputChannel.appendLine(`[schemax] Created table: ${name}`);
     return table;
   } catch (error) {
-    outputChannel.appendLine(`[Schematic] ERROR: ${error}`);
+    outputChannel.appendLine(`[schemax] ERROR: ${error}`);
     throw new Error(`Failed to create table: ${error}`);
   }
 }
@@ -963,10 +963,10 @@ pytest tests/unit/test_sql_generator.py -v
 pytest tests/unit/test_sql_generator.py::TestCatalogSQL::test_add_catalog -xvs
 
 # Run with coverage
-pytest tests/ --cov=src/schematic --cov-report=term-missing
+pytest tests/ --cov=src/schemax --cov-report=term-missing
 
 # Run with coverage HTML report
-pytest tests/ --cov=src/schematic --cov-report=html
+pytest tests/ --cov=src/schemax --cov-report=html
 open htmlcov/index.html
 ```
 
@@ -1079,15 +1079,15 @@ The quality checks pipeline runs automatically on:
 **VS Code Extension**:
 1. Press F5 in VS Code (launches Extension Development Host)
 2. Open a workspace folder
-3. Cmd+Shift+P → "Schematic: Open Designer"
-4. Check logs: View → Output → "Schematic"
+3. Cmd+Shift+P → "schemax: Open Designer"
+4. Check logs: View → Output → "schemax"
 
 **Python CLI**:
 ```bash
 cd packages/python-sdk
 pip install -e .
-schematic validate examples/basic-schema/
-schematic sql
+schemax validate examples/basic-schema/
+schemax sql
 ```
 
 **Current Test Status**:
@@ -1125,31 +1125,31 @@ schematic sql
 - `packages/vscode-extension/src/webview/state/useDesignerStore.ts` - Zustand store
 
 **Python SDK** (Core Infrastructure):
-- `packages/python-sdk/src/schematic/core/storage.py` - File I/O (v4 multi-environment)
-- `packages/python-sdk/src/schematic/core/deployment.py` - Deployment tracking
-- `packages/python-sdk/src/schematic/core/version.py` - Semantic versioning
+- `packages/python-sdk/src/schemax/core/storage.py` - File I/O (v4 multi-environment)
+- `packages/python-sdk/src/schemax/core/deployment.py` - Deployment tracking
+- `packages/python-sdk/src/schemax/core/version.py` - Semantic versioning
 
 **Python SDK** (Providers):
-- `packages/python-sdk/src/schematic/providers/base/models.py` - Pydantic models
-- `packages/python-sdk/src/schematic/providers/base/executor.py` - SQL execution protocol
-- `packages/python-sdk/src/schematic/providers/base/state_differ.py` - State diffing
-- `packages/python-sdk/src/schematic/providers/base/reverse_generator.py` - Safety validation
-- `packages/python-sdk/src/schematic/providers/unity/state_reducer.py` - State reducer
-- `packages/python-sdk/src/schematic/providers/unity/state_differ.py` - Unity state diffing
-- `packages/python-sdk/src/schematic/providers/unity/sql_generator.py` - SQL generation with catalog mapping
-- `packages/python-sdk/src/schematic/providers/unity/executor.py` - Databricks SQL executor
-- `packages/python-sdk/src/schematic/providers/unity/auth.py` - Databricks authentication
-- `packages/python-sdk/src/schematic/providers/unity/safety_validator.py` - Rollback safety
+- `packages/python-sdk/src/schemax/providers/base/models.py` - Pydantic models
+- `packages/python-sdk/src/schemax/providers/base/executor.py` - SQL execution protocol
+- `packages/python-sdk/src/schemax/providers/base/state_differ.py` - State diffing
+- `packages/python-sdk/src/schemax/providers/base/reverse_generator.py` - Safety validation
+- `packages/python-sdk/src/schemax/providers/unity/state_reducer.py` - State reducer
+- `packages/python-sdk/src/schemax/providers/unity/state_differ.py` - Unity state diffing
+- `packages/python-sdk/src/schemax/providers/unity/sql_generator.py` - SQL generation with catalog mapping
+- `packages/python-sdk/src/schemax/providers/unity/executor.py` - Databricks SQL executor
+- `packages/python-sdk/src/schemax/providers/unity/auth.py` - Databricks authentication
+- `packages/python-sdk/src/schemax/providers/unity/safety_validator.py` - Rollback safety
 
 **Python SDK** (Commands):
-- `packages/python-sdk/src/schematic/cli.py` - CLI routing layer
-- `packages/python-sdk/src/schematic/commands/apply.py` - Apply command (with auto-rollback)
-- `packages/python-sdk/src/schematic/commands/rollback.py` - Rollback command (partial & complete)
-- `packages/python-sdk/src/schematic/commands/snapshot_rebase.py` - Snapshot rebase & validation
-- `packages/python-sdk/src/schematic/commands/sql.py` - SQL generation command
-- `packages/python-sdk/src/schematic/commands/diff.py` - Diff command
-- `packages/python-sdk/src/schematic/commands/validate.py` - Validation command
-- `packages/python-sdk/src/schematic/commands/deployment.py` - Deployment recording
+- `packages/python-sdk/src/schemax/cli.py` - CLI routing layer
+- `packages/python-sdk/src/schemax/commands/apply.py` - Apply command (with auto-rollback)
+- `packages/python-sdk/src/schemax/commands/rollback.py` - Rollback command (partial & complete)
+- `packages/python-sdk/src/schemax/commands/snapshot_rebase.py` - Snapshot rebase & validation
+- `packages/python-sdk/src/schemax/commands/sql.py` - SQL generation command
+- `packages/python-sdk/src/schemax/commands/diff.py` - Diff command
+- `packages/python-sdk/src/schemax/commands/validate.py` - Validation command
+- `packages/python-sdk/src/schemax/commands/deployment.py` - Deployment recording
 
 **Documentation**:
 - `README.md` - Project overview
@@ -1194,7 +1194,7 @@ All features implemented according to official Databricks Unity Catalog specific
 ## Git Strategy
 
 **Recommended**:
-- Commit `.schematic/` folder to git
+- Commit `.schemax/` folder to git
 - Snapshots = tagged releases
 - Changelog = work in progress
 - Easy to see what changed between versions
@@ -1206,7 +1206,7 @@ When starting a new conversation about this project:
 1. **Project Type**: Monorepo with VS Code extension (TypeScript) + Python SDK/CLI
 2. **Architecture**: Event sourcing with snapshots + changelog
 3. **Storage**: V4 architecture with multi-environment support
-   - Python: `packages/python-sdk/src/schematic/core/storage.py` (moved from storage_v4.py)
+   - Python: `packages/python-sdk/src/schemax/core/storage.py` (moved from storage_v4.py)
    - TypeScript: `packages/vscode-extension/src/storage-v4.ts`
 4. **UI**: React webview with inline editing, implicit catalog mode, comprehensive governance features
    - Conflict indicators, stale snapshot warnings, manual refresh button
@@ -1218,11 +1218,11 @@ When starting a new conversation about this project:
    - Unified batching for catalogs, schemas, and tables (uses base class batcher)
    - CREATE + UPDATE squashing optimization (e.g., single CREATE CATALOG ... MANAGED LOCATION)
 7. **Deployment Tracking**: ✅ Fully implemented
-   - Database-backed in `{catalog}.schematic` schema (Unity Catalog)
+   - Database-backed in `{catalog}.schemax` schema (Unity Catalog)
    - Database is source of truth for latest deployment (not local project.json)
    - Local tracking in `project.json` → `deployments` array
    - Status: `success`, `failed`, `partial` (0 statements = failed)
-8. **Databricks Integration**: ✅ `schematic apply` command with SQL execution, authentication, deployment tracking
+8. **Databricks Integration**: ✅ `schemax apply` command with SQL execution, authentication, deployment tracking
    - Interactive snapshot prompts (with --no-interaction flag)
    - Improved SQL preview (per-statement display)
    - Auto-rollback option (`--auto-rollback`)
@@ -1233,12 +1233,12 @@ When starting a new conversation about this project:
    - Safety validation (SAFE, RISKY, DESTRUCTIVE levels)
    - Idempotent: Checks database state to prevent redundant rollbacks
    - SQL preview: Shows exact SQL statements before execution (matches apply UX)
-   - Commands: `schematic rollback --partial` or `--to-snapshot`
+   - Commands: `schemax rollback --partial` or `--to-snapshot`
 10. **Snapshot Management**: ✅ Fully implemented
    - Snapshot validation: Detect stale snapshots after Git rebase
    - Snapshot rebase: Unpack, replay on new base, conflict detection
-   - Conflict resolution: Manual via UI, conflict logs in `.schematic/conflicts/`
-   - Commands: `schematic snapshot validate`, `schematic snapshot rebase`
+   - Conflict resolution: Manual via UI, conflict logs in `.schemax/conflicts/`
+   - Commands: `schemax snapshot validate`, `schemax snapshot rebase`
 11. **Operations**: Provider-based architecture (Unity Catalog = 31 operations)
    - Added: `update_catalog`, `update_schema` for managed location changes
 12. **Catalog Mapping**: Logical names (`__implicit__`, explicit) → Physical names per environment
@@ -1252,7 +1252,7 @@ When starting a new conversation about this project:
    - `core/deployment.py` - Deployment tracking
    - `core/version.py` - Semantic versioning
    - Absolute imports (PEP 8 compliant) - 82 conversions
-16. **Logs**: Check "Schematic" output channel in VS Code
+16. **Logs**: Check "schemax" output channel in VS Code
 17. **Build**: Extension (`npm run build`), SDK (`pip install -e ".[dev]"`)
 18. **Code Formatting**: Ruff format + lint for Python (100 char), manual for TypeScript
 19. **Documentation**: Clean structure, no redundant files

@@ -40,7 +40,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/vb-dbrks/schemax-vscode/tree/main/docs/schematic/',
+          editUrl: 'https://github.com/vb-dbrks/schemax/tree/main/docs/schemax/',
         },
         blog: false,
         theme: {

@@ -147,10 +147,10 @@ Your schema is now versioned!
 ### Checking the Files
 
 ```bash
-ls -la .schematic/
-cat .schematic/project.json
-cat .schematic/changelog.json
-ls -la .schematic/snapshots/
+ls -la .schemax
+cat .schemaxroject.json
+cat .schemaxhangelog.json
+ls -la .schemaxnapshots/
 ```
 
 ### Available Commands
@@ -339,12 +339,12 @@ Press `Cmd+Shift+P` → **SchemaX: Create Snapshot**
 ### Step 6: Verify Files
 
 ```bash
-tree .schematic/
+tree .schemax
 ```
 
 Output:
 ```
-.schematic/
+.schemax
 ├── changelog.json
 ├── project.json
 └── snapshots/
@@ -364,7 +364,7 @@ Output:
 
 The SQL is saved to:
 ```
-.schematic/migrations/migration_YYYY-MM-DD_HH-MM-SS.sql
+.schemaxigrations/migration_YYYY-MM-DD_HH-MM-SS.sql
 ```
 
 ### From CLI
@@ -624,14 +624,14 @@ pip install -e ".[dev]"
 **Solution**:
 ```bash
 # Check file structure
-ls .schematic/
+ls .schemax
 
 # Validate JSON
-python -m json.tool .schematic/project.json
-python -m json.tool .schematic/changelog.json
+python -m json.tool .schemaxroject.json
+python -m json.tool .schemaxhangelog.json
 
 # Check permissions
-ls -la .schematic/
+ls -la .schemax
 ```
 
 ### SQL Generation
@@ -640,7 +640,7 @@ ls -la .schematic/
 
 **Solution**:
 - Make sure there are operations in the changelog
-- Check: `cat .schematic/changelog.json`
+- Check: `cat .schemaxhangelog.json`
 - Create some changes in the designer first
 
 **Problem**: SQL has errors
@@ -683,7 +683,7 @@ ls -la .schematic/
 ### File Structure
 
 ```
-.schematic/
+.schemax
 ├── project.json          # Metadata & configuration
 ├── changelog.json        # Pending operations
 ├── snapshots/           # Version snapshots

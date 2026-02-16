@@ -137,7 +137,7 @@ SchemaX provides robust deployment tracking and rollback capabilities for safe s
 Deploy schema changes with confidence:
 - **Interactive snapshot prompts** - Create snapshots before deployment
 - **SQL preview** - Review all changes before execution  
-- **Database-backed tracking** - Audit trail in `{catalog}.schematic` schema
+- **Database-backed tracking** - Audit trail in `{catalog}.schemax` schema
 - **Auto-rollback option** - Automatically revert on failure (`--auto-rollback`)
 - **Dry-run mode** - Test without making changes (`--dry-run`)
 
@@ -199,7 +199,7 @@ schemax snapshot rebase v0.3.0
 ## Repository Structure
 
 ```
-schematic/
+schemax/
 ├── packages/
 │   ├── vscode-extension/       # VS Code Extension (TypeScript + React)
 │   │   ├── src/
@@ -247,10 +247,10 @@ schematic/
 
 ### 1. Design Schema
 
-Use the VS Code visual designer or directly edit `.schematic/` files:
+Use the VS Code visual designer or directly edit `.schemax/` files:
 
 ```
-.schematic/
+.schemax/
 ├── project.json          # Project metadata
 ├── changelog.json        # Uncommitted operations
 └── snapshots/
@@ -298,7 +298,7 @@ schemax sql --environment prod --output deploy.sql
 databricks sql execute --file deploy.sql --warehouse-id <id>
 
 # Track deployment
-schematic deploy --environment prod --version v1.0.0 --mark-deployed
+schemax deploy --environment prod --version v1.0.0 --mark-deployed
 ```
 
 ## Unity Catalog Support

@@ -72,7 +72,7 @@ State at v0.3.0 =
   load_snapshot("v0.2.0") + 
   apply_operations(changelog.ops)
 
-.schematic/
+.schemax/
 ├── snapshots/v0.2.0.json    ← Full state checkpoint
 └── changelog.json            ← Only ops since v0.2.0
 ```
@@ -358,7 +358,7 @@ def sql(workspace: str):
              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │               Storage Repository (Repository Pattern)           │
-│                 Reads/writes .schematic/ files                    │
+│                 Reads/writes .schemax/ files                    │
 └────────────┬────────────────────────────────────────────────────┘
              │
              ▼
@@ -649,7 +649,7 @@ Future providers will start with this reduced baseline.
 
 ```text
 workspace-root/
-└── .schematic/
+└── .schemax/
     ├── project.json           # Project metadata with provider info
     ├── changelog.json         # Uncommitted operations
     ├── snapshots/
@@ -686,7 +686,7 @@ workspace-root/
       "id": "snap_uuid",
       "version": "v0.1.0",
       "name": "Initial schema",
-      "file": ".schematic/snapshots/v0.1.0.json",
+      "file": ".schemax/snapshots/v0.1.0.json",
       "ts": "2025-10-06T10:00:00Z",
       "opsCount": 15,
       "hash": "sha256...",
@@ -1664,7 +1664,7 @@ schemax sql --target prod → CREATE SCHEMA `prod_my_analytics`.`customer_360`;
         "allowDrift": true,
         "requireSnapshot": false,
         "autoCreateCatalog": true,
-        "autoCreateSchematicSchema": true
+        "autoCreateschemaxSchema": true
       },
       "prod": {
         "catalog": "prod_analytics",
@@ -1687,7 +1687,7 @@ schemax sql --target prod → CREATE SCHEMA `prod_my_analytics`.`customer_360`;
 | `allowDrift` | boolean | Allow actual state to differ from SchemaX |
 | `requireSnapshot` | boolean | Require snapshot before deployment |
 | `autoCreateCatalog` | boolean | Create catalog if it doesn't exist |
-| `autoCreateSchematicSchema` | boolean | Auto-create tracking schema |
+| `autoCreateschemaxSchema` | boolean | Auto-create tracking schema |
 
 ### Catalog Name Mapping
 
@@ -1779,14 +1779,14 @@ Users now experience:
 
 ### Deployment Tracking
 
-SchemaX tracks deployments in the target catalog itself using a dedicated `schematic` schema:
+SchemaX tracks deployments in the target catalog itself using a dedicated `schemax` schema:
 
 ```sql
 -- Auto-created on first deployment
-CREATE SCHEMA IF NOT EXISTS <catalog>.schematic;
+CREATE SCHEMA IF NOT EXISTS <catalog>.schemax;
 
 -- Deployment history
-CREATE TABLE <catalog>.schematic.deployments (
+CREATE TABLE <catalog>.schemax.deployments (
   id STRING,
   environment STRING,
   snapshot_version STRING,
@@ -1800,7 +1800,7 @@ CREATE TABLE <catalog>.schematic.deployments (
 );
 
 -- Per-operation tracking
-CREATE TABLE <catalog>.schematic.deployment_ops (
+CREATE TABLE <catalog>.schemax.deployment_ops (
   deployment_id STRING,
   op_id STRING,
   op_type STRING,
@@ -1839,7 +1839,7 @@ schemax apply --target dev --profile DEV --warehouse-id abc123 --no-interaction
 3. Generate SQL with mapped names
 4. Show preview and prompt for confirmation
 5. Execute SQL statements sequentially
-6. Record deployment in `<catalog>.schematic.deployments`
+6. Record deployment in `<catalog>.schemax.deployments`
 7. On failure: stop immediately, record error, show status
 
 ---

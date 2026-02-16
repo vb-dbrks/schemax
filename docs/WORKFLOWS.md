@@ -25,7 +25,7 @@ The rest of this doc describes the **five situations** (greenfield single-dev, g
 
 ## Scope: One Project, One Schema Definition
 
-- **One data project** = one `.schematic/` directory (one `project.json`, one changelog, one snapshot chain). Usually one repo per analytics domain or product.
+- **One data project** = one `.schemax/` directory (one `project.json`, one changelog, one snapshot chain). Usually one repo per analytics domain or product.
 - **Environments** = dev, test, prod with per-environment catalog mappings (e.g. logical `__implicit__` → physical `dev_myapp`, `prod_myapp`).
 - **Single vs multi-dev** = same repo; multiple data engineers or analysts work on the same schema via Git (branches, merge, rebase). SchemaX does not manage multiple tenants or org-wide catalogs.
 
@@ -38,12 +38,12 @@ The rest of this doc describes the **five situations** (greenfield single-dev, g
 ```mermaid
 sequenceDiagram
   participant Dev as Developer
-  participant CLI as schematic CLI
-  participant Storage as .schematic files
+  participant CLI as schemax CLI
+  participant Storage as .schemax files
   participant Provider as Provider
   participant DB as Databricks
 
-  Dev->>CLI: schematic init
+  Dev->>CLI: schemax init
   CLI->>Storage: ensure_project_file (project.json, envs)
   Storage-->>CLI: ok
   CLI-->>Dev: project ready
@@ -76,7 +76,7 @@ sequenceDiagram
 | Phase   | What happens | Commands / UI |
 |--------|---------------|----------------|
 | **Start** | No schema; new repo or new data project folder. | — |
-| **Init** | Create `.schematic/` with project.json, empty changelog, dev/test/prod env config (catalogMappings). | `schematic init` or VS Code + first “Open Designer”. |
+| **Init** | Create `.schemax/` with project.json, empty changelog, dev/test/prod env config (catalogMappings). | `schemax init` or VS Code + first “Open Designer”. |
 | **Design** | Add catalogs, schemas, tables, columns, constraints, etc. | VS Code Designer (emits ops to changelog) or manual ops. |
 | **Checkpoint** | Create first snapshot (e.g. v0.1.0). Changelog cleared, state in snapshot. | `schemax snapshot create` or extension. |
 | **Deploy dev** | Generate SQL from changelog/snapshot, apply to dev. | `schemax apply --target dev --profile … --warehouse-id …` (optionally `--dry-run`). |
@@ -95,8 +95,8 @@ sequenceDiagram
   participant DevA as Dev A
   participant DevB as Dev B
   participant Git as Git
-  participant CLI as schematic CLI
-  participant Storage as .schematic files
+  participant CLI as schemax CLI
+  participant Storage as .schemax files
 
   DevA->>CLI: branch, design, snapshot create, apply dev
   CLI->>Storage: append_ops, create_snapshot
@@ -138,16 +138,16 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   participant Dev as Developer
-  participant CLI as schematic CLI
-  participant Storage as .schematic files
+  participant CLI as schemax CLI
+  participant Storage as .schemax files
   participant Provider as Provider
   participant DB as Databricks
 
-  Dev->>CLI: schematic init (optional)
+  Dev->>CLI: schemax init (optional)
   CLI->>Storage: ensure_project_file
   Storage-->>CLI: ok
 
-  Dev->>CLI: schematic import --target dev --catalog NAME
+  Dev->>CLI: schemax import --target dev --catalog NAME
   CLI->>Storage: load_current_state
   Storage-->>CLI: local state (e.g. empty)
   CLI->>Provider: discover_state (config, scope)
@@ -160,7 +160,7 @@ sequenceDiagram
   CLI-->>Dev: N operations prepared
 
   opt adopt-baseline
-    Dev->>CLI: schematic import ... --adopt-baseline
+    Dev->>CLI: schemax import ... --adopt-baseline
     CLI->>Storage: create_snapshot, write project
     CLI->>Provider: adopt_import_baseline
     Provider->>DB: record deployment baseline
@@ -175,9 +175,9 @@ sequenceDiagram
 | Phase   | What happens | Commands / UI |
 |--------|---------------|----------------|
 | **Start** | Catalog/schemas/tables already exist in Databricks. Repo may be new or existing. | — |
-| **Init (optional)** | If no project yet: `schematic init`. | `schematic init` |
-| **Import** | Discover live state from provider; diff vs local; generate ops into changelog. | `schematic import --target dev --profile … --warehouse-id … --catalog <name>` (optionally `--dry-run`). |
-| **Adopt baseline (optional)** | Mark imported state as first deployed for that env: create snapshot, record deployment baseline. | `schematic import … --adopt-baseline` |
+| **Init (optional)** | If no project yet: `schemax init`. | `schemax init` |
+| **Import** | Discover live state from provider; diff vs local; generate ops into changelog. | `schemax import --target dev --profile … --warehouse-id … --catalog <name>` (optionally `--dry-run`). |
+| **Adopt baseline (optional)** | Mark imported state as first deployed for that env: create snapshot, record deployment baseline. | `schemax import … --adopt-baseline` |
 | **From here** | Same as greenfield: design (more ops) → snapshot → apply to dev/test/prod. | Same as Situation 1. |
 
 **Timeline:** Init (if needed) → **Import** → (optional) **Adopt baseline** → then **Design → Snapshot → Apply** like greenfield.
@@ -186,11 +186,11 @@ sequenceDiagram
 
 After **adopt-baseline**, the imported snapshot (e.g. v0.1.0) is the **deployment baseline** for that environment: it represents the first state SchemaX considers “deployed” for that env. Snapshots older than the baseline (if any exist in the chain) are either pre-import or from a different history.
 
-**Scenario:** Someone runs `schematic rollback --target prod --to-snapshot v0.0.5` and the baseline for prod is v0.1.0 (the imported snapshot). So v0.0.5 is **before** the baseline.
+**Scenario:** Someone runs `schemax rollback --target prod --to-snapshot v0.0.5` and the baseline for prod is v0.1.0 (the imported snapshot). So v0.0.5 is **before** the baseline.
 
 **Why it’s risky:**
 
-- Rolling back to a snapshot **before** the baseline would undo the imported state (catalogs/schemas/tables that were brought in by import). The live catalog would no longer match any snapshot that Schematic “owns.”
+- Rolling back to a snapshot **before** the baseline would undo the imported state (catalogs/schemas/tables that were brought in by import). The live catalog would no longer match any snapshot that schemax “owns.”
 - The project’s notion of “current state” and the actual DB would diverge; future applies could recreate objects that were just dropped, or assume objects that no longer exist.
 - In brownfield, the baseline is the agreed “first version” under SchemaX; going before it is equivalent to abandoning that agreement for that env.
 
@@ -231,8 +231,8 @@ After **adopt-baseline**, the imported snapshot (e.g. v0.1.0) is the **deploymen
 ```mermaid
 sequenceDiagram
   participant Dev as Developer
-  participant CLI as schematic CLI
-  participant Storage as .schematic files
+  participant CLI as schemax CLI
+  participant Storage as .schemax files
   participant Provider as Provider
   participant DB as Databricks
 
@@ -249,7 +249,7 @@ sequenceDiagram
   CLI-->>Dev: apply failed at stmt 3
 
   alt Partial rollback
-    Dev->>CLI: schematic rollback --deployment ID --partial --target prod
+    Dev->>CLI: schemax rollback --deployment ID --partial --target prod
     CLI->>DB: get deployment, successful_ops
     DB-->>CLI: ops list
     CLI->>Provider: state_differ, reverse ops, generate SQL
@@ -257,7 +257,7 @@ sequenceDiagram
     DB-->>CLI: success
     CLI-->>Dev: partial rollback done
   else Complete rollback
-    Dev->>CLI: schematic rollback --to-snapshot v0.1.0 --target prod
+    Dev->>CLI: schemax rollback --to-snapshot v0.1.0 --target prod
     CLI->>Storage: read_snapshot v0.1.0, load current state
     CLI->>Provider: state_differ (current vs v0.1.0)
     CLI->>DB: execute rollback SQL
@@ -270,8 +270,8 @@ sequenceDiagram
 |--------|---------------|----------------|
 | **Apply** | Apply runs N statements; one fails (e.g. statement 3 of 5). | `schemax apply --target prod …` |
 | **State** | Deployment recorded as partial/failed; first 2 statements applied. | DB + `project.json` deployments. |
-| **Partial rollback** | Undo only the successful operations from that deployment. | `schematic rollback --deployment <id> --partial --target prod …` (or `--dry-run`). |
-| **Complete rollback** | Revert environment to a previous snapshot (e.g. v0.1.0). | `schematic rollback --target prod --to-snapshot v0.1.0 …` |
+| **Partial rollback** | Undo only the successful operations from that deployment. | `schemax rollback --deployment <id> --partial --target prod …` (or `--dry-run`). |
+| **Complete rollback** | Revert environment to a previous snapshot (e.g. v0.1.0). | `schemax rollback --target prod --to-snapshot v0.1.0 …` |
 
 **Timeline:** Apply (failure) → **Partial rollback** or **Complete rollback** → fix schema/ops → Snapshot → Apply again. Auto-rollback on failure: `schemax apply --auto-rollback`.
 
@@ -284,13 +284,13 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   participant Dev as Developer
-  participant CLI as schematic CLI
-  participant Storage as .schematic files
+  participant CLI as schemax CLI
+  participant Storage as .schemax files
   participant Provider as Provider
 
   rect rgb(240, 248, 255)
-    Note over Dev,Provider: schematic diff
-    Dev->>CLI: schematic diff --from-version v0.1.0 --to-version v0.2.0
+    Note over Dev,Provider: schemax diff
+    Dev->>CLI: schemax diff --from-version v0.1.0 --to-version v0.2.0
     CLI->>Storage: read_snapshot v0.1.0, v0.2.0
     Storage-->>CLI: state_old, state_new
     CLI->>Provider: get_state_differ, generate_diff_operations
@@ -322,7 +322,7 @@ sequenceDiagram
 
 | Use case | What it does | Command |
 |----------|----------------|--------|
-| **Diff** | Compare two snapshot versions; show ops or SQL to go from one to the other. | `schematic diff --from-version v0.1.0 --to-version v0.2.0` (optional `--target`). |
+| **Diff** | Compare two snapshot versions; show ops or SQL to go from one to the other. | `schemax diff --from-version v0.1.0 --to-version v0.2.0` (optional `--target`). |
 | **Validate** | Check project files, snapshot chain, dependency graph (e.g. circular refs). | `schemax validate` |
 | **SQL only** | Generate migration SQL from changelog or snapshot without applying. | `schemax sql --output migration.sql` (optional `--target`, `--from-version`). |
 
@@ -338,7 +338,7 @@ End-to-end flow for a **data project**: from no schema to deployed and recoverab
 sequenceDiagram
   participant Team as Data team
   participant SchemaX as SchemaX
-  participant Storage as .schematic
+  participant Storage as .schemax
   participant Catalog as Unity Catalog
 
   Note over Team,Catalog: 1. Project start (greenfield or brownfield)
@@ -407,7 +407,7 @@ When you use **import with adopt-baseline**, SchemaX records the imported snapsh
 
 **Implemented behavior:**
 
-- **Previous snapshots** are **not** deleted; they remain in `.schematic/snapshots/` and in `project.json`.
+- **Previous snapshots** are **not** deleted; they remain in `.schemax/snapshots/` and in `project.json`.
 - The baseline snapshot version is stored per environment in `project.json` under `provider.environments.<env>.importBaselineSnapshot`.
 - **Rollback** to a snapshot **older than** the import baseline is **blocked by default**. The CLI fails with a clear error and suggests using `--force` to override (see [Rollback to before baseline (brownfield)](#rollback-to-before-baseline-brownfield)).
 - With **`--force`**, rollback before the baseline is allowed: the CLI prints a warning that this undoes the imported state and may leave project and DB out of sync, then (unless `--no-interaction`) prompts for confirmation before proceeding.
