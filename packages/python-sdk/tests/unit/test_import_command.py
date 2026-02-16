@@ -207,32 +207,40 @@ class TestImportFromProvider:
             with patch("schematic.commands.import_assets.append_ops") as mock_append:
                 with patch("schematic.commands.import_assets.read_project") as mock_project:
                     with patch("schematic.commands.import_assets.create_snapshot") as mock_snapshot:
-                        mock_load.return_value = (
-                            {"catalogs": []},
-                            {"ops": []},
-                            provider,
-                            None,
-                        )
-                        mock_project.return_value = _make_project()
-                        mock_snapshot.return_value = (
-                            _make_project() | {"latestSnapshot": "v0.2.0"},
-                            {"version": "v0.2.0"},
-                        )
+                        with patch(
+                            "schematic.commands.import_assets.write_project"
+                        ) as mock_write_project:
+                            mock_load.return_value = (
+                                {"catalogs": []},
+                                {"ops": []},
+                                provider,
+                                None,
+                            )
+                            mock_project.return_value = _make_project()
+                            mock_snapshot.return_value = (
+                                _make_project() | {"latestSnapshot": "v0.2.0"},
+                                {"version": "v0.2.0"},
+                            )
 
-                        summary = import_from_provider(
-                            workspace=None,
-                            target_env="dev",
-                            profile="DEFAULT",
-                            warehouse_id="wh_123",
-                            dry_run=False,
-                            adopt_baseline=True,
-                        )
+                            summary = import_from_provider(
+                                workspace=None,
+                                target_env="dev",
+                                profile="DEFAULT",
+                                warehouse_id="wh_123",
+                                dry_run=False,
+                                adopt_baseline=True,
+                            )
 
         mock_append.assert_called_once()
         mock_snapshot.assert_called_once()
         provider.adopt_import_baseline.assert_called_once()
         assert summary["snapshot_version"] == "v0.2.0"
         assert summary["deployment_id"] == "deploy_import_1234"
+        mock_write_project.assert_called_once()
+        _workspace, persisted_project = mock_write_project.call_args.args
+        assert persisted_project["provider"]["environments"]["dev"][
+            "importBaselineSnapshot"
+        ] == "v0.2.0"
 
     def test_adopt_baseline_rejected_when_provider_capability_missing(self):
         provider = _make_provider(supports_baseline_adoption=False)

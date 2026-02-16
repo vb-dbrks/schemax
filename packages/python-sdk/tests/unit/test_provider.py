@@ -1084,7 +1084,6 @@ class TestProviderIntegration:
         """Get Unity provider instance"""
         return ProviderRegistry.get("unity")
 
-    @pytest.mark.skip(reason="Integration test - blocked by issue #19")
     def test_full_workflow_with_provider(self, unity_provider, empty_unity_state):
         """Test complete workflow using provider"""
         builder = OperationBuilder()

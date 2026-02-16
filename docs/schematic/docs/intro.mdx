@@ -1,0 +1,47 @@
+---
+sidebar_position: 1
+slug: /
+title: Introduction
+---
+
+# Schematic
+
+**Multi-provider data catalog schema management with version control.**
+
+Schematic is an extensible toolkit for managing data catalog schemas (Unity Catalog, Hive Metastore, PostgreSQL) using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
+
+## Features
+
+### Visual Schema Designer (VS Code Extension)
+
+- Intuitive interface for schema modeling
+- **Provider-based**: Unity Catalog (now), Hive/PostgreSQL (coming soon)
+- Data governance: constraints, tags, row filters, column masks
+- External tables, partitioning, liquid clustering
+- Snapshot-based versioning with semantic versions
+- Real-time SQL generation
+
+### Python SDK & CLI
+
+- Command-line tools for automation and CI/CD
+- Python API for custom workflows
+- Deployment tracking with database-backed audit trail
+- Automatic and manual rollback
+- Snapshot lifecycle: create, validate, rebase
+- Schema validation and circular dependency detection
+
+## Quick links
+
+- [Quickstart](/guide/quickstart) — Get started with the extension and CLI
+- [Architecture](/guide/architecture) — Design and patterns
+- [Workflows](/reference/workflows) — End-to-end situations (greenfield, brownfield, rollback)
+- [CLI Reference](/reference/cli) — Commands and options
+- [Testing](/reference/testing) — How to run and write tests
+
+## Supported providers
+
+| Provider          | Status   | Hierarchy                    |
+|-------------------|----------|------------------------------|
+| **Unity Catalog** | Available | Catalog → Schema → Table/View |
+| **Hive Metastore** | Coming soon | Database → Table           |
+| **PostgreSQL**    | Coming soon | Database → Schema → Table  |

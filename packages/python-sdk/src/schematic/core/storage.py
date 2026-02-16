@@ -555,14 +555,19 @@ def _get_next_version(current_version: str | None, settings: dict[str, Any]) -> 
 
 
 def get_environment_config(project: dict[str, Any], environment: str) -> dict[str, Any]:
-    """Get environment configuration from project
+    """Get environment configuration from project.
+
+    Each entry under provider.environments.<env> may include optional
+    importBaselineSnapshot (string, snapshot version) set when
+    import --adopt-baseline runs; used to block rollback before baseline
+    unless --force is used.
 
     Args:
         project: Project data (v4)
         environment: Environment name (e.g., "dev", "prod")
 
     Returns:
-        Environment configuration
+        Environment configuration (reference into project dict)
 
     Raises:
         ValueError: If environment not found

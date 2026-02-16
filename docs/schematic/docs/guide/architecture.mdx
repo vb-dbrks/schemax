@@ -1,0 +1,45 @@
+---
+sidebar_position: 20
+title: Architecture
+description: Technical design and patterns behind Schematic
+---
+
+# Architecture
+
+Schematic implements a **provider-based**, snapshot-driven schema versioning system: an append-only operation log with periodic snapshots, supporting multiple catalog types (Unity Catalog, Hive, PostgreSQL).
+
+## Design goals
+
+- **Git-friendly** — Human-readable JSON, clean diffs
+- **Reproducible** — Replay operations from a snapshot
+- **Auditable** — Full history of who changed what and when
+- **Migration-ready** — Operations → SQL migration scripts
+- **Extensible** — New catalog types via providers
+
+## Primary pattern: Event sourcing
+
+All changes are stored as **immutable operations** in an append-only log (`changelog.json`). Current state = latest snapshot + replay of changelog ops.
+
+```ts
+// Current state = replay all operations from a snapshot
+state = loadSnapshot(latestSnapshot);
+for (const operation of changelog.ops) {
+  state = provider.applyOperation(state, operation);
+}
+```
+
+## File layout (.schematic/)
+
+- `project.json` — Project metadata, environments, snapshot list
+- `changelog.json` — Ops since last snapshot
+- `snapshots/vX.Y.Z.json` — Full state + ops at version
+
+## Provider architecture
+
+- **Base** — Contracts: state model, operations, SQL generation, state reducer
+- **Unity** — Unity Catalog implementation (31+ operation types)
+- **Registry** — Pluggable provider lookup
+
+---
+
+For the **full architecture doc** (patterns, data models, SQL generation), see [ARCHITECTURE.md](https://github.com/your-org/schematic/blob/main/docs/ARCHITECTURE.md) in the repository.

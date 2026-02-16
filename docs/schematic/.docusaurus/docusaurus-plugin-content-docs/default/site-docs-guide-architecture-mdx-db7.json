@@ -1,0 +1,29 @@
+{
+  "id": "guide/architecture",
+  "title": "Architecture",
+  "description": "Technical design and patterns behind Schematic",
+  "source": "@site/docs/guide/architecture.mdx",
+  "sourceDirName": "guide",
+  "slug": "/guide/architecture",
+  "permalink": "/schematic/guide/architecture",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/your-org/schematic/tree/main/docs/schematic/docs/guide/architecture.mdx",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 20,
+  "frontMatter": {
+    "sidebar_position": 20,
+    "title": "Architecture",
+    "description": "Technical design and patterns behind Schematic"
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Quickstart",
+    "permalink": "/schematic/guide/quickstart"
+  },
+  "next": {
+    "title": "Development",
+    "permalink": "/schematic/guide/development"
+  }
+}

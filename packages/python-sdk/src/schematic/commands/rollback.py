@@ -22,6 +22,7 @@ from schematic.core.storage import (
     load_current_state,
     read_project,
 )
+from schematic.core.version import parse_semantic_version
 from schematic.providers.base.executor import ExecutionConfig, SQLExecutor
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
@@ -516,6 +517,7 @@ def rollback_complete(
     safe_only: bool = False,
     dry_run: bool = False,
     no_interaction: bool = False,
+    force: bool = False,
 ) -> RollbackResult:
     """Complete rollback to a previous snapshot
 
@@ -532,6 +534,7 @@ def rollback_complete(
         safe_only: Only execute safe operations (skip destructive)
         dry_run: Preview impact without executing
         no_interaction: If True, skip confirmation prompt
+        force: If True, allow rollback to snapshot before import baseline (with confirmation)
 
     Returns:
         RollbackResult with success status
@@ -545,6 +548,33 @@ def rollback_complete(
         project_name = project.get("name", "unknown")
         env_config = get_environment_config(project, target_env)
         deployment_catalog = env_config["topLevelName"]
+
+        # 1b. Baseline guard: block rollback before import baseline unless --force
+        baseline_version = env_config.get("importBaselineSnapshot")
+        if baseline_version:
+            try:
+                to_parsed = parse_semantic_version(to_snapshot)
+                baseline_parsed = parse_semantic_version(baseline_version)
+                if to_parsed < baseline_parsed:
+                    if not force:
+                        raise RollbackError(
+                            f"Rollback to {to_snapshot} is before the import baseline for this "
+                            f"environment ({baseline_version}). Rolling back past the baseline would "
+                            "undo the imported state and is not allowed. Use --force to override (see docs)."
+                        )
+                    console.print(
+                        "[yellow]⚠ Rollback target is before the import baseline for this environment.[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]  This undoes the imported state and may leave project and DB out of sync.[/yellow]"
+                    )
+                    if not no_interaction and not Confirm.ask(
+                        "Proceed with rollback before baseline?", default=False
+                    ):
+                        raise RollbackError("Rollback cancelled by user.")
+            except ValueError:
+                # Non-semver snapshot labels: skip baseline check (or allow only with force)
+                pass
 
         # 2. Build catalog mapping
         from schematic.commands.diff import _build_catalog_mapping
@@ -858,6 +888,8 @@ def rollback_complete(
                 error_message=result.error_message,
             )
 
+    except RollbackError:
+        raise
     except Exception as e:
         console.print(f"[red]✗ Complete rollback failed: {e}[/red]")
         return RollbackResult(

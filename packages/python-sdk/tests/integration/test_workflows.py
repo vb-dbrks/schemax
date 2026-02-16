@@ -28,9 +28,6 @@ from tests.utils import OperationBuilder
 class TestBasicWorkflow:
     """Test basic project workflow"""
 
-    @pytest.mark.skip(
-        reason="Integration test - SQL assertions need adjustment (related to issue #19, #20)"
-    )
     def test_init_to_sql_workflow(self, temp_workspace):
         """Test: initialize project → add operations → generate SQL"""
         builder = OperationBuilder()
@@ -50,22 +47,27 @@ class TestBasicWorkflow:
         ]
         append_ops(temp_workspace, ops)
 
-        # Verify operations were added
+        # Verify operations were added (may include auto-created implicit catalog op)
         changelog = read_changelog(temp_workspace)
-        assert len(changelog["ops"]) == 3
+        assert len(changelog["ops"]) >= 3
+        op_types = [o.get("op", "") for o in changelog["ops"]]
+        assert "unity.add_catalog" in op_types
+        assert "unity.add_schema" in op_types
+        assert "unity.add_table" in op_types
 
         # Step 3: Load state and generate SQL
         state, changelog, provider, _ = load_current_state(temp_workspace)
 
-        # Verify state
-        assert len(state["catalogs"]) == 1
-        assert state["catalogs"][0]["name"] == "production"
-        assert len(state["catalogs"][0]["schemas"]) == 1
-        assert state["catalogs"][0]["schemas"][0]["name"] == "analytics"
+        # Verify state (find production catalog; may also have __implicit__)
+        catalogs = state["catalogs"]
+        prod = next((c for c in catalogs if c["name"] == "production"), None)
+        assert prod is not None
+        assert len(prod["schemas"]) == 1
+        assert prod["schemas"][0]["name"] == "analytics"
 
-        # Generate SQL
+        # Generate SQL (changelog["ops"] are already Operation instances from load_current_state)
         generator = provider.get_sql_generator(state)
-        sql = generator.generate_sql([Operation(**op) for op in changelog["ops"]])
+        sql = generator.generate_sql(changelog["ops"])
 
         # Verify SQL
         assert "CREATE CATALOG" in sql
@@ -182,7 +184,6 @@ class TestSnapshotWorkflow:
 class TestCompleteSchemaWorkflow:
     """Test complete schema design and modification workflows"""
 
-    @pytest.mark.skip(reason="Integration test - blocked by issue #19")
     def test_create_complete_schema(self, initialized_workspace):
         """Test creating a complete schema with all features"""
         builder = OperationBuilder()
@@ -266,10 +267,10 @@ class TestCompleteSchemaWorkflow:
         # Load and verify state
         state, changelog, provider, _ = load_current_state(initialized_workspace)
 
-        # Verify structure
-        assert len(state["catalogs"]) == 1
-        catalog = state["catalogs"][0]
-        assert catalog["name"] == "production"
+        # Verify structure (may have implicit catalog + production)
+        catalogs = state["catalogs"]
+        catalog = next((c for c in catalogs if c["name"] == "production"), None)
+        assert catalog is not None
 
         schema = catalog["schemas"][0]
         assert schema["name"] == "crm"
@@ -286,9 +287,9 @@ class TestCompleteSchemaWorkflow:
         email_col = next((c for c in table["columns"] if c["name"] == "email"), None)
         assert email_col["tags"]["PII"] == "true"
 
-        # Generate SQL
+        # Generate SQL (changelog["ops"] are already Operation instances)
         generator = provider.get_sql_generator(state)
-        sql = generator.generate_sql([Operation(**op) for op in changelog["ops"]])
+        sql = generator.generate_sql(changelog["ops"])
 
         # Verify SQL contains all elements
         assert "CREATE CATALOG" in sql

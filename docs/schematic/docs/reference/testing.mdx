@@ -1,0 +1,47 @@
+---
+sidebar_position: 102
+title: Testing
+description: How to run and write tests for Schematic
+---
+
+# Testing Guide
+
+## Overview
+
+- **Python SDK**: pytest (300+ tests), coverage, SQLGlot validation.
+- **VS Code Extension**: Jest + React Testing Library.
+- **Integration**: End-to-end workflow tests (see [Workflows](/reference/workflows)).
+
+## Python SDK
+
+### Run tests
+
+```bash
+cd packages/python-sdk
+pip install -e ".[dev]"
+pytest tests/ -q
+pytest tests/ -v
+pytest tests/unit/test_sql_generator.py -v
+pytest tests/ --cov=src/schematic --cov-report=term-missing
+```
+
+### Structure
+
+- `tests/unit/` — Storage, SQL generator, state reducer, differ, catalog mapping, executor, rollback, apply.
+- `tests/integration/` — Workflows, command workflows, workflow e2e (WORKFLOWS.md situations), view dependencies.
+
+### Before committing
+
+Run `./devops/run-checks.sh` (format, lint, pytest, smoke).
+
+## Workflow E2E tests
+
+`tests/integration/test_workflows_e2e.py` covers all five situations in [Workflows](/reference/workflows): greenfield single/multi-dev, brownfield (import, baseline, rollback guard), apply failure and rollback, diff/validate/SQL-only.
+
+```bash
+pytest tests/integration/test_workflows_e2e.py -v
+```
+
+---
+
+For the **full testing guide** (structure, apply command tests, view tests, CI), see [TESTING.md](https://github.com/your-org/schematic/blob/main/docs/TESTING.md) in the repository.

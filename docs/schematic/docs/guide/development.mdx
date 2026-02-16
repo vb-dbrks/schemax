@@ -1,0 +1,44 @@
+---
+sidebar_position: 30
+title: Development
+description: Build, test, and contribute to Schematic
+---
+
+# Development Guide
+
+Prerequisites: **Python 3.11+**, **Node.js 18+**, **VS Code 1.90+**.
+
+## Clone and setup
+
+```bash
+git clone https://github.com/your-org/schematic.git
+cd schematic
+npm install && npm run build
+cd packages/python-sdk && pip install -e ".[dev]"
+```
+
+## Scripts
+
+| Task | Command |
+|------|---------|
+| Build extension | `npm run build` (root or `packages/vscode-extension`) |
+| Build webview | `npm run build:webview` |
+| Python tests | `cd packages/python-sdk && pytest tests/ -v` |
+| Format Python | `ruff format src/ tests/` |
+| Lint | `ruff check src/ tests/` |
+| Quality checks | `./devops/run-checks.sh` |
+
+## Running the extension
+
+1. Open repo in VS Code.
+2. Press **F5** → Extension Development Host opens.
+3. In that window: Open Folder → your schema project.
+4. **Cmd+Shift+P** → **Schematic: Open Designer**.
+
+## Before committing
+
+Run `./devops/run-checks.sh` (formatting, linting, pytest, smoke tests).
+
+---
+
+For the **full development guide** (prerequisites, detailed setup, contributing), see [DEVELOPMENT.md](https://github.com/your-org/schematic/blob/main/docs/DEVELOPMENT.md) in the repository.

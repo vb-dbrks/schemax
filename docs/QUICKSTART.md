@@ -656,8 +656,9 @@ ls -la .schematic/
 
 1. **Explore Examples**: Check `examples/basic-schema/`
 2. **Read Architecture**: See `docs/ARCHITECTURE.md`
-3. **Set Up CI/CD**: Use templates in `examples/github-actions/`
-4. **Join Community**: GitHub Discussions
+3. **Project Lifecycle & Workflows**: See `docs/WORKFLOWS.md` for single/multi-dev, greenfield/brownfield, and rollback timelines.
+4. **Set Up CI/CD**: Use templates in `examples/github-actions/`
+5. **Join Community**: GitHub Discussions
 
 ## Quick Reference
 

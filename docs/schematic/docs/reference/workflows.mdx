@@ -1,0 +1,31 @@
+---
+sidebar_position: 100
+title: Workflows
+description: End-to-end situations Schematic supports (greenfield, brownfield, rollback)
+---
+
+# Schematic Workflows & Data Project Lifecycle
+
+Schematic fits in the **schema layer** of data projects: it version-controls and deploys catalogs, schemas, tables, views, constraints, row filters, and column masks so that:
+
+- Changes are declarative, reviewed in Git, and applied in order (dev → test → prod).
+- Rollback and diff are possible when something goes wrong or when comparing environments.
+- Existing catalogs can be **imported** and then managed going forward.
+
+## Five situations
+
+| Situation | Summary | Key commands |
+|-----------|---------|---------------|
+| **1. Greenfield single dev** | New project; one developer. | Init → Ops → Snapshot → Apply (dev → test → prod). |
+| **2. Greenfield multi-dev** | Same project; branches, merge, rebase. | Validate after merge; `schematic snapshot validate`; `schematic snapshot rebase &lt;version&gt;`. |
+| **3. Brownfield** | Catalog already exists in Databricks. | `schematic import --target dev --catalog NAME`; optional `--adopt-baseline`; then same as greenfield. |
+| **4. Apply failure and rollback** | One statement fails during apply. | Partial: `schematic rollback --deployment &lt;id&gt; --partial`. Complete: `schematic rollback --to-snapshot v0.1.0`. |
+| **5. Diff, validate, SQL-only** | No live DB needed. | `schematic diff`, `schematic validate`, `schematic sql --output migration.sql`. |
+
+## Rollback before baseline (brownfield)
+
+After **import with adopt-baseline**, the imported snapshot is the deployment baseline for that environment. Rolling back to a snapshot **older than** that baseline is **blocked by default**; use `--force` (and confirmation) to override.
+
+---
+
+For **full workflow doc** (sequence diagrams, phase tables, baseline behavior), see [WORKFLOWS.md](https://github.com/your-org/schematic/blob/main/docs/WORKFLOWS.md) in the repository.

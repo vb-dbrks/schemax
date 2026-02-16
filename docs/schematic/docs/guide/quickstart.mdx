@@ -1,0 +1,64 @@
+---
+sidebar_position: 10
+title: Quickstart
+description: Get started with Schematic - VS Code extension and Python SDK/CLI
+---
+
+# Quickstart Guide
+
+Complete guide to get started with Schematic — both the VS Code extension and Python SDK/CLI.
+
+## Providers
+
+Schematic uses a **provider-based architecture**. **Unity Catalog is the default** for all new projects.
+
+| Provider | Status | When to Use |
+|----------|--------|-------------|
+| **Unity Catalog** | ✅ Available (v1.0) | Databricks Unity Catalog projects |
+| **Hive Metastore** | 🔜 Coming Q1 2026 | Apache Hive / legacy Databricks |
+| **PostgreSQL** | 🔜 Coming Q1 2026 | PostgreSQL with Lakebase extensions |
+
+## VS Code Extension
+
+1. **Open the repo** and press **F5** to launch Extension Development Host.
+2. **Open a folder** in that window (your schema project).
+3. **Cmd+Shift+P** → **Schematic: Open Designer**.
+4. Add **Catalog** → **Schema** → **Table** → **Columns** in the designer.
+5. **Schematic: Create Snapshot** to version your schema.
+6. **Schematic: Generate SQL Migration** to export DDL.
+
+## Python SDK & CLI
+
+```bash
+cd packages/python-sdk
+pip install -e .
+schematic --version
+```
+
+### Common commands
+
+```bash
+schematic validate                    # Validate project
+schematic sql --output migration.sql  # Generate SQL from changelog
+schematic snapshot create --name "v0.1.0"
+schematic diff --from v0.1.0 --to v0.2.0
+schematic apply --target dev --profile DEV --warehouse-id <id> --dry-run
+```
+
+## Your first schema (CLI)
+
+```bash
+mkdir my-schema && cd my-schema
+schematic init   # or open Designer once to create .schematic/
+# Add ops via Designer or append_ops; then:
+schematic snapshot create --name "Initial" --version v0.1.0
+schematic sql --output migration.sql --target dev
+```
+
+## CI/CD
+
+Use `--no-interaction` and `--dry-run` for automation. See [Development](/guide/development) and [Testing](/reference/testing) for full details.
+
+---
+
+For the **full quickstart** (troubleshooting, detailed steps, CI/CD examples), see [QUICKSTART.md](https://github.com/your-org/schematic/blob/main/docs/QUICKSTART.md) in the repository.

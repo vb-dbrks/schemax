@@ -2442,6 +2442,17 @@ class UnitySQLGenerator(BaseSQLGenerator):
             except Exception as e:
                 statements.append(f"-- Error generating SQL for {op.id}: {e}")
 
+        # Process governance operations (row filters, column masks) after table creation
+        governance_ops = batch_info.get("governance_ops", [])
+        for op in governance_ops:
+            op_type = op.op.replace("unity.", "")
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append(sql)
+            except Exception as e:
+                statements.append(f"-- Error generating SQL for {op.id}: {e}")
+
         # Process other operations (skip table tags — batched above; skip set_table_comment — in CREATE)
         for op in other_ops:
             op_type = op.op.replace("unity.", "")
@@ -2730,6 +2741,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} UNSET TAGS ('{tag_name}')"
 
     # Constraint operations
+    def _constraint_options_suffix(self, op: Operation) -> str:
+        """Build constraint option suffix (NOT ENFORCED, RELY, DEFERRABLE, INITIALLY DEFERRED)."""
+        options: list[str] = []
+        if op.payload.get("notEnforced"):
+            options.append("NOT ENFORCED")
+        if op.payload.get("rely"):
+            options.append("RELY")
+        if op.payload.get("deferrable"):
+            options.append("DEFERRABLE")
+        if op.payload.get("initiallyDeferred"):
+            options.append("INITIALLY DEFERRED")
+        return " " + " ".join(options) if options else ""
+
     def _add_constraint(self, op: Operation) -> str:
         table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown")
         table_esc = self._build_fqn(*table_fqn.split("."))
@@ -2740,6 +2764,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         name_clause = (
             f"CONSTRAINT {self.escape_identifier(constraint_name)} " if constraint_name else ""
         )
+        opts = self._constraint_options_suffix(op)
 
         if constraint_type == "primary_key":
             # Databricks: TIMESERIES is per-column: PRIMARY KEY ( col1 [ TIMESERIES ] [, ...] )
@@ -2751,7 +2776,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 else:
                     col_parts.append(esc)
             cols = ", ".join(col_parts)
-            return f"ALTER TABLE {table_esc} ADD {name_clause}PRIMARY KEY({cols})"
+            return f"ALTER TABLE {table_esc} ADD {name_clause}PRIMARY KEY({cols}){opts}"
 
         elif constraint_type == "foreign_key":
             parent_table = self.id_name_map.get(op.payload.get("parentTable", ""), "unknown")
@@ -2763,12 +2788,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
             parent_cols = ", ".join(self.escape_identifier(c) for c in parent_columns)
             return (
                 f"ALTER TABLE {table_esc} ADD {name_clause}"
-                f"FOREIGN KEY({cols}) REFERENCES {parent_esc}({parent_cols})"
+                f"FOREIGN KEY({cols}) REFERENCES {parent_esc}({parent_cols}){opts}"
             )
 
         elif constraint_type == "check":
             expression = op.payload.get("expression", "TRUE")
-            return f"ALTER TABLE {table_esc} ADD {name_clause}CHECK ({expression})"
+            return f"ALTER TABLE {table_esc} ADD {name_clause}CHECK ({expression}){opts}"
 
         return ""
 
@@ -2837,24 +2862,60 @@ class UnitySQLGenerator(BaseSQLGenerator):
                                 return str(name) if name else None
         return None
 
-    # Row filter operations
+    # Row filter operations (Unity: ALTER TABLE ... SET ROW FILTER func ON (cols) | DROP ROW FILTER)
     def _add_row_filter(self, op: Operation) -> str:
-        # Row filters require UDF creation first
-        return f"-- Row filter: {op.payload['name']} - UDF: {op.payload['udfExpression']}"
+        table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown.unknown.unknown")
+        parts = table_fqn.split(".")
+        fqn_esc = self._build_fqn(*parts) if len(parts) >= 3 else self._build_fqn(table_fqn)
+        func_name = op.payload.get("name", "row_filter")
+        func_esc = (
+            self._build_fqn(*func_name.split("."))
+            if "." in func_name
+            else self.escape_identifier(func_name)
+        )
+        column_names = op.payload.get("columnNames") or []
+        cols_sql = ", ".join(self.escape_identifier(c) for c in column_names)
+        return f"ALTER TABLE {fqn_esc} SET ROW FILTER {func_esc} ON ({cols_sql})"
 
     def _update_row_filter(self, op: Operation) -> str:
-        return "-- Row filter update"
+        return self._add_row_filter(op)
 
     def _remove_row_filter(self, op: Operation) -> str:
-        return "-- Row filter removal"
+        table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown.unknown.unknown")
+        parts = table_fqn.split(".")
+        fqn_esc = self._build_fqn(*parts) if len(parts) >= 3 else self._build_fqn(table_fqn)
+        return f"ALTER TABLE {fqn_esc} DROP ROW FILTER"
 
-    # Column mask operations
+    # Column mask operations (Unity: ALTER TABLE ... ALTER COLUMN col SET MASK func | DROP MASK)
     def _add_column_mask(self, op: Operation) -> str:
-        # Column masks require UDF creation first
-        return f"-- Column mask: {op.payload['name']} - Function: {op.payload['maskFunction']}"
+        table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown.unknown.unknown")
+        parts = table_fqn.split(".")
+        fqn_esc = self._build_fqn(*parts) if len(parts) >= 3 else self._build_fqn(table_fqn)
+        col_name = self.id_name_map.get(
+            op.payload["columnId"], op.payload.get("columnId", "unknown")
+        )
+        col_esc = self.escape_identifier(col_name)
+        mask_func = op.payload["maskFunction"]
+        func_esc = (
+            self._build_fqn(*mask_func.split("."))
+            if "." in mask_func
+            else self.escape_identifier(mask_func)
+        )
+        using = op.payload.get("usingColumns")
+        if using:
+            using_sql = ", ".join(self.escape_identifier(c) for c in using)
+            return f"ALTER TABLE {fqn_esc} ALTER COLUMN {col_esc} SET MASK {func_esc} USING COLUMNS ({using_sql})"
+        return f"ALTER TABLE {fqn_esc} ALTER COLUMN {col_esc} SET MASK {func_esc}"
 
     def _update_column_mask(self, op: Operation) -> str:
-        return "-- Column mask update"
+        return self._add_column_mask(op)
 
     def _remove_column_mask(self, op: Operation) -> str:
-        return "-- Column mask removal"
+        table_fqn = self.id_name_map.get(op.payload["tableId"], "unknown.unknown.unknown")
+        parts = table_fqn.split(".")
+        fqn_esc = self._build_fqn(*parts) if len(parts) >= 3 else self._build_fqn(table_fqn)
+        col_name = self.id_name_map.get(
+            op.payload["columnId"], op.payload.get("columnId", "unknown")
+        )
+        col_esc = self.escape_identifier(col_name)
+        return f"ALTER TABLE {fqn_esc} ALTER COLUMN {col_esc} DROP MASK"

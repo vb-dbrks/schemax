@@ -200,6 +200,8 @@ def import_from_provider(
             )
         except NotImplementedError as e:
             raise ImportError(str(e)) from e
+        env_config["importBaselineSnapshot"] = snapshot_version
+        write_project(workspace, project)
         console.print(f"[green]✓[/green] Adopted baseline deployment: {deployment_id}")
         summary["snapshot_version"] = snapshot_version
         summary["deployment_id"] = deployment_id

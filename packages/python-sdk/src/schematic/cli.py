@@ -466,6 +466,11 @@ def apply(
 @click.option("--safe-only", is_flag=True, help="Only execute safe operations (skip destructive)")
 @click.option("--dry-run", is_flag=True, help="Preview impact without executing")
 @click.option("--no-interaction", is_flag=True, help="Skip confirmation prompts (for CI/CD)")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Override baseline guard for complete rollback (use with caution)",
+)
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def rollback(
     deployment: str | None,
@@ -478,6 +483,7 @@ def rollback(
     safe_only: bool,
     dry_run: bool,
     no_interaction: bool,
+    force: bool,
     workspace: str,
 ) -> None:
     """Rollback deployments (partial or complete)
@@ -745,6 +751,7 @@ def rollback(
                 safe_only=safe_only,
                 dry_run=dry_run,
                 no_interaction=no_interaction,
+                force=force,
             )
 
             if result.success:
