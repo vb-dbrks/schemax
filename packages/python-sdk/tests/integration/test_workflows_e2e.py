@@ -23,14 +23,11 @@ from schematic.core.storage import (
     append_ops,
     create_snapshot,
     ensure_project_file,
-    read_changelog,
     read_project,
-    read_snapshot,
     write_project,
 )
 from tests.utils import OperationBuilder
 from tests.utils.cli_helpers import invoke_cli
-
 
 # -----------------------------------------------------------------------------
 # Situation 1: Greenfield (New Data Project) — Single Developer
@@ -308,9 +305,9 @@ class TestWorkflowS3Brownfield:
                 "operations": [],
             }
         with patch("schematic.providers.unity.auth.create_databricks_client"):
-            with patch("schematic.commands.rollback.DeploymentTracker") as Tracker:
+            with patch("schematic.commands.rollback.DeploymentTracker") as mock_tracker_cls:
                 tracker = Mock()
-                Tracker.return_value = tracker
+                mock_tracker_cls.return_value = tracker
                 tracker.get_latest_deployment.return_value = None
             with patch("schematic.commands.rollback.load_current_state") as mock_load:
                 mock_load.return_value = (

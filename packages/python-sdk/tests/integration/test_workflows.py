@@ -20,7 +20,6 @@ from schematic.core.storage import (
     read_project,
     read_snapshot,
 )
-from schematic.providers.base.operations import Operation
 from tests.utils import OperationBuilder
 
 

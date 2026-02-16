@@ -5,8 +5,6 @@ Tests SQL generation for all 31 Unity Catalog operations.
 Verifies SQL idempotency, correctness, and proper escaping.
 """
 
-import pytest
-
 from schematic.providers.base.operations import Operation
 from schematic.providers.unity.sql_generator import UnitySQLGenerator
 from tests.utils import OperationBuilder
