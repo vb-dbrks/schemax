@@ -39,6 +39,7 @@ class ProviderCapabilities(BaseModel):
         "materialized_views": False,
         "functions": False,
         "indexes": False,
+        "baseline_adoption": False,
     }
 
 
@@ -179,6 +180,83 @@ class Provider(ABC):
             StateDiffer instance for generating diff operations
         """
         pass
+
+    def discover_state(
+        self,
+        config: ExecutionConfig,
+        scope: dict[str, Any] | None = None,
+    ) -> ProviderState:
+        """Discover current state from the target provider.
+
+        Providers can override this for import/adoption workflows.
+
+        Args:
+            config: Execution/auth context for connecting to provider
+            scope: Optional discovery filter (e.g., catalog/schema/table)
+
+        Returns:
+            Discovered provider state
+        """
+        raise NotImplementedError(
+            f"Provider '{self.info.id}' does not implement live state discovery yet"
+        )
+
+    def validate_import_scope(self, scope: dict[str, Any]) -> ValidationResult:
+        """Validate provider-specific import scope rules.
+
+        Providers can override this to reject system objects or unsupported scopes.
+        """
+        del scope
+        return ValidationResult(valid=True, errors=[])
+
+    def prepare_import_state(
+        self,
+        local_state: ProviderState,
+        discovered_state: ProviderState,
+        env_config: dict[str, Any],
+        mapping_overrides: dict[str, str] | None = None,
+    ) -> tuple[ProviderState, dict[str, str], bool]:
+        """Provider hook to normalize discovered state before diff.
+
+        Returns:
+            normalized_state, provider mappings, mappings_updated
+        """
+        del local_state, env_config, mapping_overrides
+        return discovered_state, {}, False
+
+    def collect_import_warnings(
+        self,
+        config: ExecutionConfig,
+        scope: dict[str, Any],
+        discovered_state: ProviderState,
+    ) -> list[str]:
+        """Provider hook to emit non-fatal import warnings."""
+        del config, scope, discovered_state
+        return []
+
+    def update_env_import_mappings(
+        self,
+        env_config: dict[str, Any],
+        mappings: dict[str, str],
+    ) -> None:
+        """Persist provider-specific import mappings into environment config."""
+        del env_config, mappings
+        return None
+
+    def adopt_import_baseline(
+        self,
+        project: dict[str, Any],
+        env_config: dict[str, Any],
+        target_env: str,
+        profile: str,
+        warehouse_id: str,
+        snapshot_version: str,
+    ) -> str:
+        """Record import baseline deployment for provider-specific tracking."""
+        del project, env_config, target_env, profile, warehouse_id, snapshot_version
+        raise NotImplementedError(
+            f"Provider '{self.info.id}' does not support baseline adoption tracking"
+        )
 
 
 class BaseProvider(Provider):

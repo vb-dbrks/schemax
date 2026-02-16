@@ -9,6 +9,12 @@ import { SchemaDetails } from './components/SchemaDetails';
 import { SnapshotPanel } from './components/SnapshotPanel';
 import { getVsCodeApi } from './vscode-api';
 import { ProjectSettingsPanel } from './components/ProjectSettingsPanel';
+import {
+  ImportAssetsPanel,
+  ImportProgress,
+  ImportRunRequest,
+  ImportRunResult,
+} from './components/ImportAssetsPanel';
 
 const vscode = getVsCodeApi();
 
@@ -20,6 +26,10 @@ const IconSettings: React.FC = () => (
 // Codicon icons automatically adapt to VS Code themes
 const IconRefresh: React.FC<{ className?: string }> = ({ className = '' }) => (
   <i className={`codicon codicon-refresh ${className}`} aria-hidden="true"></i>
+);
+
+const IconImport: React.FC = () => (
+  <i slot="start" className="codicon codicon-cloud-download" aria-hidden="true"></i>
 );
 
 export const App: React.FC = () => {
@@ -41,6 +51,10 @@ export const App: React.FC = () => {
   const [staleSnapshotInfo, setStaleSnapshotInfo] = React.useState<any>(null);
   const [validationResult, setValidationResult] = React.useState<{errors: string[], warnings: string[]} | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [isImportOpen, setIsImportOpen] = React.useState(false);
+  const [isImportRunning, setIsImportRunning] = React.useState(false);
+  const [importResult, setImportResult] = React.useState<ImportRunResult | null>(null);
+  const [importProgress, setImportProgress] = React.useState<ImportProgress | null>(null);
   
   // Determine if selected object is a view
   const isViewSelected = selectedTableId ? !!findView(selectedTableId) : false;
@@ -84,6 +98,13 @@ export const App: React.FC = () => {
           } else {
             setValidationResult(null);
           }
+          break;
+        case 'import-result':
+          setIsImportRunning(false);
+          setImportResult(message.payload);
+          break;
+        case 'import-progress':
+          setImportProgress(message.payload);
           break;
       }
     };
@@ -164,6 +185,20 @@ export const App: React.FC = () => {
               }
             </span>
           </div>
+          <VSCodeButton
+            type="button"
+            appearance="secondary"
+            className="import-assets-button"
+            onClick={() => {
+              setImportResult(null);
+              setImportProgress(null);
+              setIsImportOpen(true);
+            }}
+            disabled={isImportRunning}
+          >
+            <IconImport />
+            Import assets
+          </VSCodeButton>
           <button
             className="refresh-button"
             onClick={() => {
@@ -248,7 +283,36 @@ export const App: React.FC = () => {
           onClose={() => setIsProjectSettingsOpen(false)}
         />
       )}
+
+      {isImportOpen && project && (
+        <ImportAssetsPanel
+          project={project}
+          isRunning={isImportRunning}
+          result={importResult}
+          progress={importProgress}
+          onClose={() => setIsImportOpen(false)}
+          onRun={(request: ImportRunRequest) => {
+            setIsImportRunning(true);
+            setImportResult(null);
+            setImportProgress({
+              phase: 'starting',
+              message: 'Preparing import...',
+              percent: 5,
+              level: 'info',
+            });
+            vscode.postMessage({ type: 'run-import', payload: request });
+          }}
+          onCancel={() => {
+            setImportProgress({
+              phase: 'cancel-requested',
+              message: 'Cancelling import...',
+              percent: importProgress?.percent ?? 35,
+              level: 'warning',
+            });
+            vscode.postMessage({ type: 'cancel-import' });
+          }}
+        />
+      )}
     </div>
   );
 };
-

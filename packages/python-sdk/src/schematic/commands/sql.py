@@ -43,10 +43,8 @@ def build_catalog_mapping(state: dict, env_config: dict) -> dict[str, str]:
     """
     Build catalog name mapping (logical → physical) for environment-specific SQL generation.
 
-    Supports two modes:
-    1. Single-catalog (implicit): Catalog stored as __implicit__ in state, mapped to env catalog
-    2. Single-catalog (explicit): One named catalog, mapped to env catalog
-    3. Multi-catalog: Not yet supported
+    Uses environment `catalogMappings` (logical -> physical).
+    Requires an explicit mapping for each logical catalog present in state.
     """
     catalogs = state.get("catalogs", [])
 
@@ -54,20 +52,28 @@ def build_catalog_mapping(state: dict, env_config: dict) -> dict[str, str]:
         # No catalogs yet - no mapping needed
         return {}
 
-    if len(catalogs) == 1:
-        logical_name = catalogs[0]["name"]
-        physical_name = env_config["topLevelName"]
+    raw_mappings = env_config.get("catalogMappings") or {}
+    if not isinstance(raw_mappings, dict):
+        raise SQLGenerationError(
+            "Environment catalogMappings must be an object mapping logical->physical"
+        )
 
-        console.print(f"[dim]  Catalog mapping: {logical_name} → {physical_name}[/dim]")
+    mappings = {str(logical): str(physical) for logical, physical in raw_mappings.items()}
+    catalog_names = [str(c.get("name")) for c in catalogs if c.get("name")]
+    missing = [name for name in catalog_names if name not in mappings]
+    if missing:
+        raise SQLGenerationError(
+            "Missing catalog mapping(s) for logical catalog(s): "
+            f"{', '.join(sorted(missing))}. "
+            "Add them under provider.environments.<env>.catalogMappings."
+        )
 
-        return {logical_name: physical_name}
-
-    # Multiple catalogs - not supported yet
-    raise SQLGenerationError(
-        f"Multi-catalog projects are not yet supported. "
-        f"Found {len(catalogs)} catalogs: {', '.join(c['name'] for c in catalogs)}. "
-        "For now, please use a single catalog per project."
+    resolved = {logical: mappings[logical] for logical in catalog_names}
+    rendered = ", ".join(
+        f"{logical} → {physical}" for logical, physical in sorted(resolved.items())
     )
+    console.print(f"[dim]  Catalog mappings: {rendered}[/dim]")
+    return resolved
 
 
 def generate_sql_migration(

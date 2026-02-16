@@ -5,6 +5,8 @@ This document describes how to run tests for the Schematic project.
 ## Overview
 
 Schematic uses different testing frameworks for different components:
+
+- **Coverage checklist**: For release-ready test coverage, every scenario in this guide should have a corresponding passing test or CI/smoke step. See [TEST_COVERAGE_CHECKLIST.md](TEST_COVERAGE_CHECKLIST.md) for a scenario-by-scenario checklist aligned with this document.
 - **Python SDK**: pytest with coverage reporting (306 tests)
 - **VS Code Extension**: Jest with React Testing Library
 - **Integration**: End-to-end workflow tests
@@ -58,7 +60,9 @@ packages/python-sdk/tests/
 │   ├── test_dependency_graph.py  # Dependency graph & cycle detection tests
 │   └── test_apply_command.py     # Apply command tests (interactive/non-interactive)
 ├── integration/                   # Integration tests
-│   ├── test_workflows.py         # End-to-end workflow tests
+│   ├── test_workflows.py         # End-to-end workflow tests (state, snapshot, diff)
+│   ├── test_workflows_e2e.py     # E2E tests for all situations in docs/WORKFLOWS.md
+│   ├── test_command_workflows.py # CLI command workflow tests (validate, sql, snapshot, diff)
 │   └── test_view_dependencies.py # View dependency and FQN qualification tests
 ├── providers/                     # Provider-specific tests
 │   └── base/
@@ -155,6 +159,24 @@ pytest tests/unit/test_state_differ.py::TestUnityStateDifferViewRegression -v
 
 # Run dependency graph tests
 pytest tests/unit/test_dependency_graph.py -v
+```
+
+### Workflow E2E tests (WORKFLOWS.md)
+
+The file `tests/integration/test_workflows_e2e.py` implements end-to-end and integration tests for all five situations described in [WORKFLOWS.md](WORKFLOWS.md):
+
+| Situation | Test class | What is tested |
+|-----------|------------|----------------|
+| 1. Greenfield single dev | `TestWorkflowS1GreenfieldSingleDev` | Init → ops → snapshot → validate → sql → diff; apply dry-run (stubbed) |
+| 2. Greenfield multi-dev | `TestWorkflowS2GreenfieldMultiDev` | Validate after ops; snapshot validate (no stale); snapshot rebase |
+| 3. Brownfield | `TestWorkflowS3Brownfield` | Import with adopt-baseline (stores baseline); rollback before baseline blocked; rollback with --force |
+| 4. Apply failure and rollback | `TestWorkflowS4ApplyFailureAndRollback` | Apply dry-run then complete rollback dry-run; partial rollback CLI (stubbed DB) |
+| 5. Diff, validate, SQL-only | `TestWorkflowS5DiffValidateSqlOnly` | validate, sql, diff via CLI and API (no live DB) |
+
+Run all workflow e2e tests:
+
+```bash
+pytest tests/integration/test_workflows_e2e.py -v
 ```
 
 ## VS Code Extension Testing

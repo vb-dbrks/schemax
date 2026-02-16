@@ -1,4 +1,4 @@
-.PHONY: format lint typecheck test all check ci pre-commit install clean help
+.PHONY: format fmt lint typecheck test all check ci pre-commit install clean help
 
 help:
 	@echo "Schematic Python SDK - Development Commands"
@@ -7,6 +7,7 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  format      - Format code with Ruff (auto-fix)"
+	@echo "  fmt         - Alias for format"
 	@echo "  lint        - Lint code with Ruff (auto-fix)"
 	@echo "  typecheck   - Type check with mypy"
 	@echo "  test        - Run tests with pytest"
@@ -21,6 +22,9 @@ help:
 format:
 	@echo "🎨 Formatting with Ruff..."
 	uv run ruff format src/ tests/
+
+# Alias so "make fmt" works (e.g. from root Makefile or scripts)
+fmt: format
 
 lint:
 	@echo "🔍 Linting with Ruff..."

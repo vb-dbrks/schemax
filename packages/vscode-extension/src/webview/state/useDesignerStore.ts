@@ -158,21 +158,6 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   selectTable: (tableId) => set({ selectedTableId: tableId }),
 
   addCatalog: (name, options) => {
-    const state = get();
-    const existingCatalogs = state.project?.state?.catalogs || [];
-    
-    // Block multi-catalog projects (MVP limitation)
-    if (existingCatalogs.length >= 1) {
-      vscode.postMessage({
-        type: 'show-error',
-        payload: {
-          message: 'Multi-Catalog Support Coming Soon',
-          detail: 'Currently, only single-catalog projects are supported. Multi-catalog support with per-catalog environment mappings is planned for a future release.'
-        }
-      });
-      return;
-    }
-    
     const catalogId = `cat_${uuidv4()}`;
     const op = createOperation(get(), 'add_catalog', catalogId, { 
       catalogId, 
@@ -601,4 +586,3 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     return undefined;
   },
 }));
-

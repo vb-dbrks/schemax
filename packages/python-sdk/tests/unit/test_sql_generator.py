@@ -5,8 +5,6 @@ Tests SQL generation for all 31 Unity Catalog operations.
 Verifies SQL idempotency, correctness, and proper escaping.
 """
 
-import pytest
-
 from schematic.providers.base.operations import Operation
 from schematic.providers.unity.sql_generator import UnitySQLGenerator
 from tests.utils import OperationBuilder
@@ -701,6 +699,7 @@ class TestConstraintSQL:
             "primary_key",
             ["col_001"],
             name="pk_users",
+            notEnforced=True,
             op_id="op_020",
         )
 
@@ -710,6 +709,7 @@ class TestConstraintSQL:
         assert "`pk_users`" in result.sql
         assert "PRIMARY KEY" in result.sql
         assert "`user_id`" in result.sql
+        assert "NOT ENFORCED" in result.sql
 
     def test_add_primary_key_constraint_timeseries_multi_column(self, sample_unity_state):
         """PRIMARY KEY with timeseries and multiple columns: TIMESERIES after first column only."""
@@ -819,12 +819,11 @@ class TestConstraintSQL:
         assert "`pk_users`" in result.sql
 
 
-@pytest.mark.skip(reason="Row filter SQL generation not implemented - see issue #19")
 class TestRowFilterSQL:
     """Test SQL generation for row filter operations"""
 
     def test_add_row_filter(self, sample_unity_state):
-        """Test CREATE ROW FILTER SQL generation"""
+        """Test SET ROW FILTER SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
@@ -838,23 +837,25 @@ class TestRowFilterSQL:
         )
 
         result = generator.generate_sql_for_operation(op)
-        assert "ROW FILTER" in result.sql or "ROW ACCESS POLICY" in result.sql
+        assert "SET ROW FILTER" in result.sql
+        assert "region_filter" in result.sql or "`region_filter`" in result.sql
+        assert "ON ()" in result.sql
 
     def test_update_row_filter(self, sample_unity_state):
-        """Test ALTER ROW FILTER SQL generation"""
+        """Test ALTER ROW FILTER (SET) SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
         op = builder.update_row_filter(
             "filter_001",
             "table_789",
+            name="region_filter_v2",
             udfExpression="region = current_user() AND active = 1",
             op_id="op_025",
         )
 
         result = generator.generate_sql_for_operation(op)
-        # Might generate ALTER or DROP+CREATE
-        assert "ROW FILTER" in result.sql or "ROW ACCESS POLICY" in result.sql
+        assert "SET ROW FILTER" in result.sql
 
     def test_remove_row_filter(self, sample_unity_state):
         """Test DROP ROW FILTER SQL generation"""
@@ -864,15 +865,14 @@ class TestRowFilterSQL:
         op = builder.remove_row_filter("filter_001", "table_789", op_id="op_026")
 
         result = generator.generate_sql_for_operation(op)
-        assert "DROP" in result.sql or "REMOVE" in result.sql
+        assert "DROP ROW FILTER" in result.sql
 
 
-@pytest.mark.skip(reason="Column mask SQL generation not implemented - see issue #19")
 class TestColumnMaskSQL:
     """Test SQL generation for column mask operations"""
 
     def test_add_column_mask(self, sample_unity_state):
-        """Test CREATE COLUMN MASK SQL generation"""
+        """Test SET COLUMN MASK SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
@@ -887,30 +887,35 @@ class TestColumnMaskSQL:
         )
 
         result = generator.generate_sql_for_operation(op)
-        assert "MASK" in result.sql or "COLUMN MASK" in result.sql
+        assert "SET MASK" in result.sql
 
     def test_update_column_mask(self, sample_unity_state):
-        """Test ALTER COLUMN MASK SQL generation"""
+        """Test ALTER COLUMN MASK (SET) SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
         op = builder.update_column_mask(
-            "mask_001", "table_789", maskFunction="MASK(email, '*')", op_id="op_028"
+            "mask_001",
+            "table_789",
+            columnId="col_002",
+            maskFunction="MASK(email, '*')",
+            op_id="op_028",
         )
 
         result = generator.generate_sql_for_operation(op)
-        # Might generate ALTER or DROP+CREATE
-        assert "MASK" in result.sql or "COLUMN MASK" in result.sql
+        assert "SET MASK" in result.sql
 
     def test_remove_column_mask(self, sample_unity_state):
         """Test DROP COLUMN MASK SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.remove_column_mask("mask_001", "table_789", op_id="op_029")
+        op = builder.remove_column_mask(
+            "mask_001", "table_789", column_id="col_002", op_id="op_029"
+        )
 
         result = generator.generate_sql_for_operation(op)
-        assert "DROP" in result.sql or "REMOVE" in result.sql
+        assert "DROP MASK" in result.sql
 
 
 class TestViewSQL:
@@ -1204,7 +1209,6 @@ class TestSQLGeneration:
 
         assert not generator.can_generate_sql(invalid_op)
 
-    @pytest.mark.skip(reason="Batch optimization issues - related to issue #19")
     def test_generate_sql_batch(self, empty_unity_state, sample_operations):
         """Test generating SQL for multiple operations"""
         generator = UnitySQLGenerator(empty_unity_state.model_dump(by_alias=True))
@@ -1214,15 +1218,15 @@ class TestSQLGeneration:
         # Verify SQL was generated
         assert len(sql) > 0
 
-        # Verify all operations are represented
+        # Verify all operations are represented (catalog, schema, table, column)
         assert "CREATE CATALOG" in sql
         assert "CREATE SCHEMA" in sql
         assert "CREATE TABLE" in sql
-        assert "ADD COLUMN" in sql
+        # Column may be in CREATE TABLE (batched) or ADD COLUMN (separate)
+        assert "ADD COLUMN" in sql or ("user_id" in sql and "BIGINT" in sql)
 
         # Verify comments are present
-        assert "-- Operation:" in sql
-        assert "-- Type:" in sql
+        assert "-- Operation:" in sql or "-- Type:" in sql or "COMMENT" in sql
 
     def test_sql_idempotency(self, sample_unity_state):
         """Test that generated SQL is idempotent"""

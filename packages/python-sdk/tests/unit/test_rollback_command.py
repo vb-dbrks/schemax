@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from schematic.commands.rollback import RollbackError, rollback_partial
+from schematic.commands.rollback import RollbackError, rollback_complete, rollback_partial
 from schematic.providers.base.executor import ExecutionResult
 from schematic.providers.base.operations import Operation
 from schematic.providers.base.reverse_generator import SafetyLevel, SafetyReport
@@ -537,3 +537,128 @@ class TestRollbackPartial:
         mock_tracker.start_deployment.assert_not_called()
         mock_tracker.record_operation.assert_not_called()
         mock_tracker.complete_deployment.assert_not_called()
+
+
+class TestRollbackCompleteBaselineGuard:
+    """Test rollback_complete baseline guard (block rollback before import baseline)."""
+
+    @patch("schematic.commands.rollback.get_environment_config")
+    @patch("schematic.commands.rollback.read_project")
+    def test_rollback_before_baseline_raises_without_force(
+        self, mock_read_project, mock_get_env_config
+    ):
+        """When env has importBaselineSnapshot and to_snapshot is before it, raise unless --force."""
+        mock_read_project.return_value = {"name": "p", "provider": {"environments": {}}}
+        mock_get_env_config.return_value = {
+            "topLevelName": "dev_catalog",
+            "importBaselineSnapshot": "v0.1.0",
+        }
+        with pytest.raises(RollbackError) as exc_info:
+            rollback_complete(
+                workspace=Path("/tmp"),
+                target_env="dev",
+                to_snapshot="v0.0.5",
+                profile="DEFAULT",
+                warehouse_id="wh_123",
+                force=False,
+            )
+        assert "v0.0.5" in str(exc_info.value)
+        assert "v0.1.0" in str(exc_info.value)
+        assert "force" in str(exc_info.value).lower()
+
+    @patch("schematic.core.storage.read_snapshot")
+    @patch("schematic.commands.rollback.get_environment_config")
+    @patch("schematic.commands.rollback.read_project")
+    def test_rollback_before_baseline_proceeds_with_force_and_no_interaction(
+        self, mock_read_project, mock_get_env_config, mock_read_snapshot
+    ):
+        """With --force and --no-interaction, rollback before baseline proceeds (no prompt)."""
+        mock_read_project.return_value = {"name": "p", "provider": {"environments": {}}}
+        mock_get_env_config.return_value = {
+            "topLevelName": "dev_catalog",
+            "importBaselineSnapshot": "v0.1.0",
+        }
+        mock_read_snapshot.return_value = {
+            "version": "v0.0.5",
+            "state": {"catalogs": []},
+            "operations": [],
+        }
+        mock_differ = Mock()
+        mock_differ.generate_diff_operations.return_value = []
+        mock_provider = Mock()
+        mock_provider.get_state_differ.return_value = mock_differ
+        with patch("schematic.providers.unity.auth.create_databricks_client"):
+            with patch("schematic.commands.rollback.DeploymentTracker") as mock_tracker_class:
+                mock_tracker = Mock()
+                mock_tracker_class.return_value = mock_tracker
+                mock_tracker.get_latest_deployment.return_value = None
+                with patch("schematic.commands.rollback.load_current_state") as mock_load:
+                    mock_load.return_value = (
+                        {"catalogs": []},
+                        {},
+                        mock_provider,
+                        None,
+                    )
+                    with patch("schematic.commands.diff._build_catalog_mapping") as mock_build_map:
+                        mock_build_map.return_value = {"__implicit__": "dev_catalog"}
+                        result = rollback_complete(
+                            workspace=Path("/tmp"),
+                            target_env="dev",
+                            to_snapshot="v0.0.5",
+                            profile="DEFAULT",
+                            warehouse_id="wh_123",
+                            force=True,
+                            no_interaction=True,
+                        )
+        assert result.success is True
+        assert result.operations_rolled_back == 0
+        mock_read_snapshot.assert_called()
+
+    @patch("schematic.commands.rollback.get_environment_config")
+    @patch("schematic.commands.rollback.read_project")
+    def test_rollback_at_or_after_baseline_allowed(self, mock_read_project, mock_get_env_config):
+        """When to_snapshot is at or after baseline, no RollbackError (baseline check passes)."""
+        mock_read_project.return_value = {"name": "p", "provider": {"environments": {}}}
+        mock_get_env_config.return_value = {
+            "topLevelName": "dev_catalog",
+            "importBaselineSnapshot": "v0.1.0",
+        }
+        mock_differ = Mock()
+        mock_differ.generate_diff_operations.return_value = []
+        mock_provider = Mock()
+        mock_provider.get_state_differ.return_value = mock_differ
+        with patch("schematic.core.storage.read_snapshot") as mock_read_snapshot:
+            mock_read_snapshot.return_value = {
+                "version": "v0.1.0",
+                "state": {"catalogs": []},
+                "operations": [],
+            }
+            with patch("schematic.providers.unity.auth.create_databricks_client"):
+                with patch("schematic.commands.rollback.DeploymentTracker") as mock_tracker_class:
+                    mock_tracker = Mock()
+                    mock_tracker_class.return_value = mock_tracker
+                    mock_tracker.get_latest_deployment.return_value = {
+                        "version": "v0.2.0",
+                    }
+                    with patch("schematic.commands.rollback.load_current_state") as mock_load:
+                        mock_load.return_value = (
+                            {"catalogs": []},
+                            {},
+                            mock_provider,
+                            None,
+                        )
+                        with patch(
+                            "schematic.commands.diff._build_catalog_mapping"
+                        ) as mock_build_map:
+                            mock_build_map.return_value = {"__implicit__": "dev_catalog"}
+                            result = rollback_complete(
+                                workspace=Path("/tmp"),
+                                target_env="dev",
+                                to_snapshot="v0.1.0",
+                                profile="DEFAULT",
+                                warehouse_id="wh_123",
+                                force=False,
+                            )
+        mock_read_snapshot.assert_called()
+        assert result.success is True
+        assert result.operations_rolled_back == 0

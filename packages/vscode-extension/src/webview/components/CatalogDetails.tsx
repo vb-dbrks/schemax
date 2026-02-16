@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
+import { RichComment } from './RichComment';
 
 // Codicon icons - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -23,10 +24,6 @@ interface CatalogDetailsProps {
 export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => {
   const { project, findCatalog, updateCatalog, renameCatalog } = useDesignerStore();
   const catalog = findCatalog(catalogId);
-
-  // Check if project has been snapshotted or deployed (makes managed location immutable)
-  const hasBeenDeployed = (project?.snapshots && project.snapshots.length > 0) || 
-                          (project?.deployments && project.deployments.length > 0);
 
   const MANAGED_LOCATION_DEFAULT = '__default__';
   const [managedLocationName, setManagedLocationName] = useState(
@@ -65,13 +62,10 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   }
 
   const handleManagedLocationChange = (newLocation: string) => {
-    // Only allow changes if not yet deployed/snapshotted
-    if (!hasBeenDeployed) {
-      const isDefault = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === '';
-      const value = isDefault ? null : newLocation; // null survives JSON so reducer can clear
-      setManagedLocationName(isDefault ? MANAGED_LOCATION_DEFAULT : newLocation);
-      updateCatalog(catalogId, { managedLocationName: value });
-    }
+    const isDefault = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === '';
+    const value = isDefault ? null : newLocation; // null survives JSON so reducer can clear
+    setManagedLocationName(isDefault ? MANAGED_LOCATION_DEFAULT : newLocation);
+    updateCatalog(catalogId, { managedLocationName: value });
   };
 
   const handleSetComment = () => {
@@ -224,7 +218,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
           <label>Comment:</label>
           <div className="property-value">
             {catalog.comment ? (
-              <span>{catalog.comment}</span>
+              <RichComment text={catalog.comment} />
             ) : (
               <span className="inline-warning">
                 <span className="inline-warning__dot" aria-hidden="true" />
@@ -238,19 +232,18 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
         </div>
       </div>
 
-      {/* Managed Location (Immutable after snapshot/deployment) */}
+      {/* Managed Location */}
       <div className="table-properties">
         <div className="property-row">
           <label>
             Managed Location
-            <span className="info-icon" title={hasBeenDeployed ? "Cannot be changed after deployment/snapshot" : "Storage location for managed tables"}> ℹ️</span>
+            <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
           </label>
           <div className="property-value">
             <VSCodeDropdown
               value={managedLocationName}
-              style={{ width: '100%', opacity: hasBeenDeployed ? 0.6 : 1 }}
-              disabled={hasBeenDeployed}
-              onInput={hasBeenDeployed ? undefined : (e: Event) => {
+              style={{ width: '100%' }}
+              onInput={(e: Event) => {
                 const target = e.target as HTMLSelectElement;
                 handleManagedLocationChange(target.value);
               }}
@@ -263,6 +256,9 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
               ))}
             </VSCodeDropdown>
           </div>
+        </div>
+        <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
+          Changing managed location may be rejected by Unity Catalog depending on object state and permissions.
         </div>
         {managedLocationName !== MANAGED_LOCATION_DEFAULT && managedLocationName && project?.managedLocations?.[managedLocationName] && (
           <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
@@ -489,4 +485,3 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
     </div>
   );
 };
-

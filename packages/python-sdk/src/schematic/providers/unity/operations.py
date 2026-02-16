@@ -403,7 +403,7 @@ unity_operation_metadata = [
         description="Add row-level security filter",
         category=OperationCategory.SECURITY,
         required_fields=["tableId", "filterId", "name", "udfExpression"],
-        optional_fields=["enabled", "description"],
+        optional_fields=["enabled", "description", "columnNames"],
         is_destructive=False,
     ),
     OperationMetadata(

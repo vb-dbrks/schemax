@@ -29,6 +29,7 @@ export interface LocationDefinition {
 
 export interface EnvironmentConfig {
   topLevelName: string;
+  catalogMappings?: Record<string, string>;
   description?: string;
   allowDrift: boolean;
   requireSnapshot: boolean;
@@ -222,6 +223,7 @@ export async function ensureProjectFile(
       environments: {
         dev: {
           topLevelName: `dev_${workspaceName}`,
+          catalogMappings: {},
           description: 'Development environment',
           allowDrift: true,
           requireSnapshot: false,
@@ -230,6 +232,7 @@ export async function ensureProjectFile(
         },
         test: {
           topLevelName: `test_${workspaceName}`,
+          catalogMappings: {},
           description: 'Test/staging environment',
           allowDrift: false,
           requireSnapshot: true,
@@ -238,6 +241,7 @@ export async function ensureProjectFile(
         },
         prod: {
           topLevelName: `prod_${workspaceName}`,
+          catalogMappings: {},
           description: 'Production environment',
           allowDrift: false,
           requireSnapshot: true,
@@ -669,4 +673,3 @@ function getNextVersion(currentVersion: string | null, settings: ProjectSettings
 
   return `${settings.versionPrefix}${major}.${nextMinor}.0`;
 }
-

@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
+from schematic.commands.sql import SQLGenerationError, build_catalog_mapping
 from schematic.core.storage import get_environment_config, read_project, read_snapshot
 from schematic.providers.base.operations import Operation
 from schematic.providers.registry import ProviderRegistry
@@ -83,7 +84,10 @@ def generate_diff(
         catalog_mapping = None
         if target_env:
             env_config = get_environment_config(project, target_env)
-            catalog_mapping = _build_catalog_mapping(new_snap["state"], env_config)
+            try:
+                catalog_mapping = _build_catalog_mapping(new_snap["state"], env_config)
+            except SQLGenerationError as e:
+                raise DiffError(str(e)) from e
             console.print(f"  [blue]Environment:[/blue] {target_env}")
             console.print(f"  [blue]Catalog mapping:[/blue] {catalog_mapping}")
 
@@ -169,38 +173,5 @@ def generate_diff(
 
 
 def _build_catalog_mapping(state: dict, env_config: dict) -> dict[str, str]:
-    """
-    Build catalog name mapping (logical → physical) for environment-specific SQL generation.
-
-    Supports two modes:
-    1. Single-catalog (implicit): Catalog stored as __implicit__ in state, mapped to env catalog
-    2. Single-catalog (explicit): One named catalog, mapped to env catalog
-    3. Multi-catalog: Not yet supported
-
-    Args:
-        state: Provider state dictionary
-        env_config: Environment configuration dictionary
-
-    Returns:
-        Dictionary mapping logical catalog names to physical names
-    """
-    catalogs = state.get("catalogs", [])
-
-    if len(catalogs) == 0:
-        # No catalogs yet - no mapping needed
-        return {}
-
-    # Get physical catalog name from environment config
-    physical_catalog = env_config["topLevelName"]
-
-    if len(catalogs) == 1:
-        # Single catalog mode - map logical catalog to physical name
-        catalog = catalogs[0]
-        logical_name = catalog.get("name", "__implicit__")
-        return {logical_name: physical_catalog}
-
-    # Multi-catalog mode - not yet supported
-    raise DiffError(
-        "Multi-catalog environments are not yet supported.\n"
-        f"Found {len(catalogs)} catalogs in state, but only single-catalog mode is currently supported."
-    )
+    """Delegate to shared SQL mapping builder."""
+    return build_catalog_mapping(state, env_config)

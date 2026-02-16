@@ -477,14 +477,21 @@ class OperationBuilder:
         )
 
     def remove_column_mask(
-        self, mask_id: str, table_id: str, op_id: str | None = None
+        self,
+        mask_id: str,
+        table_id: str,
+        column_id: str | None = None,
+        op_id: str | None = None,
     ) -> Operation:
         """Create a remove_column_mask operation"""
+        payload: dict[str, str] = {"tableId": table_id}
+        if column_id is not None:
+            payload["columnId"] = column_id
         return create_operation(
             provider=self.provider,
             op_type="remove_column_mask",
             target=mask_id,
-            payload={"tableId": table_id},
+            payload=payload,
             op_id=op_id,
         )
 

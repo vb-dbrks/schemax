@@ -19,6 +19,7 @@ import { UnityState } from './models';
 import { UNITY_OPERATIONS, unityOperationMetadata } from './operations';
 import { applyOperation, applyOperations } from './state-reducer';
 import { UnitySQLGenerator } from './sql-generator';
+import { LocationDefinition } from '../../storage-v4';
 
 /**
  * Unity Catalog Provider Implementation
@@ -124,8 +125,16 @@ export class UnityProvider extends BaseProvider implements Provider {
     return applyOperations(state as UnityState, ops);
   }
   
-  getSQLGenerator(state: ProviderState): SQLGenerator {
-    return new UnitySQLGenerator(state as UnityState);
+  getSQLGenerator(
+    state: ProviderState,
+    catalogNameMapping?: Record<string, string>,
+    options?: {
+      managedLocations?: Record<string, LocationDefinition>;
+      externalLocations?: Record<string, LocationDefinition>;
+      environmentName?: string;
+    }
+  ): SQLGenerator {
+    return new UnitySQLGenerator(state as UnityState, catalogNameMapping, options);
   }
   
   createInitialState(): ProviderState {
@@ -199,4 +208,3 @@ export class UnityProvider extends BaseProvider implements Provider {
 
 // Export singleton instance
 export const unityProvider = new UnityProvider();
-

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { ChildProcess, spawn } from 'child_process';
 import * as storageV4 from './storage-v4';
 import { Operation } from './providers/base/operations';
 import { ProviderRegistry } from './providers/registry';
@@ -9,6 +10,36 @@ import './providers'; // Initialize providers
 
 let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
+
+interface ImportRequest {
+  target: string;
+  profile: string;
+  warehouseId: string;
+  catalog?: string;
+  schema?: string;
+  table?: string;
+  catalogMappings?: Record<string, string>;
+  dryRun: boolean;
+  adoptBaseline: boolean;
+}
+
+interface ImportExecutionResult {
+  success: boolean;
+  command: string;
+  stdout: string;
+  stderr: string;
+  cancelled?: boolean;
+}
+
+interface ImportProgressUpdate {
+  phase: string;
+  message: string;
+  percent: number;
+  level?: 'info' | 'warning' | 'error' | 'success';
+}
+
+let activeImportProcess: ChildProcess | null = null;
+let activeImportCancelled = false;
 
 export function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('Schematic');
@@ -37,16 +68,531 @@ export function activate(context: vscode.ExtensionContext) {
     () => generateSQLMigration()
   );
 
-  context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, generateSQLCommand, outputChannel);
+  const importAssetsCommand = vscode.commands.registerCommand(
+    'schematic.importAssets',
+    () => runImportFromPrompts()
+  );
+
+  context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, generateSQLCommand, importAssetsCommand, outputChannel);
 
   outputChannel.appendLine('[Schematic] Extension activated successfully!');
-  outputChannel.appendLine('[Schematic] Commands registered: schematic.openDesigner, schematic.showLastOps, schematic.createSnapshot');
+  outputChannel.appendLine('[Schematic] Commands registered: schematic.openDesigner, schematic.showLastOps, schematic.createSnapshot, schematic.generateSQL, schematic.importAssets');
   vscode.window.showInformationMessage('Schematic Extension Activated!');
   trackEvent('extension_activated');
 }
 
 export function deactivate() {
   trackEvent('extension_deactivated');
+}
+
+function runCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+  onStdout?: (chunk: string) => void,
+  onStderr?: (chunk: string) => void
+): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: any; cancelled?: boolean }> {
+  return new Promise((resolve) => {
+    if (activeImportCancelled) {
+      resolve({ code: null, stdout: '', stderr: '', cancelled: true });
+      return;
+    }
+
+    const child = spawn(command, args, { cwd, shell: false });
+    activeImportProcess = child;
+    let stdout = '';
+    let stderr = '';
+    let spawnError: any;
+
+    child.stdout.on('data', (chunk) => {
+      const text = chunk.toString();
+      stdout += text;
+      onStdout?.(text);
+    });
+    child.stderr.on('data', (chunk) => {
+      const text = chunk.toString();
+      stderr += text;
+      onStderr?.(text);
+    });
+    child.on('error', (err) => {
+      spawnError = err;
+    });
+    child.on('close', (code) => {
+      const cancelled = activeImportCancelled;
+      if (activeImportProcess === child) {
+        activeImportProcess = null;
+      }
+      resolve({ code, stdout, stderr, spawnError, cancelled });
+    });
+
+    if (activeImportCancelled) {
+      try {
+        child.kill('SIGTERM');
+      } catch {}
+    }
+  });
+}
+
+async function executeImport(
+  workspacePath: string,
+  request: ImportRequest,
+  onProgress?: (update: ImportProgressUpdate) => void
+): Promise<ImportExecutionResult> {
+  const importArgs = [
+    'import',
+    '--target', request.target,
+    '--profile', request.profile,
+    '--warehouse-id', request.warehouseId,
+  ];
+
+  if (request.catalog?.trim()) importArgs.push('--catalog', request.catalog.trim());
+  if (request.schema?.trim()) importArgs.push('--schema', request.schema.trim());
+  if (request.table?.trim()) importArgs.push('--table', request.table.trim());
+  if (request.catalogMappings) {
+    for (const [logical, physical] of Object.entries(request.catalogMappings)) {
+      importArgs.push('--catalog-map', `${logical}=${physical}`);
+    }
+  }
+  if (request.dryRun) importArgs.push('--dry-run');
+  if (request.adoptBaseline) importArgs.push('--adopt-baseline');
+
+  const candidates: Array<{ cmd: string; args: string[] }> = [
+    { cmd: 'schematic', args: importArgs },
+    { cmd: 'python3', args: ['-m', 'schematic.cli', ...importArgs] },
+    { cmd: 'python', args: ['-m', 'schematic.cli', ...importArgs] },
+  ];
+
+  let lastResult: ImportExecutionResult = {
+    success: false,
+    command: '',
+    stdout: '',
+    stderr: 'No import command candidates were executed',
+  };
+
+  activeImportCancelled = false;
+
+  let currentPercent = 10;
+  const emitProgress = (update: ImportProgressUpdate) => {
+    currentPercent = Math.max(currentPercent, update.percent);
+    onProgress?.({ ...update, percent: currentPercent });
+  };
+
+  emitProgress({
+    phase: 'starting',
+    message: 'Preparing import command',
+    percent: 10,
+    level: 'info',
+  });
+
+  // Smooth progress while waiting for CLI output.
+  const runningTimer = setInterval(() => {
+    if (currentPercent < 92) {
+      currentPercent = Math.min(92, currentPercent + 3);
+      onProgress?.({
+        phase: 'running',
+        message: 'Import in progress...',
+        percent: currentPercent,
+        level: 'info',
+      });
+    }
+  }, 1200);
+
+  try {
+    for (const candidate of candidates) {
+    if (activeImportCancelled) {
+      onProgress?.({
+        phase: 'cancelled',
+        message: 'Import cancelled by user.',
+        percent: 100,
+        level: 'warning',
+      });
+      return {
+        success: false,
+        command: '',
+        stdout: '',
+        stderr: 'Import cancelled by user',
+        cancelled: true,
+      };
+    }
+
+    const renderedCommand = `${candidate.cmd} ${candidate.args.join(' ')}`;
+    emitProgress({
+      phase: 'launch',
+      message: `Launching import command: ${candidate.cmd}`,
+      percent: 20,
+      level: 'info',
+    });
+
+    const result = await runCommand(
+      candidate.cmd,
+      candidate.args,
+      workspacePath,
+      (stdoutChunk) => {
+        for (const line of stdoutChunk.split('\n')) {
+          const update = parseImportProgressLine(line);
+          if (update) {
+            emitProgress(update);
+          }
+        }
+      },
+      (stderrChunk) => {
+        const text = stderrChunk.trim();
+        if (text) {
+          emitProgress({
+            phase: 'stderr',
+            message: text,
+            percent: 30,
+            level: 'warning',
+          });
+        }
+      }
+    );
+
+    if (result.cancelled) {
+      onProgress?.({
+        phase: 'cancelled',
+        message: 'Import cancelled by user.',
+        percent: 100,
+        level: 'warning',
+      });
+      return {
+        success: false,
+        command: renderedCommand,
+        stdout: result.stdout.trim(),
+        stderr: result.stderr.trim() || 'Import cancelled by user',
+        cancelled: true,
+      };
+    }
+
+    if (result.spawnError) {
+      lastResult = {
+        success: false,
+        command: renderedCommand,
+        stdout: result.stdout,
+        stderr: `${result.stderr}\n${result.spawnError.message || result.spawnError}`,
+      };
+      emitProgress({
+        phase: 'spawn-error',
+        message: `Import launcher failed for ${candidate.cmd}: ${result.spawnError.message || result.spawnError}`,
+        percent: 25,
+        level: 'warning',
+      });
+      continue;
+    }
+
+    if (result.code === 0) {
+      onProgress?.({
+        phase: 'completed',
+        message: request.dryRun ? 'Dry-run completed' : 'Import completed',
+        percent: 100,
+        level: 'success',
+      });
+      return {
+        success: true,
+        command: renderedCommand,
+        stdout: result.stdout.trim(),
+        stderr: result.stderr.trim(),
+      };
+    }
+
+    lastResult = {
+      success: false,
+      command: renderedCommand,
+      stdout: result.stdout.trim(),
+      stderr: result.stderr.trim(),
+    };
+    emitProgress({
+      phase: 'command-failed',
+      message: `Import command failed (${candidate.cmd})`,
+      percent: 35,
+      level: 'warning',
+    });
+    }
+
+    onProgress?.({
+    phase: 'failed',
+    message: 'Import failed. Check stderr/output for details.',
+    percent: 100,
+    level: 'error',
+  });
+    return lastResult;
+  } finally {
+    clearInterval(runningTimer);
+    activeImportProcess = null;
+    activeImportCancelled = false;
+  }
+}
+
+function parseImportProgressLine(line: string): ImportProgressUpdate | null {
+  const trimmed = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
+  if (!trimmed) return null;
+
+  if (trimmed.includes('Schematic Import')) {
+    return { phase: 'start', message: 'Import started', percent: 25, level: 'info' };
+  }
+  if (trimmed.includes('Provider:')) {
+    return { phase: 'provider', message: trimmed, percent: 30, level: 'info' };
+  }
+  if (trimmed.includes('Discovered:')) {
+    return { phase: 'discovered', message: trimmed, percent: 60, level: 'info' };
+  }
+  if (trimmed.includes('Planned operations:')) {
+    return { phase: 'planned', message: trimmed, percent: 72, level: 'info' };
+  }
+  if (trimmed.includes('Updated catalog mappings')) {
+    return { phase: 'mappings', message: trimmed, percent: 82, level: 'info' };
+  }
+  if (trimmed.includes('Imported ') && trimmed.includes('operation')) {
+    return { phase: 'write', message: trimmed, percent: 90, level: 'info' };
+  }
+  if (trimmed.includes('Created baseline snapshot')) {
+    return { phase: 'snapshot', message: trimmed, percent: 94, level: 'info' };
+  }
+  if (trimmed.includes('Adopted baseline deployment')) {
+    return { phase: 'baseline', message: trimmed, percent: 97, level: 'info' };
+  }
+  if (trimmed.startsWith('Warning:') || trimmed.includes('Unsupported Unity object type')) {
+    return { phase: 'warning', message: trimmed, percent: 75, level: 'warning' };
+  }
+  if (trimmed.includes('Dry-run:')) {
+    return { phase: 'dry-run-complete', message: trimmed, percent: 100, level: 'success' };
+  }
+  return null;
+}
+
+async function promptImportRequest(workspaceUri: vscode.Uri): Promise<ImportRequest | null> {
+  const project = await storageV4.readProject(workspaceUri);
+  const envNames = Object.keys(project.provider.environments || {});
+  if (envNames.length === 0) {
+    vscode.window.showErrorMessage('Schematic: No environments configured in project.json');
+    return null;
+  }
+
+  const target = await vscode.window.showQuickPick(envNames, {
+    placeHolder: 'Select target environment for import',
+    ignoreFocusOut: true
+  });
+  if (!target) return null;
+
+  const profile = await vscode.window.showInputBox({
+    prompt: 'Databricks profile name',
+    value: 'DEFAULT',
+    placeHolder: 'DEFAULT',
+    validateInput: (value) => value.trim() ? null : 'Profile is required',
+    ignoreFocusOut: true
+  });
+  if (!profile) return null;
+
+  const warehouseId = await vscode.window.showInputBox({
+    prompt: 'SQL Warehouse ID',
+    placeHolder: 'e.g. 1234abcd5678efgh',
+    validateInput: (value) => value.trim() ? null : 'Warehouse ID is required',
+    ignoreFocusOut: true
+  });
+  if (!warehouseId) return null;
+
+  const catalog = await vscode.window.showInputBox({
+    prompt: 'Catalog to import (optional, blank = all visible catalogs)',
+    placeHolder: 'main',
+    ignoreFocusOut: true
+  });
+  if (catalog === undefined) return null;
+
+  const schema = await vscode.window.showInputBox({
+    prompt: 'Schema to import (optional, requires catalog)',
+    placeHolder: 'analytics',
+    validateInput: (value) => {
+      if (value.trim() && !catalog?.trim()) return 'Schema requires catalog';
+      return null;
+    },
+    ignoreFocusOut: true
+  });
+  if (schema === undefined) return null;
+
+  const table = await vscode.window.showInputBox({
+    prompt: 'Table to import (optional, requires schema)',
+    placeHolder: 'users',
+    validateInput: (value) => {
+      if (value.trim() && !schema?.trim()) return 'Table requires schema';
+      return null;
+    },
+    ignoreFocusOut: true
+  });
+  if (table === undefined) return null;
+
+  const mode = await vscode.window.showQuickPick(
+    [
+      { label: 'Dry run (recommended)', dryRun: true, adoptBaseline: false },
+      { label: 'Import only', dryRun: false, adoptBaseline: false },
+      { label: 'Import + adopt baseline', dryRun: false, adoptBaseline: true },
+    ],
+    {
+      placeHolder: 'Select import mode',
+      ignoreFocusOut: true
+    }
+  );
+  if (!mode) return null;
+
+  const bindingsInput = await vscode.window.showInputBox({
+    prompt: 'Catalog mappings (optional): logical=physical, comma-separated',
+    placeHolder: 'schematic_demo=dev_schematic_demo',
+    ignoreFocusOut: true
+  });
+  if (bindingsInput === undefined) return null;
+
+  const catalogMappings = parseCatalogMappingsInput(bindingsInput);
+
+  return {
+    target,
+    profile: profile.trim(),
+    warehouseId: warehouseId.trim(),
+    catalog: catalog?.trim() || undefined,
+    schema: schema?.trim() || undefined,
+    table: table?.trim() || undefined,
+    catalogMappings,
+    dryRun: mode.dryRun,
+    adoptBaseline: mode.adoptBaseline,
+  };
+}
+
+function parseCatalogMappingsInput(input: string): Record<string, string> | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) return undefined;
+
+  const bindings: Record<string, string> = {};
+  const entries = trimmed.split(',').map((entry) => entry.trim()).filter(Boolean);
+  for (const entry of entries) {
+    const eqIndex = entry.indexOf('=');
+    if (eqIndex <= 0 || eqIndex === entry.length - 1) {
+      throw new Error(`Invalid catalog mapping '${entry}'. Expected logical=physical`);
+    }
+    const logical = entry.slice(0, eqIndex).trim();
+    const physical = entry.slice(eqIndex + 1).trim();
+    if (!logical || !physical) {
+      throw new Error(`Invalid catalog mapping '${entry}'. Expected logical=physical`);
+    }
+    bindings[logical] = physical;
+  }
+  return bindings;
+}
+
+async function runImportFromPrompts(): Promise<void> {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!workspaceFolder) {
+    vscode.window.showErrorMessage('Schematic: Please open a workspace folder first.');
+    return;
+  }
+
+  try {
+    const request = await promptImportRequest(workspaceFolder.uri);
+    if (!request) return;
+    await runImportWithRequest(workspaceFolder, request);
+  } catch (error) {
+    vscode.window.showErrorMessage(`Schematic import failed: ${error}`);
+  }
+}
+
+async function runImportWithRequest(
+  workspaceFolder: vscode.WorkspaceFolder,
+  request: ImportRequest,
+  panel?: vscode.WebviewPanel
+): Promise<ImportExecutionResult> {
+  outputChannel.appendLine('[Schematic] Running import workflow...');
+  outputChannel.appendLine(`[Schematic] Import request: ${JSON.stringify(request)}`);
+
+  const result = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: request.dryRun ? 'Running import dry-run...' : 'Importing assets...',
+      cancellable: true,
+    },
+    async (_progress, token) => {
+      token.onCancellationRequested(() => {
+        cancelActiveImport();
+      });
+      return executeImport(workspaceFolder.uri.fsPath, request, (update) => {
+        if (panel) {
+          panel.webview.postMessage({
+            type: 'import-progress',
+            payload: update,
+          });
+        }
+      });
+    }
+  );
+
+  if (result.stdout) {
+    outputChannel.appendLine('[Schematic] Import stdout:');
+    outputChannel.appendLine(result.stdout);
+  }
+  if (result.stderr) {
+    outputChannel.appendLine('[Schematic] Import stderr:');
+    outputChannel.appendLine(result.stderr);
+  }
+
+  if (result.cancelled) {
+    vscode.window.showInformationMessage('Schematic import cancelled');
+    trackEvent('import_cancelled', {
+      dryRun: request.dryRun,
+      adoptBaseline: request.adoptBaseline,
+      target: request.target,
+    });
+  } else if (result.success) {
+    vscode.window.showInformationMessage(
+      request.dryRun
+        ? 'Schematic import dry-run completed'
+        : 'Schematic import completed successfully'
+    );
+    trackEvent('import_completed', {
+      dryRun: request.dryRun,
+      adoptBaseline: request.adoptBaseline,
+      target: request.target,
+    });
+  } else {
+    vscode.window.showErrorMessage(`Schematic import failed. See Output > Schematic for details.`);
+    trackEvent('import_failed', {
+      dryRun: request.dryRun,
+      adoptBaseline: request.adoptBaseline,
+      target: request.target,
+    });
+  }
+
+  if (panel) {
+    panel.webview.postMessage({
+      type: 'import-progress',
+      payload: {
+        phase: result.cancelled ? 'cancelled' : (result.success ? 'completed' : 'failed'),
+        message: result.cancelled
+          ? 'Import cancelled by user.'
+          : (result.success
+          ? (request.dryRun ? 'Dry-run completed' : 'Import completed')
+          : 'Import failed. See output details below.'),
+        percent: 100,
+        level: result.cancelled ? 'warning' : (result.success ? 'success' : 'error'),
+      } satisfies ImportProgressUpdate,
+    });
+    panel.webview.postMessage({
+      type: 'import-result',
+      payload: result,
+    });
+  }
+
+  return result;
+}
+
+function cancelActiveImport(): void {
+  activeImportCancelled = true;
+  if (!activeImportProcess) return;
+
+  try {
+    activeImportProcess.kill('SIGTERM');
+  } catch {}
+  setTimeout(() => {
+    if (!activeImportProcess) return;
+    try {
+      activeImportProcess.kill('SIGKILL');
+    } catch {}
+  }, 3000);
 }
 
 /**
@@ -334,6 +880,13 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
   if (!logicalCatalogName) {
     return false; // User cancelled
   }
+
+  Object.values(environments).forEach((config) => {
+    config.catalogMappings = {
+      ...(config.catalogMappings || {}),
+      [logicalCatalogName]: config.topLevelName,
+    };
+  });
   
   outputChannel.appendLine(`[Schematic] Logical catalog name: ${logicalCatalogName}`);
   outputChannel.appendLine('[Schematic] Physical catalog mappings:');
@@ -909,6 +1462,35 @@ async function openDesigner(context: vscode.ExtensionContext) {
           }
           break;
         }
+        case 'run-import': {
+          try {
+            const request = message.payload as ImportRequest;
+            const result = await runImportWithRequest(workspaceFolder, request, currentPanel);
+            if (result.success && !request.dryRun) {
+              await reloadProject(workspaceFolder, currentPanel);
+            } else if (result.cancelled && !request.dryRun) {
+              // Re-sync UI with disk in case cancellation happened during file writes.
+              await reloadProject(workspaceFolder, currentPanel);
+            }
+          } catch (error) {
+            outputChannel.appendLine(`[Schematic] ERROR: Import run failed: ${error}`);
+            currentPanel?.webview.postMessage({
+              type: 'import-result',
+              payload: {
+                success: false,
+                command: '',
+                stdout: '',
+                stderr: String(error),
+              } as ImportExecutionResult,
+            });
+          }
+          break;
+        }
+        case 'cancel-import': {
+          cancelActiveImport();
+          outputChannel.appendLine('[Schematic] Import cancellation requested from webview');
+          break;
+        }
       }
     },
     undefined,
@@ -1175,46 +1757,35 @@ async function createSnapshotCommand_impl() {
  */
 /**
  * Build catalog name mapping (logical → physical) for environment-specific SQL generation.
- * 
- * For the MVP, we support single-catalog projects only. The logical catalog name
- * is automatically mapped to the environment's physical catalog name.
- * 
- * Multi-catalog support is a future enhancement (see GitHub issue #XX).
- */
-/**
- * Build catalog name mapping (logical → physical) for environment-specific SQL generation.
- * 
- * Supports two modes:
- * 1. Single-catalog (implicit): Catalog stored as __implicit__ in state, mapped to env catalog
- * 2. Single-catalog (explicit): One named catalog, mapped to env catalog
- * 3. Multi-catalog: Not yet supported
+ *
+ * Uses provider.environments.<env>.catalogMappings and requires mappings for all logical
+ * catalogs currently present in state.
  */
 function buildCatalogMapping(state: any, envConfig: storageV4.EnvironmentConfig): Record<string, string> {
   const catalogs = state.catalogs || [];
-  
+
   if (catalogs.length === 0) {
-    // No catalogs yet - no mapping needed
     return {};
   }
-  
-  if (catalogs.length === 1) {
-    const logicalName = catalogs[0].name;
-    const physicalName = envConfig.topLevelName;
-    
-    outputChannel.appendLine(`[Schematic] Catalog mapping: ${logicalName} → ${physicalName}`);
-    
-    return {
-      [logicalName]: physicalName
-    };
+
+  const rawMappings = envConfig.catalogMappings || {};
+  const catalogNames = catalogs
+    .map((catalog: any) => String(catalog?.name || '').trim())
+    .filter(Boolean);
+
+  const missing = catalogNames.filter((name: string) => !(name in rawMappings));
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing catalog mapping(s) for logical catalog(s): ${missing.join(', ')}. ` +
+      `Update provider.environments.<env>.catalogMappings in project settings.`
+    );
   }
-  
-  // Multiple catalogs - not supported yet
-  throw new Error(
-    `Multi-catalog projects are not yet supported. ` +
-    `Found ${catalogs.length} catalogs: ${catalogs.map((c: any) => c.name).join(', ')}. ` +
-    `For now, please use a single catalog per project. ` +
-    `Multi-catalog support is tracked in issue #XX.`
-  );
+
+  const resolved: Record<string, string> = {};
+  for (const logicalName of catalogNames) {
+    resolved[logicalName] = String(rawMappings[logicalName]);
+  }
+  return resolved;
 }
 
 async function generateSQLMigration() {
@@ -1267,7 +1838,7 @@ async function generateSQLMigration() {
 
     const envConfig = storageV4.getEnvironmentConfig(project, targetEnv);
     outputChannel.appendLine(`[Schematic] Target environment: ${targetEnv}`);
-    outputChannel.appendLine(`[Schematic] Physical catalog: ${envConfig.topLevelName}`);
+    outputChannel.appendLine(`[Schematic] Tracking catalog: ${envConfig.topLevelName}`);
 
     // Build catalog name mapping (logical → physical)
     const catalogMapping = buildCatalogMapping(state, envConfig);
@@ -1275,7 +1846,11 @@ async function generateSQLMigration() {
 
     // Generate SQL using provider's SQL generator
     // Note: Catalog mapping is applied during SQL generation via the generator's internal mapping
-    const generator = provider.getSQLGenerator(state);
+    const generator = provider.getSQLGenerator(state, catalogMapping, {
+      managedLocations: project.managedLocations,
+      externalLocations: project.externalLocations,
+      environmentName: targetEnv,
+    });
     const sql = generator.generateSQL(changelog.ops);
     
     outputChannel.appendLine(`[Schematic] Generated SQL (${sql.length} characters)`);
@@ -1318,4 +1893,3 @@ async function generateSQLMigration() {
     vscode.window.showErrorMessage(`Failed to generate SQL: ${error}`);
   }
 }
-

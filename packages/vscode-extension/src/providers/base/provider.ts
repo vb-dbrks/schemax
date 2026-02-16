@@ -10,6 +10,7 @@ import { ProviderHierarchy } from './hierarchy';
 import { Operation, OperationMetadata } from './operations';
 import { ValidationResult, ProviderState } from './models';
 import { SQLGenerator } from './sql-generator';
+import { LocationDefinition } from '../../storage-v4';
 
 /**
  * Provider capabilities - defines what features this provider supports
@@ -133,7 +134,15 @@ export interface Provider {
    * @param state - Current state (for ID-to-name mapping)
    * @returns SQL generator instance
    */
-  getSQLGenerator(state: ProviderState): SQLGenerator;
+  getSQLGenerator(
+    state: ProviderState,
+    catalogNameMapping?: Record<string, string>,
+    options?: {
+      managedLocations?: Record<string, LocationDefinition>;
+      externalLocations?: Record<string, LocationDefinition>;
+      environmentName?: string;
+    }
+  ): SQLGenerator;
   
   /**
    * Create an empty/initial state for this provider
@@ -178,7 +187,15 @@ export abstract class BaseProvider implements Provider {
     return currentState;
   }
   
-  abstract getSQLGenerator(state: ProviderState): SQLGenerator;
+  abstract getSQLGenerator(
+    state: ProviderState,
+    catalogNameMapping?: Record<string, string>,
+    options?: {
+      managedLocations?: Record<string, LocationDefinition>;
+      externalLocations?: Record<string, LocationDefinition>;
+      environmentName?: string;
+    }
+  ): SQLGenerator;
   
   abstract createInitialState(): ProviderState;
   
@@ -198,4 +215,3 @@ export abstract class BaseProvider implements Provider {
     return this.capabilities.supportedOperations.includes(operationType);
   }
 }
-

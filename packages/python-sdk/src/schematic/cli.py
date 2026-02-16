@@ -4,6 +4,7 @@ Click-based CLI for Schematic.
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -14,10 +15,12 @@ import schematic.providers  # noqa: F401
 from .commands import (
     ApplyError,
     DiffError,
+    ImportError,
     SQLGenerationError,
     apply_to_environment,
     generate_diff,
     generate_sql_migration,
+    import_from_provider,
     rollback_complete,
     validate_project,
 )
@@ -274,6 +277,117 @@ def bundle(target: str, version: str, output: str) -> None:
         sys.exit(1)
 
 
+@cli.command(name="import")
+@click.option("--target", "-t", required=True, help="Target environment (dev/test/prod)")
+@click.option("--profile", "-p", required=True, help="Databricks profile name")
+@click.option("--warehouse-id", "-w", required=True, help="SQL warehouse ID")
+@click.option("--catalog", help="Catalog name to import")
+@click.option("--schema", help="Schema name to import (requires --catalog)")
+@click.option("--table", help="Table name to import (requires --catalog and --schema)")
+@click.option(
+    "--catalog-map",
+    "catalog_map",
+    multiple=True,
+    help="Catalog mapping override in logical=physical format (repeatable)",
+)
+@click.option("--dry-run", is_flag=True, help="Preview import operations without writing changelog")
+@click.option(
+    "--adopt-baseline",
+    is_flag=True,
+    help="Mark imported snapshot as deployment baseline (planned, scaffold only)",
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def import_command(
+    target: str,
+    profile: str,
+    warehouse_id: str,
+    catalog: str | None,
+    schema: str | None,
+    table: str | None,
+    catalog_map: tuple[str, ...],
+    dry_run: bool,
+    adopt_baseline: bool,
+    workspace: str,
+) -> None:
+    """Import existing provider assets into Schematic changelog.
+
+    This is a CLI-first import workflow similar to Terraform import:
+    discover live assets -> map to provider state -> generate operations into changelog.
+    """
+    try:
+        if schema and not catalog:
+            console.print("[red]✗[/red] --schema requires --catalog")
+            sys.exit(1)
+        if table and (not catalog or not schema):
+            console.print("[red]✗[/red] --table requires --catalog and --schema")
+            sys.exit(1)
+        binding_overrides = _parse_catalog_mappings(catalog_map)
+
+        workspace_path = Path(workspace).resolve()
+
+        summary = import_from_provider(
+            workspace=workspace_path,
+            target_env=target,
+            profile=profile,
+            warehouse_id=warehouse_id,
+            catalog=catalog,
+            schema=schema,
+            table=table,
+            dry_run=dry_run,
+            adopt_baseline=adopt_baseline,
+            catalog_mappings_override=binding_overrides,
+        )
+        _print_import_summary(summary)
+    except ImportError as e:
+        console.print(f"[red]✗ Import failed:[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Unexpected error:[/red] {e}")
+        sys.exit(1)
+
+
+def _parse_catalog_mappings(catalog_map: tuple[str, ...]) -> dict[str, str]:
+    bindings: dict[str, str] = {}
+    for binding in catalog_map:
+        if "=" not in binding:
+            raise ImportError(f"Invalid --catalog-map '{binding}'. Expected logical=physical")
+        logical, physical = binding.split("=", 1)
+        logical = logical.strip()
+        physical = physical.strip()
+        if not logical or not physical:
+            raise ImportError(f"Invalid --catalog-map '{binding}'. Expected logical=physical")
+        if logical in bindings and bindings[logical] != physical:
+            raise ImportError(
+                f"Conflicting --catalog-map for '{logical}': '{bindings[logical]}' vs '{physical}'"
+            )
+        bindings[logical] = physical
+    return bindings
+
+
+def _print_import_summary(summary: dict[str, Any]) -> None:
+    """Render a concise completion summary for the import command."""
+    operations = int(summary.get("operations_generated", 0))
+    dry_run = bool(summary.get("dry_run", False))
+    mode = "previewed" if dry_run else "prepared"
+    console.print(f"[green]✓[/green] Import summary: {operations} operation(s) {mode}.")
+
+    catalog_mappings = summary.get("catalog_mappings", {})
+    if isinstance(catalog_mappings, dict) and catalog_mappings:
+        console.print(f"[blue]Catalog mappings:[/blue] {len(catalog_mappings)}")
+
+    warnings = summary.get("warnings", [])
+    if isinstance(warnings, list) and warnings:
+        console.print(f"[yellow]Warnings:[/yellow] {len(warnings)}")
+
+    snapshot_version = summary.get("snapshot_version")
+    if snapshot_version:
+        console.print(f"[blue]Baseline snapshot:[/blue] {snapshot_version}")
+
+    deployment_id = summary.get("deployment_id")
+    if deployment_id:
+        console.print(f"[blue]Baseline deployment:[/blue] {deployment_id}")
+
+
 @cli.command()
 @click.option("--target", "-t", required=True, help="Target environment (dev/test/prod)")
 @click.option("--profile", "-p", required=True, help="Databricks profile name")
@@ -352,6 +466,11 @@ def apply(
 @click.option("--safe-only", is_flag=True, help="Only execute safe operations (skip destructive)")
 @click.option("--dry-run", is_flag=True, help="Preview impact without executing")
 @click.option("--no-interaction", is_flag=True, help="Skip confirmation prompts (for CI/CD)")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Override baseline guard for complete rollback (use with caution)",
+)
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def rollback(
     deployment: str | None,
@@ -364,6 +483,7 @@ def rollback(
     safe_only: bool,
     dry_run: bool,
     no_interaction: bool,
+    force: bool,
     workspace: str,
 ) -> None:
     """Rollback deployments (partial or complete)
@@ -565,16 +685,16 @@ def rollback(
             env_config = get_environment_config(project, target)
 
             # Build catalog mapping
+            from .commands.sql import SQLGenerationError, build_catalog_mapping
             from .core.storage import load_current_state
 
             state, _, provider, _ = load_current_state(workspace_path, validate=False)
 
-            # Build simple catalog mapping (single catalog mode)
-            catalogs = state.get("catalogs", [])
-            catalog_mapping = {}
-            if catalogs:
-                logical_name = catalogs[0].get("name", "__implicit__")
-                catalog_mapping = {logical_name: env_config["topLevelName"]}
+            try:
+                catalog_mapping = build_catalog_mapping(state, env_config)
+            except SQLGenerationError as e:
+                console.print(f"[red]✗[/red] {e}")
+                sys.exit(1)
 
             # Initialize executor
             from schematic.providers.unity.auth import create_databricks_client
@@ -631,6 +751,7 @@ def rollback(
                 safe_only=safe_only,
                 dry_run=dry_run,
                 no_interaction=no_interaction,
+                force=force,
             )
 
             if result.success:

@@ -5,6 +5,7 @@ import { getVsCodeApi } from '../vscode-api';
 
 interface EnvironmentConfig {
   topLevelName: string;
+  catalogMappings?: Record<string, string>;
   description?: string;
   allowDrift?: boolean;
   requireSnapshot?: boolean;
@@ -62,8 +63,15 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
           <article key={envName} className="environment-chip" aria-label={`Environment ${envName}`}>
             <div className="environment-chip__top">
               <span className="environment-chip__name">{envName}</span>
-              <span className="environment-chip__target" title="Physical catalog name">{config.topLevelName}</span>
+              <span className="environment-chip__target" title="Tracking catalog">{config.topLevelName}</span>
             </div>
+            <p className="environment-chip__description">
+              {(config.catalogMappings && Object.keys(config.catalogMappings).length > 0)
+                ? Object.entries(config.catalogMappings)
+                    .map(([logical, physical]) => `${logical}→${physical}`)
+                    .join(', ')
+                : 'No catalog mappings configured'}
+            </p>
             {config.description && (
               <p className="environment-chip__description">{config.description}</p>
             )}
@@ -84,5 +92,4 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
     </section>
   );
 };
-
 
