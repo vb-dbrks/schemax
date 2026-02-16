@@ -72,7 +72,7 @@ jobs:
       - name: Run pytest with coverage
         run: |
           cd packages/python-sdk
-          pytest tests/ -v --cov=src/schematic --cov-report=term-missing --cov-report=xml
+          pytest tests/ -v --cov=src/schemax --cov-report=term-missing --cov-report=xml
       
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3

@@ -7,8 +7,10 @@ node_modules/
 packages/vscode-extension/dist/
 packages/vscode-extension/media/
 
-# Docusaurus build/cache (docs/schemax)
+# Docusaurus build/cache
 docs/schemax/.docusaurus/
+docs/schemax/build/
+docs/schematic/.docusaurus/
 docs/schematic/build/
 
 # Python

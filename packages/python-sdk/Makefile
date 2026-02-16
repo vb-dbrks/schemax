@@ -1,7 +1,7 @@
 .PHONY: format fmt lint typecheck test all check ci pre-commit install clean help
 
 help:
-	@echo "Schematic Python SDK - Development Commands"
+	@echo "SchemaX Python SDK - Development Commands"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
