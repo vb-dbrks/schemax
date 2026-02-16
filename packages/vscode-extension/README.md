@@ -80,6 +80,40 @@ Configure Delta Lake behavior:
 - `delta.logRetentionDuration` - History retention
 - Custom properties for metadata
 
+## Publishing
+
+### One-time setup
+
+1. **Create a publisher** (if needed) at [Marketplace: Manage](https://marketplace.visualstudio.com/manage). The extension uses publisher ID `varunbhandary` (set in `package.json`).
+2. **Create a Personal Access Token (PAT)** for the Marketplace:
+   - Go to [Azure DevOps → Personal access tokens](https://dev.azure.com) (sign in with the same Microsoft account).
+   - New token: **Organization** = *All accessible organizations*, **Scopes** = **Marketplace** → **Manage**. Copy the token (it’s shown only once).
+3. **For CI**: In the repo, add a secret named `VSCE_PAT` with the PAT value (Settings → Secrets and variables → Actions).
+
+### Release (manual)
+
+From the repo root:
+
+```bash
+cd packages/vscode-extension
+# Bump version in package.json, then:
+npm run build
+npm run deploy
+# When prompted, paste your PAT (or set VSCE_PAT in the environment).
+```
+
+### Release (GitHub Actions)
+
+1. Bump `version` in `packages/vscode-extension/package.json`.
+2. Commit, push, then create and push a tag:
+
+```bash
+git tag ext-v0.1.0   # use the same version as in package.json
+git push origin ext-v0.1.0
+```
+
+The workflow at `.github/workflows/publish-vscode-extension.yml` runs on tags `ext-v*` and publishes using the `VSCE_PAT` secret.
+
 ## Development
 
 See the [main repository](https://github.com/vb-dbrks/schemax-vscode) for:
@@ -94,7 +128,7 @@ See the [main repository](https://github.com/vb-dbrks/schemax-vscode) for:
 
 ## License
 
-MIT License - see [LICENSE](../../LICENSE) for details.
+Apache License 2.0 - see [LICENSE](../../LICENSE) for details.
 
 ## Links
 

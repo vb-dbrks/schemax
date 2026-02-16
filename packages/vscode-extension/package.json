@@ -2,7 +2,7 @@
   "name": "schemax-vscode",
   "displayName": "SchemaX",
   "description": "Visual designer for Databricks Unity Catalog schemas with version control",
-  "publisher": "varunbhandary",
+  "publisher": "schematic-dev",
   "version": "0.1.0",
   "author": {
     "name": "Field Engineering"
@@ -13,7 +13,7 @@
       "url": "https://github.com/vb-dbrks"
     }
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/vb-dbrks/schemax-vscode.git"
@@ -39,7 +39,11 @@
     "Visualization"
   ],
   "activationEvents": [
-    "*"
+    "onCommand:schemax.openDesigner",
+    "onCommand:schemax.showLastOps",
+    "onCommand:schemax.createSnapshot",
+    "onCommand:schemax.generateSQL",
+    "onCommand:schemax.importAssets"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -77,6 +81,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "package": "vsce package --no-dependencies",
+    "deploy": "vsce publish --no-dependencies",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
