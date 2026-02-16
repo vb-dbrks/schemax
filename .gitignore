@@ -10,8 +10,8 @@ packages/vscode-extension/media/
 # Docusaurus build/cache
 docs/schemax/.docusaurus/
 docs/schemax/build/
-docs/schemax/.docusaurus/
-docs/schemax/build/
+docs/schematic/.docusaurus/
+docs/schematic/build/
 
 # Python
 __pycache__/

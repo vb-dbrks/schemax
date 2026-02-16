@@ -148,9 +148,9 @@ Your schema is now versioned!
 
 ```bash
 ls -la .schemax
-cat .schemaxroject.json
-cat .schemaxhangelog.json
-ls -la .schemaxnapshots/
+cat .schemax/project.json
+cat .schemax/changelog.json
+ls -la .schemax/snapshots/
 ```
 
 ### Available Commands
@@ -364,7 +364,7 @@ Output:
 
 The SQL is saved to:
 ```
-.schemaxigrations/migration_YYYY-MM-DD_HH-MM-SS.sql
+.schemax/migrations/migration_YYYY-MM-DD_HH-MM-SS.sql
 ```
 
 ### From CLI
@@ -627,8 +627,8 @@ pip install -e ".[dev]"
 ls .schemax
 
 # Validate JSON
-python -m json.tool .schemaxroject.json
-python -m json.tool .schemaxhangelog.json
+python -m json.tool .schemax/project.json
+python -m json.tool .schemax/changelog.json
 
 # Check permissions
 ls -la .schemax
@@ -640,7 +640,7 @@ ls -la .schemax
 
 **Solution**:
 - Make sure there are operations in the changelog
-- Check: `cat .schemaxhangelog.json`
+- Check: `cat .schemax/changelog.json`
 - Create some changes in the designer first
 
 **Problem**: SQL has errors

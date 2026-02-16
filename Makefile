@@ -2,7 +2,7 @@
 # Run from repo root: make fmt, make test, etc.
 
 PYTHON_SDK := packages/python-sdk
-DOCS_DIR   := docs/schematic
+DOCS_DIR   := docs/schemax
 
 .PHONY: fmt format lint typecheck test check ci pre-commit all help
 .PHONY: docs-build docs-serve clean
@@ -25,8 +25,8 @@ clean:
 	rm -rf packages/vscode-extension/coverage
 	rm -rf $(DOCS_DIR)/.docusaurus
 	rm -rf $(DOCS_DIR)/build
-	rm -rf docs/schemax/.docusaurus
-	rm -rf docs/schemax/build
+	rm -rf docs/schematic/.docusaurus
+	rm -rf docs/schematic/build
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	rm -rf $(PYTHON_SDK)/.pytest_cache

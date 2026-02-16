@@ -13,4 +13,4 @@ npm run start
 
 Then open http://localhost:3000 (or the URL shown). Use `npm run build` for a production build and `npm run serve` to serve it.
 
-**GitHub Pages**: Enable Pages (Settings → Pages → GitHub Actions), then push a version tag (e.g. `v0.2.0`) or run the **Docs Release** workflow manually. See [schemax/README.md](schemax/README.md) for details.
+**GitHub Pages**: Enable Pages (Settings → Pages → GitHub Actions), then push a version tag (e.g. `v0.2.0`) or run the **Docs Release** workflow manually. See [schematic/README.md](schematic/README.md) for Docusaurus setup and deployment details.
