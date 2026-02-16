@@ -1664,7 +1664,7 @@ schemax sql --target prod → CREATE SCHEMA `prod_my_analytics`.`customer_360`;
         "allowDrift": true,
         "requireSnapshot": false,
         "autoCreateCatalog": true,
-        "autoCreateschemaxSchema": true
+        "autoCreateSchemaxSchema": true
       },
       "prod": {
         "catalog": "prod_analytics",
@@ -1687,7 +1687,7 @@ schemax sql --target prod → CREATE SCHEMA `prod_my_analytics`.`customer_360`;
 | `allowDrift` | boolean | Allow actual state to differ from SchemaX |
 | `requireSnapshot` | boolean | Require snapshot before deployment |
 | `autoCreateCatalog` | boolean | Create catalog if it doesn't exist |
-| `autoCreateschemaxSchema` | boolean | Auto-create tracking schema |
+| `autoCreateSchemaxSchema` | boolean | Auto-create tracking schema |
 
 ### Catalog Name Mapping
 

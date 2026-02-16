@@ -157,7 +157,7 @@ project-root/
         requireSnapshot: boolean,
         requireApproval?: boolean,
         autoCreateTopLevel: boolean,
-        autoCreateschemaxSchema: boolean
+        autoCreateSchemaxSchema: boolean
       }
     }
   },
