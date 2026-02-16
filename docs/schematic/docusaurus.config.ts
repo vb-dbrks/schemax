@@ -5,7 +5,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'Schematic',
   tagline:
-    'Multi-provider data catalog schema management with version control for Unity Catalog and more.',
+    'Open source: multi-provider data catalog schema management with version control. Python SDK on PyPI · VS Code extension on Marketplace.',
   favicon: 'img/favicon.svg',
 
   // CI sets these for GitHub Pages; fallbacks for local build
@@ -13,7 +13,7 @@ const config: Config = {
   baseUrl: process.env.GITHUB_PAGES_BASE_URL || '/schemax-vscode/',
   trailingSlash: true,
 
-  organizationName: process.env.GITHUB_REPOSITORY_OWNER || 'your-org',
+  organizationName: process.env.GITHUB_REPOSITORY_OWNER || 'schematic',
   projectName: process.env.GITHUB_REPOSITORY?.split('/')[1] || 'schemax-vscode',
 
   onBrokenLinks: 'throw',
@@ -40,7 +40,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/your-org/schematic/tree/main/docs/schematic/',
+          editUrl: 'https://github.com/schematic/schemax-vscode/tree/main/docs/schematic/',
         },
         blog: false,
         theme: {
@@ -67,7 +67,7 @@ const config: Config = {
           position: 'right',
         },
         {
-          href: 'https://github.com/your-org/schematic',
+          href: `https://github.com/${process.env.GITHUB_REPOSITORY_OWNER || 'schematic'}/schemax-vscode`,
           position: 'right',
           className: 'header-github-link',
           'aria-label': 'GitHub repository',
@@ -75,8 +75,31 @@ const config: Config = {
       ],
     },
     footer: {
-      links: [],
-      copyright: `Copyright © ${new Date().getFullYear()} Schematic. Docs built with Docusaurus.`,
+      links: [
+        {
+          title: 'Distribution',
+          items: [
+            {
+              label: 'Python SDK (PyPI)',
+              href: 'https://pypi.org/project/schematic-py/',
+            },
+            {
+              label: 'VS Code Extension (Marketplace)',
+              href: 'https://marketplace.visualstudio.com/items?itemName=Schematic.schematic',
+            },
+          ],
+        },
+        {
+          title: 'Community',
+          items: [
+            {
+              label: 'GitHub',
+              href: 'https://github.com/schematic/schemax-vscode',
+            },
+          ],
+        },
+      ],
+      copyright: `Copyright © ${new Date().getFullYear()} Schematic. Open source. Docs built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.oneLight,

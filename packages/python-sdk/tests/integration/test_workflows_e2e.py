@@ -89,9 +89,7 @@ class TestWorkflowS1GreenfieldSingleDev:
         create_snapshot(temp_workspace, name="Add email", version="v0.2.0")
 
         # Diff between versions (no DB)
-        diff_ops = generate_diff(
-            temp_workspace, from_version="v0.1.0", to_version="v0.2.0"
-        )
+        diff_ops = generate_diff(temp_workspace, from_version="v0.1.0", to_version="v0.2.0")
         assert len(diff_ops) >= 1
         assert any(op.op == "unity.add_column" for op in diff_ops)
 
@@ -114,9 +112,12 @@ class TestWorkflowS1GreenfieldSingleDev:
         ):
             result = invoke_cli(
                 "apply",
-                "--target", "dev",
-                "--profile", "dev",
-                "--warehouse-id", "wh_123",
+                "--target",
+                "dev",
+                "--profile",
+                "dev",
+                "--warehouse-id",
+                "wh_123",
                 "--dry-run",
                 "--no-interaction",
                 str(temp_workspace),
@@ -148,9 +149,7 @@ class TestWorkflowS2GreenfieldMultiDev:
         result = invoke_cli("snapshot", "validate", str(initialized_workspace))
         assert result.exit_code == 0
 
-    def test_snapshot_rebase_workflow(
-        self, initialized_workspace, sample_operations
-    ) -> None:
+    def test_snapshot_rebase_workflow(self, initialized_workspace, sample_operations) -> None:
         """Snapshot rebase: create v0.1.0, v0.2.0, rebase v0.2.0 onto v0.1.0."""
         from schematic.commands.snapshot_rebase import rebase_snapshot
 
@@ -230,9 +229,7 @@ class TestWorkflowS3Brownfield:
             def complete_deployment(self, *args, **kwargs) -> None:
                 pass
 
-        monkeypatch.setattr(
-            "schematic.core.deployment.DeploymentTracker", FakeTracker
-        )
+        monkeypatch.setattr("schematic.core.deployment.DeploymentTracker", FakeTracker)
 
         summary = import_from_provider(
             workspace=initialized_workspace,
@@ -346,9 +343,7 @@ class TestWorkflowS3Brownfield:
 class TestWorkflowS4ApplyFailureAndRollback:
     """Situation 4: Partial rollback (failed deployment) and complete rollback."""
 
-    def test_apply_dry_run_then_rollback_dry_run_via_cli(
-        self, temp_workspace: Path
-    ) -> None:
+    def test_apply_dry_run_then_rollback_dry_run_via_cli(self, temp_workspace: Path) -> None:
         """Apply dry-run then rollback dry-run via CLI (stubbed)."""
         ensure_project_file(temp_workspace, provider_id="unity")
         builder = OperationBuilder()
@@ -368,10 +363,14 @@ class TestWorkflowS4ApplyFailureAndRollback:
         ):
             r1 = invoke_cli(
                 "apply",
-                "--target", "dev",
-                "--profile", "dev",
-                "--warehouse-id", "wh_123",
-                "--dry-run", "--no-interaction",
+                "--target",
+                "dev",
+                "--profile",
+                "dev",
+                "--warehouse-id",
+                "wh_123",
+                "--dry-run",
+                "--no-interaction",
                 str(temp_workspace),
             )
         assert r1.exit_code == 0
@@ -382,11 +381,16 @@ class TestWorkflowS4ApplyFailureAndRollback:
             )
             r2 = invoke_cli(
                 "rollback",
-                "--target", "dev",
-                "--to-snapshot", "v0.1.0",
-                "--profile", "dev",
-                "--warehouse-id", "wh_123",
-                "--dry-run", "--no-interaction",
+                "--target",
+                "dev",
+                "--to-snapshot",
+                "v0.1.0",
+                "--profile",
+                "dev",
+                "--warehouse-id",
+                "wh_123",
+                "--dry-run",
+                "--no-interaction",
                 str(temp_workspace),
             )
         assert r2.exit_code == 0
@@ -425,20 +429,23 @@ class TestWorkflowS4ApplyFailureAndRollback:
                 "schematic.core.deployment.DeploymentTracker",
                 return_value=mock_tracker,
             ):
-                with patch(
-                    "schematic.commands.rollback.rollback_partial"
-                ) as mock_partial:
+                with patch("schematic.commands.rollback.rollback_partial") as mock_partial:
                     mock_partial.return_value = SimpleNamespace(
                         success=True, operations_rolled_back=2, error_message=None
                     )
                     result = invoke_cli(
                         "rollback",
-                        "--deployment", "deploy_abc",
+                        "--deployment",
+                        "deploy_abc",
                         "--partial",
-                        "--target", "dev",
-                        "--profile", "dev",
-                        "--warehouse-id", "wh_123",
-                        "--dry-run", "--no-interaction",
+                        "--target",
+                        "dev",
+                        "--profile",
+                        "dev",
+                        "--warehouse-id",
+                        "wh_123",
+                        "--dry-run",
+                        "--no-interaction",
                         str(temp_workspace),
                     )
         assert result.exit_code == 0
@@ -459,9 +466,7 @@ class TestWorkflowS5DiffValidateSqlOnly:
         result = invoke_cli("validate", str(initialized_workspace))
         assert result.exit_code == 0
 
-    def test_sql_generates_file_no_db(
-        self, initialized_workspace, sample_operations
-    ) -> None:
+    def test_sql_generates_file_no_db(self, initialized_workspace, sample_operations) -> None:
         """schematic sql --output FILE succeeds and writes SQL (no DB)."""
         append_ops(initialized_workspace, sample_operations)
         sql_file = initialized_workspace / "migration.sql"
@@ -469,22 +474,18 @@ class TestWorkflowS5DiffValidateSqlOnly:
         assert result.exit_code == 0
         assert sql_file.exists()
         content = sql_file.read_text()
-        assert "CREATE CATALOG" in content or "CREATE TABLE" in content or "CREATE SCHEMA" in content
+        assert (
+            "CREATE CATALOG" in content or "CREATE TABLE" in content or "CREATE SCHEMA" in content
+        )
 
-    def test_diff_succeeds_no_db(
-        self, initialized_workspace, sample_operations
-    ) -> None:
+    def test_diff_succeeds_no_db(self, initialized_workspace, sample_operations) -> None:
         """schematic diff --from X --to Y succeeds (no DB)."""
         append_ops(initialized_workspace, sample_operations)
         create_snapshot(initialized_workspace, "v1", version="v0.1.0")
         builder = OperationBuilder()
         append_ops(
             initialized_workspace,
-            [
-                builder.add_column(
-                    "col_x", "table_789", "x", "STRING", True, "X", op_id="op_x"
-                )
-            ],
+            [builder.add_column("col_x", "table_789", "x", "STRING", True, "X", op_id="op_x")],
         )
         create_snapshot(initialized_workspace, "v2", version="v0.2.0")
 
@@ -507,9 +508,7 @@ class TestWorkflowS5DiffValidateSqlOnly:
         assert isinstance(sql_str, str)
         assert "CREATE" in sql_str or sql_str.strip() == ""
 
-    def test_generate_diff_api_no_db(
-        self, initialized_workspace, sample_operations
-    ) -> None:
+    def test_generate_diff_api_no_db(self, initialized_workspace, sample_operations) -> None:
         """generate_diff() API returns list of ops (no DB)."""
         append_ops(initialized_workspace, sample_operations)
         create_snapshot(initialized_workspace, "v1", version="v0.1.0")
@@ -520,9 +519,7 @@ class TestWorkflowS5DiffValidateSqlOnly:
         )
         create_snapshot(initialized_workspace, "v2", version="v0.2.0")
 
-        ops = generate_diff(
-            initialized_workspace, from_version="v0.1.0", to_version="v0.2.0"
-        )
+        ops = generate_diff(initialized_workspace, from_version="v0.1.0", to_version="v0.2.0")
         assert isinstance(ops, list)
         assert len(ops) >= 1
         assert any(op.op == "unity.add_column" for op in ops)

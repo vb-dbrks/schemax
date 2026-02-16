@@ -6,9 +6,16 @@ title: Introduction
 
 # Schematic
 
-**Multi-provider data catalog schema management with version control.**
+**Open source · Multi-provider data catalog schema management with version control.**
 
 Schematic is an extensible toolkit for managing data catalog schemas (Unity Catalog, Hive Metastore, PostgreSQL) using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
+
+:::info Distribution
+Schematic is **open source** (not a Databricks Labs project). When published:
+- **Python SDK & CLI** → [PyPI](https://pypi.org/project/schematic-py/) (`pip install schematic-py`)
+- **VS Code extension** → [VS Code Marketplace](https://marketplace.visualstudio.com/) (search "Schematic")
+Until then, install from source (see [Quickstart](guide/quickstart) and [Development](guide/development)).
+:::
 
 ## Features
 
@@ -32,11 +39,12 @@ Schematic is an extensible toolkit for managing data catalog schemas (Unity Cata
 
 ## Quick links
 
-- [Quickstart](/guide/quickstart) — Get started with the extension and CLI
-- [Architecture](/guide/architecture) — Design and patterns
-- [Workflows](/reference/workflows) — End-to-end situations (greenfield, brownfield, rollback)
-- [CLI Reference](/reference/cli) — Commands and options
-- [Testing](/reference/testing) — How to run and write tests
+- [Quickstart](guide/quickstart) — Get started with the extension and CLI
+- [Architecture](guide/architecture) — Design and patterns
+- [Workflows](reference/workflows) — End-to-end situations (greenfield, brownfield, rollback)
+- [CLI Reference](reference/cli) — Commands and options
+- [Testing](reference/testing) — How to run and write tests
+- [Provider contract](reference/provider-contract) — Implement a new catalog provider
 
 ## Supported providers
 

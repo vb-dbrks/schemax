@@ -599,9 +599,7 @@ class TestRollbackCompleteBaselineGuard:
                         mock_provider,
                         None,
                     )
-                    with patch(
-                        "schematic.commands.diff._build_catalog_mapping"
-                    ) as mock_build_map:
+                    with patch("schematic.commands.diff._build_catalog_mapping") as mock_build_map:
                         mock_build_map.return_value = {"__implicit__": "dev_catalog"}
                         result = rollback_complete(
                             workspace=Path("/tmp"),
@@ -618,9 +616,7 @@ class TestRollbackCompleteBaselineGuard:
 
     @patch("schematic.commands.rollback.get_environment_config")
     @patch("schematic.commands.rollback.read_project")
-    def test_rollback_at_or_after_baseline_allowed(
-        self, mock_read_project, mock_get_env_config
-    ):
+    def test_rollback_at_or_after_baseline_allowed(self, mock_read_project, mock_get_env_config):
         """When to_snapshot is at or after baseline, no RollbackError (baseline check passes)."""
         mock_read_project.return_value = {"name": "p", "provider": {"environments": {}}}
         mock_get_env_config.return_value = {
@@ -638,9 +634,7 @@ class TestRollbackCompleteBaselineGuard:
                 "operations": [],
             }
             with patch("schematic.providers.unity.auth.create_databricks_client"):
-                with patch(
-                    "schematic.commands.rollback.DeploymentTracker"
-                ) as mock_tracker_class:
+                with patch("schematic.commands.rollback.DeploymentTracker") as mock_tracker_class:
                     mock_tracker = Mock()
                     mock_tracker_class.return_value = mock_tracker
                     mock_tracker.get_latest_deployment.return_value = {

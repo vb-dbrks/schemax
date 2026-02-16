@@ -238,9 +238,10 @@ class TestImportFromProvider:
         assert summary["deployment_id"] == "deploy_import_1234"
         mock_write_project.assert_called_once()
         _workspace, persisted_project = mock_write_project.call_args.args
-        assert persisted_project["provider"]["environments"]["dev"][
-            "importBaselineSnapshot"
-        ] == "v0.2.0"
+        assert (
+            persisted_project["provider"]["environments"]["dev"]["importBaselineSnapshot"]
+            == "v0.2.0"
+        )
 
     def test_adopt_baseline_rejected_when_provider_capability_missing(self):
         provider = _make_provider(supports_baseline_adoption=False)
