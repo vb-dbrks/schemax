@@ -1,125 +1,70 @@
-# SchemaX VS Code Extension
+# SchemaX
 
-Visual designer for Databricks Unity Catalog schema definitions with version control.
+Design and manage **Databricks Unity Catalog** schemas visually—with version control and one-click SQL generation.
 
-## Features
+**📖 [Read the full documentation](https://vb-dbrks.github.io/schemax/)** for setup, quickstart, and reference.
 
-- **Visual Schema Designer**: Intuitive UI for creating and managing catalogs, schemas, tables, and columns
-- **Data Governance**: Full support for constraints, tags, row filters, and column masks
-- **Table Properties**: Configure Delta Lake TBLPROPERTIES
-- **Version Control**: Snapshot-based versioning with semantic versioning
-- **Change Tracking**: Append-only operation log tracks every modification
-- **Inline Editing**: Edit table and column properties directly in the grid
-- **Git-Friendly**: JSON-based storage optimized for version control
+---
 
-## Installation
+## Get started
 
-### From VS Code Marketplace
+1. **Install the extension**  
+   In VS Code: Extensions (Ctrl+Shift+X / Cmd+Shift+X) → search **SchemaX** → Install.
 
-1. Open VS Code
-2. Go to Extensions (Cmd+Shift+X)
-3. Search for "SchemaX"
-4. Click Install
+2. **Open the designer**  
+   Command Palette (Ctrl+Shift+P / Cmd+Shift+P) → **SchemaX: Open Designer**.
 
-### From VSIX (Development)
+3. **Create your schema**  
+   Add a catalog, then schemas and tables. Edit columns and properties in the grid. Create snapshots and generate SQL when you’re ready.
 
-1. Download the latest `.vsix` file
-2. Open VS Code
-3. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
-4. Type "Install from VSIX" and select the file
+**Optional — Python SDK:** For **import from Databricks**, **apply**, **rollback**, and **validate**, install the SchemaX CLI. Run **SchemaX: Install Python SDK** from the Command Palette (this uses the Python interpreter selected in VS Code when set), or run `pip install schemaxpy` in your own environment. The extension will prompt you when a feature needs the CLI.
 
-## Quick Start
+---
 
-1. Open a workspace folder in VS Code
-2. Press `Cmd+Shift+P` and run **SchemaX: Open Designer**
-3. Click "Add Catalog" to create your first catalog
-4. Build your schema using the visual designer
-5. Create a snapshot: **SchemaX: Create Snapshot**
+## What you can do
+
+- **Visual designer** — Catalogs, schemas, tables, and columns in an intuitive UI.
+- **Version control** — Snapshots with semantic versions; changelog for uncommitted changes.
+- **SQL generation** — Generate migration SQL from the designer.
+- **Data governance** — Constraints, column tags, row filters, column masks, table properties (Delta Lake TBLPROPERTIES).
+- **Import** — Bring existing Unity Catalog assets into your project (requires Python SDK).
+
+---
 
 ## Commands
 
-- `SchemaX: Open Designer` - Open the visual schema designer
-- `SchemaX: Create Snapshot` - Create a version snapshot
-- `SchemaX: Show Last Emitted Changes` - View recent operations
-- `SchemaX: Generate SQL Migration` - Generate SQL from changes
+| Command | What it does |
+|--------|----------------|
+| **SchemaX: Open Designer** | Open the schema designer |
+| **SchemaX: Create Snapshot** | Save a version snapshot |
+| **SchemaX: Generate SQL Migration** | Generate SQL from your changes |
+| **SchemaX: Show Last Emitted Changes** | View recent operations |
+| **SchemaX: Import Existing Assets** | Import from Databricks (needs Python SDK) |
+| **SchemaX: Install Python SDK** | Install `schemaxpy` for CLI features |
 
-## File Structure
+---
 
-SchemaX creates a `.schemax` directory in your workspace:
+## Where things are stored
 
-```
-.schemax/
-├── project.json           # Project metadata
-├── changelog.json         # Uncommitted changes
-└── snapshots/
-    ├── v0.1.0.json       # Snapshot files
-    └── v0.2.0.json
-```
+SchemaX uses a `.schemax` folder in your workspace:
 
-## Unity Catalog Features
+- `project.json` — Project and environment settings  
+- `changelog.json` — Uncommitted changes  
+- `snapshots/` — Version snapshots (e.g. v0.1.0.json)
 
-### Tables & Columns
-
-- Multiple table formats (Delta, Iceberg)
-- Column mapping modes (name, id)
-- Nullable columns
-- Comments and descriptions
-
-### Data Governance
-
-- **Column Tags**: Key-value metadata for classification
-- **Constraints**: PRIMARY KEY, FOREIGN KEY, CHECK constraints
-- **Row Filters**: Row-level security with UDF expressions
-- **Column Masks**: Data masking functions
-
-### Table Properties
-
-Configure Delta Lake behavior:
-- `delta.appendOnly` - Disable UPDATE/DELETE
-- `delta.enableChangeDataFeed` - Enable CDC
-- `delta.logRetentionDuration` - History retention
-- Custom properties for metadata
-
-## Publishing
-
-### One-time setup
-
-1. **Create a publisher** (if needed) at [Marketplace: Manage](https://marketplace.visualstudio.com/manage). The extension uses publisher ID `schematic-dev` (set in `package.json`).
-2. **Create a Personal Access Token (PAT)** for the Marketplace:
-   - Go to [Azure DevOps → Personal access tokens](https://dev.azure.com) (sign in with the same Microsoft account).
-   - New token: **Organization** = *All accessible organizations*, **Scopes** = **Marketplace** → **Manage**. Copy the token (it’s shown only once).
-
-### Release
-
-From the repo root:
-
-```bash
-cd packages/vscode-extension
-# Bump version in package.json, then:
-npm run build
-npm run deploy
-# When prompted, paste your PAT (or set VSCE_PAT in the environment).
-```
-
-## Development
-
-See the [main repository](https://github.com/vb-dbrks/schemax-vscode) for:
-- Building from source
-- Contributing guidelines
-- Architecture documentation
+---
 
 ## Requirements
 
-- Visual Studio Code 1.90.0 or higher
-- A workspace folder
+- VS Code 1.90.0 or newer  
+- A workspace folder open
 
-## License
-
-Apache License 2.0 - see [LICENSE](../../LICENSE) for details.
+---
 
 ## Links
 
-- **Repository**: https://github.com/vb-dbrks/schemax-vscode
-- **Issues**: https://github.com/vb-dbrks/schemax-vscode/issues
-- **Documentation**: https://github.com/vb-dbrks/schemax-vscode/tree/main/docs
+- **Documentation**: [vb-dbrks.github.io/schemax](https://vb-dbrks.github.io/schemax/)
+- **Report an issue**: [GitHub Issues](https://github.com/vb-dbrks/schemax-vscode/issues)
+- **Repository**: [github.com/vb-dbrks/schemax-vscode](https://github.com/vb-dbrks/schemax-vscode)
 
+Apache License 2.0 — see [LICENSE](../../LICENSE) for details.

@@ -1,9 +1,9 @@
 {
   "name": "schemax-vscode",
   "displayName": "SchemaX",
-  "description": "Visual designer for Databricks Unity Catalog schemas with version control",
+  "description": "Design and manage Databricks Unity Catalog schemas visually. Version control, SQL generation, apply/rollback/import via CLI. Install Python SDK (pip install schemaxpy) for full features.",
   "publisher": "schematic-dev",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Field Engineering"
   },
@@ -29,21 +29,32 @@
     "database",
     "migration",
     "version control",
-    "visual designer"
+    "delta lake",
+    "data governance",
+    "visual designer",
+    "catalog"
   ],
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Other",
-    "Visualization"
+    "Database",
+    "Visualization",
+    "Other"
   ],
+  "icon": "images/icon128.png",
+  "galleryBanner": {
+    "color": "#1a1a2e",
+    "theme": "dark"
+  },
+  "qna": "marketplace",
   "activationEvents": [
     "onCommand:schemax.openDesigner",
     "onCommand:schemax.showLastOps",
     "onCommand:schemax.createSnapshot",
     "onCommand:schemax.generateSQL",
-    "onCommand:schemax.importAssets"
+    "onCommand:schemax.importAssets",
+    "onCommand:schemax.installPythonSdk"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -67,6 +78,10 @@
       {
         "command": "schemax.importAssets",
         "title": "SchemaX: Import Existing Assets"
+      },
+      {
+        "command": "schemax.installPythonSdk",
+        "title": "SchemaX: Install Python SDK (pip install schemaxpy)"
       }
     ]
   },

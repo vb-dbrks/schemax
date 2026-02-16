@@ -85,7 +85,7 @@ const config: Config = {
             },
             {
               label: 'VS Code Extension (Marketplace)',
-              href: 'https://marketplace.visualstudio.com/items?itemName=varunbhandary.schemax-vscode',
+              href: 'https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode',
             },
           ],
         },

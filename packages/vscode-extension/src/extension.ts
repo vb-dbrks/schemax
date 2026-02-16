@@ -73,7 +73,20 @@ export function activate(context: vscode.ExtensionContext) {
     () => runImportFromPrompts()
   );
 
-  context.subscriptions.push(openDesignerCommand, showLastOpsCommand, createSnapshotCommand, generateSQLCommand, importAssetsCommand, outputChannel);
+  const installPythonSdkCommand = vscode.commands.registerCommand(
+    'schemax.installPythonSdk',
+    () => installPythonSdk()
+  );
+
+  context.subscriptions.push(
+    openDesignerCommand,
+    showLastOpsCommand,
+    createSnapshotCommand,
+    generateSQLCommand,
+    importAssetsCommand,
+    installPythonSdkCommand,
+    outputChannel
+  );
 
   outputChannel.appendLine('[SchemaX] Extension activated successfully!');
   outputChannel.appendLine('[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps, schemax.createSnapshot, schemax.generateSQL, schemax.importAssets');
@@ -83,6 +96,73 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   trackEvent('extension_deactivated');
+}
+
+/** Check if the SchemaX CLI (schemax) is available on PATH. */
+async function checkSchemaxCliAvailable(): Promise<boolean> {
+  const { exec } = require('child_process');
+  const { promisify } = require('util');
+  const execAsync = promisify(exec);
+  try {
+    await execAsync('schemax --version', { timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** If SchemaX CLI is missing, show a message with an option to install the Python SDK. */
+export async function promptToInstallPythonSdkIfNeeded(): Promise<void> {
+  const available = await checkSchemaxCliAvailable();
+  if (available) return;
+  const choice = await vscode.window.showInformationMessage(
+    'SchemaX CLI not found. Some features (import, snapshot validate, apply) need the Python SDK. Install it?',
+    'Install (pip install schemaxpy)',
+    'Dismiss'
+  );
+  if (choice === 'Install (pip install schemaxpy)') {
+    await installPythonSdk();
+  }
+}
+
+/** Get Python executable to use: prefer VS Code Python interpreter setting, then PATH. */
+function getPythonExecutable(): string[] {
+  const configured = vscode.workspace.getConfiguration('python').get<string>('defaultInterpreterPath');
+  if (configured && configured.trim()) {
+    return [configured.trim()];
+  }
+  return ['python3', 'python'];
+}
+
+async function installPythonSdk(): Promise<void> {
+  const candidates = getPythonExecutable();
+  for (const py of candidates) {
+    try {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Installing SchemaX Python SDK',
+          cancellable: false,
+        },
+        async () => {
+          const { exec } = require('child_process');
+          const { promisify } = require('util');
+          const execAsync = promisify(exec);
+          await execAsync(`"${py}" -m pip install schemaxpy`, { timeout: 120000 });
+        }
+      );
+      vscode.window.showInformationMessage(
+        'SchemaX Python SDK installed. You can now use the schemax CLI (e.g. schemax validate, schemax apply).'
+      );
+      outputChannel.appendLine('[SchemaX] Python SDK installed via pip install schemaxpy');
+      return;
+    } catch (err: any) {
+      outputChannel.appendLine(`[SchemaX] ${py} -m pip install schemaxpy failed: ${err?.message ?? err}`);
+    }
+  }
+  vscode.window.showErrorMessage(
+    'Could not install SchemaX Python SDK. Install it in your Python environment: pip install schemaxpy (or set python.defaultInterpreterPath and try again).'
+  );
 }
 
 function runCommand(
@@ -550,6 +630,14 @@ async function runImportWithRequest(
     });
   } else {
     vscode.window.showErrorMessage(`SchemaX import failed. See Output > SchemaX for details.`);
+    const stderr = (result.stderr || '').toLowerCase();
+    if (
+      stderr.includes('not found') ||
+      stderr.includes('command not found') ||
+      stderr.includes('no module named')
+    ) {
+      promptToInstallPythonSdkIfNeeded();
+    }
     trackEvent('import_failed', {
       dryRun: request.dryRun,
       adoptBaseline: request.adoptBaseline,
@@ -1069,6 +1157,13 @@ async function openDesigner(context: vscode.ExtensionContext) {
       }
       
       outputChannel.appendLine(`[SchemaX] Failed to detect stale snapshots: ${error.message}`);
+      if (
+        error.message?.includes('not found') ||
+        error.message?.includes('ENOENT') ||
+        error.code === 'ENOENT'
+      ) {
+        promptToInstallPythonSdkIfNeeded();
+      }
       return [];
     }
   }
