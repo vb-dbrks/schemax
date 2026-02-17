@@ -37,6 +37,36 @@ def _write_project_env_overrides(
     project_path.write_text(json.dumps(project, indent=2))
 
 
+def _write_project_promote_envs(
+    workspace: Path,
+    *,
+    suffix: str,
+    resource_prefix: str,
+    logical_catalog: str = "bronze",
+) -> tuple[str, str, str, str, str, str]:
+    """Set dev/test/prod env overrides for promote test. Returns (tracking_dev, physical_dev, tracking_test, physical_test, tracking_prod, physical_prod)."""
+    project_path = workspace / ".schemax" / "project.json"
+    project = json.loads(project_path.read_text())
+    envs = project["provider"]["environments"]
+
+    tracking_dev = f"{resource_prefix}_promote_track_dev_{suffix}"
+    physical_dev = f"{resource_prefix}_promote_dev_{suffix}"
+    tracking_test = f"{resource_prefix}_promote_track_test_{suffix}"
+    physical_test = f"{resource_prefix}_promote_test_{suffix}"
+    tracking_prod = f"{resource_prefix}_promote_track_prod_{suffix}"
+    physical_prod = f"{resource_prefix}_promote_prod_{suffix}"
+
+    envs["dev"]["topLevelName"] = tracking_dev
+    envs["dev"]["catalogMappings"] = {logical_catalog: physical_dev}
+    envs["test"]["topLevelName"] = tracking_test
+    envs["test"]["catalogMappings"] = {logical_catalog: physical_test}
+    envs["prod"]["topLevelName"] = tracking_prod
+    envs["prod"]["catalogMappings"] = {logical_catalog: physical_prod}
+
+    project_path.write_text(json.dumps(project, indent=2))
+    return tracking_dev, physical_dev, tracking_test, physical_test, tracking_prod, physical_prod
+
+
 def _assert_schema_exists(config, physical_catalog: str, schema_name: str) -> None:
     provider = ProviderRegistry.get("unity")
     assert provider is not None
@@ -632,4 +662,213 @@ def test_live_e2e_create_apply_rollback_with_grants(tmp_path: Path) -> None:
     finally:
         executor = create_executor(config)
         cleanup_objects(executor, config, [physical_catalog, tracking_catalog])
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+@pytest.mark.integration
+def test_live_greenfield_promote_dev_test_prod_then_rollback_prod(tmp_path: Path) -> None:
+    """Live E2E: greenfield project → apply to dev → test → prod → add change → promote again → rollback prod only.
+
+    Creates a new dev greenfield SchemaX project (catalog/schema/table), publishes to dev, then test, then prod.
+    Adds a second table, promotes to all three, then rollbacks only prod to previous snapshot.
+    Requires SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 and DATABRICKS_* env vars.
+    """
+    config = require_live_command_tests()
+    suffix = make_namespaced_id(config).split("_", 2)[-1]
+
+    workspace = tmp_path / f"workspace_promote_{suffix}"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    logical_catalog = "bronze"
+    schema_name = "raw"
+    table_users = "users"
+    table_orders = "orders"
+
+    ensure_project_file(workspace, provider_id="unity")
+    (
+        tracking_dev,
+        physical_dev,
+        tracking_test,
+        physical_test,
+        tracking_prod,
+        physical_prod,
+    ) = _write_project_promote_envs(
+        workspace, suffix=suffix, resource_prefix=config.resource_prefix
+    )
+
+    builder = OperationBuilder()
+    cat_id = f"cat_promote_{suffix}"
+    sch_id = f"sch_promote_{suffix}"
+    tbl_users_id = f"tbl_users_{suffix}"
+    tbl_orders_id = f"tbl_orders_{suffix}"
+
+    all_catalogs = [
+        tracking_dev,
+        physical_dev,
+        tracking_test,
+        physical_test,
+        tracking_prod,
+        physical_prod,
+    ]
+
+    try:
+        executor = create_executor(config)
+        managed_root = (
+            f"{config.managed_location.rstrip('/')}/schemax-command-live/promote/{suffix}"
+        )
+        preseed_statements = [
+            f"CREATE CATALOG IF NOT EXISTS {tracking_dev} MANAGED LOCATION '{managed_root}/tracking_dev'",
+            f"CREATE CATALOG IF NOT EXISTS {physical_dev} MANAGED LOCATION '{managed_root}/physical_dev'",
+            f"CREATE SCHEMA IF NOT EXISTS {physical_dev}.{schema_name}",
+            f"CREATE CATALOG IF NOT EXISTS {tracking_test} MANAGED LOCATION '{managed_root}/tracking_test'",
+            f"CREATE CATALOG IF NOT EXISTS {physical_test} MANAGED LOCATION '{managed_root}/physical_test'",
+            f"CREATE SCHEMA IF NOT EXISTS {physical_test}.{schema_name}",
+            f"CREATE CATALOG IF NOT EXISTS {tracking_prod} MANAGED LOCATION '{managed_root}/tracking_prod'",
+            f"CREATE CATALOG IF NOT EXISTS {physical_prod} MANAGED LOCATION '{managed_root}/physical_prod'",
+            f"CREATE SCHEMA IF NOT EXISTS {physical_prod}.{schema_name}",
+        ]
+        preseed = executor.execute_statements(
+            statements=preseed_statements,
+            config=build_execution_config(config),
+        )
+        assert preseed.status in {"success", "partial"}, (
+            f"Preseed failed: {preseed.status} {getattr(preseed, 'error_message', '')}"
+        )
+
+        changelog_path = workspace / ".schemax" / "changelog.json"
+        changelog = json.loads(changelog_path.read_text())
+        changelog["ops"] = []
+        changelog_path.write_text(json.dumps(changelog, indent=2))
+
+        append_ops(
+            workspace,
+            [
+                builder.add_catalog(cat_id, logical_catalog, op_id=f"op_cat_{suffix}"),
+                builder.add_schema(sch_id, schema_name, cat_id, op_id=f"op_sch_{suffix}"),
+                builder.add_table(
+                    tbl_users_id, table_users, sch_id, "delta", op_id=f"op_tbl_users_{suffix}"
+                ),
+                builder.add_column(
+                    f"col_id_{suffix}",
+                    tbl_users_id,
+                    "user_id",
+                    "BIGINT",
+                    False,
+                    "User ID",
+                    op_id=f"op_col_id_{suffix}",
+                ),
+                builder.add_column(
+                    f"col_email_{suffix}",
+                    tbl_users_id,
+                    "email",
+                    "STRING",
+                    True,
+                    "Email",
+                    op_id=f"op_col_email_{suffix}",
+                ),
+            ],
+        )
+
+        snapshot_v1 = invoke_cli(
+            "snapshot",
+            "create",
+            "--name",
+            "Promote v1",
+            "--version",
+            "v0.1.0",
+            str(workspace),
+        )
+        assert snapshot_v1.exit_code == 0, snapshot_v1.output
+
+        for target in ("dev", "test", "prod"):
+            apply_r = invoke_cli(
+                "apply",
+                "--target",
+                target,
+                "--profile",
+                config.profile,
+                "--warehouse-id",
+                config.warehouse_id,
+                "--no-interaction",
+                str(workspace),
+            )
+            assert apply_r.exit_code == 0, f"apply --target {target}: {apply_r.output}"
+
+        assert _table_exists(config, physical_dev, schema_name, table_users)
+        assert _table_exists(config, physical_test, schema_name, table_users)
+        assert _table_exists(config, physical_prod, schema_name, table_users)
+
+        append_ops(
+            workspace,
+            [
+                builder.add_table(
+                    tbl_orders_id,
+                    table_orders,
+                    sch_id,
+                    "delta",
+                    op_id=f"op_tbl_orders_{suffix}",
+                ),
+                builder.add_column(
+                    f"col_order_id_{suffix}",
+                    tbl_orders_id,
+                    "order_id",
+                    "BIGINT",
+                    False,
+                    "Order ID",
+                    op_id=f"op_col_ord_{suffix}",
+                ),
+            ],
+        )
+
+        snapshot_v2 = invoke_cli(
+            "snapshot",
+            "create",
+            "--name",
+            "Promote v2 add orders",
+            "--version",
+            "v0.2.0",
+            str(workspace),
+        )
+        assert snapshot_v2.exit_code == 0, snapshot_v2.output
+
+        for target in ("dev", "test", "prod"):
+            apply_r = invoke_cli(
+                "apply",
+                "--target",
+                target,
+                "--profile",
+                config.profile,
+                "--warehouse-id",
+                config.warehouse_id,
+                "--no-interaction",
+                str(workspace),
+            )
+            assert apply_r.exit_code == 0, f"apply --target {target}: {apply_r.output}"
+
+        assert _table_exists(config, physical_dev, schema_name, table_orders)
+        assert _table_exists(config, physical_test, schema_name, table_orders)
+        assert _table_exists(config, physical_prod, schema_name, table_orders)
+
+        rollback_prod = invoke_cli(
+            "rollback",
+            "--target",
+            "prod",
+            "--to-snapshot",
+            "v0.1.0",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert rollback_prod.exit_code == 0, rollback_prod.output
+
+        assert _table_exists(config, physical_dev, schema_name, table_orders)
+        assert _table_exists(config, physical_test, schema_name, table_orders)
+        assert not _table_exists(config, physical_prod, schema_name, table_orders)
+        assert _table_exists(config, physical_prod, schema_name, table_users)
+    finally:
+        executor = create_executor(config)
+        cleanup_objects(executor, config, all_catalogs)
         shutil.rmtree(workspace, ignore_errors=True)
