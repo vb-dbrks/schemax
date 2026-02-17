@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { Table, RowFilter, ColumnMask } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
+
+const IconTrash: React.FC = () => (
+  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+);
 
 interface SecurityGovernanceProps {
   tableId: string;
@@ -244,43 +249,42 @@ export const SecurityGovernance: React.FC<SecurityGovernanceProps> = ({ tableId 
         </button>
       </div>
 
-      {/* Table Grants */}
-      <div className="grants-subsection">
-        <h4>Grants ({grants.length})</h4>
-        {grants.length === 0 ? (
-          <div className="empty-grants">
-            <p>No grants defined.</p>
-            <p className="hint">Grant privileges (e.g. SELECT, MODIFY) to users or groups.</p>
+      {/* Table Grants - same layout as catalog/schema/view */}
+      <div className="table-properties-section">
+        <h3>Grants ({grants.length})</h3>
+        {grants.length === 0 && !addGrantDialog ? (
+          <div className="empty-properties">
+            <p>No grants defined. Grant privileges (e.g. SELECT, MODIFY) to users or groups.</p>
           </div>
         ) : (
-          <table className="grants-table">
+          <table className="properties-table">
             <thead>
               <tr>
                 <th>Principal</th>
                 <th>Privileges</th>
-                <th style={{ width: '100px' }}>Actions</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {grants.map((g) => (
                 <tr key={g.principal}>
                   <td>{g.principal}</td>
-                  <td className="code-cell">{(g.privileges || []).join(', ')}</td>
+                  <td>{(g.privileges || []).join(', ')}</td>
                   <td>
-                    <button
-                      className="delete-btn-small"
+                    <VSCodeButton
+                      appearance="icon"
                       onClick={() => setDeleteGrantDialog({ principal: g.principal })}
                       title="Revoke all"
                     >
-                      Remove
-                    </button>
+                      <IconTrash />
+                    </VSCodeButton>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-        <button className="add-grant-btn" onClick={() => setAddGrantDialog(true)}>
+        <button className="add-property-btn" onClick={() => setAddGrantDialog(true)}>
           + Add Grant
         </button>
       </div>

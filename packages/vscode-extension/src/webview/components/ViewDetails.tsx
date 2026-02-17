@@ -5,6 +5,10 @@ import { extractDependenciesFromView } from '../../providers/base/sql-parser';
 import { RichComment } from './RichComment';
 import './ViewDetails.css';
 
+const IconTrash: React.FC = () => (
+  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+);
+
 interface ViewDetailsProps {
   viewId: string;
 }
@@ -230,11 +234,13 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
         </div>
       )}
 
-      {/* Grants Section */}
-      <div className="view-section">
+      {/* Grants - same layout as catalog/schema/table */}
+      <div className="table-properties-section">
         <h3>Grants ({(view as any).grants?.length ?? 0})</h3>
         {(!(view as any).grants || (view as any).grants.length === 0) && !addGrantDialog ? (
-          <p className="no-dependencies">No grants defined. Grant privileges (e.g. SELECT, MODIFY) to users or groups.</p>
+          <div className="empty-properties">
+            <p>No grants defined. Grant privileges (e.g. SELECT, MODIFY) to users or groups.</p>
+          </div>
         ) : (
           <table className="properties-table">
             <thead>
@@ -250,8 +256,12 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
                   <td>{g.principal}</td>
                   <td>{(g.privileges || []).join(', ')}</td>
                   <td>
-                    <VSCodeButton appearance="secondary" onClick={() => setRevokeGrantDialog({ principal: g.principal })} title="Revoke all">
-                      Revoke
+                    <VSCodeButton
+                      appearance="icon"
+                      onClick={() => setRevokeGrantDialog({ principal: g.principal })}
+                      title="Revoke all"
+                    >
+                      <IconTrash />
                     </VSCodeButton>
                   </td>
                 </tr>
@@ -259,9 +269,9 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
             </tbody>
           </table>
         )}
-        <VSCodeButton appearance="secondary" onClick={() => setAddGrantDialog(true)} style={{ marginTop: '8px' }}>
+        <button className="add-property-btn" onClick={() => setAddGrantDialog(true)}>
           + Add Grant
-        </VSCodeButton>
+        </button>
       </div>
 
       {addGrantDialog && (

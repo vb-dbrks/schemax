@@ -1957,6 +1957,9 @@ body {
 .row-filters-subsection,
 .column-masks-subsection {
   margin-bottom: 24px;
+  padding: 16px;
+  background-color: var(--vscode-editor-inactiveSelectionBackground);
+  border-radius: 4px;
 }
 
 .row-filters-subsection:last-child,
