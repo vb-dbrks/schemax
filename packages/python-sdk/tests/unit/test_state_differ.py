@@ -2240,6 +2240,28 @@ class TestUnityStateDifferGenericObjectCoverage:
 class TestUnityStateDifferGrants:
     """Test UnityStateDiffer for grant diffing (add_grant, revoke_grant)"""
 
+    def test_diff_grants_skips_empty_principal(self) -> None:
+        """Grants with empty principal are skipped (invalid for SQL); valid grants still diffed (Bug 1)."""
+        old_state = {"catalogs": [{"id": "cat_1", "name": "bronze", "schemas": [], "grants": []}]}
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [],
+                    "grants": [
+                        {"principal": "", "privileges": ["USE CATALOG"]},  # skipped
+                        {"principal": "data_engineers", "privileges": ["CREATE SCHEMA"]},  # included
+                    ],
+                },
+            ]
+        }
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+        add_grants = [o for o in ops if o.op == "unity.add_grant"]
+        assert len(add_grants) == 1
+        assert add_grants[0].payload["principal"] == "data_engineers"
+
     def test_diff_catalog_grants_added(self) -> None:
         """Should generate add_grant when catalog gains grants"""
         old_state = {
@@ -2463,3 +2485,37 @@ class TestUnityStateDifferGrants:
         assert len(add_ops) == 1
         assert add_ops[0].payload["targetType"] == "table"
         assert add_ops[0].payload["principal"] == "analysts"
+
+    def test_add_new_catalog_with_schema_grants_includes_schema_grants(self) -> None:
+        """When a new catalog is added with schemas that have grants, schema grants are in the diff (Bug 2)."""
+        old_state: dict = {"catalogs": []}
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "raw",
+                            "tables": [],
+                            "views": [],
+                            "grants": [
+                                {"principal": "analysts", "privileges": ["CREATE TABLE", "USE SCHEMA"]},
+                            ],
+                        },
+                    ],
+                    "grants": [],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        add_grant_ops = [o for o in ops if o.op == "unity.add_grant"]
+        schema_grants = [o for o in add_grant_ops if o.payload.get("targetType") == "schema"]
+        assert len(schema_grants) == 1
+        assert schema_grants[0].payload["targetId"] == "sch_1"
+        assert schema_grants[0].payload["principal"] == "analysts"
+        assert set(schema_grants[0].payload["privileges"]) == {"CREATE TABLE", "USE SCHEMA"}

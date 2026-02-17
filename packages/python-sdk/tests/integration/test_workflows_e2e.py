@@ -520,3 +520,194 @@ class TestWorkflowS5DiffValidateSqlOnly:
         assert isinstance(ops, list)
         assert len(ops) >= 1
         assert any(op.op == "unity.add_column" for op in ops)
+
+
+# -----------------------------------------------------------------------------
+# E2E: Dev → Test → Prod apply and rollback (stubbed execution)
+# -----------------------------------------------------------------------------
+
+
+def _ensure_catalog_mappings_for_logical_catalog(
+    workspace: Path, logical_catalog: str = "bronze"
+) -> None:
+    """Add logical catalog name to each env's catalogMappings so apply/diff work."""
+    project = read_project(workspace)
+    envs = project["provider"]["environments"]
+    name = project.get("name", workspace.name)
+    for env_key in ("dev", "test", "prod"):
+        if env_key not in envs:
+            continue
+        env = envs[env_key]
+        physical = env.get("topLevelName", f"{env_key}_{name}")
+        mappings = dict(env.get("catalogMappings") or {})
+        mappings[logical_catalog] = physical
+        env["catalogMappings"] = mappings
+    write_project(workspace, project)
+
+
+@pytest.mark.integration
+class TestWorkflowE2EMultiEnvApplyAndRollback:
+    """E2E: Create dev-like catalog/schema/objects, apply to dev/test/prod, then rollback scenarios."""
+
+    def test_e2e_create_dev_schema_then_apply_to_dev_test_prod(self, temp_workspace: Path) -> None:
+        """Create catalog, schema, table (like fixtures) → snapshot → apply to dev, test, prod (stubbed)."""
+        ensure_project_file(temp_workspace, provider_id="unity")
+        builder = OperationBuilder()
+
+        # Dev-like objects: one catalog, schema, table, columns (matches sample_operations style)
+        ops = [
+            builder.add_catalog("cat_123", "bronze", op_id="op_001"),
+            builder.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
+            builder.add_table("table_789", "users", "schema_456", "delta", op_id="op_003"),
+            builder.add_column(
+                "col_001", "table_789", "user_id", "BIGINT", False, "User ID", op_id="op_004"
+            ),
+            builder.add_column(
+                "col_002", "table_789", "email", "STRING", True, "Email", op_id="op_005"
+            ),
+        ]
+        append_ops(temp_workspace, ops)
+        create_snapshot(temp_workspace, "Initial dev schema", version="v0.1.0")
+
+        # So apply can resolve catalog "bronze" per environment
+        _ensure_catalog_mappings_for_logical_catalog(temp_workspace, "bronze")
+
+        apply_calls: list[str] = []
+
+        def capture_apply(workspace: Path, target_env: str, **kwargs: object) -> object:
+            apply_calls.append(target_env)
+            return SimpleNamespace(status="success")
+
+        with patch("schemax.cli.apply_to_environment", side_effect=capture_apply):
+            for target in ("dev", "test", "prod"):
+                result = invoke_cli(
+                    "apply",
+                    "--target",
+                    target,
+                    "--profile",
+                    "dev",
+                    "--warehouse-id",
+                    "wh_123",
+                    "--dry-run",
+                    "--no-interaction",
+                    str(temp_workspace),
+                )
+                assert result.exit_code == 0, f"apply --target {target}: {result.output}"
+
+        assert apply_calls == ["dev", "test", "prod"]
+
+    def test_e2e_apply_then_rollback_to_previous_snapshot(self, temp_workspace: Path) -> None:
+        """Snapshot v0.1.0 → add changes → snapshot v0.2.0 → apply to dev (stub) → rollback to v0.1.0 (stub)."""
+        ensure_project_file(temp_workspace, provider_id="unity")
+        builder = OperationBuilder()
+
+        append_ops(
+            temp_workspace,
+            [
+                builder.add_catalog("cat_1", "bronze", op_id="op_1"),
+                builder.add_schema("sch_1", "raw", "cat_1", op_id="op_2"),
+                builder.add_table("tbl_1", "events", "sch_1", "delta", op_id="op_3"),
+            ],
+        )
+        create_snapshot(temp_workspace, "Base", version="v0.1.0")
+
+        append_ops(
+            temp_workspace,
+            [
+                builder.add_table("tbl_2", "orders", "sch_1", "delta", op_id="op_4"),
+            ],
+        )
+        create_snapshot(temp_workspace, "Add orders table", version="v0.2.0")
+
+        _ensure_catalog_mappings_for_logical_catalog(temp_workspace, "bronze")
+
+        with patch(
+            "schemax.cli.apply_to_environment",
+            return_value=SimpleNamespace(status="success"),
+        ):
+            r_apply = invoke_cli(
+                "apply",
+                "--target", "dev",
+                "--profile", "dev",
+                "--warehouse-id", "wh_123",
+                "--dry-run", "--no-interaction",
+                str(temp_workspace),
+            )
+        assert r_apply.exit_code == 0
+
+        rollback_kwargs: dict = {}
+
+        def capture_rollback(**kwargs: object) -> object:
+            rollback_kwargs.update(kwargs)
+            return SimpleNamespace(success=True, operations_rolled_back=0, error_message=None)
+
+        with patch("schemax.cli.rollback_complete", side_effect=capture_rollback):
+            r_rollback = invoke_cli(
+                "rollback",
+                "--target", "dev",
+                "--to-snapshot", "v0.1.0",
+                "--profile", "dev",
+                "--warehouse-id", "wh_123",
+                "--dry-run", "--no-interaction",
+                str(temp_workspace),
+            )
+        assert r_rollback.exit_code == 0
+        assert rollback_kwargs.get("to_snapshot") == "v0.1.0"
+        assert rollback_kwargs.get("target_env") == "dev"
+
+    def test_e2e_failed_apply_then_partial_rollback(self, temp_workspace: Path) -> None:
+        """Simulate failed deployment → partial rollback via CLI (stubbed)."""
+        ensure_project_file(temp_workspace, provider_id="unity")
+        builder = OperationBuilder()
+        append_ops(
+            temp_workspace,
+            [
+                builder.add_catalog("cat_1", "bronze", op_id="op_1"),
+                builder.add_schema("sch_1", "raw", "cat_1", op_id="op_2"),
+                builder.add_table("tbl_1", "users", "sch_1", "delta", op_id="op_3"),
+            ],
+        )
+        create_snapshot(temp_workspace, "v1", version="v0.1.0")
+        _ensure_catalog_mappings_for_logical_catalog(temp_workspace, "bronze")
+
+        # Match opsDetails payload to what state differ produces for add_catalog (so CLI matching succeeds)
+        fake_deployment = {
+            "id": "deploy_fail_001",
+            "status": "failed",
+            "version": "v0.1.0",
+            "fromVersion": None,
+            "opsApplied": ["op_1"],
+            "failedStatementIndex": 1,
+            "opsDetails": [
+                {
+                    "id": "op_1",
+                    "type": "unity.add_catalog",
+                    "target": "cat_1",
+                    "payload": {"catalogId": "cat_1", "name": "bronze"},
+                },
+            ],
+        }
+        mock_tracker = Mock()
+        mock_tracker.get_deployment_by_id.return_value = fake_deployment
+
+        with patch("schemax.providers.unity.auth.create_databricks_client", return_value=Mock()):
+            with patch(
+                "schemax.core.deployment.DeploymentTracker",
+                return_value=mock_tracker,
+            ):
+                with patch("schemax.commands.rollback.rollback_partial") as mock_partial:
+                    mock_partial.return_value = SimpleNamespace(
+                        success=True, operations_rolled_back=1, error_message=None
+                    )
+                    result = invoke_cli(
+                        "rollback",
+                        "--deployment", "deploy_fail_001",
+                        "--partial",
+                        "--target", "dev",
+                        "--profile", "dev",
+                        "--warehouse-id", "wh_123",
+                        "--dry-run", "--no-interaction",
+                        str(temp_workspace),
+                    )
+                    assert result.exit_code == 0, result.output
+                    mock_partial.assert_called_once()

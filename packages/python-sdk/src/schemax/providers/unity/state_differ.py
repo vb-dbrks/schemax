@@ -294,18 +294,33 @@ class UnityStateDiffer(StateDiffer):
         old_grants: list[Any],
         new_grants: list[Any],
     ) -> list[Operation]:
-        """Compare grants on a securable object. Emit add_grant/revoke_grant ops."""
+        """Compare grants on a securable object. Emit add_grant/revoke_grant ops.
+
+        Grants with empty principal are skipped (invalid for GRANT/REVOKE SQL).
+        """
         ops: list[Operation] = []
 
         def norm(g: Any) -> tuple[str, list[str]]:
             if isinstance(g, dict):
-                principal = g.get("principal", "")
+                principal = (g.get("principal") or "").strip()
                 privs = g.get("privileges") or []
                 return (principal, list(privs) if isinstance(privs, list) else [])
             return ("", [])
 
-        old_map = {norm(g)[0]: norm(g)[1] for g in (old_grants or []) if norm(g)[0]}
-        new_map = {norm(g)[0]: norm(g)[1] for g in (new_grants or []) if norm(g)[0]}
+        def valid_principal(principal: str) -> bool:
+            """Explicitly reject empty principal (invalid for SQL; skip in diff)."""
+            return bool(principal and principal.strip())
+
+        old_map = {
+            norm(g)[0]: norm(g)[1]
+            for g in (old_grants or [])
+            if valid_principal(norm(g)[0])
+        }
+        new_map = {
+            norm(g)[0]: norm(g)[1]
+            for g in (new_grants or [])
+            if valid_principal(norm(g)[0])
+        }
 
         all_principals = set(old_map) | set(new_map)
         for principal in all_principals:
@@ -603,11 +618,14 @@ class UnityStateDiffer(StateDiffer):
         ops: list[Operation] = []
 
         for schema in catalog.get("schemas", []):
+            sch_id = schema["id"]
             ops.append(self._create_add_schema_op(schema, catalog_id))
             # Add all tables in this new schema
-            ops.extend(self._add_all_tables_in_schema(schema["id"], schema))
+            ops.extend(self._add_all_tables_in_schema(sch_id, schema))
             # Add all views in this new schema
-            ops.extend(self._add_all_views_in_schema(schema["id"], schema))
+            ops.extend(self._add_all_views_in_schema(sch_id, schema))
+            # Add schema grants (Bug 2: schema-level grants were omitted for new catalogs)
+            ops.extend(self._diff_grants("schema", sch_id, [], schema.get("grants", [])))
 
         return ops
 

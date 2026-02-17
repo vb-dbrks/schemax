@@ -16,6 +16,18 @@ Optional:
 - `SCHEMAX_LIVE_RESOURCE_PREFIX` (default: `schemax_live`)
 - `SCHEMAX_LIVE_TEST_TIMEOUT_SECONDS` (default: `300`)
 
+## Live tests (tests/integration/test_live_command_matrix.py)
+
+- **test_live_command_matrix** – Seed from SQL fixture, init, import, snapshot, validate, sql, diff, apply (dry-run), rollback (dry-run), snapshot validate, bundle.
+- **test_live_apply_and_rollback_non_dry_run** – Create project, import adopt-baseline, add table/columns, apply (real), rollback to baseline; asserts table exists then is removed.
+- **test_live_e2e_create_apply_rollback_with_grants** – Same flow as above plus: add grant on table, snapshot v0.3.0, apply (runs GRANT live), then rollback to baseline; covers create → apply → grants → rollback against real Databricks.
+
+Run all live tests (with env set):
+
+```bash
+uv run pytest tests/integration/test_live_command_matrix.py -v
+```
+
 ## Issue #19 Coverage Gap Ledger
 The following tests are intentionally skipped until issue #19 feature gaps are implemented:
 

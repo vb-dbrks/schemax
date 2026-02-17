@@ -434,3 +434,202 @@ def test_live_apply_and_rollback_non_dry_run(tmp_path: Path) -> None:
         executor = create_executor(config)
         cleanup_objects(executor, config, [physical_catalog, tracking_catalog])
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+@pytest.mark.integration
+def test_live_e2e_create_apply_rollback_with_grants(tmp_path: Path) -> None:
+    """Live E2E: create catalog/schema/table → apply → add grants → apply → rollback (real Databricks).
+
+    Requires SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 and DATABRICKS_* env vars.
+    """
+    config = require_live_command_tests()
+    suffix = make_namespaced_id(config).split("_", 2)[-1]
+
+    workspace = tmp_path / f"workspace_e2e_grants_{suffix}"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    logical_catalog = f"logical_e2e_{suffix}"
+    physical_catalog = f"{config.resource_prefix}_e2e_{suffix}"
+    tracking_catalog = f"{config.resource_prefix}_e2e_track_{suffix}"
+    schema_name = "core"
+    table_name = "events"
+
+    ensure_project_file(workspace, provider_id="unity")
+    _write_project_env_overrides(
+        workspace,
+        top_level_name=tracking_catalog,
+        catalog_mappings={logical_catalog: physical_catalog},
+    )
+
+    builder = OperationBuilder()
+    table_id = f"table_e2e_{suffix}"
+    col_id_id = f"col_id_e2e_{suffix}"
+    col_val_id = f"col_val_e2e_{suffix}"
+
+    try:
+        executor = create_executor(config)
+        managed_root = (
+            f"{config.managed_location.rstrip('/')}/schemax-command-live/e2e-grants/{suffix}"
+        )
+        preseed = executor.execute_statements(
+            statements=[
+                f"CREATE CATALOG IF NOT EXISTS {tracking_catalog} "
+                f"MANAGED LOCATION '{managed_root}/tracking'",
+                f"CREATE CATALOG IF NOT EXISTS {physical_catalog} "
+                f"MANAGED LOCATION '{managed_root}/physical'",
+                f"CREATE SCHEMA IF NOT EXISTS {physical_catalog}.{schema_name}",
+            ],
+            config=build_execution_config(config),
+        )
+        assert preseed.status in {"success", "partial"}, (
+            f"Preseed failed: {preseed.status} {getattr(preseed, 'error_message', '')}"
+        )
+
+        changelog_path = workspace / ".schemax" / "changelog.json"
+        changelog = json.loads(changelog_path.read_text())
+        changelog["ops"] = []
+        changelog_path.write_text(json.dumps(changelog, indent=2))
+
+        import_result = invoke_cli(
+            "import",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--catalog",
+            physical_catalog,
+            "--catalog-map",
+            f"{logical_catalog}={physical_catalog}",
+            "--adopt-baseline",
+            str(workspace),
+        )
+        assert import_result.exit_code == 0, import_result.output
+
+        project_path = workspace / ".schemax" / "project.json"
+        project = json.loads(project_path.read_text())
+        baseline_version = project.get("latestSnapshot")
+        assert baseline_version, "Baseline snapshot version not found after import adoption"
+
+        state, _, _, _ = load_current_state(workspace, validate=False)
+        catalog_state = next(
+            c for c in state["catalogs"] if c.get("name") == logical_catalog
+        )
+        schema_state = next(
+            s for s in catalog_state.get("schemas", []) if s.get("name") == schema_name
+        )
+        schema_id = schema_state["id"]
+
+        append_ops(
+            workspace,
+            [
+                builder.add_table(
+                    table_id,
+                    table_name,
+                    schema_id,
+                    "delta",
+                    op_id=f"op_table_e2e_{suffix}",
+                ),
+                builder.add_column(
+                    col_id_id,
+                    table_id,
+                    "event_id",
+                    "BIGINT",
+                    nullable=False,
+                    comment="Event id",
+                    op_id=f"op_col_id_e2e_{suffix}",
+                ),
+                builder.add_column(
+                    col_val_id,
+                    table_id,
+                    "event_type",
+                    "STRING",
+                    nullable=True,
+                    comment="Event type",
+                    op_id=f"op_col_val_e2e_{suffix}",
+                ),
+            ],
+        )
+
+        snapshot_v2 = invoke_cli(
+            "snapshot",
+            "create",
+            "--name",
+            "E2E table delta",
+            "--version",
+            "v0.2.0",
+            str(workspace),
+        )
+        assert snapshot_v2.exit_code == 0, snapshot_v2.output
+
+        apply_v2 = invoke_cli(
+            "apply",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert apply_v2.exit_code == 0, apply_v2.output
+        assert _table_exists(config, physical_catalog, schema_name, table_name)
+
+        append_ops(
+            workspace,
+            [
+                builder.add_grant(
+                    "table",
+                    table_id,
+                    "account users",
+                    ["SELECT", "MODIFY"],
+                    op_id=f"op_grant_e2e_{suffix}",
+                ),
+            ],
+        )
+        snapshot_v3 = invoke_cli(
+            "snapshot",
+            "create",
+            "--name",
+            "E2E grants",
+            "--version",
+            "v0.3.0",
+            str(workspace),
+        )
+        assert snapshot_v3.exit_code == 0, snapshot_v3.output
+
+        apply_v3 = invoke_cli(
+            "apply",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert apply_v3.exit_code == 0, apply_v3.output
+
+        rollback_result = invoke_cli(
+            "rollback",
+            "--target",
+            "dev",
+            "--to-snapshot",
+            baseline_version,
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert rollback_result.exit_code == 0, rollback_result.output
+        assert not _table_exists(config, physical_catalog, schema_name, table_name)
+        _assert_schema_exists(config, physical_catalog, schema_name)
+    finally:
+        executor = create_executor(config)
+        cleanup_objects(executor, config, [physical_catalog, tracking_catalog])
+        shutil.rmtree(workspace, ignore_errors=True)

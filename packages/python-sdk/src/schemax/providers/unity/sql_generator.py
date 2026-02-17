@@ -926,7 +926,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         for op in other_ops:
             result = self.generate_sql_for_operation(op)
-            if result.sql and not result.sql.startswith("--"):
+            if result.sql:
+                # Include all output (including error comments) so grant/revoke issues are visible
                 for sql_part in self._split_sql_statements(result.sql):
                     execution_order += 1
                     statement_infos.append(
@@ -2940,12 +2941,46 @@ class UnitySQLGenerator(BaseSQLGenerator):
         )
 
     def _grant_fqn(self, target_type: str, target_id: str) -> str:
-        """Resolve fully-qualified name for grant target from id_name_map."""
+        """Resolve fully-qualified name for grant target from id_name_map, with fallback from state."""
         fqn = self.id_name_map.get(target_id, "")
-        if not fqn:
-            return ""
-        parts = fqn.split(".")
-        return self._build_fqn(*parts) if len(parts) >= 1 else self.escape_identifier(fqn)
+        if fqn:
+            parts = fqn.split(".")
+            return self._build_fqn(*parts) if len(parts) >= 1 else self.escape_identifier(fqn)
+        # Fallback: resolve from state when id_name_map misses (e.g. CLI without --target)
+        return self._grant_fqn_from_state(target_type, target_id)
+
+    def _grant_fqn_from_state(self, target_type: str, target_id: str) -> str:
+        """Resolve grant target FQN by walking state (catalogs/schemas/tables/views)."""
+        catalogs = (
+            self.state.catalogs
+            if hasattr(self.state, "catalogs")
+            else self.state.get("catalogs", [])
+        )
+        for catalog in catalogs:
+            cat_name = catalog.name if hasattr(catalog, "name") else catalog["name"]
+            cat_id = catalog.id if hasattr(catalog, "id") else catalog["id"]
+            catalog_name = self.catalog_name_mapping.get(cat_name, cat_name)
+            if target_type == "catalog" and cat_id == target_id:
+                return self._build_fqn(catalog_name)
+            schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
+            for schema in schemas:
+                schema_name = schema.name if hasattr(schema, "name") else schema["name"]
+                schema_id = schema.id if hasattr(schema, "id") else schema["id"]
+                if target_type == "schema" and schema_id == target_id:
+                    return self._build_fqn(catalog_name, schema_name)
+                tables = schema.tables if hasattr(schema, "tables") else schema.get("tables", [])
+                for table in tables:
+                    table_id = table.id if hasattr(table, "id") else table["id"]
+                    table_name = table.name if hasattr(table, "name") else table["name"]
+                    if target_type == "table" and table_id == target_id:
+                        return self._build_fqn(catalog_name, schema_name, table_name)
+                views = schema.views if hasattr(schema, "views") else schema.get("views", [])
+                for view in views:
+                    view_id = view.id if hasattr(view, "id") else view["id"]
+                    view_name = view.name if hasattr(view, "name") else view["name"]
+                    if target_type == "view" and view_id == target_id:
+                        return self._build_fqn(catalog_name, schema_name, view_name)
+        return ""
 
     def _escape_principal(self, principal: str) -> str:
         """Escape principal for GRANT/REVOKE (backticks if special characters)."""
