@@ -85,8 +85,16 @@ class TestBasicWorkflow:
             builder.add_catalog("cat_123", "production", op_id="op_001"),
             builder.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
             builder.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
-            builder.add_grant("catalog", "cat_123", "data_engineers", ["USE CATALOG", "CREATE SCHEMA"], op_id="op_004"),
-            builder.add_grant("table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_005"),
+            builder.add_grant(
+                "catalog",
+                "cat_123",
+                "data_engineers",
+                ["USE CATALOG", "CREATE SCHEMA"],
+                op_id="op_004",
+            ),
+            builder.add_grant(
+                "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_005"
+            ),
         ]
         append_ops(temp_workspace, ops)
 
@@ -97,7 +105,11 @@ class TestBasicWorkflow:
         state, changelog, provider, _ = load_current_state(temp_workspace)
         catalogs = state["catalogs"] if isinstance(state, dict) else state.catalogs
         prod = next(
-            (c for c in catalogs if (c.get("name") if isinstance(c, dict) else c.name) == "production"),
+            (
+                c
+                for c in catalogs
+                if (c.get("name") if isinstance(c, dict) else c.name) == "production"
+            ),
             None,
         )
         assert prod is not None

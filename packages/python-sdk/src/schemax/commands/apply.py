@@ -14,7 +14,7 @@ from uuid import uuid4
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
-from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
+from schemax.commands.sql import build_catalog_mapping
 from schemax.core.deployment import DeploymentTracker
 from schemax.core.storage import (
     create_snapshot,
@@ -149,9 +149,7 @@ def apply_to_environment(
         # 5.5 Build catalog mapping for SQL generation; deployment tracking always uses topLevelName
         # topLevelName is explicitly configured for tracking and must match rollback/record-deployment/cli
         desired_state_dict = (
-            state.model_dump(by_alias=True)
-            if hasattr(state, "model_dump")
-            else state
+            state.model_dump(by_alias=True) if hasattr(state, "model_dump") else state
         )
         catalog_mapping = build_catalog_mapping(desired_state_dict, env_config)
         deployment_catalog = env_config["topLevelName"]
@@ -226,15 +224,11 @@ def apply_to_environment(
             )
 
         # 8. Generate diff operations (deployed vs desired = snapshot + changelog)
-        differ = provider.get_state_differ(
-            deployed_state, desired_state, deployed_ops, desired_ops
-        )
+        differ = provider.get_state_differ(deployed_state, desired_state, deployed_ops, desired_ops)
         diff_operations = differ.generate_diff_operations()
 
         # 8.5 Filter by deployment scope (managed categories, existing objects)
-        diff_operations = filter_operations_by_managed_scope(
-            diff_operations, env_config, provider
-        )
+        diff_operations = filter_operations_by_managed_scope(diff_operations, env_config, provider)
 
         console.print(f"[blue]Changes:[/blue] {len(diff_operations)} operations")
 

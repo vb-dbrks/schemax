@@ -474,7 +474,9 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     else:
                         remaining = [p for p in g.privileges if p not in set_remove]
                         if remaining:
-                            new_grants.append(UnityGrant(principal=g.principal, privileges=remaining))
+                            new_grants.append(
+                                UnityGrant(principal=g.principal, privileges=remaining)
+                            )
                 obj.grants = new_grants
 
     return new_state

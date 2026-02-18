@@ -6,7 +6,7 @@ Handles catalogs, schemas, tables, and columns.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from schemax.providers.base.operations import Operation
@@ -38,9 +38,9 @@ class UnityStateDiffer(StateDiffer):
         if state is None:
             return {}
         if isinstance(state, dict):
-            return state
+            return cast(dict[str, Any], state)
         if hasattr(state, "model_dump"):
-            return state.model_dump(by_alias=True)
+            return cast(dict[str, Any], state.model_dump(by_alias=True))
         return {}
 
     def _diff_catalogs(self) -> list[Operation]:
@@ -312,14 +312,10 @@ class UnityStateDiffer(StateDiffer):
             return bool(principal and principal.strip())
 
         old_map = {
-            norm(g)[0]: norm(g)[1]
-            for g in (old_grants or [])
-            if valid_principal(norm(g)[0])
+            norm(g)[0]: norm(g)[1] for g in (old_grants or []) if valid_principal(norm(g)[0])
         }
         new_map = {
-            norm(g)[0]: norm(g)[1]
-            for g in (new_grants or [])
-            if valid_principal(norm(g)[0])
+            norm(g)[0]: norm(g)[1] for g in (new_grants or []) if valid_principal(norm(g)[0])
         }
 
         all_principals = set(old_map) | set(new_map)
@@ -343,9 +339,7 @@ class UnityStateDiffer(StateDiffer):
                     )
                 if added:
                     ops.append(
-                        self._create_add_grant_op(
-                            target_type, target_id, principal, list(added)
-                        )
+                        self._create_add_grant_op(target_type, target_id, principal, list(added))
                     )
 
         return ops

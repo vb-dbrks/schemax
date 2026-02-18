@@ -32,7 +32,12 @@ def test_filter_no_managed_categories_returns_all_ops(unity_provider):
             provider="unity",
             op="unity.add_grant",
             target="cat_1",
-            payload={"targetType": "catalog", "targetId": "cat_1", "principal": "u", "privileges": ["USE CATALOG"]},
+            payload={
+                "targetType": "catalog",
+                "targetId": "cat_1",
+                "principal": "u",
+                "privileges": ["USE CATALOG"],
+            },
         ),
     ]
     env_config = {}
@@ -59,7 +64,12 @@ def test_filter_governance_only_keeps_only_governance_ops(unity_provider):
             provider="unity",
             op="unity.add_grant",
             target="cat_1",
-            payload={"targetType": "catalog", "targetId": "cat_1", "principal": "u", "privileges": ["USE CATALOG"]},
+            payload={
+                "targetType": "catalog",
+                "targetId": "cat_1",
+                "principal": "u",
+                "privileges": ["USE CATALOG"],
+            },
         ),
         Operation(
             id="op3",

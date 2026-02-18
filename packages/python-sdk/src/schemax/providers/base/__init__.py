@@ -11,7 +11,6 @@ from .operations import (
     OperationMetadata,
     create_operation,
 )
-from .scope_filter import filter_operations_by_managed_scope
 from .optimization import ColumnReorderOptimizer
 from .provider import (
     BaseProvider,
@@ -19,6 +18,7 @@ from .provider import (
     ProviderCapabilities,
     ProviderInfo,
 )
+from .scope_filter import filter_operations_by_managed_scope
 from .sql_generator import BaseSQLGenerator, SQLGenerationResult, SQLGenerator
 
 __all__ = [

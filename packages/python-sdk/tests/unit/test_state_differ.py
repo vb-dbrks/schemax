@@ -2303,7 +2303,10 @@ class TestUnityStateDifferGrants:
                     "schemas": [],
                     "grants": [
                         {"principal": "", "privileges": ["USE CATALOG"]},  # skipped
-                        {"principal": "data_engineers", "privileges": ["CREATE SCHEMA"]},  # included
+                        {
+                            "principal": "data_engineers",
+                            "privileges": ["CREATE SCHEMA"],
+                        },  # included
                     ],
                 },
             ]
@@ -2328,7 +2331,10 @@ class TestUnityStateDifferGrants:
                     "name": "bronze",
                     "schemas": [],
                     "grants": [
-                        {"principal": "data_engineers", "privileges": ["USE CATALOG", "CREATE SCHEMA"]},
+                        {
+                            "principal": "data_engineers",
+                            "privileges": ["USE CATALOG", "CREATE SCHEMA"],
+                        },
                     ],
                 },
             ]
@@ -2367,7 +2373,10 @@ class TestUnityStateDifferGrants:
                                 {
                                     **base,
                                     "grants": [
-                                        {"principal": "analysts", "privileges": ["SELECT", "MODIFY"]},
+                                        {
+                                            "principal": "analysts",
+                                            "privileges": ["SELECT", "MODIFY"],
+                                        },
                                     ],
                                 },
                             ],
@@ -2446,7 +2455,10 @@ class TestUnityStateDifferGrants:
                                 {
                                     **base,
                                     "grants": [
-                                        {"principal": "analysts", "privileges": ["SELECT", "MODIFY"]},
+                                        {
+                                            "principal": "analysts",
+                                            "privileges": ["SELECT", "MODIFY"],
+                                        },
                                     ],
                                 },
                             ],
@@ -2462,6 +2474,7 @@ class TestUnityStateDifferGrants:
         add_ops = [o for o in ops if o.op == "unity.add_grant"]
         revoke_ops = [o for o in ops if o.op == "unity.revoke_grant"]
         # Diff: add MODIFY for analysts → one add_grant with [SELECT, MODIFY] or just [MODIFY]
+        assert len(revoke_ops) == 0, "Adding MODIFY should not produce revoke_grant"
         assert len(add_ops) >= 1
         assert any(
             a.payload["principal"] == "analysts" and "MODIFY" in a.payload.get("privileges", [])
@@ -2553,7 +2566,10 @@ class TestUnityStateDifferGrants:
                             "tables": [],
                             "views": [],
                             "grants": [
-                                {"principal": "analysts", "privileges": ["CREATE TABLE", "USE SCHEMA"]},
+                                {
+                                    "principal": "analysts",
+                                    "privileges": ["CREATE TABLE", "USE SCHEMA"],
+                                },
                             ],
                         },
                     ],

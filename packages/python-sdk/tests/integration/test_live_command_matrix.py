@@ -37,6 +37,23 @@ def _write_project_env_overrides(
     project_path.write_text(json.dumps(project, indent=2))
 
 
+def _write_project_managed_scope(
+    workspace: Path,
+    *,
+    managed_categories: list[str] | None = None,
+    existing_catalogs: list[str] | None = None,
+) -> None:
+    """Set dev env managedCategories and/or existingObjects.catalog for scope filter tests."""
+    project_path = workspace / ".schemax" / "project.json"
+    project = json.loads(project_path.read_text())
+    dev_env = project["provider"]["environments"]["dev"]
+    if managed_categories is not None:
+        dev_env["managedCategories"] = managed_categories
+    if existing_catalogs is not None:
+        dev_env["existingObjects"] = {"catalog": existing_catalogs}
+    project_path.write_text(json.dumps(project, indent=2))
+
+
 def _write_project_promote_envs(
     workspace: Path,
     *,
@@ -543,9 +560,7 @@ def test_live_e2e_create_apply_rollback_with_grants(tmp_path: Path) -> None:
         assert baseline_version, "Baseline snapshot version not found after import adoption"
 
         state, _, _, _ = load_current_state(workspace, validate=False)
-        catalog_state = next(
-            c for c in state["catalogs"] if c.get("name") == logical_catalog
-        )
+        catalog_state = next(c for c in state["catalogs"] if c.get("name") == logical_catalog)
         schema_state = next(
             s for s in catalog_state.get("schemas", []) if s.get("name") == schema_name
         )
@@ -658,6 +673,314 @@ def test_live_e2e_create_apply_rollback_with_grants(tmp_path: Path) -> None:
         )
         assert rollback_result.exit_code == 0, rollback_result.output
         assert not _table_exists(config, physical_catalog, schema_name, table_name)
+        _assert_schema_exists(config, physical_catalog, schema_name)
+    finally:
+        executor = create_executor(config)
+        cleanup_objects(executor, config, [physical_catalog, tracking_catalog])
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+@pytest.mark.integration
+def test_live_apply_governance_only(tmp_path: Path) -> None:
+    """Live E2E: managedCategories = ['governance'] → apply runs only governance SQL (e.g. COMMENT, GRANT).
+
+    Preseed catalog/schema/table, import adopt-baseline, add table+columns and apply (v0.2.0).
+    Then add set_table_comment, set managedCategories to ['governance'], snapshot v0.3.0, apply.
+    Apply should only execute governance DDL (no CREATE CATALOG/SCHEMA/TABLE).
+    Requires SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 and DATABRICKS_* env vars.
+    """
+    config = require_live_command_tests()
+    suffix = make_namespaced_id(config).split("_", 2)[-1]
+
+    workspace = tmp_path / f"workspace_governance_only_{suffix}"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    logical_catalog = f"logical_gov_{suffix}"
+    physical_catalog = f"{config.resource_prefix}_gov_{suffix}"
+    tracking_catalog = f"{config.resource_prefix}_gov_track_{suffix}"
+    schema_name = "core"
+    table_name = "events"
+
+    ensure_project_file(workspace, provider_id="unity")
+    _write_project_env_overrides(
+        workspace,
+        top_level_name=tracking_catalog,
+        catalog_mappings={logical_catalog: physical_catalog},
+    )
+
+    builder = OperationBuilder()
+    table_id = f"table_gov_{suffix}"
+    col_id_id = f"col_id_gov_{suffix}"
+    col_val_id = f"col_val_gov_{suffix}"
+
+    try:
+        executor = create_executor(config)
+        managed_root = (
+            f"{config.managed_location.rstrip('/')}/schemax-command-live/governance-only/{suffix}"
+        )
+        preseed = executor.execute_statements(
+            statements=[
+                f"CREATE CATALOG IF NOT EXISTS {tracking_catalog} "
+                f"MANAGED LOCATION '{managed_root}/tracking'",
+                f"CREATE CATALOG IF NOT EXISTS {physical_catalog} "
+                f"MANAGED LOCATION '{managed_root}/physical'",
+                f"CREATE SCHEMA IF NOT EXISTS {physical_catalog}.{schema_name}",
+            ],
+            config=build_execution_config(config),
+        )
+        assert preseed.status in {"success", "partial"}, (
+            f"Preseed failed: {preseed.status} {getattr(preseed, 'error_message', '')}"
+        )
+
+        changelog_path = workspace / ".schemax" / "changelog.json"
+        changelog = json.loads(changelog_path.read_text())
+        changelog["ops"] = []
+        changelog_path.write_text(json.dumps(changelog, indent=2))
+
+        import_result = invoke_cli(
+            "import",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--catalog",
+            physical_catalog,
+            "--catalog-map",
+            f"{logical_catalog}={physical_catalog}",
+            "--adopt-baseline",
+            str(workspace),
+        )
+        assert import_result.exit_code == 0, import_result.output
+
+        state, _, _, _ = load_current_state(workspace, validate=False)
+        catalog_state = next(c for c in state["catalogs"] if c.get("name") == logical_catalog)
+        schema_state = next(
+            s for s in catalog_state.get("schemas", []) if s.get("name") == schema_name
+        )
+        schema_id = schema_state["id"]
+
+        append_ops(
+            workspace,
+            [
+                builder.add_table(
+                    table_id,
+                    table_name,
+                    schema_id,
+                    "delta",
+                    op_id=f"op_table_gov_{suffix}",
+                ),
+                builder.add_column(
+                    col_id_id,
+                    table_id,
+                    "event_id",
+                    "BIGINT",
+                    nullable=False,
+                    comment="Event id",
+                    op_id=f"op_col_id_gov_{suffix}",
+                ),
+                builder.add_column(
+                    col_val_id,
+                    table_id,
+                    "event_type",
+                    "STRING",
+                    nullable=True,
+                    comment="Event type",
+                    op_id=f"op_col_val_gov_{suffix}",
+                ),
+            ],
+        )
+
+        snapshot_v2 = invoke_cli(
+            "snapshot",
+            "create",
+            "--name",
+            "Governance-only table delta",
+            "--version",
+            "v0.2.0",
+            str(workspace),
+        )
+        assert snapshot_v2.exit_code == 0, snapshot_v2.output
+
+        apply_v2 = invoke_cli(
+            "apply",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert apply_v2.exit_code == 0, apply_v2.output
+        assert _table_exists(config, physical_catalog, schema_name, table_name)
+
+        append_ops(
+            workspace,
+            [
+                builder.set_table_comment(
+                    table_id,
+                    "Governance-only test comment",
+                    op_id=f"op_comment_gov_{suffix}",
+                ),
+            ],
+        )
+        _write_project_managed_scope(workspace, managed_categories=["governance"])
+
+        # Run SQL before creating snapshot: sql uses changelog ops, and snapshot create clears changelog
+        sql_out = invoke_cli(
+            "sql",
+            "--target",
+            "dev",
+            str(workspace),
+        )
+        assert sql_out.exit_code == 0, sql_out.output
+        assert "CREATE CATALOG" not in sql_out.output
+        assert "CREATE SCHEMA" not in sql_out.output
+        assert "CREATE TABLE" not in sql_out.output
+        assert "COMMENT" in sql_out.output or "comment" in sql_out.output.lower()
+
+        snapshot_v3 = invoke_cli(
+            "snapshot",
+            "create",
+            "--name",
+            "Governance-only comment",
+            "--version",
+            "v0.3.0",
+            str(workspace),
+        )
+        assert snapshot_v3.exit_code == 0, snapshot_v3.output
+
+        apply_v3 = invoke_cli(
+            "apply",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert apply_v3.exit_code == 0, apply_v3.output
+    finally:
+        executor = create_executor(config)
+        cleanup_objects(executor, config, [physical_catalog, tracking_catalog])
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+@pytest.mark.integration
+def test_live_apply_existing_catalog_skips_create(tmp_path: Path) -> None:
+    """Live E2E: existingObjects.catalog = [logical] → apply skips CREATE CATALOG for that catalog.
+
+    Preseed tracking + physical catalog + schema (catalog "already exists").
+    Set existingObjects.catalog = [logical], add ops: add_catalog + add_schema + add_table + column.
+    Apply should filter out add_catalog and only run CREATE SCHEMA, CREATE TABLE, ADD COLUMN.
+    Requires SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 and DATABRICKS_* env vars.
+    """
+    config = require_live_command_tests()
+    suffix = make_namespaced_id(config).split("_", 2)[-1]
+
+    workspace = tmp_path / f"workspace_existing_cat_{suffix}"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    logical_catalog = f"logical_existing_{suffix}"
+    physical_catalog = f"{config.resource_prefix}_existing_{suffix}"
+    tracking_catalog = f"{config.resource_prefix}_existing_track_{suffix}"
+    schema_name = "core"
+    table_name = "events"
+
+    ensure_project_file(workspace, provider_id="unity")
+    _write_project_env_overrides(
+        workspace,
+        top_level_name=tracking_catalog,
+        catalog_mappings={logical_catalog: physical_catalog},
+    )
+    _write_project_managed_scope(workspace, existing_catalogs=[logical_catalog])
+
+    builder = OperationBuilder()
+    cat_id = f"cat_existing_{suffix}"
+    sch_id = f"sch_existing_{suffix}"
+    tbl_id = f"tbl_existing_{suffix}"
+    col_id = f"col_existing_{suffix}"
+
+    try:
+        executor = create_executor(config)
+        managed_root = (
+            f"{config.managed_location.rstrip('/')}/schemax-command-live/existing-catalog/{suffix}"
+        )
+        preseed = executor.execute_statements(
+            statements=[
+                f"CREATE CATALOG IF NOT EXISTS {tracking_catalog} "
+                f"MANAGED LOCATION '{managed_root}/tracking'",
+                f"CREATE CATALOG IF NOT EXISTS {physical_catalog} "
+                f"MANAGED LOCATION '{managed_root}/physical'",
+                f"CREATE SCHEMA IF NOT EXISTS {physical_catalog}.{schema_name}",
+            ],
+            config=build_execution_config(config),
+        )
+        assert preseed.status in {"success", "partial"}, (
+            f"Preseed failed: {preseed.status} {getattr(preseed, 'error_message', '')}"
+        )
+
+        changelog_path = workspace / ".schemax" / "changelog.json"
+        changelog = json.loads(changelog_path.read_text())
+        changelog["ops"] = []
+        changelog_path.write_text(json.dumps(changelog, indent=2))
+
+        append_ops(
+            workspace,
+            [
+                builder.add_catalog(cat_id, logical_catalog, op_id=f"op_cat_existing_{suffix}"),
+                builder.add_schema(sch_id, schema_name, cat_id, op_id=f"op_sch_existing_{suffix}"),
+                builder.add_table(
+                    tbl_id, table_name, sch_id, "delta", op_id=f"op_tbl_existing_{suffix}"
+                ),
+                builder.add_column(
+                    col_id,
+                    tbl_id,
+                    "event_id",
+                    "BIGINT",
+                    False,
+                    "Event ID",
+                    op_id=f"op_col_existing_{suffix}",
+                ),
+            ],
+        )
+
+        sql_out = invoke_cli("sql", "--target", "dev", str(workspace))
+        assert sql_out.exit_code == 0, sql_out.output
+        assert "CREATE CATALOG" not in sql_out.output, (
+            "existingObjects.catalog should filter out add_catalog; SQL must not contain CREATE CATALOG"
+        )
+        assert "CREATE SCHEMA" in sql_out.output or "CREATE TABLE" in sql_out.output
+
+        snapshot_v1 = invoke_cli(
+            "snapshot",
+            "create",
+            "--name",
+            "Existing catalog baseline",
+            "--version",
+            "v0.1.0",
+            str(workspace),
+        )
+        assert snapshot_v1.exit_code == 0, snapshot_v1.output
+
+        apply_result = invoke_cli(
+            "apply",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert apply_result.exit_code == 0, apply_result.output
+        assert _table_exists(config, physical_catalog, schema_name, table_name)
         _assert_schema_exists(config, physical_catalog, schema_name)
     finally:
         executor = create_executor(config)

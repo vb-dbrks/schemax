@@ -530,7 +530,9 @@ class TestGrantOperations:
         builder = OperationBuilder()
         add1 = builder.add_grant("table", "table_789", "analysts", ["SELECT"], op_id="op_g1")
         state = apply_operation(sample_unity_state, add1)
-        add2 = builder.add_grant("table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g2")
+        add2 = builder.add_grant(
+            "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g2"
+        )
         new_state = apply_operation(state, add2)
         table = new_state.catalogs[0].schemas[0].tables[0]
         assert len(table.grants) == 1
@@ -539,9 +541,13 @@ class TestGrantOperations:
     def test_revoke_grant_all(self, sample_unity_state):
         """Test revoking all privileges for a principal"""
         builder = OperationBuilder()
-        add_op = builder.add_grant("table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g1")
+        add_op = builder.add_grant(
+            "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g1"
+        )
         state = apply_operation(sample_unity_state, add_op)
-        revoke_op = builder.revoke_grant("table", "table_789", "analysts", privileges=None, op_id="op_g2")
+        revoke_op = builder.revoke_grant(
+            "table", "table_789", "analysts", privileges=None, op_id="op_g2"
+        )
         new_state = apply_operation(state, revoke_op)
         table = new_state.catalogs[0].schemas[0].tables[0]
         assert len(table.grants) == 0
@@ -549,9 +555,13 @@ class TestGrantOperations:
     def test_revoke_grant_partial(self, sample_unity_state):
         """Test revoking only some privileges for a principal"""
         builder = OperationBuilder()
-        add_op = builder.add_grant("table", "table_789", "analysts", ["SELECT", "MODIFY", "READ VOLUME"], op_id="op_g1")
+        add_op = builder.add_grant(
+            "table", "table_789", "analysts", ["SELECT", "MODIFY", "READ VOLUME"], op_id="op_g1"
+        )
         state = apply_operation(sample_unity_state, add_op)
-        revoke_op = builder.revoke_grant("table", "table_789", "analysts", privileges=["MODIFY"], op_id="op_g2")
+        revoke_op = builder.revoke_grant(
+            "table", "table_789", "analysts", privileges=["MODIFY"], op_id="op_g2"
+        )
         new_state = apply_operation(state, revoke_op)
         table = new_state.catalogs[0].schemas[0].tables[0]
         assert len(table.grants) == 1

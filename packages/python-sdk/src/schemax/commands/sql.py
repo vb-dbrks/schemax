@@ -194,9 +194,7 @@ def generate_sql_migration(
 
         # Filter by deployment scope when target environment is set
         if env_config and provider:
-            operations = filter_operations_by_managed_scope(
-                operations, env_config, provider
-            )
+            operations = filter_operations_by_managed_scope(operations, env_config, provider)
             console.print(f"[dim]After deployment scope filter: {len(operations)} ops[/dim]")
 
         # Log external table operations (if target environment specified)

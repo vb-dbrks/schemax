@@ -379,9 +379,7 @@ class TestApplyCommand:
                         mock_prompt.assert_not_called()
                         assert result.status == "success"
 
-    def test_apply_after_drop_uses_current_state_includes_catalog_and_schema(
-        self, temp_workspace
-    ):
+    def test_apply_after_drop_uses_current_state_includes_catalog_and_schema(self, temp_workspace):
         """
         After drop_catalog, uncommitted add_catalog + add_schema must produce
         CREATE CATALOG and CREATE SCHEMA in the diff (desired state = snapshot + changelog).
@@ -474,11 +472,20 @@ class TestApplyCommand:
         def capture_sql_mapping(diff_operations):
             captured_diff_ops.extend(diff_operations)
             from schemax.providers.base.sql_generator import SQLGenerationResult, StatementInfo
+
             return SQLGenerationResult(
                 sql="CREATE CATALOG IF NOT EXISTS `dev_catalog`;\nCREATE SCHEMA IF NOT EXISTS `dev_catalog`.`default`",
                 statements=[
-                    StatementInfo(sql="CREATE CATALOG IF NOT EXISTS `dev_catalog`", operation_ids=[], execution_order=1),
-                    StatementInfo(sql="CREATE SCHEMA IF NOT EXISTS `dev_catalog`.`default`", operation_ids=[], execution_order=2),
+                    StatementInfo(
+                        sql="CREATE CATALOG IF NOT EXISTS `dev_catalog`",
+                        operation_ids=[],
+                        execution_order=1,
+                    ),
+                    StatementInfo(
+                        sql="CREATE SCHEMA IF NOT EXISTS `dev_catalog`.`default`",
+                        operation_ids=[],
+                        execution_order=2,
+                    ),
                 ],
                 is_idempotent=True,
             )
@@ -511,9 +518,7 @@ class TestApplyCommand:
         )
         assert result.status == "success"
 
-    def test_apply_when_deployed_snapshot_file_missing_falls_back_to_empty(
-        self, temp_workspace
-    ):
+    def test_apply_when_deployed_snapshot_file_missing_falls_back_to_empty(self, temp_workspace):
         """
         When DB says deployed vX but the snapshot file is missing locally,
         apply should diff from empty (with a warning) instead of failing.

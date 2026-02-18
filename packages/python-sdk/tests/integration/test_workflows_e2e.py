@@ -627,10 +627,14 @@ class TestWorkflowE2EMultiEnvApplyAndRollback:
         ):
             r_apply = invoke_cli(
                 "apply",
-                "--target", "dev",
-                "--profile", "dev",
-                "--warehouse-id", "wh_123",
-                "--dry-run", "--no-interaction",
+                "--target",
+                "dev",
+                "--profile",
+                "dev",
+                "--warehouse-id",
+                "wh_123",
+                "--dry-run",
+                "--no-interaction",
                 str(temp_workspace),
             )
         assert r_apply.exit_code == 0
@@ -644,11 +648,16 @@ class TestWorkflowE2EMultiEnvApplyAndRollback:
         with patch("schemax.cli.rollback_complete", side_effect=capture_rollback):
             r_rollback = invoke_cli(
                 "rollback",
-                "--target", "dev",
-                "--to-snapshot", "v0.1.0",
-                "--profile", "dev",
-                "--warehouse-id", "wh_123",
-                "--dry-run", "--no-interaction",
+                "--target",
+                "dev",
+                "--to-snapshot",
+                "v0.1.0",
+                "--profile",
+                "dev",
+                "--warehouse-id",
+                "wh_123",
+                "--dry-run",
+                "--no-interaction",
                 str(temp_workspace),
             )
         assert r_rollback.exit_code == 0
@@ -701,12 +710,17 @@ class TestWorkflowE2EMultiEnvApplyAndRollback:
                     )
                     result = invoke_cli(
                         "rollback",
-                        "--deployment", "deploy_fail_001",
+                        "--deployment",
+                        "deploy_fail_001",
                         "--partial",
-                        "--target", "dev",
-                        "--profile", "dev",
-                        "--warehouse-id", "wh_123",
-                        "--dry-run", "--no-interaction",
+                        "--target",
+                        "dev",
+                        "--profile",
+                        "dev",
+                        "--warehouse-id",
+                        "wh_123",
+                        "--dry-run",
+                        "--no-interaction",
                         str(temp_workspace),
                     )
                     assert result.exit_code == 0, result.output

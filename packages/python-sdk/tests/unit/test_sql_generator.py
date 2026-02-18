@@ -7,8 +7,8 @@ Verifies SQL idempotency, correctness, and proper escaping.
 
 import pytest
 
-from schemax.providers.base.operations import Operation, create_operation
 from schemax.providers.base.exceptions import SchemaXProviderError
+from schemax.providers.base.operations import Operation, create_operation
 from schemax.providers.unity.sql_generator import UnitySQLGenerator
 from tests.utils import OperationBuilder
 
@@ -971,7 +971,9 @@ class TestGrantSQL:
         """Test GRANT on TABLE SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.add_grant("table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g2")
+        op = builder.add_grant(
+            "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g2"
+        )
         result = generator.generate_sql_for_operation(op)
         assert "GRANT" in result.sql
         assert "ON TABLE" in result.sql
