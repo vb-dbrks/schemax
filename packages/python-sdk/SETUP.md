@@ -316,10 +316,10 @@ GitHub Actions automatically runs on every PR:
 ## Getting Help
 
 - **Coding standards**: See `.cursorrules`
-- **Architecture**: See `docs/ARCHITECTURE.md`
+- **Architecture**: See the Docusaurus docs site (`docs/schemax/`) — Architecture
 - **Testing**: See `TESTING.md` (root)
 - **Commands**: Run `make help`
-- **Provider development**: See `docs/PROVIDER_CONTRACT.md`
+- **Provider development**: See the Docusaurus docs site (`docs/schemax/`) — Provider contract
 
 ---
 

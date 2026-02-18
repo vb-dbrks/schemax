@@ -1,14 +1,9 @@
 # Documentation
 
-Documentation index and main guides live in the **repository [README](../README.md)** (Documentation table).
+All SchemaX documentation lives in the **Docusaurus site** in this repo.
 
-Long-form source files in this folder: **QUICKSTART.md**, **ARCHITECTURE.md**, **DEVELOPMENT.md**, **WORKFLOWS.md**, **TESTING.md**, **PROVIDER_CONTRACT.md**.
+- **Source:** `docs/schemax/` (MDX files)
+- **Local preview:** `cd docs/schemax && npm install && npm run start` → http://localhost:3000
+- **Deploy:** Via GitHub Actions (Settings → Pages → GitHub Actions). See [schemax/README.md](schemax/README.md).
 
-## Docs site (Docusaurus)
-
-```bash
-cd docs/schemax
-npm install && npm run start   # http://localhost:3000
-```
-
-Deploy via GitHub Actions (Settings → Pages → GitHub Actions). See [schemax/README.md](schemax/README.md).
+The site is split into **For Users** (quickstart, environments, grants, architecture, workflows, CLI) and **For Contributors** (development, testing, provider contract, contributing) so users aren’t overloaded.

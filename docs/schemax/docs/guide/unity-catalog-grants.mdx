@@ -1,0 +1,138 @@
+---
+sidebar_position: 16
+title: Unity Catalog Grants
+---
+
+# Unity Catalog Grants
+
+SchemaX lets you manage **Unity Catalog grants** (privileges) on catalogs, schemas, tables, and views from the designer and via the CLI. Grants are stored in your schema state and emitted as `GRANT` / `REVOKE` statements when you generate SQL or run `schemax apply`.
+
+---
+
+## Where you can manage grants
+
+| Securable | Where in SchemaX |
+|-----------|------------------|
+| **Catalog** | Select a catalog in the tree → detail panel → **Grants** section |
+| **Schema** | Select a schema in the tree → detail panel → **Grants** section |
+| **Table** | Select a table → **Security & Governance** (or table detail) → **Grants** section |
+| **View** | Select a view → detail panel → **Grants** section |
+
+Add or remove grants per principal (user, group, or service principal). Each grant has a **principal** and a list of **privileges**.
+
+---
+
+## Supported privileges by object type
+
+### Catalog-level privileges
+
+- ALL PRIVILEGES  
+- USE CATALOG  
+- USE SCHEMA  
+- CREATE SCHEMA  
+- CREATE TABLE  
+- CREATE VIEW  
+- CREATE FUNCTION  
+- CREATE VOLUME  
+- CREATE EXTERNAL LOCATION  
+- CREATE STORAGE CREDENTIAL  
+- CREATE CONNECTION  
+- CREATE SHARING  
+- CREATE RECIPIENT  
+- CREATE PROVIDER  
+- CREATE CATALOG  
+- CREATE MODEL  
+- CREATE MATERIALIZED VIEW  
+- CREATE PIPELINE  
+- EXECUTE  
+- MODIFY  
+- SELECT  
+- READ VOLUME  
+- WRITE VOLUME  
+- APPLY TAG  
+- USE MARKETPLACE ASSETS  
+
+### Schema-level privileges
+
+- ALL PRIVILEGES  
+- USE SCHEMA  
+- CREATE TABLE  
+- CREATE VIEW  
+- CREATE FUNCTION  
+- CREATE VOLUME  
+- CREATE MODEL  
+- CREATE MATERIALIZED VIEW  
+- CREATE PIPELINE  
+- EXECUTE  
+- MODIFY  
+- SELECT  
+- READ VOLUME  
+- WRITE VOLUME  
+- APPLY TAG  
+
+### Table- and view-level privileges
+
+- ALL PRIVILEGES  
+- SELECT  
+- MODIFY  
+- READ VOLUME  
+- WRITE VOLUME  
+- APPLY TAG  
+
+These align with [Databricks SQL privileges](https://docs.databricks.com/en/sql/language-manual/sql-ref-privileges.html) for Unity Catalog.
+
+---
+
+## Principals
+
+Grants are assigned to **principals**:
+
+- **Users** — e.g. `user@example.com`
+- **Groups** — e.g. `data_engineers`, `analysts`
+- **Service principals** — e.g. `12345678-1234-1234-1234-123456789012`
+
+Use the same principal names and formats that Unity Catalog expects (see [Databricks documentation](https://docs.databricks.com/en/data-governance/unity-catalog/manage-principals.html)).
+
+---
+
+## In the VS Code designer
+
+1. Select a **catalog**, **schema**, **table**, or **view** in the tree.
+2. Open the **Grants** section in the detail panel (catalog/schema) or in **Security & Governance** (table/view).
+3. **Add grant:** Click **Add grant**, enter the principal (e.g. group name or email), and choose one or more privileges.
+4. **Revoke:** Remove a grant or uncheck privileges; SchemaX will emit the appropriate `REVOKE` when you generate SQL or apply.
+5. **Generate SQL** or **Apply** — grants are included in the generated DDL and in `schemax apply` when the **Governance** managed category is enabled for that environment.
+
+---
+
+## CLI and SQL generation
+
+- **Generate SQL:** `schemax sql --target ENV` (or VS Code **Generate SQL Migration** with an environment selected) includes `GRANT` and `REVOKE` statements for grant operations in the changelog or diff.
+- **Apply:** `schemax apply --target ENV` runs those statements against the target. Grant operations are part of **governance**; they are included when the environment’s [deployment scope](/guide/environments-and-scope) includes **Governance** (default: all categories).
+- **Rollback:** Grant changes are treated as safe; partial and complete rollback can revert grant operations where applicable.
+
+---
+
+## Example generated SQL
+
+```sql
+-- Grant on catalog
+GRANT USE CATALOG, CREATE SCHEMA ON CATALOG `my_catalog` TO `data_engineers`;
+
+-- Grant on schema
+GRANT USE SCHEMA, CREATE TABLE ON SCHEMA `my_catalog`.`my_schema` TO `analysts`;
+
+-- Grant on table
+GRANT SELECT, MODIFY ON TABLE `my_catalog`.`my_schema`.`my_table` TO `bi_users`;
+```
+
+---
+
+## Best practices
+
+- **Version grants with schema:** Keep grants in SchemaX state and create snapshots so grant changes are reviewed and deployed with the rest of the schema.
+- **Use groups:** Prefer group principals (e.g. `data_engineers`, `analysts`) over individual users so membership is managed in your identity provider.
+- **Governance-only deployments:** If you only want to push grant (and other governance) changes without structural DDL, use [Environments and deployment scope](/guide/environments-and-scope) and set **Governance** as the only managed category for that environment.
+- **Existing catalogs:** When catalogs already exist and you use [existing objects](/guide/environments-and-scope#existing-catalogs), SchemaX still emits grants for those catalogs (and their schemas/tables/views) as long as Governance is in scope.
+
+For rollback and deployment workflows, see [Workflows](/reference/workflows).

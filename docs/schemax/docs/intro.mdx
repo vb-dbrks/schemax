@@ -23,7 +23,7 @@ Until then, install from source (see [Quickstart](guide/quickstart) and [Develop
 
 - Intuitive interface for schema modeling
 - **Provider-based**: Unity Catalog (now), Hive/PostgreSQL (coming soon)
-- Data governance: constraints, tags, row filters, column masks
+- Data governance: constraints, tags, grants, row filters, column masks
 - External tables, partitioning, liquid clustering
 - Snapshot-based versioning with semantic versions
 - Real-time SQL generation
@@ -39,12 +39,21 @@ Until then, install from source (see [Quickstart](guide/quickstart) and [Develop
 
 ## Quick links
 
+**For users** — Get started and use SchemaX:
+
 - [Quickstart](guide/quickstart) — Get started with the extension and CLI
+- [Environments and deployment scope](guide/environments-and-scope) — Configure environments, governance-only mode, existing objects
+- [Unity Catalog grants](guide/unity-catalog-grants) — Manage GRANT/REVOKE on catalogs, schemas, tables, views
 - [Architecture](guide/architecture) — Design and patterns
 - [Workflows](reference/workflows) — End-to-end situations (greenfield, brownfield, rollback)
 - [CLI Reference](reference/cli) — Commands and options
+
+**For contributors** — Develop, test, and contribute:
+
+- [Development](guide/development) — Build, run, and extend SchemaX
 - [Testing](reference/testing) — How to run and write tests
 - [Provider contract](reference/provider-contract) — Implement a new catalog provider
+- [Contributing](contributing) — Code style, PR process, commit signing
 
 ## Supported providers
 
