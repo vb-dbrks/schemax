@@ -58,26 +58,8 @@ class DeploymentTracker:
         # Create deployments table
         self._execute_ddl(self._get_deployments_table_ddl())
 
-        # Migration: add previous_deployment_id to existing tables (no-op if column exists)
-        self._migrate_deployments_add_previous_deployment_id()
-
         # Create deployment_ops table
         self._execute_ddl(self._get_deployment_ops_table_ddl())
-
-    def _migrate_deployments_add_previous_deployment_id(self) -> None:
-        """Add previous_deployment_id column to deployments table if missing (for existing DBs)."""
-        try:
-            self._execute_ddl(
-                f"ALTER TABLE {self.schema}.deployments "
-                "ADD COLUMN previous_deployment_id STRING "
-                "COMMENT 'Deployment that was current before this one (for partial rollback)'"
-            )
-        except Exception as e:
-            err = str(e).lower()
-            if "already exists" in err or "duplicate column" in err or "redefinition" in err:
-                pass  # Column already present (new schema or already migrated)
-            else:
-                raise
 
     def start_deployment(
         self,

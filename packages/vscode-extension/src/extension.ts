@@ -1449,11 +1449,18 @@ async function openDesigner(context: vscode.ExtensionContext) {
         }
         case 'open-docs': {
           try {
+            const docUrl = message.payload?.url as string | undefined;
             const docPath = message.payload?.path as string | undefined;
             const fragment = message.payload?.fragment as string | undefined;
 
+            if (docUrl) {
+              await vscode.env.openExternal(vscode.Uri.parse(docUrl));
+              trackEvent('docs_opened', { url: docUrl });
+              break;
+            }
+
             if (!docPath) {
-              vscode.window.showWarningMessage('SchemaX: Documentation path was not provided.');
+              vscode.window.showWarningMessage('SchemaX: Documentation path or URL was not provided.');
               break;
             }
 

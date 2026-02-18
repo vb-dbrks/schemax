@@ -51,7 +51,9 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
           onClick={() => {
             vscode?.postMessage({
               type: 'open-docs',
-              payload: { path: 'docs/QUICKSTART.md', fragment: 'environments' }
+              payload: {
+                url: 'https://vb-dbrks.github.io/schemax-vscode/guide/environments-and-scope'
+              }
             });
           }}
         >
