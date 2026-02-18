@@ -14,6 +14,7 @@ from schemax.providers.base.dependency_graph import (
     DependencyNode,
     DependencyType,
 )
+from schemax.providers.base.exceptions import SchemaXProviderError
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.sql_generator import BaseSQLGenerator, SQLGenerationResult
 
@@ -755,8 +756,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
                 raise CircularDependencyError(cycle_paths)
 
-            # Use topological sort
-            return graph.topological_sort(), warnings
+            # Use topological sort (only includes ops with a target object in the graph)
+            sorted_ops = graph.topological_sort()
+            # Include ops without a target (e.g. add_grant, revoke_grant) - append after CREATEs
+            op_ids_in_result = {op.id for op in sorted_ops}
+            for op in ops:
+                if op.id not in op_ids_in_result:
+                    sorted_ops.append(op)
+            return sorted_ops, warnings
 
         except CircularDependencyError:
             # Re-raise to be handled by caller
@@ -920,16 +927,20 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         for op in other_ops:
             result = self.generate_sql_for_operation(op)
-            if result.sql and not result.sql.startswith("--"):
-                for sql_part in self._split_sql_statements(result.sql):
-                    execution_order += 1
-                    statement_infos.append(
-                        StatementInfo(
-                            sql=sql_part,
-                            operation_ids=[op.id],
-                            execution_order=execution_order,
+            if result.sql:
+                sql_stripped = result.sql.strip()
+                if sql_stripped.startswith("-- Error") or sql_stripped.startswith("-- No "):
+                    raise SchemaXProviderError(sql_stripped)
+                if not sql_stripped.startswith("--"):
+                    for sql_part in self._split_sql_statements(result.sql):
+                        execution_order += 1
+                        statement_infos.append(
+                            StatementInfo(
+                                sql=sql_part,
+                                operation_ids=[op.id],
+                                execution_order=execution_order,
+                            )
                         )
-                    )
 
         # Process DROP operations last (in reverse dependency order: table → schema → catalog)
         # This ensures we drop dependent objects before their parents
@@ -1072,6 +1083,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._update_column_mask(op)
         elif op_type == "remove_column_mask":
             return self._remove_column_mask(op)
+
+        # Grant operations
+        elif op_type == "add_grant":
+            return self._add_grant(op)
+        elif op_type == "revoke_grant":
+            return self._revoke_grant(op)
 
         raise ValueError(f"Unsupported operation type: {op_type}")
 
@@ -1225,7 +1242,29 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if location:
                 sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
 
-        return sql
+        # Comment from create_op or squashed update_catalog
+        comment = create_op.payload.get("comment")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_catalog" and "comment" in op.payload:
+                comment = op.payload.get("comment")
+                break
+        if comment:
+            sql += f" COMMENT '{self.escape_string(comment)}'"
+
+        # Tags: set via ALTER after creation (create_op or squashed update_catalog)
+        tags = create_op.payload.get("tags")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_catalog" and "tags" in op.payload:
+                tags = op.payload.get("tags")
+                break
+        result = sql
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            tag_entries = ", ".join(
+                f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
+            )
+            result += f";\nALTER CATALOG {self.escape_identifier(name)} SET TAGS ({tag_entries})"
+
+        return result
 
     def _generate_create_schema_batched(self, object_id: str, batch_info: BatchInfo) -> str:
         """
@@ -1257,7 +1296,29 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if location:
                 sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
 
-        return sql
+        # Comment from create_op or squashed update_schema
+        comment = create_op.payload.get("comment")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_schema" and "comment" in op.payload:
+                comment = op.payload.get("comment")
+                break
+        if comment:
+            sql += f" COMMENT '{self.escape_string(comment)}'"
+
+        # Tags: set via ALTER after creation
+        tags = create_op.payload.get("tags")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_schema" and "tags" in op.payload:
+                tags = op.payload.get("tags")
+                break
+        result = sql
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            tag_entries = ", ".join(
+                f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
+            )
+            result += f";\nALTER SCHEMA {catalog_esc}.{schema_esc} SET TAGS ({tag_entries})"
+
+        return result
 
     def _rename_schema(self, op: Operation) -> str:
         old_name = op.payload["oldName"]
@@ -2919,3 +2980,93 @@ class UnitySQLGenerator(BaseSQLGenerator):
         )
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {fqn_esc} ALTER COLUMN {col_esc} DROP MASK"
+
+    # Grant operations (Unity: GRANT / REVOKE on CATALOG | SCHEMA | TABLE | VIEW)
+    def _grant_object_kind(self, target_type: str) -> str:
+        """Map targetType to SQL object kind (uppercase)."""
+        return {"catalog": "CATALOG", "schema": "SCHEMA", "table": "TABLE", "view": "VIEW"}.get(
+            target_type, "TABLE"
+        )
+
+    def _grant_fqn(self, target_type: str, target_id: str) -> str:
+        """Resolve fully-qualified name for grant target from id_name_map, with fallback from state."""
+        fqn = self.id_name_map.get(target_id, "")
+        if fqn:
+            parts = fqn.split(".")
+            return self._build_fqn(*parts) if len(parts) >= 1 else self.escape_identifier(fqn)
+        # Fallback: resolve from state when id_name_map misses (e.g. CLI without --target)
+        return self._grant_fqn_from_state(target_type, target_id)
+
+    def _grant_fqn_from_state(self, target_type: str, target_id: str) -> str:
+        """Resolve grant target FQN by walking state (catalogs/schemas/tables/views)."""
+        catalogs = (
+            self.state.catalogs
+            if hasattr(self.state, "catalogs")
+            else self.state.get("catalogs", [])
+        )
+        for catalog in catalogs:
+            cat_name = catalog.name if hasattr(catalog, "name") else catalog["name"]
+            cat_id = catalog.id if hasattr(catalog, "id") else catalog["id"]
+            catalog_name = self.catalog_name_mapping.get(cat_name, cat_name)
+            if target_type == "catalog" and cat_id == target_id:
+                return self._build_fqn(catalog_name)
+            schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
+            for schema in schemas:
+                schema_name = schema.name if hasattr(schema, "name") else schema["name"]
+                schema_id = schema.id if hasattr(schema, "id") else schema["id"]
+                if target_type == "schema" and schema_id == target_id:
+                    return self._build_fqn(catalog_name, schema_name)
+                tables = schema.tables if hasattr(schema, "tables") else schema.get("tables", [])
+                for table in tables:
+                    table_id = table.id if hasattr(table, "id") else table["id"]
+                    table_name = table.name if hasattr(table, "name") else table["name"]
+                    if target_type == "table" and table_id == target_id:
+                        return self._build_fqn(catalog_name, schema_name, table_name)
+                views = schema.views if hasattr(schema, "views") else schema.get("views", [])
+                for view in views:
+                    view_id = view.id if hasattr(view, "id") else view["id"]
+                    view_name = view.name if hasattr(view, "name") else view["name"]
+                    if target_type == "view" and view_id == target_id:
+                        return self._build_fqn(catalog_name, schema_name, view_name)
+        return ""
+
+    def _escape_principal(self, principal: str) -> str:
+        """Escape principal for GRANT/REVOKE (backticks if special characters)."""
+        if not principal:
+            return self.escape_identifier("unknown")
+        return self.escape_identifier(principal)
+
+    def _add_grant(self, op: Operation) -> str:
+        target_type = op.payload.get("targetType", "table")
+        target_id = op.payload.get("targetId")
+        principal = op.payload.get("principal", "")
+        privileges = op.payload.get("privileges") or []
+        if not target_id:
+            return "-- Error: add_grant missing targetId"
+        kind = self._grant_object_kind(target_type)
+        fqn = self._grant_fqn(target_type, target_id)
+        if not fqn:
+            return f"-- Error: could not resolve FQN for targetId {target_id}"
+        principal_esc = self._escape_principal(principal)
+        priv_list = ", ".join(self.escape_identifier(p) for p in privileges)
+        if not priv_list:
+            return "-- No privileges specified for add_grant"
+        return f"GRANT {priv_list} ON {kind} {fqn} TO {principal_esc}"
+
+    def _revoke_grant(self, op: Operation) -> str:
+        target_type = op.payload.get("targetType", "table")
+        target_id = op.payload.get("targetId")
+        principal = op.payload.get("principal", "")
+        privileges = op.payload.get("privileges")  # None or list; None = revoke all
+        if not target_id:
+            return "-- Error: revoke_grant missing targetId"
+        kind = self._grant_object_kind(target_type)
+        fqn = self._grant_fqn(target_type, target_id)
+        if not fqn:
+            return f"-- Error: could not resolve FQN for targetId {target_id}"
+        principal_esc = self._escape_principal(principal)
+        if not privileges or len(privileges) == 0:
+            priv_clause = "ALL PRIVILEGES"
+        else:
+            priv_clause = ", ".join(self.escape_identifier(p) for p in privileges)
+        return f"REVOKE {priv_clause} ON {kind} {fqn} FROM {principal_esc}"

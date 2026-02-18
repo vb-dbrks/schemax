@@ -48,7 +48,7 @@ SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalo
 | **Hive Metastore** | 🔜 Coming Soon | Database → Table | Tables, partitions, views |
 | **PostgreSQL** | 🔜 Coming Soon | Database → Schema → Table | Tables, indexes, constraints, views |
 
-**For Provider Developers:** See [PROVIDER_CONTRACT.md](docs/PROVIDER_CONTRACT.md) for implementing custom providers.
+**For Provider Developers:** See the [documentation site](docs/schemax/) — **For Contributors** → [Provider contract](docs/schemax/docs/reference/provider-contract.mdx).
 
 ## Quick Start
 
@@ -186,11 +186,7 @@ schemax snapshot rebase v0.3.0
 
 | Document | Description |
 |----------|-------------|
-| **[Quickstart Guide](docs/QUICKSTART.md)** | Complete getting started guide |
-| **[Architecture](docs/ARCHITECTURE.md)** | **V4** provider-based technical design with multi-environment support |
-| **[Development](docs/DEVELOPMENT.md)** | Contributing, building, **provider development** |
-| **[Provider Contract](docs/PROVIDER_CONTRACT.md)** | Guide for implementing providers |
-| **[Testing Guide](docs/TESTING.md)** | How to test all components |
+| **[Documentation site](docs/schemax/)** | **Single source:** Quickstart, Architecture, Workflows, CLI, Development, Testing, Provider contract, Contributing. Run `cd docs/schemax && npm run start` to browse locally. |
 | **[VS Code Extension](packages/vscode-extension/README.md)** | Extension-specific documentation |
 | **[Python SDK](packages/python-sdk/README.md)** | SDK and CLI reference |
 
@@ -227,10 +223,8 @@ schemax/
 │   └── python-scripts/        # SDK usage examples
 │
 ├── docs/                       # Documentation
-│   ├── QUICKSTART.md          # Getting started
-│   ├── ARCHITECTURE.md        # V4 provider architecture
-│   ├── DEVELOPMENT.md         # Contributing + provider dev
-│   └── PROVIDER_CONTRACT.md   # Provider implementation guide
+│   ├── README.md              # Points to Docusaurus site
+│   └── schemax/               # Docusaurus site (single source for all docs)
 │
 ├── scripts/                    # Development scripts
 │   └── smoke-test.sh          # Quick validation
@@ -465,7 +459,7 @@ pytest tests/unit/test_sql_generator.py -v
 
 ### Manual Testing
 
-See [docs/TESTING.md](docs/TESTING.md) for comprehensive testing guide.
+See the [documentation site](docs/schemax/) — **For Contributors** → Testing — for the full testing guide.
 
 ### Example Project
 
@@ -569,7 +563,7 @@ Apache License 2.0 - see [LICENSE](LICENSE) for details.
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/vb-dbrks/schemax-vscode/issues)
-- **Documentation**: [docs/](docs/)
+- **Documentation**: [docs/schemax/](docs/schemax/) (Docusaurus site)
 - **Examples**: [examples/](examples/)
 
 ---

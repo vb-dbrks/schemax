@@ -994,43 +994,26 @@ class UnityProvider(BaseProvider):
     ) -> dict[str, dict[str, str]]:
         cat = catalog_name.replace("'", "''")
         sch = schema_name.replace("'", "''")
-        sql_primary = (
+        # TABLE_TAGS uses CATALOG_NAME, SCHEMA_NAME (not table_catalog/table_schema)
+        sql = (
             "SELECT table_name, tag_name, tag_value "
             "FROM system.information_schema.table_tags "
             f"WHERE catalog_name = '{cat}' "
             f"AND schema_name = '{sch}'"
         )
-        sql_fallback = (
-            "SELECT table_name, tag_name, tag_value "
-            "FROM system.information_schema.table_tags "
-            f"WHERE table_catalog = '{cat}' "
-            f"AND table_schema = '{sch}'"
-        )
         if table_filter:
             tbl = table_filter.replace("'", "''")
-            sql_primary += f" AND table_name = '{tbl}'"
-            sql_fallback += f" AND table_name = '{tbl}'"
-        sql_primary += " ORDER BY table_name, tag_name"
-        sql_fallback += " ORDER BY table_name, tag_name"
+            sql += f" AND table_name = '{tbl}'"
+        sql += " ORDER BY table_name, tag_name"
         rows = self._execute_query_optional(
             client,
             warehouse_id,
-            sql_primary,
+            sql,
             warning=(
                 "Could not discover Unity table tags from information_schema.table_tags; "
-                "retrying with alternate column names."
+                "continuing without table tags."
             ),
         )
-        if not rows:
-            rows = self._execute_query_optional(
-                client,
-                warehouse_id,
-                sql_fallback,
-                warning=(
-                    "Could not discover Unity table tags from information_schema.table_tags; "
-                    "continuing without table tags."
-                ),
-            )
 
         grouped: dict[str, dict[str, str]] = {}
         for row in rows:
@@ -1056,44 +1039,27 @@ class UnityProvider(BaseProvider):
     ) -> dict[str, dict[str, dict[str, str]]]:
         cat = catalog_name.replace("'", "''")
         sch = schema_name.replace("'", "''")
-        sql_primary = (
+        # COLUMN_TAGS uses CATALOG_NAME, SCHEMA_NAME (not table_catalog/table_schema)
+        sql = (
             "SELECT table_name, column_name, tag_name, tag_value "
             "FROM system.information_schema.column_tags "
             f"WHERE catalog_name = '{cat}' "
             f"AND schema_name = '{sch}'"
         )
-        sql_fallback = (
-            "SELECT table_name, column_name, tag_name, tag_value "
-            "FROM system.information_schema.column_tags "
-            f"WHERE table_catalog = '{cat}' "
-            f"AND table_schema = '{sch}'"
-        )
         if table_filter:
             tbl = table_filter.replace("'", "''")
-            sql_primary += f" AND table_name = '{tbl}'"
-            sql_fallback += f" AND table_name = '{tbl}'"
-        sql_primary += " ORDER BY table_name, column_name, tag_name"
-        sql_fallback += " ORDER BY table_name, column_name, tag_name"
+            sql += f" AND table_name = '{tbl}'"
+        sql += " ORDER BY table_name, column_name, tag_name"
 
         rows = self._execute_query_optional(
             client,
             warehouse_id,
-            sql_primary,
+            sql,
             warning=(
                 "Could not discover Unity column tags from information_schema.column_tags; "
-                "retrying with alternate column names."
+                "continuing without column tags."
             ),
         )
-        if not rows:
-            rows = self._execute_query_optional(
-                client,
-                warehouse_id,
-                sql_fallback,
-                warning=(
-                    "Could not discover Unity column tags from information_schema.column_tags; "
-                    "continuing without column tags."
-                ),
-            )
 
         grouped: dict[str, dict[str, dict[str, str]]] = {}
         for row in rows:

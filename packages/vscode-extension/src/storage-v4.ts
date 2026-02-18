@@ -27,6 +27,12 @@ export interface LocationDefinition {
   paths: Record<string, string>; // environmentName -> physical path
 }
 
+export interface ExistingObjectsConfig {
+  catalog?: string[];
+  schema?: string[];
+  table?: string[];
+}
+
 export interface EnvironmentConfig {
   topLevelName: string;
   catalogMappings?: Record<string, string>;
@@ -36,6 +42,10 @@ export interface EnvironmentConfig {
   requireApproval?: boolean;
   autoCreateTopLevel: boolean;
   autoCreateSchemaxSchema: boolean;
+  /** Deployment scope: which managed categories to emit (default: all) */
+  managedCategories?: string[];
+  /** Objects that already exist; skip CREATE for these */
+  existingObjects?: ExistingObjectsConfig;
 }
 
 // Project File V4 Types
@@ -505,6 +515,59 @@ async function validateDependenciesInternal(
 }
 
 /**
+ * Sanitize a logical catalog name for use as a physical name segment (alphanumeric + underscore).
+ */
+function sanitizeCatalogNameForPhysical(name: string): string {
+  return (name || '').replace(/[^a-zA-Z0-9_]/g, '_');
+}
+
+/**
+ * Ensure every catalog created by add_catalog ops has a mapping in each environment.
+ * When the user drops the default catalog and adds a new one, the new catalog's logical name
+ * is not in project.provider.environments.<env>.catalogMappings; apply/sql would then fail.
+ * This adds default mappings (envName_sanitizedCatalogName) for any new catalog so apply works.
+ */
+export function ensureCatalogMappingsForNewCatalogs(
+  project: ProjectFileV4,
+  ops: Operation[]
+): { project: ProjectFileV4; updated: boolean } {
+  const addCatalogOps = ops.filter(
+    (op) => op.op?.endsWith('add_catalog') && (op.payload as { name?: string })?.name
+  );
+  const newNames = [...new Set(addCatalogOps.map((op) => (op.payload as { name: string }).name))];
+  if (newNames.length === 0 || !project.provider?.environments) {
+    return { project, updated: false };
+  }
+
+  let updated = false;
+  const environments: Record<string, EnvironmentConfig> = {};
+
+  for (const [envName, config] of Object.entries(project.provider.environments)) {
+    const catalogMappings = { ...(config.catalogMappings || {}) };
+    for (const logicalName of newNames) {
+      if (catalogMappings[logicalName] !== undefined) continue;
+      const sanitized = sanitizeCatalogNameForPhysical(logicalName);
+      catalogMappings[logicalName] = `${envName}_${sanitized}`;
+      updated = true;
+    }
+    environments[envName] = { ...config, catalogMappings };
+  }
+
+  if (!updated) return { project, updated: false };
+
+  return {
+    project: {
+      ...project,
+      provider: {
+        ...project.provider,
+        environments,
+      },
+    },
+    updated: true,
+  };
+}
+
+/**
  * Append operations to changelog
  */
 export async function appendOps(
@@ -531,8 +594,18 @@ export async function appendOps(
   // Append ops
   changelog.ops.push(...ops);
 
-  // Write back
+  // Write back changelog
   await writeChangelog(workspaceUri, changelog);
+
+  // When user adds a new catalog (e.g. after dropping the default), add its logical name to
+  // each environment's catalogMappings so apply/sql don't fail with "Missing catalog mapping(s)"
+  const { project: projectAfterMappings, updated } = ensureCatalogMappingsForNewCatalogs(
+    project,
+    ops
+  );
+  if (updated) {
+    await writeProject(workspaceUri, projectAfterMappings);
+  }
 }
 
 /**

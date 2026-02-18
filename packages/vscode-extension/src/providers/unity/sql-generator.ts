@@ -65,6 +65,11 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
             map[column.id] = column.name;
           }
         }
+        if (schema.views) {
+          for (const view of schema.views) {
+            map[view.id] = `${catalogName}.${schema.name}.${view.name}`;
+          }
+        }
       }
     }
     
@@ -1672,6 +1677,12 @@ ${columnsSql}
       case 'remove_column_mask':
         return this.removeColumnMask(op);
       
+      // Grant operations
+      case 'add_grant':
+        return this.addGrant(op);
+      case 'revoke_grant':
+        return this.revokeGrant(op);
+      
       default:
         return `-- Unsupported operation: ${opType}`;
     }
@@ -1934,6 +1945,61 @@ ${columnsSql}
   
   private removeColumnMask(op: Operation): string {
     return '-- Column mask removal';
+  }
+
+  // Grant operations (Unity: GRANT / REVOKE on CATALOG | SCHEMA | TABLE | VIEW)
+  private grantObjectKind(targetType: string): string {
+    const kind: Record<string, string> = {
+      catalog: 'CATALOG',
+      schema: 'SCHEMA',
+      table: 'TABLE',
+      view: 'VIEW',
+    };
+    return kind[targetType] ?? 'TABLE';
+  }
+
+  private grantFqn(targetType: string, targetId: string): string {
+    const fqn = this.idNameMap[targetId] ?? '';
+    if (!fqn) return '';
+    const parts = fqn.split('.');
+    return this.buildFqn(...parts);
+  }
+
+  private escapePrincipal(principal: string): string {
+    if (!principal) return this.escapeIdentifier('unknown');
+    return this.escapeIdentifier(principal);
+  }
+
+  private addGrant(op: Operation): string {
+    const targetType = op.payload.targetType ?? 'table';
+    const targetId = op.payload.targetId;
+    const principal = op.payload.principal ?? '';
+    const privileges: string[] = op.payload.privileges ?? [];
+    if (!targetId) return '-- Error: add_grant missing targetId';
+    const kind = this.grantObjectKind(targetType);
+    const fqn = this.grantFqn(targetType, targetId);
+    if (!fqn) return `-- Error: could not resolve FQN for targetId ${targetId}`;
+    const principalEsc = this.escapePrincipal(principal);
+    const privList = privileges.map(p => this.escapeIdentifier(p)).join(', ');
+    if (!privList) return '-- No privileges specified for add_grant';
+    return `GRANT ${privList} ON ${kind} ${fqn} TO ${principalEsc}`;
+  }
+
+  private revokeGrant(op: Operation): string {
+    const targetType = op.payload.targetType ?? 'table';
+    const targetId = op.payload.targetId;
+    const principal = op.payload.principal ?? '';
+    const privileges = op.payload.privileges as string[] | undefined;
+    if (!targetId) return '-- Error: revoke_grant missing targetId';
+    const kind = this.grantObjectKind(targetType);
+    const fqn = this.grantFqn(targetType, targetId);
+    if (!fqn) return `-- Error: could not resolve FQN for targetId ${targetId}`;
+    const principalEsc = this.escapePrincipal(principal);
+    const privClause =
+      privileges == null || privileges.length === 0
+        ? 'ALL PRIVILEGES'
+        : privileges.map((p: string) => this.escapeIdentifier(p)).join(', ');
+    return `REVOKE ${privClause} ON ${kind} ${fqn} FROM ${principalEsc}`;
   }
 }
 

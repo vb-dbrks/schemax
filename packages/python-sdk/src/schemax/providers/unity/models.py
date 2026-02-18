@@ -133,6 +133,7 @@ class UnityView(BaseModel):
     # Metadata
     tags: dict[str, str] = {}  # VIEW TAGS (Unity Catalog governance)
     properties: dict[str, str] = {}  # View properties
+    grants: list[UnityGrant] = []
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -149,6 +150,7 @@ class UnitySchema(BaseModel):
     tags: dict[str, str] = {}  # Schema tags (Unity Catalog governance)
     tables: list[UnityTable] = []
     views: list[UnityView] = []  # Views stored alongside tables in schema
+    grants: list[UnityGrant] = []
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -164,6 +166,7 @@ class UnityCatalog(BaseModel):
     comment: str | None = None  # Catalog comment
     tags: dict[str, str] = {}  # Catalog tags (Unity Catalog governance)
     schemas: list[UnitySchema] = []
+    grants: list[UnityGrant] = []
 
     model_config = ConfigDict(populate_by_name=True)
 

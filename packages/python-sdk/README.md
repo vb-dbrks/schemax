@@ -468,7 +468,7 @@ validate-schema:
 | **Hive Metastore** | 🚧 Planned | TBD | Manual | SQL generation only |
 | **PostgreSQL** | 🚧 Planned | TBD | Manual | SQL generation only |
 
-Want to add a provider? See [Provider Contract](https://github.com/vb-dbrks/schemax-vscode/blob/main/docs/PROVIDER_CONTRACT.md).
+Want to add a provider? See the [documentation site](https://github.com/vb-dbrks/schemax-vscode/tree/main/docs/schemax) — **For Contributors** → Provider contract.
 
 ## Requirements
 
@@ -478,10 +478,12 @@ Want to add a provider? See [Provider Contract](https://github.com/vb-dbrks/sche
 
 ## Documentation
 
-- [Quick Start Guide](https://github.com/vb-dbrks/schemax-vscode/blob/main/docs/QUICKSTART.md)
-- [Architecture Overview](https://github.com/vb-dbrks/schemax-vscode/blob/main/docs/ARCHITECTURE.md)
-- [Development Guide](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/SETUP.md)
-- [Provider Contract](https://github.com/vb-dbrks/schemax-vscode/blob/main/docs/PROVIDER_CONTRACT.md)
+All guides and reference live in the **Docusaurus site** (`docs/schemax/`):
+
+- **For Users:** Quickstart, Architecture, Workflows, CLI, Environments & scope, Unity Catalog grants
+- **For Contributors:** Development, Testing, Provider contract, Contributing
+
+Run `cd docs/schemax && npm run start` to browse locally. See also [SETUP.md](SETUP.md) for SDK-specific setup.
 
 ## Development
 

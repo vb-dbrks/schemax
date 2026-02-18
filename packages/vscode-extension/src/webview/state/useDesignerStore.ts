@@ -110,7 +110,11 @@ interface DesignerState {
   addColumnMask: (tableId: string, columnId: string, name: string, maskFunction: string, enabled?: boolean, description?: string) => void;
   updateColumnMask: (tableId: string, maskId: string, updates: Partial<Omit<ColumnMask, 'id' | 'columnId'>>) => void;
   removeColumnMask: (tableId: string, maskId: string) => void;
-  
+
+  // Grant operations (catalog, schema, table, view)
+  addGrant: (targetType: 'catalog' | 'schema' | 'table' | 'view', targetId: string, principal: string, privileges: string[]) => void;
+  revokeGrant: (targetType: 'catalog' | 'schema' | 'table' | 'view', targetId: string, principal: string, privileges?: string[]) => void;
+
   // Helper to find objects
   findCatalog: (catalogId: string) => Catalog | undefined;
   findSchema: (schemaId: string) => { catalog: Catalog; schema: Schema } | undefined;
@@ -542,6 +546,26 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   removeColumnMask: (tableId, maskId) => {
     const op = createOperation(get(), 'remove_column_mask', maskId, { tableId });
+    emitOps([op]);
+  },
+
+  addGrant: (targetType, targetId, principal, privileges) => {
+    const op = createOperation(get(), 'add_grant', targetId, {
+      targetType,
+      targetId,
+      principal,
+      privileges,
+    });
+    emitOps([op]);
+  },
+
+  revokeGrant: (targetType, targetId, principal, privileges) => {
+    const op = createOperation(get(), 'revoke_grant', targetId, {
+      targetType,
+      targetId,
+      principal,
+      privileges: privileges ?? undefined,
+    });
     emitOps([op]);
   },
 

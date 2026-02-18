@@ -153,23 +153,19 @@ def sample_unity_state():
         catalogs=[
             UnityCatalog(
                 id="cat_123",
-                provider="unity",
                 name="bronze",
                 schemas=[
                     UnitySchema(
                         id="schema_456",
-                        provider="unity",
                         name="raw",
                         tables=[
                             UnityTable(
                                 id="table_789",
-                                provider="unity",
                                 name="users",
                                 format="delta",
                                 columns=[
                                     UnityColumn(
                                         id="col_001",
-                                        provider="unity",
                                         name="user_id",
                                         type="BIGINT",
                                         nullable=False,
@@ -177,7 +173,6 @@ def sample_unity_state():
                                     ),
                                     UnityColumn(
                                         id="col_002",
-                                        provider="unity",
                                         name="email",
                                         type="STRING",
                                         nullable=True,
@@ -189,8 +184,10 @@ def sample_unity_state():
                                 grants=[],
                             )
                         ],
+                        grants=[],
                     )
                 ],
+                grants=[],
             )
         ]
     )

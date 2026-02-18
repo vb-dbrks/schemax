@@ -5,7 +5,10 @@ Tests SQL generation for all 31 Unity Catalog operations.
 Verifies SQL idempotency, correctness, and proper escaping.
 """
 
-from schemax.providers.base.operations import Operation
+import pytest
+
+from schemax.providers.base.exceptions import SchemaXProviderError
+from schemax.providers.base.operations import Operation, create_operation
 from schemax.providers.unity.sql_generator import UnitySQLGenerator
 from tests.utils import OperationBuilder
 
@@ -147,6 +150,35 @@ class TestManagedLocationSQL:
         assert "CREATE CATALOG IF NOT EXISTS" in result.sql
         assert "`warehouse`" in result.sql
         assert "MANAGED LOCATION 's3://data-bucket/catalogs'" in result.sql
+
+    def test_add_catalog_with_tags_emits_set_tags(self, sample_unity_state):
+        """add_catalog with tags in payload must produce ALTER CATALOG SET TAGS (apply path)."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        op = builder.add_catalog("cat_999", "warehouse", op_id="op_tags_001")
+        op.payload["tags"] = {"domain": "analytics", "env": "dev"}
+
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE CATALOG IF NOT EXISTS" in result.sql
+        assert "ALTER CATALOG" in result.sql
+        assert "SET TAGS" in result.sql
+        assert "domain" in result.sql or "analytics" in result.sql
+        assert "env" in result.sql or "dev" in result.sql
+
+    def test_add_schema_with_tags_emits_set_tags(self, sample_unity_state):
+        """add_schema with tags in payload must produce ALTER SCHEMA SET TAGS (apply path)."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+
+        op = builder.add_schema("schema_999", "raw", "cat_123", op_id="op_sch_tags_001")
+        op.payload["tags"] = {"layer": "bronze"}
+
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE SCHEMA IF NOT EXISTS" in result.sql
+        assert "ALTER SCHEMA" in result.sql
+        assert "SET TAGS" in result.sql
+        assert "layer" in result.sql or "bronze" in result.sql
 
     def test_add_schema_with_managed_location(self, sample_unity_state):
         """Test CREATE SCHEMA with MANAGED LOCATION"""
@@ -916,6 +948,81 @@ class TestColumnMaskSQL:
 
         result = generator.generate_sql_for_operation(op)
         assert "DROP MASK" in result.sql
+
+
+class TestGrantSQL:
+    """Test SQL generation for grant operations (add_grant, revoke_grant)"""
+
+    def test_add_grant_on_catalog(self, sample_unity_state, assert_sql):
+        """Test GRANT on CATALOG SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_grant(
+            "catalog", "cat_123", "data_engineers", ["USE CATALOG", "CREATE SCHEMA"], op_id="op_g1"
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "GRANT" in result.sql
+        assert "ON CATALOG" in result.sql
+        assert "TO" in result.sql
+        assert "data_engineers" in result.sql or "`data_engineers`" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_grant_on_table(self, sample_unity_state, assert_sql):
+        """Test GRANT on TABLE SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_grant(
+            "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g2"
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "GRANT" in result.sql
+        assert "ON TABLE" in result.sql
+        assert "TO" in result.sql
+        assert_sql(result.sql)
+
+    def test_revoke_grant_all(self, sample_unity_state, assert_sql):
+        """Test REVOKE ALL PRIVILEGES SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.revoke_grant("table", "table_789", "analysts", privileges=None, op_id="op_g3")
+        result = generator.generate_sql_for_operation(op)
+        assert "REVOKE" in result.sql
+        assert "ALL PRIVILEGES" in result.sql
+        assert "FROM" in result.sql
+        assert_sql(result.sql)
+
+    def test_revoke_grant_partial(self, sample_unity_state, assert_sql):
+        """Test REVOKE specific privileges SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.revoke_grant(
+            "schema", "schema_456", "analysts", privileges=["CREATE TABLE"], op_id="op_g4"
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "REVOKE" in result.sql
+        assert "ON SCHEMA" in result.sql
+        assert "FROM" in result.sql
+        assert_sql(result.sql)
+
+    def test_generate_sql_with_mapping_raises_on_grant_validation_error(self, sample_unity_state):
+        """Grant ops that return error comments (e.g. missing targetId) must raise, not be emitted as SQL."""
+        state = sample_unity_state.model_dump(by_alias=True)
+        generator = UnitySQLGenerator(state, catalog_name_mapping={"bronze": "bronze"})
+        bad_op = create_operation(
+            provider="unity",
+            op_type="add_grant",
+            target="op_bad",
+            payload={
+                "targetType": "table",
+                "principal": "users",
+                "privileges": ["SELECT"],
+            },
+            op_id="op_bad",
+        )
+        with pytest.raises(SchemaXProviderError) as exc_info:
+            generator.generate_sql_with_mapping([bad_op])
+        assert "Error" in str(exc_info.value)
+        assert "targetId" in str(exc_info.value).lower() or "add_grant" in str(exc_info.value)
 
 
 class TestViewSQL:

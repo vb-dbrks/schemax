@@ -25,6 +25,20 @@ class OperationCategory(StrEnum):
     METADATA = "metadata"
 
 
+class ManagedCategory(StrEnum):
+    """
+    Provider-agnostic deployment scope category.
+    Used to filter which operations SchemaX emits per environment
+    (e.g. governance-only = no CREATE catalog/schema/table).
+    """
+
+    CATALOG_STRUCTURE = "catalog_structure"
+    SCHEMA_STRUCTURE = "schema_structure"
+    TABLE_STRUCTURE = "table_structure"
+    VIEW_STRUCTURE = "view_structure"
+    GOVERNANCE = "governance"
+
+
 class Operation(BaseModel):
     """Base operation structure"""
 
@@ -46,6 +60,7 @@ class OperationMetadata(BaseModel):
     required_fields: list[str]  # Required payload fields
     optional_fields: list[str]  # Optional payload fields
     is_destructive: bool  # Whether operation is destructive
+    managed_category: ManagedCategory = ManagedCategory.TABLE_STRUCTURE  # Deployment scope
 
 
 def create_operation(

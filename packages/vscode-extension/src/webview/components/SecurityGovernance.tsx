@@ -1,16 +1,24 @@
 import React, { useState } from 'react';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { Table, RowFilter, ColumnMask } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
+
+const IconTrash: React.FC = () => (
+  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+);
 
 interface SecurityGovernanceProps {
   tableId: string;
 }
 
 export const SecurityGovernance: React.FC<SecurityGovernanceProps> = ({ tableId }) => {
-  const { project, addRowFilter, updateRowFilter, removeRowFilter, addColumnMask, updateColumnMask, removeColumnMask } = useDesignerStore();
-  
+  const { project, addRowFilter, updateRowFilter, removeRowFilter, addColumnMask, updateColumnMask, removeColumnMask, addGrant, revokeGrant } = useDesignerStore();
+
   const [addFilterDialog, setAddFilterDialog] = useState(false);
   const [addMaskDialog, setAddMaskDialog] = useState(false);
+  const [addGrantDialog, setAddGrantDialog] = useState(false);
+  const [deleteGrantDialog, setDeleteGrantDialog] = useState<{ principal: string } | null>(null);
+  const [grantForm, setGrantForm] = useState({ principal: '', privileges: '' });
   const [editFilterDialog, setEditFilterDialog] = useState<RowFilter | null>(null);
   const [editMaskDialog, setEditMaskDialog] = useState<ColumnMask | null>(null);
   const [deleteFilterDialog, setDeleteFilterDialog] = useState<{filterId: string, name: string} | null>(null);
@@ -35,6 +43,7 @@ export const SecurityGovernance: React.FC<SecurityGovernanceProps> = ({ tableId 
 
   const rowFilters = table.rowFilters || [];
   const columnMasks = table.columnMasks || [];
+  const grants = table.grants || [];
 
   const handleAddFilter = () => {
     if (!filterForm.name || !filterForm.udfExpression) return;
@@ -89,6 +98,20 @@ export const SecurityGovernance: React.FC<SecurityGovernanceProps> = ({ tableId 
   const getColumnName = (columnId: string): string => {
     const col = table.columns.find(c => c.id === columnId);
     return col?.name || columnId;
+  };
+
+  const handleAddGrant = () => {
+    const principal = grantForm.principal.trim();
+    const privs = grantForm.privileges.split(/[\s,]+/).filter(Boolean);
+    if (!principal || privs.length === 0) return;
+    addGrant('table', tableId, principal, privs);
+    setAddGrantDialog(false);
+    setGrantForm({ principal: '', privileges: '' });
+  };
+
+  const handleRevokeGrant = (principal: string) => {
+    revokeGrant('table', tableId, principal);
+    setDeleteGrantDialog(null);
   };
 
   return (
@@ -223,6 +246,46 @@ export const SecurityGovernance: React.FC<SecurityGovernanceProps> = ({ tableId 
         )}
         <button className="add-mask-btn" onClick={() => setAddMaskDialog(true)}>
           + Add Column Mask
+        </button>
+      </div>
+
+      {/* Table Grants - same layout as catalog/schema/view */}
+      <div className="table-properties-section">
+        <h3>Grants ({grants.length})</h3>
+        {grants.length === 0 && !addGrantDialog ? (
+          <div className="empty-properties">
+            <p>No grants defined. Grant privileges (e.g. SELECT, MODIFY) to users or groups.</p>
+          </div>
+        ) : (
+          <table className="properties-table">
+            <thead>
+              <tr>
+                <th>Principal</th>
+                <th>Privileges</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grants.map((g) => (
+                <tr key={g.principal}>
+                  <td>{g.principal}</td>
+                  <td>{(g.privileges || []).join(', ')}</td>
+                  <td>
+                    <VSCodeButton
+                      appearance="icon"
+                      onClick={() => setDeleteGrantDialog({ principal: g.principal })}
+                      title="Revoke all"
+                    >
+                      <IconTrash />
+                    </VSCodeButton>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <button className="add-property-btn" onClick={() => setAddGrantDialog(true)}>
+          + Add Grant
         </button>
       </div>
 
@@ -520,6 +583,67 @@ export const SecurityGovernance: React.FC<SecurityGovernanceProps> = ({ tableId 
               </button>
               <button className="confirm-btn delete" onClick={handleDeleteMask}>
                 Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Grant Dialog */}
+      {addGrantDialog && (
+        <div className="modal-overlay" onClick={() => setAddGrantDialog(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Add Grant</h2>
+            <div className="modal-body">
+              <label>
+                Principal (user, group, or service principal):
+                <input
+                  type="text"
+                  value={grantForm.principal}
+                  onChange={(e) => setGrantForm({ ...grantForm, principal: e.target.value })}
+                  placeholder="e.g. data_engineers or user@domain.com"
+                />
+              </label>
+              <label>
+                Privileges (comma-separated):
+                <input
+                  type="text"
+                  value={grantForm.privileges}
+                  onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })}
+                  placeholder="e.g. SELECT, MODIFY"
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button className="cancel-btn" onClick={() => { setAddGrantDialog(false); setGrantForm({ principal: '', privileges: '' }); }}>
+                Cancel
+              </button>
+              <button
+                className="confirm-btn"
+                onClick={handleAddGrant}
+                disabled={!grantForm.principal.trim() || !grantForm.privileges.trim()}
+              >
+                Add Grant
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Grant Dialog */}
+      {deleteGrantDialog && (
+        <div className="modal-overlay" onClick={() => setDeleteGrantDialog(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Revoke Grant</h2>
+            <p className="warning-text">
+              Revoke all privileges for <strong>{deleteGrantDialog.principal}</strong> on this table?
+            </p>
+            <div className="modal-actions">
+              <button className="cancel-btn" onClick={() => setDeleteGrantDialog(null)}>
+                Cancel
+              </button>
+              <button className="confirm-btn delete" onClick={() => handleRevokeGrant(deleteGrantDialog.principal)}>
+                Revoke
               </button>
             </div>
           </div>

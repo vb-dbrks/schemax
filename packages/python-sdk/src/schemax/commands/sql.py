@@ -16,6 +16,7 @@ from schemax.core.storage import (
     read_snapshot,
 )
 from schemax.providers.base.operations import Operation
+from schemax.providers.base.scope_filter import filter_operations_by_managed_scope
 
 console = Console()
 
@@ -190,6 +191,11 @@ def generate_sql_migration(
             operations = [Operation(**op) for op in ops_to_process]
         else:
             operations = ops_to_process
+
+        # Filter by deployment scope when target environment is set
+        if env_config and provider:
+            operations = filter_operations_by_managed_scope(operations, env_config, provider)
+            console.print(f"[dim]After deployment scope filter: {len(operations)} ops[/dim]")
 
         # Log external table operations (if target environment specified)
         # Note: operations may be Operation objects or dicts

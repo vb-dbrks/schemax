@@ -42,6 +42,19 @@ export enum OperationCategory {
 }
 
 /**
+ * Provider-agnostic deployment scope category.
+ * Used to filter which operations SchemaX emits per environment
+ * (e.g. governance-only = no CREATE catalog/schema/table).
+ */
+export enum ManagedCategory {
+  CatalogStructure = 'catalog_structure',
+  SchemaStructure = 'schema_structure',
+  TableStructure = 'table_structure',
+  ViewStructure = 'view_structure',
+  Governance = 'governance',
+}
+
+/**
  * Operation metadata for UI and documentation
  */
 export interface OperationMetadata {
@@ -65,6 +78,9 @@ export interface OperationMetadata {
   
   /** Whether this operation is destructive (drops/deletes) */
   isDestructive: boolean;
+  
+  /** Deployment scope category for managed scope filtering */
+  managedCategory: ManagedCategory;
 }
 
 /**

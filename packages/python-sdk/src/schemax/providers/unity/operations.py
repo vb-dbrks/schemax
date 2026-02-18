@@ -5,7 +5,7 @@ All operation types supported by Unity Catalog provider.
 Operations are prefixed with 'unity.' to indicate the provider.
 """
 
-from schemax.providers.base.operations import OperationCategory, OperationMetadata
+from schemax.providers.base.operations import ManagedCategory, OperationCategory, OperationMetadata
 
 # Operation type constants
 UNITY_OPERATIONS = {
@@ -59,6 +59,9 @@ UNITY_OPERATIONS = {
     "ADD_COLUMN_MASK": "unity.add_column_mask",
     "UPDATE_COLUMN_MASK": "unity.update_column_mask",
     "REMOVE_COLUMN_MASK": "unity.remove_column_mask",
+    # Grant operations
+    "ADD_GRANT": "unity.add_grant",
+    "REVOKE_GRANT": "unity.revoke_grant",
 }
 
 # Export operation metadata for UI and validation
@@ -72,6 +75,7 @@ unity_operation_metadata = [
         required_fields=["catalogId", "name"],
         optional_fields=["managedLocationName", "comment"],
         is_destructive=False,
+        managed_category=ManagedCategory.CATALOG_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["RENAME_CATALOG"],
@@ -81,6 +85,7 @@ unity_operation_metadata = [
         required_fields=["newName"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.CATALOG_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["UPDATE_CATALOG"],
@@ -90,6 +95,7 @@ unity_operation_metadata = [
         required_fields=[],
         optional_fields=["managedLocationName"],
         is_destructive=False,
+        managed_category=ManagedCategory.CATALOG_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["DROP_CATALOG"],
@@ -99,6 +105,7 @@ unity_operation_metadata = [
         required_fields=[],
         optional_fields=[],
         is_destructive=True,
+        managed_category=ManagedCategory.CATALOG_STRUCTURE,
     ),
     # Schema operations
     OperationMetadata(
@@ -109,6 +116,7 @@ unity_operation_metadata = [
         required_fields=["schemaId", "name", "catalogId"],
         optional_fields=["managedLocationName", "comment"],
         is_destructive=False,
+        managed_category=ManagedCategory.SCHEMA_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["RENAME_SCHEMA"],
@@ -118,6 +126,7 @@ unity_operation_metadata = [
         required_fields=["newName"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.SCHEMA_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["UPDATE_SCHEMA"],
@@ -127,6 +136,7 @@ unity_operation_metadata = [
         required_fields=[],
         optional_fields=["managedLocationName"],
         is_destructive=False,
+        managed_category=ManagedCategory.SCHEMA_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["DROP_SCHEMA"],
@@ -136,6 +146,7 @@ unity_operation_metadata = [
         required_fields=[],
         optional_fields=[],
         is_destructive=True,
+        managed_category=ManagedCategory.SCHEMA_STRUCTURE,
     ),
     # Table operations
     OperationMetadata(
@@ -153,6 +164,7 @@ unity_operation_metadata = [
             "comment",
         ],
         is_destructive=False,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["RENAME_TABLE"],
@@ -162,6 +174,7 @@ unity_operation_metadata = [
         required_fields=["newName"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["DROP_TABLE"],
@@ -175,6 +188,7 @@ unity_operation_metadata = [
             "schemaId",
         ],  # Added for SQL generation when table no longer in state
         is_destructive=True,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["SET_TABLE_COMMENT"],
@@ -184,6 +198,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "comment"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["SET_TABLE_PROPERTY"],
@@ -193,6 +208,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "key", "value"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["UNSET_TABLE_PROPERTY"],
@@ -202,6 +218,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "key"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     # Table tag operations
     OperationMetadata(
@@ -212,6 +229,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "tagName", "tagValue"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["UNSET_TABLE_TAG"],
@@ -221,6 +239,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "tagName"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     # View operations
     OperationMetadata(
@@ -231,6 +250,7 @@ unity_operation_metadata = [
         required_fields=["viewId", "name", "schemaId", "definition"],
         optional_fields=["comment", "dependencies", "extractedDependencies"],
         is_destructive=False,
+        managed_category=ManagedCategory.VIEW_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["RENAME_VIEW"],
@@ -240,6 +260,7 @@ unity_operation_metadata = [
         required_fields=["newName"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.VIEW_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["DROP_VIEW"],
@@ -249,6 +270,7 @@ unity_operation_metadata = [
         required_fields=[],
         optional_fields=["name", "catalogId", "schemaId"],  # For SQL generation
         is_destructive=True,
+        managed_category=ManagedCategory.VIEW_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["UPDATE_VIEW"],
@@ -258,6 +280,7 @@ unity_operation_metadata = [
         required_fields=[],
         optional_fields=["definition", "dependencies", "extractedDependencies"],
         is_destructive=False,
+        managed_category=ManagedCategory.VIEW_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["SET_VIEW_COMMENT"],
@@ -267,6 +290,7 @@ unity_operation_metadata = [
         required_fields=["viewId", "comment"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["SET_VIEW_PROPERTY"],
@@ -276,6 +300,7 @@ unity_operation_metadata = [
         required_fields=["viewId", "key", "value"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["UNSET_VIEW_PROPERTY"],
@@ -285,6 +310,7 @@ unity_operation_metadata = [
         required_fields=["viewId", "key"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     # Column operations
     OperationMetadata(
@@ -295,6 +321,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "colId", "name", "type", "nullable"],
         optional_fields=["comment"],
         is_destructive=False,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["RENAME_COLUMN"],
@@ -304,6 +331,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "newName"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["DROP_COLUMN"],
@@ -313,6 +341,7 @@ unity_operation_metadata = [
         required_fields=["tableId"],
         optional_fields=[],
         is_destructive=True,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["REORDER_COLUMNS"],
@@ -322,6 +351,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "order"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["CHANGE_COLUMN_TYPE"],
@@ -331,6 +361,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "newType"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["SET_NULLABLE"],
@@ -340,6 +371,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "nullable"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["SET_COLUMN_COMMENT"],
@@ -349,6 +381,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "comment"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     # Column tag operations
     OperationMetadata(
@@ -359,6 +392,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "tagName", "tagValue"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["UNSET_COLUMN_TAG"],
@@ -368,6 +402,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "tagName"],
         optional_fields=[],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     # Constraint operations
     OperationMetadata(
@@ -386,6 +421,7 @@ unity_operation_metadata = [
             "rely",
         ],
         is_destructive=False,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["DROP_CONSTRAINT"],
@@ -395,6 +431,7 @@ unity_operation_metadata = [
         required_fields=["tableId"],
         optional_fields=[],
         is_destructive=True,
+        managed_category=ManagedCategory.TABLE_STRUCTURE,
     ),
     # Row filter operations
     OperationMetadata(
@@ -405,6 +442,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "filterId", "name", "udfExpression"],
         optional_fields=["enabled", "description", "columnNames"],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["UPDATE_ROW_FILTER"],
@@ -414,6 +452,7 @@ unity_operation_metadata = [
         required_fields=["tableId"],
         optional_fields=["name", "udfExpression", "enabled", "description"],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["REMOVE_ROW_FILTER"],
@@ -423,6 +462,7 @@ unity_operation_metadata = [
         required_fields=["tableId"],
         optional_fields=[],
         is_destructive=True,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     # Column mask operations
     OperationMetadata(
@@ -433,6 +473,7 @@ unity_operation_metadata = [
         required_fields=["tableId", "maskId", "columnId", "name", "maskFunction"],
         optional_fields=["enabled", "description"],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["UPDATE_COLUMN_MASK"],
@@ -442,6 +483,7 @@ unity_operation_metadata = [
         required_fields=["tableId"],
         optional_fields=["name", "maskFunction", "enabled", "description"],
         is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
     OperationMetadata(
         type=UNITY_OPERATIONS["REMOVE_COLUMN_MASK"],
@@ -451,5 +493,27 @@ unity_operation_metadata = [
         required_fields=["tableId"],
         optional_fields=[],
         is_destructive=True,
+        managed_category=ManagedCategory.GOVERNANCE,
+    ),
+    # Grant operations
+    OperationMetadata(
+        type=UNITY_OPERATIONS["ADD_GRANT"],
+        display_name="Add Grant",
+        description="Grant privileges on a catalog, schema, table, or view to a principal",
+        category=OperationCategory.SECURITY,
+        required_fields=["targetType", "targetId", "principal", "privileges"],
+        optional_fields=[],
+        is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
+    ),
+    OperationMetadata(
+        type=UNITY_OPERATIONS["REVOKE_GRANT"],
+        display_name="Revoke Grant",
+        description="Revoke privileges from a principal on a catalog, schema, table, or view",
+        category=OperationCategory.SECURITY,
+        required_fields=["targetType", "targetId", "principal"],
+        optional_fields=["privileges"],
+        is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
     ),
 ]

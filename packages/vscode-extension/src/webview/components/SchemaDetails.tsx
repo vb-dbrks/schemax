@@ -22,7 +22,7 @@ interface SchemaDetailsProps {
 }
 
 export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
-  const { project, findSchema, updateSchema, renameSchema } = useDesignerStore();
+  const { project, findSchema, updateSchema, renameSchema, addGrant, revokeGrant } = useDesignerStore();
   const schemaInfo = findSchema(schemaId);
   const schema = schemaInfo?.schema;
   const catalog = schemaInfo?.catalog;
@@ -43,6 +43,9 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const [newTagName, setNewTagName] = useState('');
   const [newTagValue, setNewTagValue] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
+  const [addGrantDialog, setAddGrantDialog] = useState(false);
+  const [revokeGrantDialog, setRevokeGrantDialog] = useState<{ principal: string } | null>(null);
+  const [grantForm, setGrantForm] = useState({ principal: '', privileges: '' });
 
   // Update local state when schema changes
   useEffect(() => {
@@ -415,6 +418,82 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
           </div>
         )}
       </div>
+
+      {/* Grants */}
+      <div className="table-properties-section">
+        <h3>Grants ({schema.grants?.length ?? 0})</h3>
+        {(!schema.grants || schema.grants.length === 0) && !addGrantDialog ? (
+          <div className="empty-properties">
+            <p>No grants defined. Grant privileges (e.g. USE SCHEMA, CREATE TABLE) to users or groups.</p>
+          </div>
+        ) : (
+          <table className="properties-table">
+            <thead>
+              <tr>
+                <th>Principal</th>
+                <th>Privileges</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(schema.grants || []).map((g) => (
+                <tr key={g.principal}>
+                  <td>{g.principal}</td>
+                  <td>{(g.privileges || []).join(', ')}</td>
+                  <td>
+                    <VSCodeButton appearance="icon" onClick={() => setRevokeGrantDialog({ principal: g.principal })} title="Revoke all">
+                      <IconTrash />
+                    </VSCodeButton>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <button className="add-property-btn" onClick={() => setAddGrantDialog(true)}>
+          + Add Grant
+        </button>
+      </div>
+
+      {addGrantDialog && (
+        <div className="modal-overlay" onClick={() => setAddGrantDialog(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Add Grant</h3>
+            <div className="modal-body">
+              <label>Principal</label>
+              <input type="text" value={grantForm.principal} onChange={(e) => setGrantForm({ ...grantForm, principal: e.target.value })} placeholder="e.g. data_engineers" />
+              <label>Privileges (comma-separated, e.g. USE SCHEMA, CREATE TABLE)</label>
+              <input type="text" value={grantForm.privileges} onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })} placeholder="USE SCHEMA, CREATE TABLE" />
+            </div>
+            <div className="modal-buttons">
+              <button onClick={() => { setAddGrantDialog(false); setGrantForm({ principal: '', privileges: '' }); }}>Cancel</button>
+              <button
+                onClick={() => {
+                  const principal = grantForm.principal.trim();
+                  const privs = grantForm.privileges.split(/[\s,]+/).filter(Boolean);
+                  if (principal && privs.length > 0) { addGrant('schema', schemaId, principal, privs); setAddGrantDialog(false); setGrantForm({ principal: '', privileges: '' }); }
+                }}
+                disabled={!grantForm.principal.trim() || !grantForm.privileges.trim()}
+              >
+                Add Grant
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revokeGrantDialog && (
+        <div className="modal-overlay" onClick={() => setRevokeGrantDialog(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Revoke Grant</h3>
+            <p>Revoke all privileges for <strong>{revokeGrantDialog.principal}</strong> on this schema?</p>
+            <div className="modal-buttons">
+              <button onClick={() => { revokeGrant('schema', schemaId, revokeGrantDialog.principal); setRevokeGrantDialog(null); }} style={{ backgroundColor: 'var(--vscode-errorForeground)' }}>Revoke</button>
+              <button onClick={() => setRevokeGrantDialog(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rename Dialog */}
       {renameDialog && (

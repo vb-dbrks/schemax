@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { ChildProcess, spawn } from 'child_process';
 import * as storageV4 from './storage-v4';
 import { Operation } from './providers/base/operations';
+import { filterOpsByManagedScope } from './providers/base/scope-filter';
 import { ProviderRegistry } from './providers/registry';
 import { trackEvent } from './telemetry';
 import './providers'; // Initialize providers
@@ -1448,11 +1449,18 @@ async function openDesigner(context: vscode.ExtensionContext) {
         }
         case 'open-docs': {
           try {
+            const docUrl = message.payload?.url as string | undefined;
             const docPath = message.payload?.path as string | undefined;
             const fragment = message.payload?.fragment as string | undefined;
 
+            if (docUrl) {
+              await vscode.env.openExternal(vscode.Uri.parse(docUrl));
+              trackEvent('docs_opened', { url: docUrl });
+              break;
+            }
+
             if (!docPath) {
-              vscode.window.showWarningMessage('SchemaX: Documentation path was not provided.');
+              vscode.window.showWarningMessage('SchemaX: Documentation path or URL was not provided.');
               break;
             }
 
@@ -1945,6 +1953,16 @@ async function generateSQLMigration() {
     const catalogMapping = buildCatalogMapping(state, envConfig);
     outputChannel.appendLine(`[SchemaX] Catalog mapping: ${JSON.stringify(catalogMapping)}`);
 
+    // Filter ops by deployment scope (managed categories, existing objects)
+    const opsToUse = filterOpsByManagedScope(changelog.ops, envConfig, (opType) =>
+      provider.getOperationMetadata(opType)
+    );
+    if (opsToUse.length !== changelog.ops.length) {
+      outputChannel.appendLine(
+        `[SchemaX] Deployment scope filter: ${changelog.ops.length} → ${opsToUse.length} ops`
+      );
+    }
+
     // Generate SQL using provider's SQL generator
     // Note: Catalog mapping is applied during SQL generation via the generator's internal mapping
     const generator = provider.getSQLGenerator(state, catalogMapping, {
@@ -1952,8 +1970,8 @@ async function generateSQLMigration() {
       externalLocations: project.externalLocations,
       environmentName: targetEnv,
     });
-    const sql = generator.generateSQL(changelog.ops);
-    
+    const sql = generator.generateSQL(opsToUse);
+
     outputChannel.appendLine(`[SchemaX] Generated SQL (${sql.length} characters)`);
 
     // Create migrations directory
@@ -1977,11 +1995,11 @@ async function generateSQLMigration() {
     await vscode.window.showTextDocument(doc);
     
     vscode.window.showInformationMessage(
-      `SQL migration generated: ${filename} (${changelog.ops.length} operations)`
+      `SQL migration generated: ${filename} (${opsToUse.length} operations)`
     );
-    
-    trackEvent('sql_generated', { 
-      opsCount: changelog.ops.length,
+
+    trackEvent('sql_generated', {
+      opsCount: opsToUse.length,
       sqlLength: sql.length,
       provider: provider.info.id
     });

@@ -30,6 +30,58 @@ class TestUnityStateDiffer:
         assert ops[0].target == "cat_1"
         assert ops[0].payload["name"] == "bronze"
 
+    def test_diff_added_catalog_includes_tags_and_comment(self) -> None:
+        """add_catalog op from diff must include tags and comment so SQL generator emits SET TAGS."""
+        old_state = {"catalogs": []}
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "comment": "Bronze catalog",
+                    "tags": {"domain": "analytics", "env": "dev"},
+                    "schemas": [],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) >= 1
+        add_cat = next(o for o in ops if o.op == "unity.add_catalog")
+        assert add_cat.payload["name"] == "bronze"
+        assert add_cat.payload.get("comment") == "Bronze catalog"
+        assert add_cat.payload.get("tags") == {"domain": "analytics", "env": "dev"}
+
+    def test_diff_added_schema_includes_tags_and_comment(self) -> None:
+        """add_schema op from diff must include tags and comment so SQL generator emits SET TAGS."""
+        old_state = {"catalogs": [{"id": "cat_1", "name": "bronze", "schemas": []}]}
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "raw",
+                            "comment": "Raw schema",
+                            "tags": {"layer": "bronze"},
+                        },
+                    ],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        add_sch = next(o for o in ops if o.op == "unity.add_schema")
+        assert add_sch.payload["name"] == "raw"
+        assert add_sch.payload.get("comment") == "Raw schema"
+        assert add_sch.payload.get("tags") == {"layer": "bronze"}
+
     def test_diff_removed_catalog(self) -> None:
         """Should generate drop_catalog operation for removed catalog"""
         old_state = {
@@ -2235,3 +2287,303 @@ class TestUnityStateDifferGenericObjectCoverage:
         assert len(ops) == 1, "Should generate single drop_catalog (cascade)"
         assert ops[0].op == "unity.drop_catalog"
         assert ops[0].target == "cat_1"
+
+
+class TestUnityStateDifferGrants:
+    """Test UnityStateDiffer for grant diffing (add_grant, revoke_grant)"""
+
+    def test_diff_grants_skips_empty_principal(self) -> None:
+        """Grants with empty principal are skipped (invalid for SQL); valid grants still diffed (Bug 1)."""
+        old_state = {"catalogs": [{"id": "cat_1", "name": "bronze", "schemas": [], "grants": []}]}
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [],
+                    "grants": [
+                        {"principal": "", "privileges": ["USE CATALOG"]},  # skipped
+                        {
+                            "principal": "data_engineers",
+                            "privileges": ["CREATE SCHEMA"],
+                        },  # included
+                    ],
+                },
+            ]
+        }
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+        add_grants = [o for o in ops if o.op == "unity.add_grant"]
+        assert len(add_grants) == 1
+        assert add_grants[0].payload["principal"] == "data_engineers"
+
+    def test_diff_catalog_grants_added(self) -> None:
+        """Should generate add_grant when catalog gains grants"""
+        old_state = {
+            "catalogs": [
+                {"id": "cat_1", "name": "bronze", "schemas": [], "grants": []},
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [],
+                    "grants": [
+                        {
+                            "principal": "data_engineers",
+                            "privileges": ["USE CATALOG", "CREATE SCHEMA"],
+                        },
+                    ],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        grant_ops = [o for o in ops if o.op == "unity.add_grant"]
+        assert len(grant_ops) == 1
+        assert grant_ops[0].payload["targetType"] == "catalog"
+        assert grant_ops[0].payload["targetId"] == "cat_1"
+        assert grant_ops[0].payload["principal"] == "data_engineers"
+        assert set(grant_ops[0].payload["privileges"]) == {"USE CATALOG", "CREATE SCHEMA"}
+
+    def test_diff_table_grants_removed(self) -> None:
+        """Should generate revoke_grant when table loses grants"""
+        base = {
+            "id": "tbl_1",
+            "name": "users",
+            "format": "delta",
+            "columns": [{"id": "col_1", "name": "id", "type": "BIGINT", "nullable": False}],
+            "constraints": [],
+            "grants": [],
+        }
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "raw",
+                            "tables": [
+                                {
+                                    **base,
+                                    "grants": [
+                                        {
+                                            "principal": "analysts",
+                                            "privileges": ["SELECT", "MODIFY"],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "raw",
+                            "tables": [{**base, "grants": []}],
+                        },
+                    ],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        revoke_ops = [o for o in ops if o.op == "unity.revoke_grant"]
+        assert len(revoke_ops) == 1
+        assert revoke_ops[0].payload["targetType"] == "table"
+        assert revoke_ops[0].payload["targetId"] == "tbl_1"
+        assert revoke_ops[0].payload["principal"] == "analysts"
+        assert revoke_ops[0].payload.get("privileges") is None  # revoke all
+
+    def test_diff_table_grants_privileges_changed(self) -> None:
+        """Should generate revoke + add_grant when principal's privileges change"""
+        base = {
+            "id": "tbl_1",
+            "name": "users",
+            "format": "delta",
+            "columns": [{"id": "col_1", "name": "id", "type": "BIGINT", "nullable": False}],
+            "constraints": [],
+        }
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "raw",
+                            "tables": [
+                                {
+                                    **base,
+                                    "grants": [
+                                        {"principal": "analysts", "privileges": ["SELECT"]},
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "raw",
+                            "tables": [
+                                {
+                                    **base,
+                                    "grants": [
+                                        {
+                                            "principal": "analysts",
+                                            "privileges": ["SELECT", "MODIFY"],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        add_ops = [o for o in ops if o.op == "unity.add_grant"]
+        revoke_ops = [o for o in ops if o.op == "unity.revoke_grant"]
+        # Diff: add MODIFY for analysts → one add_grant with [SELECT, MODIFY] or just [MODIFY]
+        assert len(revoke_ops) == 0, "Adding MODIFY should not produce revoke_grant"
+        assert len(add_ops) >= 1
+        assert any(
+            a.payload["principal"] == "analysts" and "MODIFY" in a.payload.get("privileges", [])
+            for a in add_ops
+        )
+
+    def test_diff_grants_with_pydantic_state(self) -> None:
+        """Should handle Pydantic UnityState (model_dump) in differ"""
+        from schemax.providers.unity.models import (
+            UnityCatalog,
+            UnitySchema,
+            UnityState,
+            UnityTable,
+        )
+
+        old_state = UnityState(
+            catalogs=[
+                UnityCatalog(
+                    id="cat_1",
+                    name="bronze",
+                    schemas=[
+                        UnitySchema(
+                            id="sch_1",
+                            name="raw",
+                            tables=[
+                                UnityTable(
+                                    id="tbl_1",
+                                    name="users",
+                                    format="delta",
+                                    columns=[],
+                                    grants=[],
+                                ),
+                            ],
+                            grants=[],
+                        ),
+                    ],
+                    grants=[],
+                ),
+            ]
+        )
+        new_state = UnityState(
+            catalogs=[
+                UnityCatalog(
+                    id="cat_1",
+                    name="bronze",
+                    schemas=[
+                        UnitySchema(
+                            id="sch_1",
+                            name="raw",
+                            tables=[
+                                UnityTable(
+                                    id="tbl_1",
+                                    name="users",
+                                    format="delta",
+                                    columns=[],
+                                    grants=[
+                                        {"principal": "analysts", "privileges": ["SELECT"]},
+                                    ],
+                                ),
+                            ],
+                            grants=[],
+                        ),
+                    ],
+                    grants=[],
+                ),
+            ]
+        )
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        add_ops = [o for o in ops if o.op == "unity.add_grant"]
+        assert len(add_ops) == 1
+        assert add_ops[0].payload["targetType"] == "table"
+        assert add_ops[0].payload["principal"] == "analysts"
+
+    def test_add_new_catalog_with_schema_grants_includes_schema_grants(self) -> None:
+        """When a new catalog is added with schemas that have grants, schema grants are in the diff (Bug 2)."""
+        old_state: dict = {"catalogs": []}
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "raw",
+                            "tables": [],
+                            "views": [],
+                            "grants": [
+                                {
+                                    "principal": "analysts",
+                                    "privileges": ["CREATE TABLE", "USE SCHEMA"],
+                                },
+                            ],
+                        },
+                    ],
+                    "grants": [],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        add_grant_ops = [o for o in ops if o.op == "unity.add_grant"]
+        schema_grants = [o for o in add_grant_ops if o.payload.get("targetType") == "schema"]
+        assert len(schema_grants) == 1
+        assert schema_grants[0].payload["targetId"] == "sch_1"
+        assert schema_grants[0].payload["principal"] == "analysts"
+        assert set(schema_grants[0].payload["privileges"]) == {"CREATE TABLE", "USE SCHEMA"}

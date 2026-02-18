@@ -1,0 +1,119 @@
+---
+sidebar_position: 15
+title: Environments and Deployment Scope
+---
+
+# Environments and Deployment Scope
+
+This guide explains how to configure **environments** (dev, test, prod) and control **what SchemaX deploys** in each environment using **deployment scope** (managed categories) and **existing objects**. Use these settings when:
+
+- You want **governance-only** deployments (comments, tags, grants, row filters, column masks—no CREATE catalog/schema/table/view).
+- Catalogs (or future: schemas/tables) **already exist** in the target and you only want SchemaX to manage schemas, tables, or governance inside them.
+
+---
+
+## Quick reference
+
+| Setting | Where | Purpose |
+|--------|--------|---------|
+| **Managed categories** | Project Settings → Environment → Deployment scope | Limit which kinds of DDL SchemaX emits (e.g. only governance). |
+| **Existing catalogs** | Project Settings → Environment → Existing objects | Skip `CREATE CATALOG` for listed logical catalog names. |
+| **`--target`** | CLI: `schemax sql`, `schemax apply` | Use that environment’s config (including scope and existing objects). |
+
+---
+
+## Managed categories (deployment scope)
+
+**Managed categories** define which **kinds of operations** SchemaX includes when generating SQL or applying to an environment.
+
+### Categories
+
+| Category | Includes |
+|----------|----------|
+| **Catalog structure** | CREATE/ALTER/DROP catalog |
+| **Schema structure** | CREATE/ALTER/DROP schema |
+| **Table structure** | CREATE/ALTER/DROP table, columns, constraints |
+| **View structure** | CREATE/ALTER/DROP view |
+| **Governance** | Comments, tags, grants, row filters, column masks, table properties |
+
+### Default behavior
+
+- If **managed categories are not set** for an environment, SchemaX uses **all categories** (full DDL + governance).
+- To **restrict** what is deployed, set `managedCategories` to the list of categories you want.
+
+### Governance-only mode
+
+To deploy **only governance** (no structural DDL):
+
+1. **VS Code:** Open Project Settings (gear icon), select the environment (e.g. prod).
+2. Under **Deployment scope**, **uncheck** Catalog structure, Schema structure, Table structure, and View structure.
+3. **Leave only "Governance"** checked.
+4. Save.
+
+SchemaX will then only emit:
+
+- Comments (catalog, schema, table, column)
+- Tags (catalog, schema, table, column)
+- Grants (GRANT/REVOKE on catalog, schema, table, view)
+- Row filters and column masks
+- Table properties (TBLPROPERTIES)
+
+No `CREATE CATALOG`, `CREATE SCHEMA`, `CREATE TABLE`, or `CREATE VIEW` will be generated or applied for that environment.
+
+**CLI:** The same behavior is driven by `project.json`. When you run `schemax sql --target prod` or `schemax apply --target prod`, the environment’s `managedCategories` are used to filter operations before SQL generation and execution.
+
+---
+
+## Existing objects
+
+Use **existing objects** when some objects (e.g. catalogs) are **created outside SchemaX** and you want SchemaX to skip creating them, while still managing child objects or governance.
+
+### Existing catalogs
+
+- **Setting:** In Project Settings → Environment → **Existing objects** → **Catalogs** (logical names, comma or newline separated).
+- **Effect:** Any `add_catalog` operation whose **logical catalog name** is in this list is **filtered out** before SQL generation and apply. SchemaX will not emit `CREATE CATALOG` for those names.
+- **Use case:** The physical catalog already exists in dev/test/prod (e.g. created by Terraform or manually). You use SchemaX to manage schemas, tables, and governance inside it.
+
+**Example:** If your logical catalog name is `main` and it already exists in prod, add `main` to Existing objects → Catalogs for the prod environment. Then `schemax apply --target prod` will not try to create the catalog; it will only create/update schemas, tables, and governance as defined in your project.
+
+---
+
+## Where scope and existing objects apply
+
+| Action | Behavior |
+|--------|----------|
+| **schemax apply --target ENV** | Diff operations are filtered by managed categories and existing objects, then SQL is generated and executed. |
+| **schemax sql --target ENV** | Operations are filtered by managed categories and existing objects before generating SQL. |
+| **VS Code: Generate SQL Migration** | Uses the **selected environment’s** config (managed categories and existing objects) to filter operations before generating SQL. |
+
+If you do **not** pass `--target` (CLI) or do not have an environment selected (VS Code), filtering may not apply or may use default behavior depending on implementation; for predictable results, set `--target` or choose the environment in the UI.
+
+---
+
+## Project Settings (VS Code)
+
+In the SchemaX designer:
+
+1. Open **Project Settings** (gear icon in the sidebar or toolbar).
+2. Select an **environment** (e.g. dev, test, prod).
+3. **Deployment scope:** Use the checkboxes to include or exclude:
+   - Catalog structure  
+   - Schema structure  
+   - Table structure  
+   - View structure  
+   - Governance  
+4. **Existing objects:** In “Catalogs (logical names, comma or newline)”, list logical catalog names that already exist in this environment.
+5. Save. Changes are written to `.schemax/` (e.g. `project.json`).
+
+These settings are per environment, so you can have full DDL in dev and governance-only or existing-catalog behavior in prod.
+
+---
+
+## Summary
+
+- **Managed categories** control *which kinds* of DDL and governance SchemaX emits per environment (e.g. governance-only).
+- **Existing objects (catalogs)** tell SchemaX to skip `CREATE CATALOG` for specified logical names.
+- Configure them in **Project Settings** in the VS Code designer or by editing `project.json`.
+- **Apply** and **SQL generation** (CLI with `--target`, VS Code Generate SQL with environment selected) respect these settings.
+
+For technical details (project schema, filtering logic), see [Architecture — Multi-Environment Support (v4)](/guide/architecture#multi-environment-support-v4).

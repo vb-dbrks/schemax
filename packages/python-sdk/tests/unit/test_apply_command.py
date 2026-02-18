@@ -378,3 +378,225 @@ class TestApplyCommand:
                         # No prompts should have been called
                         mock_prompt.assert_not_called()
                         assert result.status == "success"
+
+    def test_apply_after_drop_uses_current_state_includes_catalog_and_schema(self, temp_workspace):
+        """
+        After drop_catalog, uncommitted add_catalog + add_schema must produce
+        CREATE CATALOG and CREATE SCHEMA in the diff (desired state = snapshot + changelog).
+        """
+        schemax_dir = temp_workspace / ".schemax"
+        schemax_dir.mkdir()
+        snapshots_dir = schemax_dir / "snapshots"
+        snapshots_dir.mkdir()
+
+        # Project: latest snapshot v0.2.0 (state = empty, as after drop_catalog)
+        project = {
+            "version": 4,
+            "name": "test_project",
+            "provider": {
+                "type": "unity",
+                "version": "1.0.0",
+                "environments": {
+                    "dev": {
+                        "topLevelName": "dev_catalog",
+                        "catalogMappings": {"main": "dev_catalog"},
+                        "allowDrift": True,
+                        "requireSnapshot": False,
+                        "autoCreateTopLevel": True,
+                        "autoCreateSchemaxSchema": True,
+                    }
+                },
+            },
+            "managedLocations": {},
+            "externalLocations": {},
+            "snapshots": [
+                {"id": "snap1", "version": "v0.1.0", "ts": "2025-01-01T00:00:00Z"},
+                {"id": "snap2", "version": "v0.2.0", "ts": "2025-01-02T00:00:00Z"},
+            ],
+            "deployments": [],
+            "settings": {"versionPrefix": "v"},
+            "latestSnapshot": "v0.2.0",
+        }
+        (schemax_dir / "project.json").write_text(json.dumps(project, indent=2))
+
+        # v0.2.0 snapshot: state = empty (after drop_catalog)
+        snapshot_v020 = {
+            "id": "snap2",
+            "version": "v0.2.0",
+            "name": "After drop",
+            "ts": "2025-01-02T00:00:00Z",
+            "createdBy": "test",
+            "state": {"catalogs": []},
+            "operations": [],
+            "previousSnapshot": "v0.1.0",
+            "hash": "hash2",
+            "tags": [],
+        }
+        (snapshots_dir / "v0.2.0.json").write_text(json.dumps(snapshot_v020, indent=2))
+
+        # Changelog: re-add catalog + schema (uncommitted)
+        changelog = {
+            "version": 1,
+            "sinceSnapshot": "v0.2.0",
+            "ops": [
+                {
+                    "id": "op_add_cat",
+                    "ts": "2025-01-03T00:00:00.000000+00:00",
+                    "op": "unity.add_catalog",
+                    "provider": "unity",
+                    "target": "cat_main",
+                    "payload": {
+                        "catalogId": "cat_main",
+                        "name": "main",
+                    },
+                },
+                {
+                    "id": "op_add_sch",
+                    "ts": "2025-01-03T00:00:01.000000+00:00",
+                    "op": "unity.add_schema",
+                    "provider": "unity",
+                    "target": "sch_default",
+                    "payload": {
+                        "schemaId": "sch_default",
+                        "name": "default",
+                        "catalogId": "cat_main",
+                    },
+                },
+            ],
+            "lastModified": "2025-01-03T00:00:00.000000+00:00",
+        }
+        (schemax_dir / "changelog.json").write_text(json.dumps(changelog, indent=2))
+
+        captured_diff_ops = []
+
+        def capture_sql_mapping(diff_operations):
+            captured_diff_ops.extend(diff_operations)
+            from schemax.providers.base.sql_generator import SQLGenerationResult, StatementInfo
+
+            return SQLGenerationResult(
+                sql="CREATE CATALOG IF NOT EXISTS `dev_catalog`;\nCREATE SCHEMA IF NOT EXISTS `dev_catalog`.`default`",
+                statements=[
+                    StatementInfo(
+                        sql="CREATE CATALOG IF NOT EXISTS `dev_catalog`",
+                        operation_ids=[],
+                        execution_order=1,
+                    ),
+                    StatementInfo(
+                        sql="CREATE SCHEMA IF NOT EXISTS `dev_catalog`.`default`",
+                        operation_ids=[],
+                        execution_order=2,
+                    ),
+                ],
+                is_idempotent=True,
+            )
+
+        with patch("schemax.providers.unity.auth.create_databricks_client"):
+            with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
+                mock_tracker.return_value.get_latest_deployment.return_value = {
+                    "version": "v0.2.0",
+                }
+                with patch(
+                    "schemax.providers.unity.sql_generator.UnitySQLGenerator.generate_sql_with_mapping",
+                    side_effect=capture_sql_mapping,
+                ):
+                    with patch("schemax.commands.apply.Prompt.ask", return_value="continue"):
+                        result = apply_to_environment(
+                            workspace=temp_workspace,
+                            target_env="dev",
+                            profile="DEFAULT",
+                            warehouse_id="test123",
+                            dry_run=True,
+                            no_interaction=False,
+                        )
+
+        op_types = [o.op if hasattr(o, "op") else o.get("op") for o in captured_diff_ops]
+        assert "unity.add_catalog" in op_types, (
+            f"Diff must include add_catalog after drop+re-add; got op types: {op_types}"
+        )
+        assert "unity.add_schema" in op_types, (
+            f"Diff must include add_schema after drop+re-add; got op types: {op_types}"
+        )
+        assert result.status == "success"
+
+    def test_apply_when_deployed_snapshot_file_missing_falls_back_to_empty(self, temp_workspace):
+        """
+        When DB says deployed vX but the snapshot file is missing locally,
+        apply should diff from empty (with a warning) instead of failing.
+        """
+        schemax_dir = temp_workspace / ".schemax"
+        schemax_dir.mkdir()
+        snapshots_dir = schemax_dir / "snapshots"
+        snapshots_dir.mkdir()
+
+        project = {
+            "version": 4,
+            "name": "test_project",
+            "provider": {
+                "type": "unity",
+                "version": "1.0.0",
+                "environments": {
+                    "dev": {
+                        "topLevelName": "dev_track",
+                        "catalogMappings": {"main": "dev_main"},
+                        "allowDrift": True,
+                        "requireSnapshot": False,
+                        "autoCreateTopLevel": True,
+                        "autoCreateSchemaxSchema": True,
+                    }
+                },
+            },
+            "managedLocations": {},
+            "externalLocations": {},
+            "snapshots": [{"id": "snap1", "version": "v0.1.0", "ts": "2025-01-01T00:00:00Z"}],
+            "deployments": [],
+            "settings": {"versionPrefix": "v"},
+            "latestSnapshot": "v0.1.0",
+        }
+        (schemax_dir / "project.json").write_text(json.dumps(project, indent=2))
+
+        # Only v0.1.0 exists; v0.2.0 does NOT exist (DB says deployed v0.2.0)
+        snapshot_v010 = {
+            "id": "snap1",
+            "version": "v0.1.0",
+            "name": "Initial",
+            "ts": "2025-01-01T00:00:00Z",
+            "createdBy": "test",
+            "state": {
+                "catalogs": [
+                    {
+                        "id": "cat_main",
+                        "name": "main",
+                        "schemas": [],
+                    }
+                ]
+            },
+            "operations": [],
+            "previousSnapshot": None,
+            "hash": "hash1",
+            "tags": [],
+        }
+        (snapshots_dir / "v0.1.0.json").write_text(json.dumps(snapshot_v010, indent=2))
+
+        changelog = {
+            "version": 1,
+            "sinceSnapshot": "v0.1.0",
+            "ops": [],
+            "lastModified": "2025-01-01T00:00:00.000000+00:00",
+        }
+        (schemax_dir / "changelog.json").write_text(json.dumps(changelog, indent=2))
+
+        with patch("schemax.providers.unity.auth.create_databricks_client"):
+            with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
+                mock_tracker.return_value.get_latest_deployment.return_value = {
+                    "version": "v0.2.0",
+                }
+                result = apply_to_environment(
+                    workspace=temp_workspace,
+                    target_env="dev",
+                    profile="DEFAULT",
+                    warehouse_id="test123",
+                    dry_run=True,
+                    no_interaction=True,
+                )
+
+        assert result.status == "success"

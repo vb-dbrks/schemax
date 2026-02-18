@@ -76,6 +76,58 @@ class TestBasicWorkflow:
         assert "`analytics`" in sql
         assert "`events`" in sql
 
+    def test_grants_workflow(self, temp_workspace):
+        """Test: init → add catalog/schema/table → add grants → load state → generate SQL with GRANT"""
+        builder = OperationBuilder()
+        ensure_project_file(temp_workspace, provider_id="unity")
+
+        ops = [
+            builder.add_catalog("cat_123", "production", op_id="op_001"),
+            builder.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
+            builder.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
+            builder.add_grant(
+                "catalog",
+                "cat_123",
+                "data_engineers",
+                ["USE CATALOG", "CREATE SCHEMA"],
+                op_id="op_004",
+            ),
+            builder.add_grant(
+                "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_005"
+            ),
+        ]
+        append_ops(temp_workspace, ops)
+
+        changelog = read_changelog(temp_workspace)
+        op_types = [o.get("op", "") if isinstance(o, dict) else o.op for o in changelog["ops"]]
+        assert "unity.add_grant" in op_types
+
+        state, changelog, provider, _ = load_current_state(temp_workspace)
+        catalogs = state["catalogs"] if isinstance(state, dict) else state.catalogs
+        prod = next(
+            (
+                c
+                for c in catalogs
+                if (c.get("name") if isinstance(c, dict) else c.name) == "production"
+            ),
+            None,
+        )
+        assert prod is not None
+        grants = prod.get("grants", []) if isinstance(prod, dict) else getattr(prod, "grants", [])
+        assert len(grants) == 1
+        g = grants[0]
+        principal = g.get("principal") if isinstance(g, dict) else g.principal
+        assert principal == "data_engineers"
+
+        generator = provider.get_sql_generator(state)
+        sql = generator.generate_sql(changelog["ops"])
+
+        assert "GRANT" in sql
+        assert "ON CATALOG" in sql
+        assert "ON TABLE" in sql
+        assert "data_engineers" in sql or "`data_engineers`" in sql
+        assert "analysts" in sql or "`analysts`" in sql
+
 
 @pytest.mark.integration
 class TestSnapshotWorkflow:

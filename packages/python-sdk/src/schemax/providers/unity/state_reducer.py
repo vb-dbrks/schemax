@@ -15,6 +15,7 @@ from .models import (
     UnityColumn,
     UnityColumnMask,
     UnityConstraint,
+    UnityGrant,
     UnityRowFilter,
     UnitySchema,
     UnityState,
@@ -57,6 +58,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
             comment=payload.get("comment"),
             tags=payload.get("tags", {}),
             schemas=[],
+            grants=[],
         )
         new_state.catalogs.append(catalog)
 
@@ -97,6 +99,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     tags=op_dict["payload"].get("tags", {}),
                     tables=[],
                     views=[],
+                    grants=[],
                 )
                 catalog.schemas.append(schema)
                 break
@@ -200,6 +203,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                         extracted_dependencies=op_dict["payload"].get("extractedDependencies"),
                         tags={},
                         properties={},
+                        grants=[],
                     )
                     schema.views.append(view)
                     return new_state
@@ -432,6 +436,49 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     m for m in table_opt.column_masks if m.id != op_dict["target"]
                 ]
 
+    # Grant operations
+    elif op_type == "add_grant":
+        payload = op_dict.get("payload", {})
+        target_type = payload.get("targetType")
+        target_id = payload.get("targetId")
+        principal = payload.get("principal")
+        privileges = payload.get("privileges") or []
+        if not target_type or not target_id or principal is None:
+            return new_state
+        obj = _find_grant_target(new_state, target_type, target_id)
+        if obj is not None:
+            grant = UnityGrant(principal=principal, privileges=list(privileges))
+            # Replace existing grant for same principal or append
+            existing = [g for g in obj.grants if g.principal != principal]
+            existing.append(grant)
+            obj.grants = existing
+
+    elif op_type == "revoke_grant":
+        payload = op_dict.get("payload", {})
+        target_type = payload.get("targetType")
+        target_id = payload.get("targetId")
+        principal = payload.get("principal")
+        privileges_to_remove = payload.get("privileges")  # Optional; if None, revoke all
+        if not target_type or not target_id or principal is None:
+            return new_state
+        obj = _find_grant_target(new_state, target_type, target_id)
+        if obj is not None:
+            if privileges_to_remove is None or len(privileges_to_remove) == 0:
+                obj.grants = [g for g in obj.grants if g.principal != principal]
+            else:
+                set_remove = set(privileges_to_remove)
+                new_grants = []
+                for g in obj.grants:
+                    if g.principal != principal:
+                        new_grants.append(g)
+                    else:
+                        remaining = [p for p in g.privileges if p not in set_remove]
+                        if remaining:
+                            new_grants.append(
+                                UnityGrant(principal=g.principal, privileges=remaining)
+                            )
+                obj.grants = new_grants
+
     return new_state
 
 
@@ -487,4 +534,31 @@ def _find_view(state: UnityState, view_id: str) -> UnityView | None:
             for view in schema.views:
                 if view.id == view_id:
                     return view
+    return None
+
+
+def _find_grant_target(
+    state: UnityState, target_type: str, target_id: str
+) -> UnityCatalog | UnitySchema | UnityTable | UnityView | None:
+    """
+    Find a securable object by type and ID for grant operations.
+
+    Returns:
+        The catalog, schema, table, or view, or None if not found.
+    """
+    if target_type == "catalog":
+        for catalog in state.catalogs:
+            if catalog.id == target_id:
+                return catalog
+        return None
+    if target_type == "schema":
+        for catalog in state.catalogs:
+            for schema in catalog.schemas:
+                if schema.id == target_id:
+                    return schema
+        return None
+    if target_type == "table":
+        return _find_table(state, target_id)
+    if target_type == "view":
+        return _find_view(state, target_id)
     return None

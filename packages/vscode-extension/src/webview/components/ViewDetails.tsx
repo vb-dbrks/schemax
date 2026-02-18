@@ -5,14 +5,21 @@ import { extractDependenciesFromView } from '../../providers/base/sql-parser';
 import { RichComment } from './RichComment';
 import './ViewDetails.css';
 
+const IconTrash: React.FC = () => (
+  <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+);
+
 interface ViewDetailsProps {
   viewId: string;
 }
 
 export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
-  const { project, updateView } = useDesignerStore();
+  const { project, updateView, addGrant, revokeGrant } = useDesignerStore();
   const [isEditingSQL, setIsEditingSQL] = useState(false);
   const [editedSQL, setEditedSQL] = useState('');
+  const [addGrantDialog, setAddGrantDialog] = useState(false);
+  const [revokeGrantDialog, setRevokeGrantDialog] = useState<{ principal: string } | null>(null);
+  const [grantForm, setGrantForm] = useState({ principal: '', privileges: '' });
 
   // Find view
   const viewInfo = useMemo(() => {
@@ -223,6 +230,84 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
                 <strong>{key}:</strong> {value as string}
               </span>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Grants - same layout as catalog/schema/table */}
+      <div className="table-properties-section">
+        <h3>Grants ({(view as any).grants?.length ?? 0})</h3>
+        {(!(view as any).grants || (view as any).grants.length === 0) && !addGrantDialog ? (
+          <div className="empty-properties">
+            <p>No grants defined. Grant privileges (e.g. SELECT, MODIFY) to users or groups.</p>
+          </div>
+        ) : (
+          <table className="properties-table">
+            <thead>
+              <tr>
+                <th>Principal</th>
+                <th>Privileges</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {((view as any).grants || []).map((g: { principal: string; privileges: string[] }) => (
+                <tr key={g.principal}>
+                  <td>{g.principal}</td>
+                  <td>{(g.privileges || []).join(', ')}</td>
+                  <td>
+                    <VSCodeButton
+                      appearance="icon"
+                      onClick={() => setRevokeGrantDialog({ principal: g.principal })}
+                      title="Revoke all"
+                    >
+                      <IconTrash />
+                    </VSCodeButton>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <button className="add-property-btn" onClick={() => setAddGrantDialog(true)}>
+          + Add Grant
+        </button>
+      </div>
+
+      {addGrantDialog && (
+        <div className="modal-overlay" onClick={() => setAddGrantDialog(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ background: 'var(--vscode-editor-background)', padding: '16px', borderRadius: '8px', minWidth: '320px' }}>
+            <h3>Add Grant</h3>
+            <label>Principal</label>
+            <input type="text" value={grantForm.principal} onChange={(e) => setGrantForm({ ...grantForm, principal: e.target.value })} placeholder="e.g. data_engineers" style={{ width: '100%', marginBottom: '8px' }} />
+            <label>Privileges (comma-separated, e.g. SELECT, MODIFY)</label>
+            <input type="text" value={grantForm.privileges} onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })} placeholder="SELECT, MODIFY" style={{ width: '100%', marginBottom: '12px' }} />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <VSCodeButton appearance="secondary" onClick={() => { setAddGrantDialog(false); setGrantForm({ principal: '', privileges: '' }); }}>Cancel</VSCodeButton>
+              <VSCodeButton
+                onClick={() => {
+                  const principal = grantForm.principal.trim();
+                  const privs = grantForm.privileges.split(/[\s,]+/).filter(Boolean);
+                  if (principal && privs.length > 0) { addGrant('view', viewId, principal, privs); setAddGrantDialog(false); setGrantForm({ principal: '', privileges: '' }); }
+                }}
+                disabled={!grantForm.principal.trim() || !grantForm.privileges.trim()}
+              >
+                Add Grant
+              </VSCodeButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revokeGrantDialog && (
+        <div className="modal-overlay" onClick={() => setRevokeGrantDialog(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ background: 'var(--vscode-editor-background)', padding: '16px', borderRadius: '8px', minWidth: '320px' }}>
+            <h3>Revoke Grant</h3>
+            <p>Revoke all privileges for <strong>{revokeGrantDialog.principal}</strong> on this view?</p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <VSCodeButton appearance="secondary" onClick={() => setRevokeGrantDialog(null)}>Cancel</VSCodeButton>
+              <VSCodeButton onClick={() => { revokeGrant('view', viewId, revokeGrantDialog.principal); setRevokeGrantDialog(null); }}>Revoke</VSCodeButton>
+            </div>
           </div>
         </div>
       )}

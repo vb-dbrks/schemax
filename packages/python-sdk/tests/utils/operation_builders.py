@@ -495,6 +495,53 @@ class OperationBuilder:
             op_id=op_id,
         )
 
+    # Grant Operations
+    def add_grant(
+        self,
+        target_type: Literal["catalog", "schema", "table", "view"],
+        target_id: str,
+        principal: str,
+        privileges: list[str],
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create an add_grant operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="add_grant",
+            target=target_id,
+            payload={
+                "targetType": target_type,
+                "targetId": target_id,
+                "principal": principal,
+                "privileges": privileges,
+            },
+            op_id=op_id,
+        )
+
+    def revoke_grant(
+        self,
+        target_type: Literal["catalog", "schema", "table", "view"],
+        target_id: str,
+        principal: str,
+        privileges: list[str] | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create a revoke_grant operation. privileges=None means revoke all."""
+        payload: dict[str, Any] = {
+            "targetType": target_type,
+            "targetId": target_id,
+            "principal": principal,
+        }
+        if privileges is not None:
+            payload["privileges"] = privileges
+        return create_operation(
+            provider=self.provider,
+            op_type="revoke_grant",
+            target=target_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
     # View Operations
     def add_view(
         self,

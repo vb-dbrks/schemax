@@ -6,7 +6,7 @@ Handles catalogs, schemas, tables, and columns.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from schemax.providers.base.operations import Operation
@@ -33,12 +33,22 @@ class UnityStateDiffer(StateDiffer):
 
         return ops
 
+    def _state_to_dict(self, state: Any) -> dict[str, Any]:
+        """Normalize state to dict for consistent access (handles Pydantic models)."""
+        if state is None:
+            return {}
+        if isinstance(state, dict):
+            return cast(dict[str, Any], state)
+        if hasattr(state, "model_dump"):
+            return cast(dict[str, Any], state.model_dump(by_alias=True))
+        return {}
+
     def _diff_catalogs(self) -> list[Operation]:
         """Compare catalogs between old and new state"""
         ops: list[Operation] = []
 
-        old_state_dict = self.old_state if isinstance(self.old_state, dict) else {}
-        new_state_dict = self.new_state if isinstance(self.new_state, dict) else {}
+        old_state_dict = self._state_to_dict(self.old_state)
+        new_state_dict = self._state_to_dict(self.new_state)
 
         old_cats = self._build_id_map(old_state_dict.get("catalogs", []))
         new_cats = self._build_id_map(new_state_dict.get("catalogs", []))
@@ -49,6 +59,8 @@ class UnityStateDiffer(StateDiffer):
                 ops.append(self._create_add_catalog_op(cat))
                 # Add all schemas in this new catalog
                 ops.extend(self._add_all_schemas_in_catalog(cat_id, cat))
+                # Add catalog grants
+                ops.extend(self._diff_grants("catalog", cat_id, [], cat.get("grants", [])))
             else:
                 # Catalog exists in both - check for changes
                 old_cat = old_cats[cat_id]
@@ -64,6 +76,16 @@ class UnityStateDiffer(StateDiffer):
 
                 # Compare schemas within catalog
                 ops.extend(self._diff_schemas(cat_id, old_cat, cat))
+
+                # Compare catalog grants
+                ops.extend(
+                    self._diff_grants(
+                        "catalog",
+                        cat_id,
+                        old_cat.get("grants", []),
+                        cat.get("grants", []),
+                    )
+                )
 
         # Detect removed catalogs
         for cat_id, cat in old_cats.items():
@@ -89,6 +111,8 @@ class UnityStateDiffer(StateDiffer):
                 ops.extend(self._add_all_tables_in_schema(sch_id, sch))
                 # Add all views in this new schema
                 ops.extend(self._add_all_views_in_schema(sch_id, sch))
+                # Add schema grants
+                ops.extend(self._diff_grants("schema", sch_id, [], sch.get("grants", [])))
             else:
                 # Schema exists in both - check for changes
                 old_sch = old_schemas[sch_id]
@@ -107,6 +131,16 @@ class UnityStateDiffer(StateDiffer):
 
                 # Compare views within schema
                 ops.extend(self._diff_views(catalog_id, sch_id, old_sch, sch))
+
+                # Compare schema grants
+                ops.extend(
+                    self._diff_grants(
+                        "schema",
+                        sch_id,
+                        old_sch.get("grants", []),
+                        sch.get("grants", []),
+                    )
+                )
 
         # Detect removed schemas
         for sch_id, sch in old_schemas.items():
@@ -138,6 +172,8 @@ class UnityStateDiffer(StateDiffer):
                 ops.extend(self._add_all_tags_for_table(tbl_id, tbl))
                 # Add all constraints for this table
                 ops.extend(self._add_all_constraints_for_table(tbl_id, tbl))
+                # Add table grants
+                ops.extend(self._diff_grants("table", tbl_id, [], tbl.get("grants", [])))
             else:
                 # Table exists in both - check for changes
                 old_tbl = old_tables[tbl_id]
@@ -177,6 +213,16 @@ class UnityStateDiffer(StateDiffer):
                     )
                 )
 
+                # Compare table grants
+                ops.extend(
+                    self._diff_grants(
+                        "table",
+                        tbl_id,
+                        old_tbl.get("grants", []),
+                        tbl.get("grants", []),
+                    )
+                )
+
         # Detect removed tables
         for tbl_id, tbl in old_tables.items():
             if tbl_id not in new_tables:
@@ -201,6 +247,8 @@ class UnityStateDiffer(StateDiffer):
         for view_id, view in new_views.items():
             if view_id not in old_views:
                 ops.append(self._create_add_view_op(view, schema_id))
+                # Add view grants
+                ops.extend(self._diff_grants("view", view_id, [], view.get("grants", [])))
             else:
                 # View exists in both - check for changes
                 old_view = old_views[view_id]
@@ -222,10 +270,77 @@ class UnityStateDiffer(StateDiffer):
                 if old_view.get("comment") != view.get("comment"):
                     ops.append(self._create_set_view_comment_op(view_id, view.get("comment")))
 
+                # Compare view grants
+                ops.extend(
+                    self._diff_grants(
+                        "view",
+                        view_id,
+                        old_view.get("grants", []),
+                        view.get("grants", []),
+                    )
+                )
+
         # Detect removed views
         for view_id, view in old_views.items():
             if view_id not in new_views:
                 ops.append(self._create_drop_view_op(view))
+
+        return ops
+
+    def _diff_grants(
+        self,
+        target_type: str,
+        target_id: str,
+        old_grants: list[Any],
+        new_grants: list[Any],
+    ) -> list[Operation]:
+        """Compare grants on a securable object. Emit add_grant/revoke_grant ops.
+
+        Grants with empty principal are skipped (invalid for GRANT/REVOKE SQL).
+        """
+        ops: list[Operation] = []
+
+        def norm(g: Any) -> tuple[str, list[str]]:
+            if isinstance(g, dict):
+                principal = (g.get("principal") or "").strip()
+                privs = g.get("privileges") or []
+                return (principal, list(privs) if isinstance(privs, list) else [])
+            return ("", [])
+
+        def valid_principal(principal: str) -> bool:
+            """Explicitly reject empty principal (invalid for SQL; skip in diff)."""
+            return bool(principal and principal.strip())
+
+        old_map = {
+            norm(g)[0]: norm(g)[1] for g in (old_grants or []) if valid_principal(norm(g)[0])
+        }
+        new_map = {
+            norm(g)[0]: norm(g)[1] for g in (new_grants or []) if valid_principal(norm(g)[0])
+        }
+
+        all_principals = set(old_map) | set(new_map)
+        for principal in all_principals:
+            old_privs = set(old_map.get(principal, []))
+            new_privs = set(new_map.get(principal, []))
+            removed = old_privs - new_privs
+            added = new_privs - old_privs
+            if principal not in old_map and new_privs:
+                ops.append(
+                    self._create_add_grant_op(target_type, target_id, principal, list(new_privs))
+                )
+            elif principal not in new_map and old_privs:
+                ops.append(self._create_revoke_grant_op(target_type, target_id, principal, None))
+            else:
+                if removed:
+                    ops.append(
+                        self._create_revoke_grant_op(
+                            target_type, target_id, principal, list(removed)
+                        )
+                    )
+                if added:
+                    ops.append(
+                        self._create_add_grant_op(target_type, target_id, principal, list(added))
+                    )
 
         return ops
 
@@ -497,11 +612,14 @@ class UnityStateDiffer(StateDiffer):
         ops: list[Operation] = []
 
         for schema in catalog.get("schemas", []):
+            sch_id = schema["id"]
             ops.append(self._create_add_schema_op(schema, catalog_id))
             # Add all tables in this new schema
-            ops.extend(self._add_all_tables_in_schema(schema["id"], schema))
+            ops.extend(self._add_all_tables_in_schema(sch_id, schema))
             # Add all views in this new schema
-            ops.extend(self._add_all_views_in_schema(schema["id"], schema))
+            ops.extend(self._add_all_views_in_schema(sch_id, schema))
+            # Add schema grants (Bug 2: schema-level grants were omitted for new catalogs)
+            ops.extend(self._diff_grants("schema", sch_id, [], schema.get("grants", [])))
 
         return ops
 
@@ -510,13 +628,16 @@ class UnityStateDiffer(StateDiffer):
         ops: list[Operation] = []
 
         for table in schema.get("tables", []):
+            tbl_id = table["id"]
             ops.append(self._create_add_table_op(table, schema_id))
             # Add all columns in this new table
-            ops.extend(self._add_all_columns_in_table(table["id"], table))
+            ops.extend(self._add_all_columns_in_table(tbl_id, table))
             # Add all tags for this table
-            ops.extend(self._add_all_tags_for_table(table["id"], table))
+            ops.extend(self._add_all_tags_for_table(tbl_id, table))
             # Add all constraints for this table
-            ops.extend(self._add_all_constraints_for_table(table["id"], table))
+            ops.extend(self._add_all_constraints_for_table(tbl_id, table))
+            # Add table grants
+            ops.extend(self._diff_grants("table", tbl_id, [], table.get("grants", [])))
 
         return ops
 
@@ -525,7 +646,10 @@ class UnityStateDiffer(StateDiffer):
         ops: list[Operation] = []
 
         for view in schema.get("views", []):
+            view_id = view["id"]
             ops.append(self._create_add_view_op(view, schema_id))
+            # Add view grants
+            ops.extend(self._diff_grants("view", view_id, [], view.get("grants", [])))
 
         return ops
 
@@ -585,6 +709,12 @@ class UnityStateDiffer(StateDiffer):
         managed_loc = catalog.get("managedLocationName") or catalog.get("managed_location_name")
         if managed_loc is not None:
             payload["managedLocationName"] = managed_loc
+        comment = catalog.get("comment")
+        if comment is not None:
+            payload["comment"] = comment
+        tags = catalog.get("tags")
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            payload["tags"] = dict(tags)
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
@@ -615,17 +745,27 @@ class UnityStateDiffer(StateDiffer):
         )
 
     def _create_add_schema_op(self, schema: dict[str, Any], catalog_id: str) -> Operation:
+        payload: dict[str, Any] = {
+            "schemaId": schema["id"],
+            "name": schema["name"],
+            "catalogId": catalog_id,
+        }
+        managed_loc = schema.get("managedLocationName") or schema.get("managed_location_name")
+        if managed_loc is not None:
+            payload["managedLocationName"] = managed_loc
+        comment = schema.get("comment")
+        if comment is not None:
+            payload["comment"] = comment
+        tags = schema.get("tags")
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            payload["tags"] = dict(tags)
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.add_schema",
             target=schema["id"],
-            payload={
-                "schemaId": schema["id"],
-                "name": schema["name"],
-                "catalogId": catalog_id,
-            },
+            payload=payload,
         )
 
     def _create_rename_schema_op(self, schema_id: str, old_name: str, new_name: str) -> Operation:
@@ -1036,5 +1176,49 @@ class UnityStateDiffer(StateDiffer):
             payload={
                 "tableId": table_id,
                 "name": constraint.get("name"),  # Include name for SQL generation
+            },
+        )
+
+    def _create_add_grant_op(
+        self,
+        target_type: str,
+        target_id: str,
+        principal: str,
+        privileges: list[str],
+    ) -> Operation:
+        """Create add_grant operation."""
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.add_grant",
+            target=target_id,
+            payload={
+                "targetType": target_type,
+                "targetId": target_id,
+                "principal": principal,
+                "privileges": privileges,
+            },
+        )
+
+    def _create_revoke_grant_op(
+        self,
+        target_type: str,
+        target_id: str,
+        principal: str,
+        privileges: list[str] | None,
+    ) -> Operation:
+        """Create revoke_grant operation. privileges=None means revoke all."""
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.revoke_grant",
+            target=target_id,
+            payload={
+                "targetType": target_type,
+                "targetId": target_id,
+                "principal": principal,
+                "privileges": privileges,
             },
         )
