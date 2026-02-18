@@ -24,6 +24,7 @@ from schemax.core.storage import (
     read_project,
     read_snapshot,
 )
+from schemax.providers.base.exceptions import SchemaXProviderError
 from schemax.providers.base.executor import ExecutionConfig, ExecutionResult
 from schemax.providers.unity.executor import UnitySQLExecutor
 
@@ -220,7 +221,10 @@ def apply_to_environment(
         )
 
         # Generate SQL with structured mapping (no comment parsing needed!)
-        sql_result = generator.generate_sql_with_mapping(diff_operations)
+        try:
+            sql_result = generator.generate_sql_with_mapping(diff_operations)
+        except SchemaXProviderError as e:
+            raise ApplyError(str(e)) from e
 
         if not sql_result.sql or not sql_result.sql.strip():
             console.print("[green]✓[/green] No SQL to execute")

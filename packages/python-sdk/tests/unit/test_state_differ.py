@@ -30,6 +30,58 @@ class TestUnityStateDiffer:
         assert ops[0].target == "cat_1"
         assert ops[0].payload["name"] == "bronze"
 
+    def test_diff_added_catalog_includes_tags_and_comment(self) -> None:
+        """add_catalog op from diff must include tags and comment so SQL generator emits SET TAGS."""
+        old_state = {"catalogs": []}
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "comment": "Bronze catalog",
+                    "tags": {"domain": "analytics", "env": "dev"},
+                    "schemas": [],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        assert len(ops) >= 1
+        add_cat = next(o for o in ops if o.op == "unity.add_catalog")
+        assert add_cat.payload["name"] == "bronze"
+        assert add_cat.payload.get("comment") == "Bronze catalog"
+        assert add_cat.payload.get("tags") == {"domain": "analytics", "env": "dev"}
+
+    def test_diff_added_schema_includes_tags_and_comment(self) -> None:
+        """add_schema op from diff must include tags and comment so SQL generator emits SET TAGS."""
+        old_state = {"catalogs": [{"id": "cat_1", "name": "bronze", "schemas": []}]}
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "bronze",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "raw",
+                            "comment": "Raw schema",
+                            "tags": {"layer": "bronze"},
+                        },
+                    ],
+                },
+            ]
+        }
+
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+
+        add_sch = next(o for o in ops if o.op == "unity.add_schema")
+        assert add_sch.payload["name"] == "raw"
+        assert add_sch.payload.get("comment") == "Raw schema"
+        assert add_sch.payload.get("tags") == {"layer": "bronze"}
+
     def test_diff_removed_catalog(self) -> None:
         """Should generate drop_catalog operation for removed catalog"""
         old_state = {

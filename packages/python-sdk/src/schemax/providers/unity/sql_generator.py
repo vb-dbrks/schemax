@@ -14,6 +14,7 @@ from schemax.providers.base.dependency_graph import (
     DependencyNode,
     DependencyType,
 )
+from schemax.providers.base.exceptions import SchemaXProviderError
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.sql_generator import BaseSQLGenerator, SQLGenerationResult
 
@@ -927,16 +928,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
         for op in other_ops:
             result = self.generate_sql_for_operation(op)
             if result.sql:
-                # Include all output (including error comments) so grant/revoke issues are visible
-                for sql_part in self._split_sql_statements(result.sql):
-                    execution_order += 1
-                    statement_infos.append(
-                        StatementInfo(
-                            sql=sql_part,
-                            operation_ids=[op.id],
-                            execution_order=execution_order,
+                sql_stripped = result.sql.strip()
+                if sql_stripped.startswith("-- Error") or sql_stripped.startswith("-- No "):
+                    raise SchemaXProviderError(sql_stripped)
+                if not sql_stripped.startswith("--"):
+                    for sql_part in self._split_sql_statements(result.sql):
+                        execution_order += 1
+                        statement_infos.append(
+                            StatementInfo(
+                                sql=sql_part,
+                                operation_ids=[op.id],
+                                execution_order=execution_order,
+                            )
                         )
-                    )
 
         # Process DROP operations last (in reverse dependency order: table → schema → catalog)
         # This ensures we drop dependent objects before their parents
@@ -1238,7 +1242,29 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if location:
                 sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
 
-        return sql
+        # Comment from create_op or squashed update_catalog
+        comment = create_op.payload.get("comment")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_catalog" and "comment" in op.payload:
+                comment = op.payload.get("comment")
+                break
+        if comment:
+            sql += f" COMMENT '{self.escape_string(comment)}'"
+
+        # Tags: set via ALTER after creation (create_op or squashed update_catalog)
+        tags = create_op.payload.get("tags")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_catalog" and "tags" in op.payload:
+                tags = op.payload.get("tags")
+                break
+        result = sql
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            tag_entries = ", ".join(
+                f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
+            )
+            result += f";\nALTER CATALOG {self.escape_identifier(name)} SET TAGS ({tag_entries})"
+
+        return result
 
     def _generate_create_schema_batched(self, object_id: str, batch_info: BatchInfo) -> str:
         """
@@ -1270,7 +1296,29 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if location:
                 sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
 
-        return sql
+        # Comment from create_op or squashed update_schema
+        comment = create_op.payload.get("comment")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_schema" and "comment" in op.payload:
+                comment = op.payload.get("comment")
+                break
+        if comment:
+            sql += f" COMMENT '{self.escape_string(comment)}'"
+
+        # Tags: set via ALTER after creation
+        tags = create_op.payload.get("tags")
+        for op in batch_info.modify_ops:
+            if op.op == "unity.update_schema" and "tags" in op.payload:
+                tags = op.payload.get("tags")
+                break
+        result = sql
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            tag_entries = ", ".join(
+                f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
+            )
+            result += f";\nALTER SCHEMA {catalog_esc}.{schema_esc} SET TAGS ({tag_entries})"
+
+        return result
 
     def _rename_schema(self, op: Operation) -> str:
         old_name = op.payload["oldName"]

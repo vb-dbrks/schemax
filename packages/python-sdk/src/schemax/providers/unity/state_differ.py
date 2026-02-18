@@ -715,6 +715,12 @@ class UnityStateDiffer(StateDiffer):
         managed_loc = catalog.get("managedLocationName") or catalog.get("managed_location_name")
         if managed_loc is not None:
             payload["managedLocationName"] = managed_loc
+        comment = catalog.get("comment")
+        if comment is not None:
+            payload["comment"] = comment
+        tags = catalog.get("tags")
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            payload["tags"] = dict(tags)
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
@@ -745,17 +751,27 @@ class UnityStateDiffer(StateDiffer):
         )
 
     def _create_add_schema_op(self, schema: dict[str, Any], catalog_id: str) -> Operation:
+        payload: dict[str, Any] = {
+            "schemaId": schema["id"],
+            "name": schema["name"],
+            "catalogId": catalog_id,
+        }
+        managed_loc = schema.get("managedLocationName") or schema.get("managed_location_name")
+        if managed_loc is not None:
+            payload["managedLocationName"] = managed_loc
+        comment = schema.get("comment")
+        if comment is not None:
+            payload["comment"] = comment
+        tags = schema.get("tags")
+        if tags and isinstance(tags, dict) and len(tags) > 0:
+            payload["tags"] = dict(tags)
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.add_schema",
             target=schema["id"],
-            payload={
-                "schemaId": schema["id"],
-                "name": schema["name"],
-                "catalogId": catalog_id,
-            },
+            payload=payload,
         )
 
     def _create_rename_schema_op(self, schema_id: str, old_name: str, new_name: str) -> Operation:
