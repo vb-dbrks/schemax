@@ -555,10 +555,17 @@ def _get_next_version(current_version: str | None, settings: dict[str, Any]) -> 
 def get_environment_config(project: dict[str, Any], environment: str) -> dict[str, Any]:
     """Get environment configuration from project.
 
-    Each entry under provider.environments.<env> may include optional
-    importBaselineSnapshot (string, snapshot version) set when
-    import --adopt-baseline runs; used to block rollback before baseline
-    unless --force is used.
+    Each entry under provider.environments.<env> may include optional:
+    - importBaselineSnapshot (string, snapshot version) set when
+      import --adopt-baseline runs; used to block rollback before baseline
+      unless --force is used.
+    - managedCategories (list[str]): deployment scope; only ops in these
+      categories are emitted (e.g. ["governance"] for governance-only mode).
+      Values: catalog_structure, schema_structure, table_structure,
+      view_structure, governance. If missing, all categories are included.
+    - existingObjects (dict): objects that already exist; skip CREATE for
+      them. e.g. {"catalog": ["analytics"]} to skip CREATE CATALOG for
+      logical catalog "analytics".
 
     Args:
         project: Project data (v4)

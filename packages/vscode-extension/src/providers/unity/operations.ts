@@ -5,7 +5,7 @@
  * Operations are prefixed with 'unity.' to indicate the provider.
  */
 
-import { OperationMetadata, OperationCategory } from '../base/operations';
+import { OperationMetadata, OperationCategory, ManagedCategory } from '../base/operations';
 
 // Operation type constants
 export const UNITY_OPERATIONS = {
@@ -85,6 +85,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['catalogId', 'name'],
     optionalFields: ['managedLocationName', 'comment'],
     isDestructive: false,
+    managedCategory: ManagedCategory.CatalogStructure,
   },
   {
     type: UNITY_OPERATIONS.RENAME_CATALOG,
@@ -94,6 +95,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['newName'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.CatalogStructure,
   },
   {
     type: UNITY_OPERATIONS.UPDATE_CATALOG,
@@ -103,6 +105,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: [],
     optionalFields: ['managedLocationName'],
     isDestructive: false,
+    managedCategory: ManagedCategory.CatalogStructure,
   },
   {
     type: UNITY_OPERATIONS.DROP_CATALOG,
@@ -112,6 +115,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: [],
     optionalFields: [],
     isDestructive: true,
+    managedCategory: ManagedCategory.CatalogStructure,
   },
   
   // Schema operations
@@ -123,6 +127,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['schemaId', 'name', 'catalogId'],
     optionalFields: ['managedLocationName', 'comment'],
     isDestructive: false,
+    managedCategory: ManagedCategory.SchemaStructure,
   },
   {
     type: UNITY_OPERATIONS.RENAME_SCHEMA,
@@ -132,6 +137,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['newName'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.SchemaStructure,
   },
   {
     type: UNITY_OPERATIONS.UPDATE_SCHEMA,
@@ -141,6 +147,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: [],
     optionalFields: ['managedLocationName'],
     isDestructive: false,
+    managedCategory: ManagedCategory.SchemaStructure,
   },
   {
     type: UNITY_OPERATIONS.DROP_SCHEMA,
@@ -150,6 +157,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: [],
     optionalFields: [],
     isDestructive: true,
+    managedCategory: ManagedCategory.SchemaStructure,
   },
   
   // Table operations
@@ -161,6 +169,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'name', 'schemaId', 'format'],
     optionalFields: ['external', 'externalLocationName', 'path', 'partitionColumns', 'clusterColumns', 'comment'],
     isDestructive: false,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.RENAME_TABLE,
@@ -170,6 +179,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['newName'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.DROP_TABLE,
@@ -179,6 +189,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: [],
     optionalFields: ['name', 'catalogId', 'schemaId'],  // Added for SQL generation when table no longer in state
     isDestructive: true,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.SET_TABLE_COMMENT,
@@ -188,6 +199,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'comment'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.SET_TABLE_PROPERTY,
@@ -197,6 +209,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'key', 'value'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.UNSET_TABLE_PROPERTY,
@@ -206,6 +219,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'key'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   
   // Table tag operations
@@ -217,6 +231,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'tagName', 'tagValue'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.UNSET_TABLE_TAG,
@@ -226,6 +241,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'tagName'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   
   // View operations
@@ -237,6 +253,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['viewId', 'name', 'schemaId', 'definition'],
     optionalFields: ['comment', 'dependencies', 'extractedDependencies'],
     isDestructive: false,
+    managedCategory: ManagedCategory.ViewStructure,
   },
   {
     type: UNITY_OPERATIONS.RENAME_VIEW,
@@ -246,6 +263,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['newName'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.ViewStructure,
   },
   {
     type: UNITY_OPERATIONS.DROP_VIEW,
@@ -255,6 +273,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: [],
     optionalFields: ['name', 'catalogId', 'schemaId'], // For SQL generation
     isDestructive: true,
+    managedCategory: ManagedCategory.ViewStructure,
   },
   {
     type: UNITY_OPERATIONS.UPDATE_VIEW,
@@ -264,6 +283,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: [],
     optionalFields: ['definition', 'dependencies', 'extractedDependencies'],
     isDestructive: false,
+    managedCategory: ManagedCategory.ViewStructure,
   },
   {
     type: UNITY_OPERATIONS.SET_VIEW_COMMENT,
@@ -273,6 +293,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['viewId', 'comment'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.SET_VIEW_PROPERTY,
@@ -282,6 +303,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['viewId', 'key', 'value'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.UNSET_VIEW_PROPERTY,
@@ -291,6 +313,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['viewId', 'key'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   
   // Column operations
@@ -302,6 +325,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'colId', 'name', 'type', 'nullable'],
     optionalFields: ['comment'],
     isDestructive: false,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.RENAME_COLUMN,
@@ -311,6 +335,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'newName'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.DROP_COLUMN,
@@ -320,6 +345,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId'],
     optionalFields: [],
     isDestructive: true,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.REORDER_COLUMNS,
@@ -329,6 +355,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'order'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.CHANGE_COLUMN_TYPE,
@@ -338,6 +365,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'newType'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.SET_NULLABLE,
@@ -347,6 +375,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'nullable'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.SET_COLUMN_COMMENT,
@@ -356,6 +385,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'comment'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   
   // Column tag operations
@@ -367,6 +397,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'tagName', 'tagValue'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.UNSET_COLUMN_TAG,
@@ -376,6 +407,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'tagName'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   
   // Constraint operations
@@ -387,6 +419,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'constraintId', 'type', 'columns'],
     optionalFields: ['name', 'timeseries', 'parentTable', 'parentColumns', 'expression', 'notEnforced', 'rely'],
     isDestructive: false,
+    managedCategory: ManagedCategory.TableStructure,
   },
   {
     type: UNITY_OPERATIONS.DROP_CONSTRAINT,
@@ -396,6 +429,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId'],
     optionalFields: [],
     isDestructive: true,
+    managedCategory: ManagedCategory.TableStructure,
   },
   
   // Row filter operations
@@ -407,6 +441,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'filterId', 'name', 'udfExpression'],
     optionalFields: ['enabled', 'description'],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.UPDATE_ROW_FILTER,
@@ -416,6 +451,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId'],
     optionalFields: ['name', 'udfExpression', 'enabled', 'description'],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.REMOVE_ROW_FILTER,
@@ -425,6 +461,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId'],
     optionalFields: [],
     isDestructive: true,
+    managedCategory: ManagedCategory.Governance,
   },
   
   // Column mask operations
@@ -436,6 +473,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId', 'maskId', 'columnId', 'name', 'maskFunction'],
     optionalFields: ['enabled', 'description'],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.UPDATE_COLUMN_MASK,
@@ -445,6 +483,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId'],
     optionalFields: ['name', 'maskFunction', 'enabled', 'description'],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.REMOVE_COLUMN_MASK,
@@ -454,6 +493,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['tableId'],
     optionalFields: [],
     isDestructive: true,
+    managedCategory: ManagedCategory.Governance,
   },
 
   // Grant operations
@@ -465,6 +505,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['targetType', 'targetId', 'principal', 'privileges'],
     optionalFields: [],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
   {
     type: UNITY_OPERATIONS.REVOKE_GRANT,
@@ -474,6 +515,7 @@ export const unityOperationMetadata: OperationMetadata[] = [
     requiredFields: ['targetType', 'targetId', 'principal'],
     optionalFields: ['privileges'],
     isDestructive: false,
+    managedCategory: ManagedCategory.Governance,
   },
 ];
 

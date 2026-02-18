@@ -15,6 +15,14 @@ interface LocationDefinition {
   paths: Record<string, string>; // environmentName -> physical path
 }
 
+const ALL_MANAGED_CATEGORIES = [
+  { id: 'catalog_structure', label: 'Catalog structure' },
+  { id: 'schema_structure', label: 'Schema structure' },
+  { id: 'table_structure', label: 'Table structure' },
+  { id: 'view_structure', label: 'View structure' },
+  { id: 'governance', label: 'Governance' },
+] as const;
+
 interface EnvironmentConfig {
   topLevelName: string;
   catalogMappings?: Record<string, string>;
@@ -24,6 +32,8 @@ interface EnvironmentConfig {
   requireApproval?: boolean;
   autoCreateTopLevel: boolean;
   autoCreateSchemaxSchema: boolean;
+  managedCategories?: string[];
+  existingObjects?: { catalog?: string[]; schema?: string[]; table?: string[] };
 }
 
 interface LocationModalData {
@@ -162,6 +172,45 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
   const cancelCatalogEdit = () => {
     setEditingCatalog(null);
     setEditCatalogValue('');
+  };
+
+  const toggleManagedCategory = (envName: string, categoryId: string) => {
+    const updated = { ...editedProject };
+    const env = updated.provider?.environments?.[envName];
+    if (!env) return;
+    const current = env.managedCategories ?? ALL_MANAGED_CATEGORIES.map((c) => c.id);
+    const set = new Set(current);
+    if (set.has(categoryId)) {
+      set.delete(categoryId);
+    } else {
+      set.add(categoryId);
+    }
+    const next = [...set];
+    updated.provider.environments[envName] = {
+      ...env,
+      managedCategories: next.length === ALL_MANAGED_CATEGORIES.length ? undefined : next,
+    };
+    setEditedProject(updated);
+    setIsDirty(true);
+  };
+
+  const updateExistingCatalogs = (envName: string, rawText: string) => {
+    const updated = { ...editedProject };
+    const env = updated.provider?.environments?.[envName];
+    if (!env) return;
+    const list = rawText
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    updated.provider.environments[envName] = {
+      ...env,
+      existingObjects: {
+        ...(env.existingObjects ?? {}),
+        catalog: list.length > 0 ? list : undefined,
+      },
+    };
+    setEditedProject(updated);
+    setIsDirty(true);
   };
 
   // Add Location
@@ -508,6 +557,50 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                           <span className="info-label">Require snapshot</span>
                           <span className="info-value">{envConfig.requireSnapshot ? 'Yes' : 'No'}</span>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Deployment scope (managed categories) */}
+                    <div className="isolation-section">
+                      <h4>Deployment scope</h4>
+                      <p className="help-text">
+                        What SchemaX manages in this environment. Governance only = comments, tags,
+                        grants, row filters, column masks (no CREATE catalog/schema/table).
+                      </p>
+                      <div className="managed-categories-list">
+                        {ALL_MANAGED_CATEGORIES.map(({ id, label }) => {
+                          const effective = envConfig.managedCategories ?? ALL_MANAGED_CATEGORIES.map((c) => c.id);
+                          const checked = effective.includes(id);
+                          return (
+                            <label key={id} className="managed-category-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleManagedCategory(envName, id)}
+                              />
+                              <span>{label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Existing objects (skip CREATE) */}
+                    <div className="isolation-section">
+                      <h4>Existing objects</h4>
+                      <p className="help-text">
+                        Objects that already exist; SchemaX will not emit CREATE for these. Use when
+                        catalogs are created outside SchemaX.
+                      </p>
+                      <div className="modal-field" style={{ marginTop: '8px' }}>
+                        <label>Catalogs (logical names, comma or newline)</label>
+                        <textarea
+                          className="import-bindings-textarea"
+                          rows={2}
+                          value={(envConfig.existingObjects?.catalog ?? []).join(', ')}
+                          onChange={(e) => updateExistingCatalogs(envName, e.target.value)}
+                          placeholder="analytics, main"
+                        />
                       </div>
                     </div>
                   </div>

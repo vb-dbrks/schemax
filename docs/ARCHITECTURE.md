@@ -1777,6 +1777,29 @@ Users now experience:
 - Physical catalog per environment already configured
 - No confusion about logical vs physical names
 
+### Deployment scope and existing objects
+
+Per-environment configuration supports **managed categories** and **existing objects** so you can run SchemaX in governance-only mode or against catalogs that already exist.
+
+**Managed categories (deployment scope):**
+
+- `managedCategories` (optional list): which kinds of DDL SchemaX emits in that environment. Values: `catalog_structure`, `schema_structure`, `table_structure`, `view_structure`, `governance`.
+- **Governance-only mode:** set `managedCategories: ["governance"]` so SchemaX only emits comments, tags, grants, row filters, column masks, and properties—no CREATE catalog/schema/table/view or structural DDL.
+- Default when missing: all categories (full DDL + governance).
+
+**Existing objects:**
+
+- `existingObjects` (optional): objects that already exist; SchemaX skips CREATE for them.
+  - `existingObjects.catalog`: list of logical catalog names; `add_catalog` for those names is filtered out so no CREATE CATALOG is emitted.
+- Use when catalogs (or future: schemas/tables) are created outside SchemaX and you only want to manage schemas, tables, or governance inside them.
+
+**Where it applies:**
+
+- **Apply:** diff operations are filtered by scope before SQL generation and execution.
+- **SQL command:** when `--target` is set, operations are filtered by scope before generating SQL.
+- **VS Code Generate SQL:** same filtering using the selected environment’s config.
+- **Project Settings (UI):** per-environment “Deployment scope” checkboxes and “Existing objects → Catalogs” text field.
+
 ### Deployment Tracking
 
 SchemaX tracks deployments in the target catalog itself using a dedicated `schemax` schema:

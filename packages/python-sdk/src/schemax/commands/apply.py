@@ -26,6 +26,7 @@ from schemax.core.storage import (
 )
 from schemax.providers.base.exceptions import SchemaXProviderError
 from schemax.providers.base.executor import ExecutionConfig, ExecutionResult
+from schemax.providers.base.scope_filter import filter_operations_by_managed_scope
 from schemax.providers.unity.executor import UnitySQLExecutor
 
 console = Console()
@@ -134,7 +135,6 @@ def apply_to_environment(
 
         console.print(f"[blue]Provider:[/blue] {provider.info.name} v{provider.info.version}")
         console.print(f"[blue]Environment:[/blue] {target_env}")
-        console.print(f"[blue]Physical Catalog:[/blue] {env_config['topLevelName']}")
         console.print(f"[blue]Warehouse:[/blue] {warehouse_id}")
         console.print(f"[blue]Profile:[/blue] {profile}")
 
@@ -146,13 +146,33 @@ def apply_to_environment(
 
         console.print(f"[blue]Latest snapshot:[/blue] {latest_snapshot_version}")
 
+        # 5.5 Build catalog mapping and pick deployment tracking catalog (same catalog for query + tracking)
+        # Use a catalog that exists in this run: topLevelName if mapped, else first physical catalog
+        desired_state_dict = (
+            state.model_dump(by_alias=True)
+            if hasattr(state, "model_dump")
+            else state
+        )
+        catalog_mapping = build_catalog_mapping(desired_state_dict, env_config)
+        physical_catalogs_list = list(catalog_mapping.values())
+        deployment_catalog = (
+            env_config["topLevelName"]
+            if env_config["topLevelName"] in set(physical_catalogs_list)
+            else (
+                physical_catalogs_list[0]
+                if physical_catalogs_list
+                else env_config["topLevelName"]
+            )
+        )
+        console.print(f"[blue]Deployment tracking catalog:[/blue] {deployment_catalog}")
+
         # 6. Get last deployment from DATABASE (source of truth!)
         # Query the database to see what's actually deployed
         from schemax.providers.unity.auth import create_databricks_client
 
         try:
             client = create_databricks_client(profile)
-            tracker = DeploymentTracker(client, env_config["topLevelName"], warehouse_id)
+            tracker = DeploymentTracker(client, deployment_catalog, warehouse_id)
             db_deployment = tracker.get_latest_deployment(target_env)
 
             if db_deployment:
@@ -178,26 +198,52 @@ def apply_to_environment(
             )
             raise ApplyError(f"Database query failed: {e}")
 
-        # 7. Load snapshot states
+        # 7. Desired state = current state (snapshot + changelog) so uncommitted ops are included
+        #    After drop_catalog, re-adding catalog + schema in the UI must produce CREATE CATALOG + CREATE SCHEMA
         latest_snap = read_snapshot(workspace, latest_snapshot_version)
-        latest_state = latest_snap["state"]
-        latest_ops = latest_snap.get("operations", [])
+        desired_state = state  # from load_current_state = snapshot + changelog
+        desired_ops = list(latest_snap.get("operations", [])) + list(changelog["ops"])
 
         if deployed_version:
-            # Incremental deployment
-            deployed_snap = read_snapshot(workspace, deployed_version)
-            deployed_state = deployed_snap["state"]
-            deployed_ops = deployed_snap.get("operations", [])
-            console.print(f"[blue]Diff:[/blue] {deployed_version} → {latest_snapshot_version}")
+            # Incremental deployment — use deployed snapshot if file exists
+            try:
+                deployed_snap = read_snapshot(workspace, deployed_version)
+                deployed_state = deployed_snap["state"]
+                deployed_ops = deployed_snap.get("operations", [])
+                console.print(f"[blue]Diff:[/blue] {deployed_version} → {latest_snapshot_version}")
+            except FileNotFoundError:
+                # DB says vX deployed but snapshot file missing (e.g. fresh clone, different machine)
+                console.print(
+                    f"[yellow]⚠ Deployed version {deployed_version} is recorded in the database, "
+                    "but the snapshot file is missing locally.[/yellow]"
+                )
+                console.print(
+                    "[dim]Diffing from empty state. To sync, use record-deployment or create the snapshot file.[/dim]"
+                )
+                deployed_state = provider.create_initial_state()
+                deployed_ops = []
+                console.print(f"[blue]Diff:[/blue] empty → {latest_snapshot_version}")
         else:
             # First deployment - diff from empty
             deployed_state = provider.create_initial_state()
             deployed_ops = []
             console.print(f"[blue]Diff:[/blue] empty → {latest_snapshot_version}")
 
-        # 8. Generate diff operations
-        differ = provider.get_state_differ(deployed_state, latest_state, deployed_ops, latest_ops)
+        if changelog["ops"]:
+            console.print(
+                f"[dim](Including {len(changelog['ops'])} uncommitted op(s) in desired state)[/dim]"
+            )
+
+        # 8. Generate diff operations (deployed vs desired = snapshot + changelog)
+        differ = provider.get_state_differ(
+            deployed_state, desired_state, deployed_ops, desired_ops
+        )
         diff_operations = differ.generate_diff_operations()
+
+        # 8.5 Filter by deployment scope (managed categories, existing objects)
+        diff_operations = filter_operations_by_managed_scope(
+            diff_operations, env_config, provider
+        )
 
         console.print(f"[blue]Changes:[/blue] {len(diff_operations)} operations")
 
@@ -205,15 +251,13 @@ def apply_to_environment(
             console.print("[green]✓[/green] No changes to deploy")
             return _create_empty_result(target_env, latest_snapshot_version)
 
-        # 9. Generate SQL with explicit operation mapping
+        # 9. Generate SQL using desired state (catalog_mapping already built at 5.5)
         console.print("[blue]Generating SQL...[/blue]")
-
-        try:
-            catalog_mapping = build_catalog_mapping(latest_state, env_config)
-        except SQLGenerationError as e:
-            raise ApplyError(str(e)) from e
+        console.print(
+            "[dim]Catalog names in the UI are logical; SQL uses physical names per environment (see mapping below).[/dim]"
+        )
         generator = provider.get_sql_generator(
-            latest_state,
+            desired_state,
             catalog_mapping,
             managed_locations=project.get("managedLocations"),
             external_locations=project.get("externalLocations"),
@@ -301,7 +345,7 @@ def apply_to_environment(
         result = executor.execute_statements(statements, config)
 
         # 19. Track deployment IMMEDIATELY after execution (before auto-rollback)
-        deployment_catalog = env_config["topLevelName"]
+        # deployment_catalog was chosen at 5.5 (catalog that exists / we use in this run)
         unity_executor = cast(UnitySQLExecutor, executor)
         tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
 
@@ -441,7 +485,7 @@ def apply_to_environment(
                 f"[green]✓ Deployed {latest_snapshot_version} to {target_env} "
                 f"({result.successful_statements} statements, {exec_time:.2f}s)[/green]"
             )
-            schema_name = f"{env_config['topLevelName']}.schemax"
+            schema_name = f"{deployment_catalog}.schemax"
             console.print(f"[green]✓ Deployment tracked in {schema_name}[/green]")
             console.print(f"[dim]  Deployment ID: {deployment_id}[/dim]")
         else:
@@ -455,7 +499,7 @@ def apply_to_environment(
             console.print(f"[blue]Environment:[/blue] {target_env}")
             console.print(f"[blue]Version:[/blue] {latest_snapshot_version}")
             console.print(f"[blue]Status:[/blue] {result.status}")
-            schema_loc = f"{env_config['topLevelName']}.schemax"
+            schema_loc = f"{deployment_catalog}.schemax"
             console.print(f"[dim]  Tracked in {schema_loc} (ID: {deployment_id})[/dim]")
 
         return result

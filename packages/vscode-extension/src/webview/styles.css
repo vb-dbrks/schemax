@@ -286,6 +286,28 @@ body {
   color: var(--vscode-foreground);
 }
 
+/* Sidebar empty state (no catalogs — e.g. after drop_catalog) */
+.sidebar-empty-state {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+.sidebar-empty-state__message {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+.sidebar-empty-state__hint {
+  margin: 0 0 16px;
+  font-size: 12px;
+}
+.sidebar-empty-state__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .environment-summary {
   margin: 0 12px 12px;
   padding: 12px 14px;
@@ -2441,6 +2463,26 @@ body {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
   margin: 6px 0 0 0;
+}
+
+.managed-categories-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 8px;
+}
+
+.managed-category-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.managed-category-checkbox input {
+  margin: 0;
+  cursor: pointer;
 }
 
 /* Catalog Display and Edit */

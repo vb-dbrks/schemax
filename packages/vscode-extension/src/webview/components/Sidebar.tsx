@@ -513,6 +513,25 @@ export const Sidebar: React.FC = () => {
 
   // Render full hierarchy tree (catalog → schema → table)
   const renderTree = () => {
+    // Empty state: no catalogs (e.g. after drop_catalog) — show prominent "Add catalog"
+    if (project.state.catalogs.length === 0) {
+      return (
+        <div className="sidebar-empty-state">
+          <p className="sidebar-empty-state__message">No catalogs yet</p>
+          <p className="sidebar-empty-state__hint">Create a catalog to add schemas and tables.</p>
+          <VSCodeButton
+            appearance="primary"
+            className="sidebar-empty-state__button"
+            type="button"
+            onClick={() => setAddDialog({ type: 'catalog' })}
+            title={`Add ${topLevelName}`}
+          >
+            <IconPlus />
+            Add {topLevelName}
+          </VSCodeButton>
+        </div>
+      );
+    }
     return (
       <>
         {project.state.catalogs.map((catalog) => (
