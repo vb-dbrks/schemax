@@ -146,24 +146,15 @@ def apply_to_environment(
 
         console.print(f"[blue]Latest snapshot:[/blue] {latest_snapshot_version}")
 
-        # 5.5 Build catalog mapping and pick deployment tracking catalog (same catalog for query + tracking)
-        # Use a catalog that exists in this run: topLevelName if mapped, else first physical catalog
+        # 5.5 Build catalog mapping for SQL generation; deployment tracking always uses topLevelName
+        # topLevelName is explicitly configured for tracking and must match rollback/record-deployment/cli
         desired_state_dict = (
             state.model_dump(by_alias=True)
             if hasattr(state, "model_dump")
             else state
         )
         catalog_mapping = build_catalog_mapping(desired_state_dict, env_config)
-        physical_catalogs_list = list(catalog_mapping.values())
-        deployment_catalog = (
-            env_config["topLevelName"]
-            if env_config["topLevelName"] in set(physical_catalogs_list)
-            else (
-                physical_catalogs_list[0]
-                if physical_catalogs_list
-                else env_config["topLevelName"]
-            )
-        )
+        deployment_catalog = env_config["topLevelName"]
         console.print(f"[blue]Deployment tracking catalog:[/blue] {deployment_catalog}")
 
         # 6. Get last deployment from DATABASE (source of truth!)
@@ -345,7 +336,7 @@ def apply_to_environment(
         result = executor.execute_statements(statements, config)
 
         # 19. Track deployment IMMEDIATELY after execution (before auto-rollback)
-        # deployment_catalog was chosen at 5.5 (catalog that exists / we use in this run)
+        # deployment_catalog is always env topLevelName (step 5.5), consistent with rollback/record-deployment
         unity_executor = cast(UnitySQLExecutor, executor)
         tracker = DeploymentTracker(unity_executor.client, deployment_catalog, warehouse_id)
 
