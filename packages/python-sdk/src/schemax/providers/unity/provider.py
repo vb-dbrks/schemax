@@ -12,6 +12,7 @@ import threading
 from ast import literal_eval
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 from databricks.sdk.service.sql import StatementState
@@ -25,6 +26,7 @@ from schemax.providers.base.sql_parser import extract_table_references
 from schemax.providers.base.state_differ import StateDiffer
 
 from .auth import check_profile_exists, create_databricks_client
+from .ddl_parser import state_from_ddl as unity_state_from_ddl
 from .executor import UnitySQLExecutor
 from .hierarchy import unity_hierarchy
 from .models import UnityState
@@ -540,6 +542,19 @@ class UnityProvider(BaseProvider):
             )
 
         return {"catalogs": state_catalogs}
+
+    def state_from_ddl(
+        self,
+        sql_path: Path | None = None,
+        sql_statements: list[str] | None = None,
+        dialect: str = "databricks",
+    ) -> tuple[ProviderState, Any]:
+        """Build Unity state from a SQL DDL file or list of statements."""
+        return unity_state_from_ddl(
+            sql_path=sql_path,
+            sql_statements=sql_statements,
+            dialect=dialect,
+        )
 
     def collect_import_warnings(
         self,

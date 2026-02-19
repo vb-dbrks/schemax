@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from schemax.core.sql_utils import split_sql_statements
 from schemax.providers.base.executor import ExecutionConfig
 from schemax.providers.unity.auth import create_databricks_client
 from schemax.providers.unity.executor import UnitySQLExecutor
@@ -75,42 +76,6 @@ def make_random(length: int = 8) -> str:
 def make_namespaced_id(config: LiveDatabricksConfig, suffix: str | None = None) -> str:
     token = suffix or make_random(8)
     return f"{config.resource_prefix}_{token}"
-
-
-def split_sql_statements(sql_text: str) -> list[str]:
-    """Split SQL script into statements while preserving quoted semicolons."""
-    statements: list[str] = []
-    current: list[str] = []
-    in_single_quote = False
-    in_double_quote = False
-
-    for line in sql_text.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("--"):
-            continue
-
-        for char in line:
-            if char == "'" and not in_double_quote:
-                in_single_quote = not in_single_quote
-            elif char == '"' and not in_single_quote:
-                in_double_quote = not in_double_quote
-
-            if char == ";" and not in_single_quote and not in_double_quote:
-                statement = "".join(current).strip()
-                if statement:
-                    statements.append(statement)
-                current = []
-            else:
-                current.append(char)
-        current.append("\n")
-
-    tail = "".join(current).strip()
-    if tail:
-        statements.append(tail)
-
-    return statements
 
 
 def load_sql_fixture(path: Path, replacements: dict[str, str]) -> list[str]:

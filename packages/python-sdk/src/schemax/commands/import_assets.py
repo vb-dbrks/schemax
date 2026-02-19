@@ -14,7 +14,9 @@ from rich.console import Console
 from schemax.core.storage import (
     append_ops,
     create_snapshot,
+    ensure_project_file,
     get_environment_config,
+    get_project_file_path,
     load_current_state,
     read_project,
     write_project,
@@ -215,6 +217,121 @@ def import_from_provider(
             "[dim]Next:[/dim] Create a snapshot and run apply when you are ready to deploy."
         )
 
+    return summary
+
+
+def import_from_sql_file(
+    workspace: Path,
+    sql_path: Path,
+    mode: str = "diff",
+    dry_run: bool = False,
+    target_env: str | None = None,
+) -> dict[str, Any]:
+    """Import state from a SQL DDL file; diff against current state or replace as new baseline.
+
+    Args:
+        workspace: Workspace root (project root).
+        sql_path: Path to .sql file.
+        mode: "diff" = append ops to changelog; "replace" = treat parsed state as new baseline (ops from empty).
+        dry_run: If True, do not write changelog.
+        target_env: Optional target environment (for catalog mapping / consistency; v1 may ignore).
+
+    Returns:
+        Summary dict with object_counts, operations_generated, warnings, report (created/skipped/parse_errors).
+    """
+    if not sql_path.exists():
+        raise ImportError(f"SQL file not found: {sql_path}")
+
+    # Init project if missing
+    if not get_project_file_path(workspace).exists():
+        ensure_project_file(workspace, provider_id="unity")
+        console.print("[dim]Initialized new SchemaX project (Unity)[/dim]")
+
+    state, changelog, provider, _ = load_current_state(workspace, validate=False)
+
+    try:
+        parsed_state, report = provider.state_from_ddl(sql_path=sql_path)
+    except NotImplementedError as e:
+        raise ImportError(str(e)) from e
+    except ValueError as e:
+        raise ImportError(str(e)) from e
+
+    import_warnings: list[str] = []
+    created = report.get("created", {})
+    skipped = report.get("skipped", 0)
+    parse_errors = report.get("parse_errors", [])
+    if skipped:
+        import_warnings.append(f"Skipped {skipped} statement(s) (unsupported or non-DDL).")
+    for err in parse_errors[:5]:
+        import_warnings.append(f"Parse error at statement {err.get('index', '?')}: {err.get('message', '')[:80]}")
+    if len(parse_errors) > 5:
+        import_warnings.append(f"... and {len(parse_errors) - 5} more parse error(s).")
+
+    old_state = provider.create_initial_state() if mode == "replace" else state
+    new_state = parsed_state
+    old_ops = [] if mode == "replace" else changelog.get("ops", [])
+
+    differ = provider.get_state_differ(
+        old_state=old_state,
+        new_state=new_state,
+        old_operations=old_ops,
+        new_operations=[],
+    )
+    import_ops = differ.generate_diff_operations()
+    object_counts = _count_objects(parsed_state)
+    op_counts = _summarize_operations(import_ops)
+
+    summary = {
+        "provider": provider.info.id,
+        "source": "sql_file",
+        "sql_path": str(sql_path),
+        "mode": mode,
+        "object_counts": object_counts,
+        "operations_generated": len(import_ops),
+        "operation_breakdown": op_counts,
+        "dry_run": dry_run,
+        "warnings": import_warnings,
+        "report": report,
+    }
+
+    console.print("[bold]SchemaX Import (from SQL file)[/bold]")
+    console.print("─" * 60)
+    console.print(f"[blue]File:[/blue] {sql_path}")
+    console.print(f"[blue]Mode:[/blue] {mode}")
+    console.print(
+        "[blue]Parsed:[/blue] "
+        f"{object_counts['catalogs']} catalog(s), "
+        f"{object_counts['schemas']} schema(s), "
+        f"{object_counts['tables']} table(s), "
+        f"{object_counts['views']} view(s), "
+        f"{object_counts['columns']} column(s)"
+    )
+    if import_ops:
+        rendered = ", ".join(f"{k}={v}" for k, v in op_counts.items())
+        console.print(f"[blue]Planned operations:[/blue] {len(import_ops)} ({rendered})")
+    else:
+        console.print("[blue]Planned operations:[/blue] 0")
+    for warning in import_warnings:
+        console.print(f"[yellow]Warning:[/yellow] {warning}")
+
+    if dry_run:
+        console.print(
+            f"[yellow]Dry-run:[/yellow] generated {len(import_ops)} operation(s); no files modified."
+        )
+        console.print(
+            "[dim]Next:[/dim] Run without --dry-run to write import operations to changelog."
+        )
+        return summary
+
+    if import_ops:
+        append_ops(workspace, import_ops)
+        console.print(f"[green]✓[/green] Imported {len(import_ops)} operation(s) into changelog")
+    else:
+        console.print("[green]✓[/green] No import operations required")
+
+    console.print(
+        "[dim]Next:[/dim] Create a snapshot and run apply when you are ready to deploy."
+    )
     return summary
 
 

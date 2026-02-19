@@ -9,7 +9,11 @@ import pytest
 from click.testing import CliRunner
 
 from schemax.cli import cli
-from schemax.commands.import_assets import ImportError, import_from_provider
+from schemax.commands.import_assets import (
+    ImportError,
+    import_from_provider,
+    import_from_sql_file,
+)
 from schemax.providers.base.models import ValidationError, ValidationResult
 from schemax.providers.base.operations import Operation
 
@@ -327,6 +331,177 @@ class TestImportFromProvider:
         }
 
 
+class TestImportFromSqlFile:
+    """Unit tests for import_from_sql_file (SQL DDL file import)."""
+
+    def test_dry_run_does_not_append_ops(self, temp_workspace, tmp_path):
+        from schemax.core.storage import ensure_project_file
+        from schemax.providers import ProviderRegistry
+
+        ensure_project_file(temp_workspace, provider_id="unity")
+        sql_file = tmp_path / "schema.sql"
+        sql_file.write_text(
+            "CREATE CATALOG demo;\n"
+            "CREATE SCHEMA demo.analytics;\n"
+            "CREATE TABLE demo.analytics.t1 (id BIGINT) USING DELTA;\n"
+        )
+
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            provider = ProviderRegistry.get("unity")
+            mock_load.return_value = (
+                {"catalogs": []},
+                {"ops": []},
+                provider,
+                None,
+            )
+            with patch("schemax.commands.import_assets.append_ops") as mock_append:
+                summary = import_from_sql_file(
+                    workspace=temp_workspace,
+                    sql_path=sql_file,
+                    mode="diff",
+                    dry_run=True,
+                )
+                assert summary["source"] == "sql_file"
+                assert summary["operations_generated"] >= 1
+                assert summary["dry_run"] is True
+                mock_append.assert_not_called()
+
+    def test_missing_sql_file_raises_import_error(self, temp_workspace):
+        from schemax.core.storage import ensure_project_file
+
+        ensure_project_file(temp_workspace, provider_id="unity")
+        missing = temp_workspace / "nonexistent.sql"
+        assert not missing.exists()
+        with pytest.raises(ImportError, match="SQL file not found"):
+            import_from_sql_file(
+                workspace=temp_workspace,
+                sql_path=missing,
+                mode="diff",
+                dry_run=True,
+            )
+
+    def test_mode_replace_produces_ops_and_appends_when_not_dry_run(
+        self, temp_workspace, tmp_path
+    ):
+        from schemax.core.storage import ensure_project_file
+        from schemax.providers import ProviderRegistry
+
+        ensure_project_file(temp_workspace, provider_id="unity")
+        sql_file = tmp_path / "schema.sql"
+        sql_file.write_text(
+            "CREATE CATALOG only;\n"
+            "CREATE SCHEMA only.public;\n"
+            "CREATE TABLE only.public.x (id INT) USING DELTA;\n"
+        )
+        provider = ProviderRegistry.get("unity")
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            mock_load.return_value = (
+                {"catalogs": [{"id": "c1", "name": "existing", "schemas": []}]},
+                {"ops": []},
+                provider,
+                None,
+            )
+            with patch("schemax.commands.import_assets.append_ops") as mock_append:
+                summary = import_from_sql_file(
+                    workspace=temp_workspace,
+                    sql_path=sql_file,
+                    mode="replace",
+                    dry_run=False,
+                )
+                assert summary["mode"] == "replace"
+                assert summary["source"] == "sql_file"
+                assert summary["operations_generated"] >= 1
+                mock_append.assert_called_once()
+                appended_ops = mock_append.call_args[0][1]
+                assert len(appended_ops) >= 1
+
+    def test_provider_not_implemented_state_from_ddl_raises_import_error(
+        self, temp_workspace, tmp_path
+    ):
+        from types import SimpleNamespace
+
+        from schemax.core.storage import ensure_project_file
+
+        ensure_project_file(temp_workspace, provider_id="unity")
+        sql_file = tmp_path / "schema.sql"
+        sql_file.write_text("CREATE CATALOG c")
+        provider = SimpleNamespace()
+        provider.info = SimpleNamespace(id="other", name="Other", version="1.0.0")
+        provider.create_initial_state = lambda: {"catalogs": []}
+        provider.get_state_differ = lambda **kwargs: SimpleNamespace(
+            generate_diff_operations=lambda: []
+        )
+        provider.state_from_ddl = lambda **kwargs: (_ for _ in ()).throw(
+            NotImplementedError("SQL import not supported")
+        )
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
+            with pytest.raises(ImportError, match="SQL import not supported"):
+                import_from_sql_file(
+                    workspace=temp_workspace,
+                    sql_path=sql_file,
+                    mode="diff",
+                    dry_run=True,
+                )
+
+    def test_provider_state_from_ddl_value_error_raises_import_error(
+        self, temp_workspace, tmp_path
+    ):
+        from types import SimpleNamespace
+
+        from schemax.core.storage import ensure_project_file
+
+        ensure_project_file(temp_workspace, provider_id="unity")
+        sql_file = tmp_path / "schema.sql"
+        sql_file.write_text("CREATE CATALOG c")
+        provider = SimpleNamespace()
+        provider.info = SimpleNamespace(id="unity", name="Unity", version="1.0.0")
+        provider.create_initial_state = lambda: {"catalogs": []}
+        provider.get_state_differ = lambda **kwargs: SimpleNamespace(
+            generate_diff_operations=lambda: []
+        )
+        provider.state_from_ddl = lambda **kwargs: (_ for _ in ()).throw(
+            ValueError("Invalid DDL")
+        )
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
+            with pytest.raises(ImportError, match="Invalid DDL"):
+                import_from_sql_file(
+                    workspace=temp_workspace,
+                    sql_path=sql_file,
+                    mode="diff",
+                    dry_run=True,
+                )
+
+    def test_sql_file_with_only_unsupported_statements_returns_zero_ops(
+        self, temp_workspace, tmp_path
+    ):
+        from schemax.core.storage import ensure_project_file
+        from schemax.providers import ProviderRegistry
+
+        ensure_project_file(temp_workspace, provider_id="unity")
+        sql_file = tmp_path / "schema.sql"
+        sql_file.write_text("SELECT 1;\n-- comment\nALTER TABLE x ADD COLUMN y INT;")
+        provider = ProviderRegistry.get("unity")
+        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
+            mock_load.return_value = (
+                {"catalogs": []},
+                {"ops": []},
+                provider,
+                None,
+            )
+            summary = import_from_sql_file(
+                workspace=temp_workspace,
+                sql_path=sql_file,
+                mode="diff",
+                dry_run=True,
+            )
+            assert summary["source"] == "sql_file"
+            assert summary["operations_generated"] == 0
+            assert summary["object_counts"]["catalogs"] == 0
+            assert summary["object_counts"]["tables"] == 0
+
+
 class TestImportCli:
     def test_import_cli_requires_catalog_for_schema(self):
         runner = CliRunner()
@@ -471,3 +646,39 @@ class TestImportCli:
         assert "Import summary: 12 operation(s) previewed." in result.output
         assert "Catalog mappings: 1" in result.output
         assert "Warnings: 1" in result.output
+
+    def test_import_cli_from_sql_routes_to_import_from_sql_file(self, tmp_path):
+        sql_file = tmp_path / "schema.sql"
+        sql_file.write_text("CREATE CATALOG c;\n")
+        runner = CliRunner()
+        with patch("schemax.cli.import_from_sql_file") as mock_sql_import:
+            mock_sql_import.return_value = {
+                "operations_generated": 1,
+                "dry_run": True,
+                "source": "sql_file",
+            }
+            result = runner.invoke(
+                cli,
+                [
+                    "import",
+                    "--from-sql",
+                    str(sql_file),
+                    "--mode",
+                    "diff",
+                    "--dry-run",
+                    str(tmp_path),
+                ],
+            )
+        assert result.exit_code == 0
+        mock_sql_import.assert_called_once()
+        call_kw = mock_sql_import.call_args.kwargs
+        assert call_kw["sql_path"] == sql_file
+        assert call_kw["mode"] == "diff"
+        assert call_kw["dry_run"] is True
+
+    def test_import_cli_without_from_sql_requires_target_profile_warehouse(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["import"])
+        assert result.exit_code == 1
+        assert "Live import requires" in result.output
+        assert "--from-sql" in result.output

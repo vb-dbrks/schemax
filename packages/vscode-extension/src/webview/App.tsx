@@ -59,7 +59,8 @@ export const App: React.FC = () => {
   const [isImportRunning, setIsImportRunning] = React.useState(false);
   const [importResult, setImportResult] = React.useState<ImportRunResult | null>(null);
   const [importProgress, setImportProgress] = React.useState<ImportProgress | null>(null);
-  
+  const [pickedSqlFilePath, setPickedSqlFilePath] = React.useState<string | null>(null);
+
   // Determine if selected object is a view
   const isViewSelected = selectedTableId ? !!findView(selectedTableId) : false;
 
@@ -109,6 +110,9 @@ export const App: React.FC = () => {
           break;
         case 'import-progress':
           setImportProgress(message.payload);
+          break;
+        case 'import-sql-file-picked':
+          setPickedSqlFilePath(message.payload?.path ?? null);
           break;
       }
     };
@@ -320,7 +324,10 @@ export const App: React.FC = () => {
           isRunning={isImportRunning}
           result={importResult}
           progress={importProgress}
-          onClose={() => setIsImportOpen(false)}
+          onClose={() => {
+            setIsImportOpen(false);
+            setPickedSqlFilePath(null);
+          }}
           onRun={(request: ImportRunRequest) => {
             setIsImportRunning(true);
             setImportResult(null);
@@ -341,6 +348,7 @@ export const App: React.FC = () => {
             });
             vscode.postMessage({ type: 'cancel-import' });
           }}
+          pickedSqlFilePath={pickedSqlFilePath}
         />
       )}
     </div>

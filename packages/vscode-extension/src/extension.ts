@@ -12,7 +12,16 @@ import './providers'; // Initialize providers
 let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
 
-interface ImportRequest {
+interface ImportRequestFromSql {
+  fromSql: {
+    sqlPath: string;
+    mode: 'diff' | 'replace';
+    dryRun: boolean;
+    target?: string;
+  };
+}
+
+interface ImportRequestLive {
   target: string;
   profile: string;
   warehouseId: string;
@@ -22,6 +31,12 @@ interface ImportRequest {
   catalogMappings?: Record<string, string>;
   dryRun: boolean;
   adoptBaseline: boolean;
+}
+
+type ImportRequest = ImportRequestLive | ImportRequestFromSql;
+
+function isImportFromSql(req: ImportRequest): req is ImportRequestFromSql {
+  return 'fromSql' in req && req.fromSql != null;
 }
 
 interface ImportExecutionResult {
@@ -219,23 +234,34 @@ async function executeImport(
   request: ImportRequest,
   onProgress?: (update: ImportProgressUpdate) => void
 ): Promise<ImportExecutionResult> {
-  const importArgs = [
-    'import',
-    '--target', request.target,
-    '--profile', request.profile,
-    '--warehouse-id', request.warehouseId,
-  ];
+  let importArgs: string[];
 
-  if (request.catalog?.trim()) importArgs.push('--catalog', request.catalog.trim());
-  if (request.schema?.trim()) importArgs.push('--schema', request.schema.trim());
-  if (request.table?.trim()) importArgs.push('--table', request.table.trim());
-  if (request.catalogMappings) {
-    for (const [logical, physical] of Object.entries(request.catalogMappings)) {
-      importArgs.push('--catalog-map', `${logical}=${physical}`);
+  if (isImportFromSql(request)) {
+    importArgs = [
+      'import',
+      '--from-sql', request.fromSql.sqlPath,
+      '--mode', request.fromSql.mode,
+    ];
+    if (request.fromSql.dryRun) importArgs.push('--dry-run');
+    if (request.fromSql.target?.trim()) importArgs.push('--target', request.fromSql.target.trim());
+  } else {
+    importArgs = [
+      'import',
+      '--target', request.target,
+      '--profile', request.profile,
+      '--warehouse-id', request.warehouseId,
+    ];
+    if (request.catalog?.trim()) importArgs.push('--catalog', request.catalog.trim());
+    if (request.schema?.trim()) importArgs.push('--schema', request.schema.trim());
+    if (request.table?.trim()) importArgs.push('--table', request.table.trim());
+    if (request.catalogMappings) {
+      for (const [logical, physical] of Object.entries(request.catalogMappings)) {
+        importArgs.push('--catalog-map', `${logical}=${physical}`);
+      }
     }
+    if (request.dryRun) importArgs.push('--dry-run');
+    if (request.adoptBaseline) importArgs.push('--adopt-baseline');
   }
-  if (request.dryRun) importArgs.push('--dry-run');
-  if (request.adoptBaseline) importArgs.push('--adopt-baseline');
 
   const candidates: Array<{ cmd: string; args: string[] }> = [
     { cmd: 'schemax', args: importArgs },
@@ -362,9 +388,10 @@ async function executeImport(
     }
 
     if (result.code === 0) {
+      const isDryRun = isImportFromSql(request) ? request.fromSql.dryRun : request.dryRun;
       onProgress?.({
         phase: 'completed',
-        message: request.dryRun ? 'Dry-run completed' : 'Import completed',
+        message: isDryRun ? 'Dry-run completed' : 'Import completed',
         percent: 100,
         level: 'success',
       });
@@ -581,10 +608,11 @@ async function runImportWithRequest(
   outputChannel.appendLine('[SchemaX] Running import workflow...');
   outputChannel.appendLine(`[SchemaX] Import request: ${JSON.stringify(request)}`);
 
+  const dryRun = isImportFromSql(request) ? request.fromSql.dryRun : request.dryRun;
   const result = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: request.dryRun ? 'Running import dry-run...' : 'Importing assets...',
+      title: dryRun ? 'Running import dry-run...' : 'Importing assets...',
       cancellable: true,
     },
     async (_progress, token) => {
@@ -611,23 +639,26 @@ async function runImportWithRequest(
     outputChannel.appendLine(result.stderr);
   }
 
+  const targetForTelemetry = isImportFromSql(request) ? request.fromSql.target : request.target;
+  const adoptBaselineForTelemetry = isImportFromSql(request) ? undefined : request.adoptBaseline;
+
   if (result.cancelled) {
     vscode.window.showInformationMessage('SchemaX import cancelled');
     trackEvent('import_cancelled', {
-      dryRun: request.dryRun,
-      adoptBaseline: request.adoptBaseline,
-      target: request.target,
+      dryRun,
+      adoptBaseline: adoptBaselineForTelemetry,
+      target: targetForTelemetry,
     });
   } else if (result.success) {
     vscode.window.showInformationMessage(
-      request.dryRun
+      dryRun
         ? 'SchemaX import dry-run completed'
         : 'SchemaX import completed successfully'
     );
     trackEvent('import_completed', {
-      dryRun: request.dryRun,
-      adoptBaseline: request.adoptBaseline,
-      target: request.target,
+      dryRun,
+      adoptBaseline: adoptBaselineForTelemetry,
+      target: targetForTelemetry,
     });
   } else {
     vscode.window.showErrorMessage(`SchemaX import failed. See Output > SchemaX for details.`);
@@ -640,9 +671,9 @@ async function runImportWithRequest(
       promptToInstallPythonSdkIfNeeded();
     }
     trackEvent('import_failed', {
-      dryRun: request.dryRun,
-      adoptBaseline: request.adoptBaseline,
-      target: request.target,
+      dryRun,
+      adoptBaseline: adoptBaselineForTelemetry,
+      target: targetForTelemetry,
     });
   }
 
@@ -654,7 +685,7 @@ async function runImportWithRequest(
         message: result.cancelled
           ? 'Import cancelled by user.'
           : (result.success
-          ? (request.dryRun ? 'Dry-run completed' : 'Import completed')
+          ? (dryRun ? 'Dry-run completed' : 'Import completed')
           : 'Import failed. See output details below.'),
         percent: 100,
         level: result.cancelled ? 'warning' : (result.success ? 'success' : 'error'),
@@ -1568,13 +1599,31 @@ async function openDesigner(context: vscode.ExtensionContext) {
           }
           break;
         }
+        case 'import-pick-sql-file': {
+          const folder = vscode.workspace.workspaceFolders?.[0];
+          const defaultUri = folder ? folder.uri : undefined;
+          const selected = await vscode.window.showOpenDialog({
+            defaultUri,
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            filters: { 'SQL': ['sql'] },
+          });
+          const path = selected?.length ? selected[0].fsPath : null;
+          currentPanel?.webview.postMessage({
+            type: 'import-sql-file-picked',
+            payload: { path },
+          });
+          break;
+        }
         case 'run-import': {
           try {
             const request = message.payload as ImportRequest;
             const result = await runImportWithRequest(workspaceFolder, request, currentPanel);
-            if (result.success && !request.dryRun) {
+            const wasDryRun = isImportFromSql(request) ? request.fromSql.dryRun : request.dryRun;
+            if (result.success && !wasDryRun) {
               await reloadProject(workspaceFolder, currentPanel);
-            } else if (result.cancelled && !request.dryRun) {
+            } else if (result.cancelled && !wasDryRun) {
               // Re-sync UI with disk in case cancellation happened during file writes.
               await reloadProject(workspaceFolder, currentPanel);
             }

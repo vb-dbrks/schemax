@@ -179,6 +179,7 @@ sequenceDiagram
 | **Start** | Catalog/schemas/tables already exist in Databricks. Repo may be new or existing. | — |
 | **Init (optional)** | If no project yet: `schemax init`. | `schemax init` |
 | **Import** | Discover live state from provider; diff vs local; generate ops into changelog. | `schemax import --target dev --profile … --warehouse-id … --catalog <name>` (optionally `--dry-run`). |
+| **Import from SQL file** | Parse a DDL file and diff vs local (or replace as new baseline); no Databricks connection. | `schemax import --from-sql path/to/schema.sql [--mode diff\|replace] [--dry-run]`. See [CLI Reference — Import from SQL file](/reference/cli#import-from-sql-file). |
 | **Adopt baseline (optional)** | Mark imported state as first deployed for that env: create snapshot, record deployment baseline. | `schemax import … --adopt-baseline` |
 | **From here** | Same as greenfield: design (more ops) → snapshot → apply to dev/test/prod. | Same as Situation 1. |
 

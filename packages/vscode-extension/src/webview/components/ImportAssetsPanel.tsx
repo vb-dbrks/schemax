@@ -1,8 +1,12 @@
 import React from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
+import { getVsCodeApi } from '../vscode-api';
 import { ProjectFile } from '../../providers/unity/models';
 
-export interface ImportRunRequest {
+const vscode = getVsCodeApi();
+
+/** Request for import from live Databricks (target, profile, warehouseId, etc.). */
+export interface ImportRunRequestLive {
   target: string;
   profile: string;
   warehouseId: string;
@@ -12,6 +16,23 @@ export interface ImportRunRequest {
   catalogMappings?: Record<string, string>;
   dryRun: boolean;
   adoptBaseline: boolean;
+}
+
+/** Request for import from a SQL DDL file. */
+export interface ImportRunRequestFromSql {
+  fromSql: {
+    sqlPath: string;
+    mode: 'diff' | 'replace';
+    dryRun: boolean;
+    target?: string;
+  };
+}
+
+/** Union: either live import or from-SQL import. */
+export type ImportRunRequest = ImportRunRequestLive | ImportRunRequestFromSql;
+
+export function isImportFromSql(req: ImportRunRequest): req is ImportRunRequestFromSql {
+  return 'fromSql' in req && req.fromSql != null;
 }
 
 export interface ImportRunResult {
@@ -37,6 +58,8 @@ interface ImportAssetsPanelProps {
   onClose: () => void;
   onRun: (request: ImportRunRequest) => void;
   onCancel: () => void;
+  /** Path received from host after "Browse" for SQL file (optional). */
+  pickedSqlFilePath?: string | null;
 }
 
 function FieldLabel({ text, help }: { text: string; help: string }) {
@@ -75,6 +98,8 @@ function FieldLabel({ text, help }: { text: string; help: string }) {
   );
 }
 
+type ImportTab = 'databricks' | 'sql';
+
 export function ImportAssetsPanel({
   project,
   isRunning,
@@ -83,8 +108,10 @@ export function ImportAssetsPanel({
   onClose,
   onRun,
   onCancel,
+  pickedSqlFilePath = null,
 }: ImportAssetsPanelProps) {
   const envNames = Object.keys(project.provider?.environments || {});
+  const [activeTab, setActiveTab] = React.useState<ImportTab>('databricks');
   const [target, setTarget] = React.useState<string>(envNames[0] || 'dev');
   const [profile, setProfile] = React.useState<string>('DEFAULT');
   const [warehouseId, setWarehouseId] = React.useState<string>('');
@@ -101,6 +128,17 @@ export function ImportAssetsPanel({
   const [lastSuggestedMappings, setLastSuggestedMappings] = React.useState<string>(
     () => buildSuggestedCatalogMappingsText(project, envNames[0] || 'dev')
   );
+  // From SQL file tab
+  const [sqlPath, setSqlPath] = React.useState<string>('');
+  const [sqlMode, setSqlMode] = React.useState<'diff' | 'replace'>('diff');
+  const [sqlDryRun, setSqlDryRun] = React.useState<boolean>(true);
+  const [sqlTarget, setSqlTarget] = React.useState<string>(envNames[0] || 'dev');
+
+  React.useEffect(() => {
+    if (pickedSqlFilePath != null && pickedSqlFilePath !== '') {
+      setSqlPath(pickedSqlFilePath);
+    }
+  }, [pickedSqlFilePath]);
 
   React.useEffect(() => {
     const suggestion = buildSuggestedCatalogMappingsText(project, target);
@@ -112,6 +150,23 @@ export function ImportAssetsPanel({
   }, [project, target, bindingsTouched, catalogMappingsText, lastSuggestedMappings]);
 
   const handleSubmit = () => {
+    setValidationError(null);
+    if (activeTab === 'sql') {
+      const pathTrimmed = sqlPath.trim();
+      if (!pathTrimmed) {
+        setValidationError('SQL file path is required');
+        return;
+      }
+      onRun({
+        fromSql: {
+          sqlPath: pathTrimmed,
+          mode: sqlMode,
+          dryRun: sqlDryRun,
+          target: sqlTarget || undefined,
+        },
+      });
+      return;
+    }
     if (!warehouseId.trim()) {
       setValidationError('Warehouse ID is required');
       return;
@@ -131,7 +186,6 @@ export function ImportAssetsPanel({
       setValidationError(String(error));
       return;
     }
-    setValidationError(null);
     onRun({
       target,
       profile: profile.trim() || 'DEFAULT',
@@ -158,6 +212,97 @@ export function ImportAssetsPanel({
             Import objects from your provider into SchemaX. Start with dry-run to preview operations.
           </p>
 
+          <div className="import-tabs" role="tablist" aria-label="Import source">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'databricks'}
+              className={`import-tab ${activeTab === 'databricks' ? 'import-tab--active' : ''}`}
+              onClick={() => setActiveTab('databricks')}
+              disabled={isRunning}
+            >
+              From Databricks
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'sql'}
+              className={`import-tab ${activeTab === 'sql' ? 'import-tab--active' : ''}`}
+              onClick={() => setActiveTab('sql')}
+              disabled={isRunning}
+            >
+              From SQL file
+            </button>
+          </div>
+
+          {activeTab === 'sql' && (
+            <div className="import-tab-panel" role="tabpanel" aria-labelledby="import-tab-sql">
+              <div className="modal-field">
+                <FieldLabel
+                  text="SQL file path"
+                  help="Path to a .sql DDL file. Use Browse to pick a file in the workspace or enter a path."
+                />
+                <div className="import-sql-path-row">
+                  <VSCodeTextField
+                    value={sqlPath}
+                    aria-label="SQL file path"
+                    placeholder="e.g. scripts/schema.sql or /absolute/path/to/file.sql"
+                    onInput={(event: React.FormEvent<HTMLInputElement>) => setSqlPath((event.target as HTMLInputElement).value)}
+                    disabled={isRunning}
+                  />
+                  <VSCodeButton
+                    appearance="secondary"
+                    onClick={() => vscode.postMessage({ type: 'import-pick-sql-file' })}
+                    disabled={isRunning}
+                  >
+                    Browse
+                  </VSCodeButton>
+                </div>
+              </div>
+              <div className="modal-field">
+                <FieldLabel
+                  text="Mode"
+                  help="Diff: append operations to current changelog. Replace: treat parsed state as new baseline (ops from empty state)."
+                />
+                <VSCodeDropdown
+                  value={sqlMode}
+                  aria-label="Import mode"
+                  onInput={(e: React.FormEvent) => setSqlMode(((e.target as HTMLInputElement)?.value ?? 'diff') as 'diff' | 'replace')}
+                  disabled={isRunning}
+                >
+                  <VSCodeOption value="diff">Diff (append to changelog)</VSCodeOption>
+                  <VSCodeOption value="replace">Replace (new baseline)</VSCodeOption>
+                </VSCodeDropdown>
+              </div>
+              <div className="modal-field">
+                <FieldLabel text="Target environment (optional)" help="Used for catalog mapping consistency; can be left as default." />
+                <VSCodeDropdown
+                  value={sqlTarget}
+                  aria-label="Target environment"
+                  onInput={(e: React.FormEvent) => setSqlTarget((e.target as HTMLInputElement)?.value ?? '')}
+                  disabled={isRunning}
+                >
+                  {envNames.map((env) => (
+                    <VSCodeOption key={env} value={env}>{env}</VSCodeOption>
+                  ))}
+                </VSCodeDropdown>
+              </div>
+              <div className="modal-field">
+                <label className="import-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={sqlDryRun}
+                    disabled={isRunning}
+                    onChange={(e) => setSqlDryRun(e.target.checked)}
+                  />
+                  <span>Dry-run (preview only, do not write changelog)</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'databricks' && (
+            <>
           <div className="modal-field">
             <FieldLabel
               text="Target Environment"
@@ -319,6 +464,8 @@ export function ImportAssetsPanel({
                   ? 'Execution summary: write import operations and adopt the imported snapshot as deployed baseline.'
                   : 'Execution summary: write import operations without adopting baseline.')}
           </p>
+            </>
+          )}
 
           {validationError && (
             <p className="form-error">{validationError}</p>

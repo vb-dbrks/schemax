@@ -5,6 +5,7 @@ Foundational, provider-agnostic infrastructure for SchemaX:
 - Storage: File I/O and project management
 - Deployment: Deployment tracking and history
 - Version: Semantic versioning utilities
+- SQL utils: Statement splitting for scripts (no provider dependency)
 """
 
 # Storage exports
@@ -30,6 +31,9 @@ from .storage import (
     write_project,
     write_snapshot,
 )
+
+# SQL utils exports
+from .sql_utils import split_sql_statements
 
 # Version exports
 from .version import (
@@ -59,6 +63,8 @@ __all__ = [
     "write_changelog",
     "write_project",
     "write_snapshot",
+    # SQL utils
+    "split_sql_statements",
     # Deployment
     "DeploymentTracker",
     # Version
