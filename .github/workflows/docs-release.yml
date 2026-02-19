@@ -1,16 +1,13 @@
 # Build and deploy Docusaurus docs to GitHub Pages.
-# Runs on: push to main (when docs change), push of tag v* (unified release), or workflow_dispatch.
-# Note: If github-pages environment has protection rules, allow branch "main" and tags "v*" for deployments.
+# Runs on: push of tag v* (unified release) or workflow_dispatch.
+# Docs are validated (build only, no deploy) on every push/PR via docs-ci.yml.
+# The github-pages environment protection only allows deploys from tags, so we
+# do not trigger on branch pushes to avoid the immediate rejection failure.
 
 name: Docs Release
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'docs/schemax/**'
-      - '.github/workflows/docs-release.yml'
     tags:
       - 'v*'
   workflow_dispatch:

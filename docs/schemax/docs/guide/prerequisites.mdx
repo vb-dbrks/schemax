@@ -1,0 +1,32 @@
+---
+sidebar_position: 2
+title: Prerequisites
+---
+
+# Prerequisites
+
+Before you start with SchemaX, ensure you have the following.
+
+## For using the VS Code extension
+
+- **VS Code** — A recent version of [Visual Studio Code](https://code.visualstudio.com/) (or Cursor / VS Codium). The extension is developed and tested on current stable releases.
+- **Workspace** — A folder opened in VS Code that will hold (or already holds) your SchemaX project (e.g. a repo with or without an existing `.schematic/` directory).
+
+## For using the CLI (apply, validate, SQL, snapshots)
+
+- **Python** — Python 3.9 or newer. The SchemaX CLI and SDK are Python-based.
+- **Optional: uv** — [uv](https://docs.astral.sh/uv/) can be used for faster installs and virtual environments; standard `pip` works as well.
+
+## For building the extension from source (contributors)
+
+- **Node.js and npm** — Required to build the VS Code extension and webview. Use a current LTS version.
+
+## For Databricks Unity Catalog
+
+- **Databricks workspace** — Access to a workspace with Unity Catalog enabled.
+- **Permissions** — For **apply** and **import**, the identity (user or service principal) must have privileges to create and alter catalogs, schemas, and tables (and to manage grants, row filters, column masks if you use those). For **read-only** use (designer, `schemax sql`, `schemax validate`), workspace access and project file access are enough.
+
+## Next steps
+
+- [Setup](/guide/setup/) — Install the extension and CLI, open a project, first-time init
+- [Quickstart](/guide/quickstart/) — End-to-end walkthrough

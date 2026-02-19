@@ -2,15 +2,13 @@
 sidebar_position: 100
 title: Workflows
 ---
-# SchemaX Workflows & Data Project Lifecycle
+# Workflows (apply and rollback)
 
-This document describes **where SchemaX fits in data and analytics projects** and the **end-to-end situations** it supports. SchemaX is built for **individual data projects**: one repo = one schema project, with one or more environments (dev, test, prod). It focuses on the **schema layer**—defining and versioning catalogs, schemas, tables, and governance—within the broader data ops flow.
+SchemaX fits in the **schema layer** of data projects: one repo = one schema project, with environments (dev, test, prod). This doc describes **end-to-end situations**: greenfield, brownfield, apply failure and rollback, and SQL-only/validate.
 
----
+## Data projects and where SchemaX fits
 
-## Data Projects and Where SchemaX Fits
-
-In **data** or **data analytics projects**, the typical flow is:
+In data or analytics projects, the typical flow is:
 
 1. **Ingestion** — Raw data lands (batch/stream) into cloud storage or a lake.
 2. **Transformation** — Pipelines (e.g. dbt, Spark, Databricks jobs) clean and model data.

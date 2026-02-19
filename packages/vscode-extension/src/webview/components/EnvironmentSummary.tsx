@@ -52,7 +52,7 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
             vscode?.postMessage({
               type: 'open-docs',
               payload: {
-                url: 'https://vb-dbrks.github.io/schemax-vscode/guide/environments-and-scope'
+                url: 'https://vb-dbrks.github.io/schemax/guide/environments-and-scope/'
               }
             });
           }}

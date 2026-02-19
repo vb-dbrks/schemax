@@ -1,0 +1,54 @@
+---
+sidebar_position: 4
+title: Authentication
+---
+
+# Authentication
+
+SchemaX uses the **Databricks SDK** for all Databricks API and SQL execution. It supports **Databricks Authentication Profiles** (and OAuth, environment variables). The **same authentication works locally and in CI/CD** — you can use a profile file locally and the same profile (or equivalent env vars) in your pipeline.
+
+## How the CLI authenticates
+
+Commands that talk to Databricks (`schemax apply`, `schemax import`, and any execution that runs SQL) use the Databricks SDK. The SDK resolves credentials in this order (typical):
+
+1. **Environment variables** — `DATABRICKS_HOST`, `DATABRICKS_TOKEN` (or OAuth-related vars if using OAuth).
+2. **Profile** — `~/.databrickscfg` (or path in `DATABRICKS_CONFIG_FILE`), with a `[profile_name]` section. Use `--profile` or `-p` to select a profile, or the SDK default (e.g. `DEFAULT`).
+
+So: configure a profile for local use, and for CI/CD either use the same mechanism (e.g. profile contents from a secret) or env vars.
+
+## Where to configure
+
+- **Profile file** — `~/.databrickscfg` (or path in `DATABRICKS_CONFIG_FILE`). Example:
+
+  ```ini
+  [default]
+  host = https://your-workspace.cloud.databricks.com
+  token = dapi...
+  ```
+
+  Use [Databricks documentation](https://docs.databricks.com/en/dev-tools/auth.html) for OAuth, Azure CLI, and other methods that the Databricks SDK supports.
+
+- **Apply/import** — The `schemax apply` and import commands accept `--profile` (e.g. `schemax apply --target dev --profile myprofile`). If you don't pass a profile, the SDK uses its default resolution (e.g. `DEFAULT` profile or env vars).
+
+## What's needed for apply and import
+
+- **Apply** — The identity (user or service principal) must have privileges to create/alter catalogs, schemas, tables, and (if used) grants, row filters, column masks. The workspace must have Unity Catalog enabled.
+- **Import** — Read access to the Unity Catalog metastore so SchemaX can introspect catalogs, schemas, tables, and optionally grants.
+
+## CI/CD: use env vars or profile-from-secret
+
+In pipelines (e.g. GitHub Actions, Azure DevOps), you typically **do not** have an interactive login or a local `~/.databrickscfg`. Use one of:
+
+1. **Environment variables** — Set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` (or OAuth vars) from pipeline secrets. The Databricks SDK will pick them up; no profile file needed.
+
+2. **Profile from secret** — Store the contents of a `[profile_name]` block (or full `~/.databrickscfg`) in a pipeline secret. In the job, write that content to a file (e.g. `~/.databrickscfg` or `./.databrickscfg`) and set `DATABRICKS_CONFIG_FILE` if needed. Then run `schemax apply --profile profile_name ...` (or rely on `DEFAULT`).
+
+3. **Service principal** — Use a Databricks service principal and store its OAuth credentials or token in secrets; expose as env vars or as a profile written from a secret.
+
+Same auth, same SDK: what works locally with a profile works in CI/CD when the profile (or equivalent env vars) is provided by the pipeline.
+
+## Next steps
+
+- [Setup](/guide/setup/) — Install extension and CLI
+- [Git and CI/CD setup](/guide/git-and-cicd-setup/) — Run SchemaX in Azure DevOps or GitHub Actions (non-interactive)
+- [Workflows](/reference/workflows/) — Apply, rollback, greenfield, brownfield

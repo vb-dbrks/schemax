@@ -900,18 +900,24 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
             other_ops.append(op)
 
-        # Build statement infos in dependency order
+        # Build statement infos in dependency order (split CREATE+ALTER so each runs as one statement)
         for sql, op_ids in catalog_stmts:
-            execution_order += 1
-            statement_infos.append(
-                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
-            )
+            for sql_part in self._split_sql_statements(sql):
+                execution_order += 1
+                statement_infos.append(
+                    StatementInfo(
+                        sql=sql_part, operation_ids=op_ids, execution_order=execution_order
+                    )
+                )
 
         for sql, op_ids in schema_stmts:
-            execution_order += 1
-            statement_infos.append(
-                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
-            )
+            for sql_part in self._split_sql_statements(sql):
+                execution_order += 1
+                statement_infos.append(
+                    StatementInfo(
+                        sql=sql_part, operation_ids=op_ids, execution_order=execution_order
+                    )
+                )
 
         for sql, op_ids in table_stmts:
             execution_order += 1

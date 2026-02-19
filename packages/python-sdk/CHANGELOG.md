@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4] - 2025-02-19
+
+### Fixed
+
+- **SQL generator**: `CREATE CATALOG` / `CREATE SCHEMA` with tags now emits separate statements (one per API call). Previously, `CREATE ... ; ALTER ... SET TAGS` was concatenated into a single `StatementInfo`, causing `PARSE_SYNTAX_ERROR` on Databricks Statement Execution API. Added `_split_sql_statements` to catalog and schema statement loops in `generate_sql_with_mapping`.
+- Regression tests added: `test_catalog_with_tags_produces_separate_statements_for_apply` and `test_schema_with_tags_produces_separate_statements_for_apply`.
+
 ## [0.1.3] - 2025-02-12
 
 ### Added

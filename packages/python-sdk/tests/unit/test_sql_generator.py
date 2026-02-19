@@ -204,6 +204,69 @@ class TestManagedLocationSQL:
         assert "`bronze`.`sales`" in result.sql
         assert "MANAGED LOCATION 's3://data-bucket/sales'" in result.sql
 
+    def test_catalog_with_tags_produces_separate_statements_for_apply(self, empty_unity_state):
+        """Regression: CREATE CATALOG + ALTER SET TAGS must be separate statements for Databricks.
+
+        Databricks Statement Execution API accepts one statement per call. Previously we emitted
+        'CREATE CATALOG ...;\\nALTER CATALOG ... SET TAGS' as a single StatementInfo, causing
+        PARSE_SYNTAX_ERROR. Now generate_sql_with_mapping splits these so each is executed alone.
+        """
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(
+            empty_unity_state.model_dump(by_alias=True),
+            catalog_name_mapping={"my_catalog": "dev_my_catalog"},
+            environment_name="dev",
+        )
+        op = builder.add_catalog("cat_new", "my_catalog", op_id="op_cat_001")
+        op.payload["comment"] = "Test catalog"
+        op.payload["tags"] = {"env": "dev", "team": "platform"}
+
+        result = generator.generate_sql_with_mapping([op])
+
+        # Must produce at least 2 statements (CREATE and ALTER SET TAGS)
+        assert len(result.statements) >= 2, (
+            "Catalog with tags must produce separate CREATE and ALTER statements for apply; "
+            "Databricks rejects multiple statements in one execute_statement call."
+        )
+        sql_texts = [stmt.sql for stmt in result.statements]
+        create_only = [s for s in sql_texts if "CREATE CATALOG" in s and "ALTER CATALOG" not in s]
+        alter_only = [s for s in sql_texts if "ALTER CATALOG" in s and "SET TAGS" in s]
+        assert len(create_only) >= 1, "Expected at least one statement with CREATE CATALOG only"
+        assert len(alter_only) >= 1, (
+            "Expected at least one statement with ALTER CATALOG SET TAGS only"
+        )
+        # No single statement should contain both (regression: previously they were concatenated)
+        for stmt in result.statements:
+            assert not ("CREATE CATALOG" in stmt.sql and "ALTER CATALOG" in stmt.sql), (
+                f"One statement must not contain both CREATE and ALTER: {stmt.sql[:200]}..."
+            )
+
+    def test_schema_with_tags_produces_separate_statements_for_apply(self, empty_unity_state):
+        """Regression: CREATE SCHEMA + ALTER SET TAGS must be separate statements for Databricks."""
+        from schemax.providers.unity.state_reducer import apply_operation
+
+        builder = OperationBuilder()
+        setup_op = builder.add_catalog("cat_1", "main", op_id="op_setup")
+        state_with_catalog = apply_operation(empty_unity_state, setup_op)
+
+        generator = UnitySQLGenerator(
+            state_with_catalog.model_dump(by_alias=True),
+            catalog_name_mapping={"main": "dev_main"},
+            environment_name="dev",
+        )
+        op = builder.add_schema("schema_new", "analytics", "cat_1", op_id="op_sch_001")
+        op.payload["tags"] = {"layer": "silver"}
+
+        result = generator.generate_sql_with_mapping([op])
+
+        assert len(result.statements) >= 2, (
+            "Schema with tags must produce separate CREATE and ALTER statements for apply."
+        )
+        for stmt in result.statements:
+            assert not ("CREATE SCHEMA" in stmt.sql and "ALTER SCHEMA" in stmt.sql), (
+                f"One statement must not contain both CREATE and ALTER: {stmt.sql[:200]}..."
+            )
+
     def test_managed_location_not_found(self, sample_unity_state):
         """Test error when managed location not found"""
         builder = OperationBuilder()

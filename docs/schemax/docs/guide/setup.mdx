@@ -1,0 +1,58 @@
+---
+sidebar_position: 3
+title: Setup
+---
+
+# Setup
+
+Get the SchemaX extension and CLI installed and open a project. For a full walkthrough, see [Quickstart](/guide/quickstart/).
+
+## 1. Install the VS Code extension
+
+**From source (development):**
+
+1. Clone the repo and open it in VS Code: `code /path/to/schemax-vscode`
+2. Press **F5** to launch the Extension Development Host (builds and loads the extension in a new window).
+
+**When published:** Install "SchemaX" from the VS Code Marketplace (search "SchemaX" in Extensions).
+
+## 2. Install the CLI (Python SDK)
+
+The CLI is required for `schemax apply`, `schemax validate`, `schemax sql`, snapshots, and CI/CD.
+
+**From source:**
+
+```bash
+cd packages/python-sdk
+pip install -e .
+# or: uv pip install -e .
+```
+
+**When published:**
+
+```bash
+pip install schemaxpy
+# or: uv pip install schemaxpy
+```
+
+Verify:
+
+```bash
+schemax --help
+```
+
+## 3. Open a project
+
+1. In VS Code (or Extension Development Host), **File → Open Folder**
+2. Choose a folder that will hold your SchemaX project (e.g. a Git repo or new directory).
+
+## 4. First-time project init
+
+- If the folder has no `.schematic/` directory, opening the designer (**SchemaX: Open Designer**) will create a new SchemaX project (Unity Catalog by default) with a default environment and empty state.
+- If the folder already has `.schematic/project.json`, SchemaX loads that project.
+
+## Next steps
+
+- [Authentication](/guide/authentication/) — How the CLI authenticates to Databricks (same locally and in CI/CD)
+- [Quickstart](/guide/quickstart/) — Step-by-step: first catalog, schema, table, SQL, snapshot
+- [Environments and deployment scope](/guide/environments-and-scope/) — Full vs governance-only, existing objects

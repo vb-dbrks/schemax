@@ -5,12 +5,12 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'SchemaX',
   tagline:
-    'Open source: multi-provider data catalog schema management with version control. Python SDK on PyPI · VS Code extension on Marketplace.',
+    'Modern, low-touch schema migration and management. Git- and CI/CD-friendly. Full or governance-only. Python SDK · VS Code extension.',
   favicon: 'img/schemax_favicon.svg',
 
   // CI sets these for GitHub Pages; fallbacks for local build
-  url: process.env.GITHUB_PAGES_URL || 'https://github.com',
-  baseUrl: process.env.GITHUB_PAGES_BASE_URL || '/schemax-vscode/',
+  url: process.env.GITHUB_PAGES_URL || 'https://vb-dbrks.github.io',
+  baseUrl: process.env.GITHUB_PAGES_BASE_URL || '/schemax/',
   trailingSlash: true,
 
   organizationName: process.env.GITHUB_REPOSITORY_OWNER || 'vb-dbrks',
@@ -86,6 +86,15 @@ const config: Config = {
             {
               label: 'VS Code Extension (Marketplace)',
               href: 'https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode',
+            },
+          ],
+        },
+        {
+          title: 'Docs',
+          items: [
+            {
+              label: 'FAQ',
+              to: '/reference/faq/',
             },
           ],
         },

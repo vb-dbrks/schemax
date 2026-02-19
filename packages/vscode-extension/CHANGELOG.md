@@ -1,12 +1,26 @@
 # Changelog
 
+## [0.1.4] - 2025-02-19
+
+### Added
+
+- **Help button**: New `?` icon button in the top-right toolbar opens the Quickstart documentation in the browser.
+
+### Changed
+
+- **Docs URLs**: All hardcoded documentation URLs updated from `/schemax-vscode/` to `/schemax/` to match the production GitHub Pages deployment.
+
+### Fixed
+
+- **EnvironmentSummary Docs button**: Trailing slash added to the environments-and-scope URL (avoids redirect on GitHub Pages).
+
 ## [0.1.3] - 2025-02-12
 
 ### Added
 
 - **Grants (Unity Catalog)**: Add and revoke grants on catalogs, schemas, tables, and views from the Security Governance UI. State differ and SQL generator support grant operations; generated SQL includes full grant/revoke output.
 - **Deployment scope**: Per-environment **managed categories** (limit which DDL SchemaX emits, e.g. governance-only) and **existing objects** (skip `CREATE CATALOG` for catalogs that already exist). Configure in Project Settings → Environment → Deployment scope and Existing objects.
-- Documentation for [Environments and deployment scope](https://vb-dbrks.github.io/schemax-vscode/guide/environments-and-scope) and [Unity Catalog grants](https://vb-dbrks.github.io/schemax-vscode/guide/unity-catalog-grants) in the docs site.
+- Documentation for [Environments and deployment scope](https://vb-dbrks.github.io/schemax/guide/environments-and-scope) and [Unity Catalog grants](https://vb-dbrks.github.io/schemax/guide/unity-catalog-grants) in the docs site.
 
 ### Changed
 

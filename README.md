@@ -1,10 +1,10 @@
 <img src="docs/schemax/static/img/schemax_logo.svg" width="320" alt="SchemaX" />
 
-**Multi-provider data catalog schema management with version control**
+**Modern, low-touch schema migration and management. Git- and CI/CD-friendly. Full or governance-only.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-SchemaX is an extensible toolkit for managing data catalog schemas (Unity Catalog, Hive Metastore, PostgreSQL) using a declarative, version-controlled approach. Design schemas visually in VS Code or manage them programmatically with Python, then generate SQL migrations for deployment.
+SchemaX is a modern, low-touch, interactive schema migration and management tool for data catalogs. It's Git- and CI/CD-friendly: design schemas in the VS Code designer or define them in code, store changes as versioned operations and snapshots, and generate or apply SQL per environment. Use it in **full mode** (create and manage catalogs, schemas, tables, and governance) or **governance-only mode** (comments, tags, grants, row filters, column masks on existing objects). Unity Catalog is supported today; Hive and PostgreSQL are planned.
 
 **Current Support:** Databricks Unity Catalog (v1.0) | **Coming Soon:** Hive Metastore, PostgreSQL/Lakebase
 

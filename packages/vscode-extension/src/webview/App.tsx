@@ -32,6 +32,10 @@ const IconImport: React.FC = () => (
   <i slot="start" className="codicon codicon-cloud-download" aria-hidden="true"></i>
 );
 
+const IconHelp: React.FC = () => (
+  <i className="codicon codicon-question" aria-hidden="true"></i>
+);
+
 export const App: React.FC = () => {
   const { 
     project, 
@@ -212,6 +216,19 @@ export const App: React.FC = () => {
             <IconImport />
             Import assets
           </VSCodeButton>
+          <button
+            className="help-button"
+            onClick={() => {
+              vscode.postMessage({
+                type: 'open-docs',
+                payload: { url: 'https://vb-dbrks.github.io/schemax/guide/quickstart/' }
+              });
+            }}
+            title="Open SchemaX documentation (Quickstart)"
+            aria-label="Open documentation"
+          >
+            <IconHelp />
+          </button>
           <button
             className="refresh-button"
             onClick={() => {
