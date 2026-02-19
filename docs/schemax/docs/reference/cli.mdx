@@ -55,10 +55,12 @@ You can bring existing DDL into SchemaX by pointing the CLI at a `.sql` file ins
 schemax import --from-sql path/to/schema.sql [--mode diff|replace] [--dry-run] [--target ENV]
 ```
 
-- **`--from-sql PATH`** — Path to a SQL file containing `CREATE CATALOG`, `CREATE SCHEMA`, `CREATE TABLE`, and optionally `CREATE VIEW` and `COMMENT ON` (Databricks dialect). The parser ignores unsupported statements and reports them in the summary.
+- **`--from-sql PATH`** — Path to a SQL file containing Unity Catalog DDL (Databricks dialect). **Supported statements** (applied in file order): `CREATE CATALOG`, `CREATE SCHEMA`, `CREATE TABLE`, `CREATE VIEW`, `COMMENT ON`, and **ALTER** — `ALTER TABLE` (ADD COLUMN, DROP COLUMN, RENAME COLUMN, ALTER COLUMN SET NOT NULL / SET DATA TYPE, RENAME TO, SET TBLPROPERTIES) and `ALTER CATALOG` / `ALTER SCHEMA` / `ALTER TABLE` SET TAGS. Statements are applied in the order they appear (e.g. create a table then alter it to add columns or set properties). Unsupported statements are skipped and reported in the summary.
 - **`--mode diff`** (default) — Compare the parsed state to your current project state and append the difference as operations to the changelog. Use this to add objects from the file on top of what you already have.
 - **`--mode replace`** — Treat the parsed file as the new baseline: the diff is computed against an empty state, so the changelog will contain operations that recreate everything in the file. Use this when the SQL file is the single source of truth and you want to replace or bootstrap the project.
 - **`--dry-run`** — Print what would be imported (parsed object counts and planned operations) without writing to the changelog.
 - **`--target ENV`** — Optional; used for catalog mapping consistency when generating SQL later.
+
+**Statement order:** The parser applies each statement in the order it appears in the file. For example, `CREATE TABLE t (id INT);` followed by `ALTER TABLE t ADD COLUMN name STRING;` and `ALTER TABLE t SET TBLPROPERTIES ('k' = 'v');` produces a table with two columns and the property set. This matches the usual script style (create then alter).
 
 If the workspace has no `.schemax/` project yet, `schemax import --from-sql` will create a default Unity Catalog project before importing. In the VS Code extension, use **Import assets** → **From SQL file** tab to pick a file and run the same flow with a UI.

@@ -647,7 +647,7 @@ class UnityDDLStateBuilder:
                 )
             sid = f"schema_{result.catalog}_{result.name}"
             if sid not in self._schemas:
-                self._schemas[sid] = UnitySchema(
+                new_schema = UnitySchema(
                     id=sid,
                     name=result.name,
                     comment=result.comment,
@@ -655,7 +655,10 @@ class UnityDDLStateBuilder:
                     tables=[],
                     views=[],
                 )
-                self._catalogs[cat_id].schemas.append(self._schemas[sid])
+                self._schemas[sid] = new_schema
+                self._catalogs[cat_id] = self._catalogs[cat_id].model_copy(
+                    update={"schemas": [*self._catalogs[cat_id].schemas, new_schema]}
+                )
                 self._report["created"]["schemas"] += 1
             return
 
@@ -675,7 +678,7 @@ class UnityDDLStateBuilder:
                     )
                     for c in result.columns
                 ]
-                self._tables[tid] = UnityTable(
+                new_table = UnityTable(
                     id=tid,
                     name=result.name,
                     format=result.format,
@@ -683,7 +686,11 @@ class UnityDDLStateBuilder:
                     comment=result.comment,
                     tags=result.tags,
                 )
-                self._schemas[sid].tables.append(self._tables[tid])
+                self._tables[tid] = new_table
+                self._schemas[sid] = self._schemas[sid].model_copy(
+                    update={"tables": [*self._schemas[sid].tables, new_table]}
+                )
+                self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
                 self._report["created"]["tables"] += 1
             return
 
@@ -692,32 +699,39 @@ class UnityDDLStateBuilder:
             sid = f"schema_{result.catalog}_{result.schema_name}"
             vid = f"view_{result.catalog}_{result.schema_name}_{result.name}"
             if vid not in self._views:
-                self._views[vid] = UnityView(
+                new_view = UnityView(
                     id=vid,
                     name=result.name,
                     definition=result.definition,
                     comment=result.comment,
                 )
-                self._schemas[sid].views.append(self._views[vid])
+                self._views[vid] = new_view
+                self._schemas[sid] = self._schemas[sid].model_copy(
+                    update={"views": [*self._schemas[sid].views, new_view]}
+                )
+                self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
                 self._report["created"]["views"] += 1
             return
 
         if isinstance(result, CommentOn):
-            # Best-effort: apply comment to existing object if we find it
+            # Best-effort: apply comment via new instances (immutable)
             if result.object_type == "catalog":
                 cid = f"catalog_{result.name}"
                 if cid in self._catalogs:
-                    self._catalogs[cid].comment = result.comment
+                    self._catalogs[cid] = self._catalogs[cid].model_copy(update={"comment": result.comment})
             elif result.object_type in ("schema", "table", "view") and result.schema_name:
                 sid = f"schema_{result.catalog}_{result.schema_name}"
                 if sid in self._schemas and result.object_type == "schema" and result.name == self._schemas[sid].name:
-                    self._schemas[sid].comment = result.comment
+                    self._schemas[sid] = self._schemas[sid].model_copy(update={"comment": result.comment})
+                    self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
                 tid = f"table_{result.catalog}_{result.schema_name}_{result.name}"
                 if tid in self._tables:
-                    self._tables[tid].comment = result.comment
+                    self._tables[tid] = self._tables[tid].model_copy(update={"comment": result.comment})
+                    self._update_schema_tables_list(result.catalog, result.schema_name, self._tables[tid])
                 vid = f"view_{result.catalog}_{result.schema_name}_{result.name}"
                 if vid in self._views:
-                    self._views[vid].comment = result.comment
+                    self._views[vid] = self._views[vid].model_copy(update={"comment": result.comment})
+                    self._update_schema_views_list(result.catalog, result.schema_name, self._views[vid])
             return
 
         if isinstance(result, AlterTableAddColumn):
@@ -727,90 +741,118 @@ class UnityDDLStateBuilder:
                 c = result.column
                 col_id = f"col_{tid}_{c.name}"
                 if not any(col.id == col_id or col.name == c.name for col in t.columns):
-                    t.columns.append(
-                        UnityColumn(
-                            id=col_id,
-                            name=c.name,
-                            type=c.type,
-                            nullable=c.nullable,
-                            comment=c.comment,
-                        )
+                    new_col = UnityColumn(
+                        id=col_id,
+                        name=c.name,
+                        type=c.type,
+                        nullable=c.nullable,
+                        comment=c.comment,
                     )
+                    new_table = t.model_copy(update={"columns": [*t.columns, new_col]})
+                    self._tables[tid] = new_table
+                    self._update_schema_tables_list(result.catalog, result.schema_name, new_table)
             return
 
         if isinstance(result, AlterTableDropColumn):
             tid = f"table_{result.catalog}_{result.schema_name}_{result.table_name}"
             if tid in self._tables:
-                self._tables[tid].columns = [
-                    col for col in self._tables[tid].columns if col.name != result.column_name
-                ]
+                t = self._tables[tid]
+                new_columns = [col for col in t.columns if col.name != result.column_name]
+                new_table = t.model_copy(update={"columns": new_columns})
+                self._tables[tid] = new_table
+                self._update_schema_tables_list(result.catalog, result.schema_name, new_table)
             return
 
         if isinstance(result, AlterTableRenameColumn):
             tid = f"table_{result.catalog}_{result.schema_name}_{result.table_name}"
             if tid in self._tables:
-                for col in self._tables[tid].columns:
+                t = self._tables[tid]
+                new_columns = []
+                for col in t.columns:
                     if col.name == result.old_name:
-                        col.name = result.new_name
-                        col.id = f"col_{tid}_{result.new_name}"
-                        break
+                        new_columns.append(
+                            col.model_copy(update={"name": result.new_name, "id": f"col_{tid}_{result.new_name}"})
+                        )
+                    else:
+                        new_columns.append(col)
+                new_table = t.model_copy(update={"columns": new_columns})
+                self._tables[tid] = new_table
+                self._update_schema_tables_list(result.catalog, result.schema_name, new_table)
             return
 
         if isinstance(result, AlterTableAlterColumn):
             tid = f"table_{result.catalog}_{result.schema_name}_{result.table_name}"
             if tid in self._tables:
-                for col in self._tables[tid].columns:
-                    if col.name == result.column_name:
-                        if result.nullable is not None:
-                            col.nullable = result.nullable
-                        if result.new_type is not None:
-                            col.type = result.new_type
-                        break
+                t = self._tables[tid]
+                updates: dict[str, Any] = {}
+                if result.nullable is not None:
+                    updates["nullable"] = result.nullable
+                if result.new_type is not None:
+                    updates["type"] = result.new_type
+                new_columns = [
+                    col.model_copy(update=updates) if col.name == result.column_name else col
+                    for col in t.columns
+                ]
+                new_table = t.model_copy(update={"columns": new_columns})
+                self._tables[tid] = new_table
+                self._update_schema_tables_list(result.catalog, result.schema_name, new_table)
             return
 
         if isinstance(result, AlterTableRenameTo):
             tid_old = f"table_{result.catalog}_{result.schema_name}_{result.table_name}"
             if tid_old in self._tables:
                 t = self._tables.pop(tid_old)
+                tid_new = f"table_{result.catalog}_{result.schema_name}_{result.new_name}"
+                new_columns = [
+                    col.model_copy(update={"id": f"col_{tid_new}_{col.name}"}) for col in t.columns
+                ]
+                new_table = t.model_copy(
+                    update={"id": tid_new, "name": result.new_name, "columns": new_columns}
+                )
+                self._tables[tid_new] = new_table
                 sid = f"schema_{result.catalog}_{result.schema_name}"
                 if sid in self._schemas:
-                    self._schemas[sid].tables = [x for x in self._schemas[sid].tables if x.id != tid_old]
-                tid_new = f"table_{result.catalog}_{result.schema_name}_{result.new_name}"
-                t.id = tid_new
-                t.name = result.new_name
-                for col in t.columns:
-                    col.id = f"col_{tid_new}_{col.name}"
-                self._tables[tid_new] = t
-                if sid in self._schemas:
-                    self._schemas[sid].tables.append(t)
+                    new_tables = [
+                        new_table if x.id == tid_old else x
+                        for x in self._schemas[sid].tables
+                    ]
+                    self._schemas[sid] = self._schemas[sid].model_copy(update={"tables": new_tables})
+                    self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
             return
 
         if isinstance(result, AlterTableSetTblproperties):
             tid = f"table_{result.catalog}_{result.schema_name}_{result.table_name}"
             if tid in self._tables:
                 t = self._tables[tid]
-                if not hasattr(t, "properties") or t.properties is None:
-                    t.properties = {}
-                t.properties.update(result.properties)
+                new_props = {**(t.properties or {}), **result.properties}
+                new_table = t.model_copy(update={"properties": new_props})
+                self._tables[tid] = new_table
+                self._update_schema_tables_list(result.catalog, result.schema_name, new_table)
             return
 
         if isinstance(result, (AlterCatalogSetTags, AlterSchemaSetTags, AlterTableSetTags)):
-            # Tags on catalog/schema/table: best-effort update if we have the object
+            # Tags: replace with new instances (immutable)
             if isinstance(result, AlterCatalogSetTags):
                 cid = f"catalog_{result.name}"
                 if cid in self._catalogs:
-                    self._catalogs[cid].tags = getattr(self._catalogs[cid], "tags", {}) or {}
-                    self._catalogs[cid].tags.update(result.tags)
+                    cur = self._catalogs[cid]
+                    new_tags = {**(getattr(cur, "tags", None) or {}), **result.tags}
+                    self._catalogs[cid] = cur.model_copy(update={"tags": new_tags})
             elif isinstance(result, AlterSchemaSetTags):
                 sid = f"schema_{result.catalog}_{result.schema_name}"
                 if sid in self._schemas:
-                    self._schemas[sid].tags = getattr(self._schemas[sid], "tags", {}) or {}
-                    self._schemas[sid].tags.update(result.tags)
+                    cur = self._schemas[sid]
+                    new_tags = {**(getattr(cur, "tags", None) or {}), **result.tags}
+                    self._schemas[sid] = cur.model_copy(update={"tags": new_tags})
+                    self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
             else:
                 tid = f"table_{result.catalog}_{result.schema_name}_{result.table_name}"
                 if tid in self._tables:
-                    self._tables[tid].tags = getattr(self._tables[tid], "tags", {}) or {}
-                    self._tables[tid].tags.update(result.tags)
+                    cur = self._tables[tid]
+                    new_tags = {**(getattr(cur, "tags", None) or {}), **result.tags}
+                    new_table = cur.model_copy(update={"tags": new_tags})
+                    self._tables[tid] = new_table
+                    self._update_schema_tables_list(result.catalog, result.schema_name, new_table)
             return
 
     def _ensure_catalog_schema(self, catalog: str, schema_name: str) -> None:
@@ -820,7 +862,45 @@ class UnityDDLStateBuilder:
         sid = f"schema_{catalog}_{schema_name}"
         if sid not in self._schemas:
             self._schemas[sid] = UnitySchema(id=sid, name=schema_name, tables=[], views=[])
-            self._catalogs[cat_id].schemas.append(self._schemas[sid])
+            self._catalogs[cat_id] = self._catalogs[cat_id].model_copy(
+                update={"schemas": [*self._catalogs[cat_id].schemas, self._schemas[sid]]}
+            )
+
+    def _update_catalog_schemas_list(
+        self, catalog: str, schema_name: str, updated_schema: UnitySchema
+    ) -> None:
+        """Replace schema in catalog's schemas list with updated instance (immutable)."""
+        cat_id = f"catalog_{catalog}"
+        sid = f"schema_{catalog}_{schema_name}"
+        if cat_id not in self._catalogs:
+            return
+        cat = self._catalogs[cat_id]
+        new_schemas = [updated_schema if s.id == sid else s for s in cat.schemas]
+        self._catalogs[cat_id] = cat.model_copy(update={"schemas": new_schemas})
+
+    def _update_schema_tables_list(
+        self, catalog: str, schema_name: str, updated_table: UnityTable
+    ) -> None:
+        """Replace table in schema's tables list with updated instance (immutable)."""
+        sid = f"schema_{catalog}_{schema_name}"
+        if sid not in self._schemas:
+            return
+        schema = self._schemas[sid]
+        new_tables = [updated_table if t.id == updated_table.id else t for t in schema.tables]
+        self._schemas[sid] = schema.model_copy(update={"tables": new_tables})
+        self._update_catalog_schemas_list(catalog, schema_name, self._schemas[sid])
+
+    def _update_schema_views_list(
+        self, catalog: str, schema_name: str, updated_view: UnityView
+    ) -> None:
+        """Replace view in schema's views list with updated instance (immutable)."""
+        sid = f"schema_{catalog}_{schema_name}"
+        if sid not in self._schemas:
+            return
+        schema = self._schemas[sid]
+        new_views = [updated_view if v.id == updated_view.id else v for v in schema.views]
+        self._schemas[sid] = schema.model_copy(update={"views": new_views})
+        self._update_catalog_schemas_list(catalog, schema_name, self._schemas[sid])
 
     def build(self) -> UnityState:
         """Return the built UnityState (catalogs list)."""
