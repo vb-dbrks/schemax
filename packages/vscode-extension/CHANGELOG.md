@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.4] - 2025-02-19
+
+### Added
+
+- **Help button**: New `?` icon button in the top-right toolbar opens the Quickstart documentation in the browser.
+
+### Changed
+
+- **Docs URLs**: All hardcoded documentation URLs updated from `/schemax-vscode/` to `/schemax/` to match the production GitHub Pages deployment.
+
+### Fixed
+
+- **EnvironmentSummary Docs button**: Trailing slash added to the environments-and-scope URL (avoids redirect on GitHub Pages).
+
 ## [0.1.3] - 2025-02-12
 
 ### Added
