@@ -166,6 +166,34 @@ body {
   gap: 8px;
 }
 
+.help-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.help-button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.help-button:active {
+  transform: scale(0.95);
+}
+
+.help-button .codicon {
+  display: block;
+  font-size: 16px;
+}
+
 .refresh-button {
   display: flex;
   align-items: center;

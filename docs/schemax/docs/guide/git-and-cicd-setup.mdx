@@ -1,0 +1,104 @@
+---
+sidebar_position: 8
+title: Git and CI/CD setup
+---
+
+# Git and CI/CD setup
+
+Run SchemaX in your pipeline **non-interactively**: validate, generate SQL, or apply schema changes. **Pipelines run the CLI only** — you need Python and the `schemax` CLI on the runner; the VS Code extension is not required.
+
+The same [authentication](/guide/authentication/) that works locally (Databricks SDK, profiles, or env vars) works in CI/CD: use environment variables or a profile supplied from a pipeline secret.
+
+## Commands for pipelines
+
+- **Validate** — `schemax validate` (no Databricks auth needed; checks project files and snapshot consistency).
+- **Generate SQL** — `schemax sql --target <env> [--output file.sql]` (no auth needed for generation; output is environment-specific).
+- **Apply** — `schemax apply --target <env> --no-interaction [--dry-run]` (requires Databricks auth; executes SQL). Use `--no-interaction` so the pipeline never prompts (e.g. for snapshot selection). Use `--dry-run` to preview without executing.
+- **Rollback** — `schemax rollback` (partial or to a snapshot) with appropriate flags; see [CLI Reference](/reference/cli/).
+
+Optional: `--auto-rollback` with apply to automatically roll back on failure (see CLI docs).
+
+## Authentication in pipelines
+
+Configure Databricks credentials on the runner so the SDK can authenticate:
+
+1. **Environment variables** — Set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` (or OAuth-related vars) from pipeline secrets. No profile file needed.
+2. **Profile from secret** — Store the contents of a `~/.databrickscfg` profile in a secret; in the job, write it to a file and set `DATABRICKS_CONFIG_FILE` if needed, then run `schemax apply --profile <name> ...`.
+
+Use a **service principal** or **PAT** (personal access token) with the least privileges needed for apply (create/alter catalogs, schemas, tables, and any governance you use).
+
+## GitHub Actions
+
+1. Check out the repo.
+2. Set up Python and install the CLI (`pip install schemaxpy` or install from source).
+3. Set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` (and optional `DATABRICKS_WAREHOUSE_ID` if required) from GitHub secrets.
+4. Run `schemax validate`, then `schemax apply --target <env> --no-interaction` (or `schemax sql` only if you run SQL elsewhere).
+
+Example job shape:
+
+```yaml
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install schemaxpy
+      - run: schemax validate
+      - name: Apply to dev
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: schemax apply --target dev --no-interaction
+```
+
+See the [GitHub Actions examples](https://github.com/vb-dbrks/schemax-vscode/tree/main/examples/github-actions) in the repository for full workflow files.
+
+## Azure DevOps
+
+1. Check out the repository (e.g. `checkout: self`).
+2. Install Python (e.g. UsePythonVersion task or a script) and install the SchemaX CLI (`pip install schemaxpy`).
+3. Set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` from Azure DevOps variables (secret) or from a variable group.
+4. Run `schemax validate` and `schemax apply --target <env> --no-interaction`.
+
+Example pipeline outline:
+
+```yaml
+trigger:
+  - main
+pool:
+  vmImage: ubuntu-latest
+steps:
+  - checkout: self
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.11'
+  - script: pip install schemaxpy
+    displayName: Install SchemaX CLI
+  - script: schemax validate
+    displayName: Validate schema
+  - script: schemax apply --target prod --no-interaction
+    displayName: Apply to prod
+    env:
+      DATABRICKS_HOST: $(DATABRICKS_HOST)
+      DATABRICKS_TOKEN: $(DATABRICKS_TOKEN)
+```
+
+Store `DATABRICKS_HOST` and `DATABRICKS_TOKEN` as secret pipeline variables or in a variable group linked to Azure Key Vault.
+
+## Approval gates (optional)
+
+To require manual approval before apply in production:
+
+- **GitHub Actions** — Use [Environments](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment) with required reviewers. Run the apply job in that environment so the workflow pauses until approval.
+- **Azure DevOps** — Use [Approvals and checks](https://learn.microsoft.com/en-us/azure/devops/pipelines/process/approvals) (e.g. manual validation) on the stage or environment that runs apply.
+
+You can run `schemax apply --dry-run` in a first job to show the planned SQL, then run `schemax apply --no-interaction` in a second job/stage that is protected by the approval gate.
+
+## Next steps
+
+- [Authentication](/guide/authentication/) — Databricks SDK, profiles, same auth locally and in CI/CD
+- [Setup](/guide/setup/) — Install extension and CLI
+- [Workflows](/reference/workflows/) — Apply, rollback, greenfield, brownfield
