@@ -905,14 +905,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
             for sql_part in self._split_sql_statements(sql):
                 execution_order += 1
                 statement_infos.append(
-                    StatementInfo(sql=sql_part, operation_ids=op_ids, execution_order=execution_order)
+                    StatementInfo(
+                        sql=sql_part, operation_ids=op_ids, execution_order=execution_order
+                    )
                 )
 
         for sql, op_ids in schema_stmts:
             for sql_part in self._split_sql_statements(sql):
                 execution_order += 1
                 statement_infos.append(
-                    StatementInfo(sql=sql_part, operation_ids=op_ids, execution_order=execution_order)
+                    StatementInfo(
+                        sql=sql_part, operation_ids=op_ids, execution_order=execution_order
+                    )
                 )
 
         for sql, op_ids in table_stmts:

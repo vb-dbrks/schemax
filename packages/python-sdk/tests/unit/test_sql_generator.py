@@ -232,12 +232,14 @@ class TestManagedLocationSQL:
         create_only = [s for s in sql_texts if "CREATE CATALOG" in s and "ALTER CATALOG" not in s]
         alter_only = [s for s in sql_texts if "ALTER CATALOG" in s and "SET TAGS" in s]
         assert len(create_only) >= 1, "Expected at least one statement with CREATE CATALOG only"
-        assert len(alter_only) >= 1, "Expected at least one statement with ALTER CATALOG SET TAGS only"
+        assert len(alter_only) >= 1, (
+            "Expected at least one statement with ALTER CATALOG SET TAGS only"
+        )
         # No single statement should contain both (regression: previously they were concatenated)
         for stmt in result.statements:
-            assert not (
-                "CREATE CATALOG" in stmt.sql and "ALTER CATALOG" in stmt.sql
-            ), f"One statement must not contain both CREATE and ALTER: {stmt.sql[:200]}..."
+            assert not ("CREATE CATALOG" in stmt.sql and "ALTER CATALOG" in stmt.sql), (
+                f"One statement must not contain both CREATE and ALTER: {stmt.sql[:200]}..."
+            )
 
     def test_schema_with_tags_produces_separate_statements_for_apply(self, empty_unity_state):
         """Regression: CREATE SCHEMA + ALTER SET TAGS must be separate statements for Databricks."""
@@ -261,9 +263,9 @@ class TestManagedLocationSQL:
             "Schema with tags must produce separate CREATE and ALTER statements for apply."
         )
         for stmt in result.statements:
-            assert not (
-                "CREATE SCHEMA" in stmt.sql and "ALTER SCHEMA" in stmt.sql
-            ), f"One statement must not contain both CREATE and ALTER: {stmt.sql[:200]}..."
+            assert not ("CREATE SCHEMA" in stmt.sql and "ALTER SCHEMA" in stmt.sql), (
+                f"One statement must not contain both CREATE and ALTER: {stmt.sql[:200]}..."
+            )
 
     def test_managed_location_not_found(self, sample_unity_state):
         """Test error when managed location not found"""
