@@ -12,20 +12,20 @@ from pathlib import Path
 import pytest
 
 from schemax.providers.unity.ddl_parser import (
+    DDL_STATEMENT_LIMIT,
     AlterTableAddColumn,
     AlterTableAlterColumn,
     AlterTableDropColumn,
     AlterTableRenameColumn,
     AlterTableRenameTo,
     AlterTableSetTblproperties,
+    CommentOn,
     CreateCatalog,
     CreateSchema,
     CreateTable,
     CreateView,
-    CommentOn,
-    Unsupported,
     ParseError,
-    DDL_STATEMENT_LIMIT,
+    Unsupported,
     parse_ddl_statement,
     state_from_ddl,
 )
@@ -50,7 +50,9 @@ class TestParseDdlStatementCreateCatalog:
 
     def test_create_catalog_with_managed_location_command_path(self) -> None:
         # When sqlglot parses as Command (MANAGED LOCATION etc), regex path is used
-        sql = "CREATE CATALOG prod_cat WITH MANAGED LOCATION 'abfss://cont@st.dfs.core.windows.net/';"
+        sql = (
+            "CREATE CATALOG prod_cat WITH MANAGED LOCATION 'abfss://cont@st.dfs.core.windows.net/';"
+        )
         result = parse_ddl_statement(sql, index=0)
         assert isinstance(result, CreateCatalog)
         assert result.name.strip("`\"'").replace(";", "") == "prod_cat"
@@ -73,12 +75,21 @@ class TestParseDdlStatementCreateSchema:
         assert result.name == "public"
 
     def test_create_schema_if_not_exists(self) -> None:
+        result = parse_ddl_statement("CREATE SCHEMA IF NOT EXISTS main.analytics", index=0)
+        assert isinstance(result, CreateSchema)
+        assert result.catalog == "main"
+        assert result.name == "analytics"
+
+    def test_create_schema_command_path_with_comment(self) -> None:
+        # MANAGED LOCATION causes sqlglot to parse as Command; comment must still be extracted
         result = parse_ddl_statement(
-            "CREATE SCHEMA IF NOT EXISTS main.analytics", index=0
+            "CREATE SCHEMA main.analytics MANAGED LOCATION 'abfs://container/path' COMMENT 'Analytics schema'",
+            index=0,
         )
         assert isinstance(result, CreateSchema)
         assert result.catalog == "main"
         assert result.name == "analytics"
+        assert result.comment == "Analytics schema"
 
 
 class TestParseDdlStatementCreateTable:
@@ -195,30 +206,24 @@ class TestParseDdlStatementAlter:
 
     def _assert_alter_unsupported(self, sql: str, index: int = 0) -> None:
         result = parse_ddl_statement(sql, index=index)
-        assert isinstance(result, Unsupported), f"Expected Unsupported, got {type(result).__name__}: {result}"
+        assert isinstance(result, Unsupported), (
+            f"Expected Unsupported, got {type(result).__name__}: {result}"
+        )
         assert result.reason.lower() in ("alter", "alter_other", "command", "alter_no_actions"), (
             f"ALTER should be unsupported: {result.reason}"
         )
 
     def test_alter_catalog_set_tags(self) -> None:
-        self._assert_alter_unsupported(
-            "ALTER CATALOG my_cat SET TAGS ('env' = 'prod');"
-        )
+        self._assert_alter_unsupported("ALTER CATALOG my_cat SET TAGS ('env' = 'prod');")
 
     def test_alter_catalog_owner(self) -> None:
-        self._assert_alter_unsupported(
-            "ALTER CATALOG my_cat SET OWNER TO `account users`;"
-        )
+        self._assert_alter_unsupported("ALTER CATALOG my_cat SET OWNER TO `account users`;")
 
     def test_alter_schema_set_owner(self) -> None:
-        self._assert_alter_unsupported(
-            "ALTER SCHEMA main.analytics SET OWNER TO `data-engineers`;"
-        )
+        self._assert_alter_unsupported("ALTER SCHEMA main.analytics SET OWNER TO `data-engineers`;")
 
     def test_alter_schema_set_tags(self) -> None:
-        self._assert_alter_unsupported(
-            "ALTER SCHEMA main.analytics SET TAGS ('pii' = 'true');"
-        )
+        self._assert_alter_unsupported("ALTER SCHEMA main.analytics SET TAGS ('pii' = 'true');")
 
     def test_alter_table_add_column(self) -> None:
         result = parse_ddl_statement("ALTER TABLE cat.sch.t ADD COLUMN c STRING", index=0)
@@ -373,12 +378,7 @@ class TestStateFromDdl:
         ]
         state_dict, report = state_from_ddl(sql_statements=statements)
         catalogs = state_dict["catalogs"]
-        tables = [
-            t
-            for c in catalogs
-            for s in c.get("schemas", [])
-            for t in s.get("tables", [])
-        ]
+        tables = [t for c in catalogs for s in c.get("schemas", []) for t in s.get("tables", [])]
         assert len(tables) >= 1
         assert tables[0].get("comment") == "table comment"
 

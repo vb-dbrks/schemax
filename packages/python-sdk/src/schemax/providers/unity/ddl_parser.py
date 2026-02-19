@@ -27,7 +27,6 @@ from .models import (
     UnityView,
 )
 
-
 # --- Parsed DDL result types (SRP: parser produces these; builder consumes) ---
 
 
@@ -315,7 +314,11 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                 catalog, schema_name = parts[0], parts[1]
             else:
                 catalog, schema_name = "__implicit__", full_name
-            return CreateSchema(catalog=catalog, name=schema_name, comment=None)
+            comment = None
+            cm = re.search(r"COMMENT\s+['\"]([^'\"]*)['\"]", sql, re.IGNORECASE)
+            if cm:
+                comment = cm.group(1)
+            return CreateSchema(catalog=catalog, name=schema_name, comment=comment)
         if "ALTER TABLE" in sql.upper() and "DROP COLUMN" in sql.upper():
             m = re.match(
                 r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?([^\s]+)\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([^\s,;]+)",
@@ -370,7 +373,11 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
         # CREATE CATALOG name [COMMENT '...']
         if kind == "CATALOG" or (kind == "" and this and "catalog" in sql.lower()[:30]):
             if isinstance(this, (exp.Identifier, exp.Table)):
-                name = this.name or _get_name(this) or (this.this.name if hasattr(this, "this") else "")
+                name = (
+                    this.name
+                    or _get_name(this)
+                    or (this.this.name if hasattr(this, "this") else "")
+                )
                 if not name and hasattr(this, "this"):
                     name = _get_name(this.this)
                 comment = _get_comment_from_create(parsed)
@@ -386,7 +393,9 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                     catalog = catalog.name or "__implicit__"
                 schema_name = this.db or _get_name(this.this) or this.name or ""
                 comment = _get_comment_from_create(parsed)
-                return CreateSchema(catalog=str(catalog), name=schema_name or "unknown", comment=comment)
+                return CreateSchema(
+                    catalog=str(catalog), name=schema_name or "unknown", comment=comment
+                )
             if isinstance(this, exp.Schema):
                 catalog = getattr(this, "catalog", None) or "__implicit__"
                 if isinstance(catalog, exp.Identifier):
@@ -395,7 +404,9 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                 comment = _get_comment_from_create(parsed)
                 return CreateSchema(catalog=str(catalog), name=name or "unknown", comment=comment)
             if isinstance(this, exp.Identifier):
-                return CreateSchema(catalog="__implicit__", name=this.name or "unknown", comment=None)
+                return CreateSchema(
+                    catalog="__implicit__", name=this.name or "unknown", comment=None
+                )
             return Unsupported(reason="create_schema_shape", index=index)
 
         # CREATE TABLE [catalog.]schema.table (cols) USING DELTA|ICEBERG
@@ -420,13 +431,23 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                     col_name = _get_name(expr.this) or expr.this.name if expr.this else ""
                     col_type = "STRING"
                     if expr.kind:
-                        col_type = expr.kind.sql(dialect="databricks") if hasattr(expr.kind, "sql") else str(expr.kind)
+                        col_type = (
+                            expr.kind.sql(dialect="databricks")
+                            if hasattr(expr.kind, "sql")
+                            else str(expr.kind)
+                        )
                     nullable = not (expr.args.get("not_null") or getattr(expr, "not_null", False))
                     col_comment = None
                     if hasattr(expr, "comment") and expr.comment:
-                        col_comment = expr.comment.this if hasattr(expr.comment, "this") else str(expr.comment)
+                        col_comment = (
+                            expr.comment.this
+                            if hasattr(expr.comment, "this")
+                            else str(expr.comment)
+                        )
                     columns.append(
-                        ColumnDef(name=col_name, type=col_type, nullable=nullable, comment=col_comment)
+                        ColumnDef(
+                            name=col_name, type=col_type, nullable=nullable, comment=col_comment
+                        )
                     )
 
             format_val = "delta"
@@ -463,7 +484,11 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                 view_name = _get_name(view_ref.this) or view_ref.name or ""
             definition = ""
             if schema_expr.expressions:
-                definition = schema_expr.expressions[0].sql(dialect="databricks") if schema_expr.expressions else ""
+                definition = (
+                    schema_expr.expressions[0].sql(dialect="databricks")
+                    if schema_expr.expressions
+                    else ""
+                )
             return CreateView(
                 catalog=str(catalog),
                 schema_name=str(schema_name),
@@ -495,17 +520,25 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                     col_name = _get_name(act.this) or (act.this.name if act.this else "")
                     col_type = "STRING"
                     if act.kind:
-                        col_type = act.kind.sql(dialect="databricks") if hasattr(act.kind, "sql") else str(act.kind)
+                        col_type = (
+                            act.kind.sql(dialect="databricks")
+                            if hasattr(act.kind, "sql")
+                            else str(act.kind)
+                        )
                     nullable = not (act.args.get("not_null") or getattr(act, "not_null", False))
                     col_comment = None
                     if hasattr(act, "comment") and act.comment:
-                        col_comment = act.comment.this if hasattr(act.comment, "this") else str(act.comment)
+                        col_comment = (
+                            act.comment.this if hasattr(act.comment, "this") else str(act.comment)
+                        )
                     results.append(
                         AlterTableAddColumn(
                             catalog=catalog,
                             schema_name=schema_name,
                             table_name=table_name,
-                            column=ColumnDef(name=col_name, type=col_type, nullable=nullable, comment=col_comment),
+                            column=ColumnDef(
+                                name=col_name, type=col_type, nullable=nullable, comment=col_comment
+                            ),
                         )
                     )
                 elif type(act).__name__ == "RenameColumn":
@@ -524,12 +557,16 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                         )
                 elif type(act).__name__ == "AlterColumn":
                     col_name = _get_name(act.this) if act.this else ""
-                    nullable = None
+                    allow_null_val: bool | None = None
                     if "allow_null" in (act.args or {}):
-                        nullable = bool(act.args.get("allow_null"))
+                        allow_null_val = bool(act.args.get("allow_null"))
                     new_type = None
                     if hasattr(act, "dtype") and act.dtype:
-                        new_type = act.dtype.sql(dialect="databricks") if hasattr(act.dtype, "sql") else str(act.dtype)
+                        new_type = (
+                            act.dtype.sql(dialect="databricks")
+                            if hasattr(act.dtype, "sql")
+                            else str(act.dtype)
+                        )
                     if col_name:
                         results.append(
                             AlterTableAlterColumn(
@@ -537,7 +574,7 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                                 schema_name=schema_name,
                                 table_name=table_name,
                                 column_name=col_name,
-                                nullable=nullable,
+                                nullable=allow_null_val,
                                 new_type=new_type,
                             )
                         )
@@ -554,7 +591,11 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                                         k = str(k).strip("'\"")
                                     v = prop.args.get("value")
                                     if v is not None:
-                                        v = v.sql(dialect="databricks").strip("'\"") if hasattr(v, "sql") else str(v)
+                                        v = (
+                                            v.sql(dialect="databricks").strip("'\"")
+                                            if hasattr(v, "sql")
+                                            else str(v)
+                                        )
                                     else:
                                         v = ""
                                     props[k] = v
@@ -690,7 +731,9 @@ class UnityDDLStateBuilder:
                 self._schemas[sid] = self._schemas[sid].model_copy(
                     update={"tables": [*self._schemas[sid].tables, new_table]}
                 )
-                self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
+                self._update_catalog_schemas_list(
+                    result.catalog, result.schema_name, self._schemas[sid]
+                )
                 self._report["created"]["tables"] += 1
             return
 
@@ -709,7 +752,9 @@ class UnityDDLStateBuilder:
                 self._schemas[sid] = self._schemas[sid].model_copy(
                     update={"views": [*self._schemas[sid].views, new_view]}
                 )
-                self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
+                self._update_catalog_schemas_list(
+                    result.catalog, result.schema_name, self._schemas[sid]
+                )
                 self._report["created"]["views"] += 1
             return
 
@@ -718,20 +763,38 @@ class UnityDDLStateBuilder:
             if result.object_type == "catalog":
                 cid = f"catalog_{result.name}"
                 if cid in self._catalogs:
-                    self._catalogs[cid] = self._catalogs[cid].model_copy(update={"comment": result.comment})
+                    self._catalogs[cid] = self._catalogs[cid].model_copy(
+                        update={"comment": result.comment}
+                    )
             elif result.object_type in ("schema", "table", "view") and result.schema_name:
                 sid = f"schema_{result.catalog}_{result.schema_name}"
-                if sid in self._schemas and result.object_type == "schema" and result.name == self._schemas[sid].name:
-                    self._schemas[sid] = self._schemas[sid].model_copy(update={"comment": result.comment})
-                    self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
+                if (
+                    sid in self._schemas
+                    and result.object_type == "schema"
+                    and result.name == self._schemas[sid].name
+                ):
+                    self._schemas[sid] = self._schemas[sid].model_copy(
+                        update={"comment": result.comment}
+                    )
+                    self._update_catalog_schemas_list(
+                        result.catalog, result.schema_name, self._schemas[sid]
+                    )
                 tid = f"table_{result.catalog}_{result.schema_name}_{result.name}"
                 if tid in self._tables:
-                    self._tables[tid] = self._tables[tid].model_copy(update={"comment": result.comment})
-                    self._update_schema_tables_list(result.catalog, result.schema_name, self._tables[tid])
+                    self._tables[tid] = self._tables[tid].model_copy(
+                        update={"comment": result.comment}
+                    )
+                    self._update_schema_tables_list(
+                        result.catalog, result.schema_name, self._tables[tid]
+                    )
                 vid = f"view_{result.catalog}_{result.schema_name}_{result.name}"
                 if vid in self._views:
-                    self._views[vid] = self._views[vid].model_copy(update={"comment": result.comment})
-                    self._update_schema_views_list(result.catalog, result.schema_name, self._views[vid])
+                    self._views[vid] = self._views[vid].model_copy(
+                        update={"comment": result.comment}
+                    )
+                    self._update_schema_views_list(
+                        result.catalog, result.schema_name, self._views[vid]
+                    )
             return
 
         if isinstance(result, AlterTableAddColumn):
@@ -771,7 +834,12 @@ class UnityDDLStateBuilder:
                 for col in t.columns:
                     if col.name == result.old_name:
                         new_columns.append(
-                            col.model_copy(update={"name": result.new_name, "id": f"col_{tid}_{result.new_name}"})
+                            col.model_copy(
+                                update={
+                                    "name": result.new_name,
+                                    "id": f"col_{tid}_{result.new_name}",
+                                }
+                            )
                         )
                     else:
                         new_columns.append(col)
@@ -813,11 +881,14 @@ class UnityDDLStateBuilder:
                 sid = f"schema_{result.catalog}_{result.schema_name}"
                 if sid in self._schemas:
                     new_tables = [
-                        new_table if x.id == tid_old else x
-                        for x in self._schemas[sid].tables
+                        new_table if x.id == tid_old else x for x in self._schemas[sid].tables
                     ]
-                    self._schemas[sid] = self._schemas[sid].model_copy(update={"tables": new_tables})
-                    self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
+                    self._schemas[sid] = self._schemas[sid].model_copy(
+                        update={"tables": new_tables}
+                    )
+                    self._update_catalog_schemas_list(
+                        result.catalog, result.schema_name, self._schemas[sid]
+                    )
             return
 
         if isinstance(result, AlterTableSetTblproperties):
@@ -835,24 +906,29 @@ class UnityDDLStateBuilder:
             if isinstance(result, AlterCatalogSetTags):
                 cid = f"catalog_{result.name}"
                 if cid in self._catalogs:
-                    cur = self._catalogs[cid]
-                    new_tags = {**(getattr(cur, "tags", None) or {}), **result.tags}
-                    self._catalogs[cid] = cur.model_copy(update={"tags": new_tags})
+                    catalog_obj = self._catalogs[cid]
+                    new_tags = {**(getattr(catalog_obj, "tags", None) or {}), **result.tags}
+                    self._catalogs[cid] = catalog_obj.model_copy(update={"tags": new_tags})
             elif isinstance(result, AlterSchemaSetTags):
                 sid = f"schema_{result.catalog}_{result.schema_name}"
                 if sid in self._schemas:
-                    cur = self._schemas[sid]
-                    new_tags = {**(getattr(cur, "tags", None) or {}), **result.tags}
-                    self._schemas[sid] = cur.model_copy(update={"tags": new_tags})
-                    self._update_catalog_schemas_list(result.catalog, result.schema_name, self._schemas[sid])
+                    schema_obj = self._schemas[sid]
+                    new_tags = {**(getattr(schema_obj, "tags", None) or {}), **result.tags}
+                    updated_schema = schema_obj.model_copy(update={"tags": new_tags})
+                    self._schemas[sid] = updated_schema
+                    self._update_catalog_schemas_list(
+                        result.catalog, result.schema_name, updated_schema
+                    )
             else:
                 tid = f"table_{result.catalog}_{result.schema_name}_{result.table_name}"
                 if tid in self._tables:
-                    cur = self._tables[tid]
-                    new_tags = {**(getattr(cur, "tags", None) or {}), **result.tags}
-                    new_table = cur.model_copy(update={"tags": new_tags})
-                    self._tables[tid] = new_table
-                    self._update_schema_tables_list(result.catalog, result.schema_name, new_table)
+                    table_obj = self._tables[tid]
+                    new_tags = {**(getattr(table_obj, "tags", None) or {}), **result.tags}
+                    updated_table = table_obj.model_copy(update={"tags": new_tags})
+                    self._tables[tid] = updated_table
+                    self._update_schema_tables_list(
+                        result.catalog, result.schema_name, updated_table
+                    )
             return
 
     def _ensure_catalog_schema(self, catalog: str, schema_name: str) -> None:

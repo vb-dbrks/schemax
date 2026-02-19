@@ -11,6 +11,9 @@ Foundational, provider-agnostic infrastructure for SchemaX:
 # Storage exports
 # Deployment exports
 from .deployment import DeploymentTracker
+
+# SQL utils exports
+from .sql_utils import split_sql_statements
 from .storage import (
     append_ops,
     create_snapshot,
@@ -31,9 +34,6 @@ from .storage import (
     write_project,
     write_snapshot,
 )
-
-# SQL utils exports
-from .sql_utils import split_sql_statements
 
 # Version exports
 from .version import (

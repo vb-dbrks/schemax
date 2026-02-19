@@ -380,9 +380,7 @@ class TestImportFromSqlFile:
                 dry_run=True,
             )
 
-    def test_mode_replace_produces_ops_and_appends_when_not_dry_run(
-        self, temp_workspace, tmp_path
-    ):
+    def test_mode_replace_produces_ops_and_appends_when_not_dry_run(self, temp_workspace, tmp_path):
         from schemax.core.storage import ensure_project_file
         from schemax.providers import ProviderRegistry
 
@@ -460,9 +458,7 @@ class TestImportFromSqlFile:
         provider.get_state_differ = lambda **kwargs: SimpleNamespace(
             generate_diff_operations=lambda: []
         )
-        provider.state_from_ddl = lambda **kwargs: (_ for _ in ()).throw(
-            ValueError("Invalid DDL")
-        )
+        provider.state_from_ddl = lambda **kwargs: (_ for _ in ()).throw(ValueError("Invalid DDL"))
         with patch("schemax.commands.import_assets.load_current_state") as mock_load:
             mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
             with pytest.raises(ImportError, match="Invalid DDL"):

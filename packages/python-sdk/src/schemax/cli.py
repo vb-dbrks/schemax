@@ -292,7 +292,9 @@ def bundle(target: str, version: str, output: str) -> None:
     default="diff",
     help="For --from-sql: diff = append ops to changelog; replace = treat SQL state as new baseline",
 )
-@click.option("--target", "-t", help="Target environment (required for live import; optional for --from-sql)")
+@click.option(
+    "--target", "-t", help="Target environment (required for live import; optional for --from-sql)"
+)
 @click.option("--profile", "-p", help="Databricks profile name (required for live import)")
 @click.option("--warehouse-id", "-w", help="SQL warehouse ID (required for live import)")
 @click.option("--catalog", help="Catalog name to import (live import only)")

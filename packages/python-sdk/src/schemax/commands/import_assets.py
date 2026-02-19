@@ -257,13 +257,14 @@ def import_from_sql_file(
         raise ImportError(str(e)) from e
 
     import_warnings: list[str] = []
-    created = report.get("created", {})
     skipped = report.get("skipped", 0)
     parse_errors = report.get("parse_errors", [])
     if skipped:
         import_warnings.append(f"Skipped {skipped} statement(s) (unsupported or non-DDL).")
     for err in parse_errors[:5]:
-        import_warnings.append(f"Parse error at statement {err.get('index', '?')}: {err.get('message', '')[:80]}")
+        import_warnings.append(
+            f"Parse error at statement {err.get('index', '?')}: {err.get('message', '')[:80]}"
+        )
     if len(parse_errors) > 5:
         import_warnings.append(f"... and {len(parse_errors) - 5} more parse error(s).")
 
@@ -329,9 +330,7 @@ def import_from_sql_file(
     else:
         console.print("[green]✓[/green] No import operations required")
 
-    console.print(
-        "[dim]Next:[/dim] Create a snapshot and run apply when you are ready to deploy."
-    )
+    console.print("[dim]Next:[/dim] Create a snapshot and run apply when you are ready to deploy.")
     return summary
 
 

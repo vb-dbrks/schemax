@@ -2,8 +2,6 @@
 Unit tests for schemax.core.sql_utils (statement splitting).
 """
 
-import pytest
-
 from schemax.core.sql_utils import split_sql_statements
 
 
