@@ -57,3 +57,9 @@ class TestSplitSqlStatements:
         result = split_sql_statements(sql)
         assert len(result) == 2
         assert result[1] == "CREATE SCHEMA c.s"
+
+    def test_inline_comment_after_semicolon_not_separate_statement(self) -> None:
+        """Trailing -- comment on same line as semicolon must not become a statement."""
+        sql = "SELECT 1; -- comment"
+        result = split_sql_statements(sql)
+        assert result == ["SELECT 1"]

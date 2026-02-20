@@ -1015,7 +1015,8 @@ def state_from_ddl(
     Args:
         sql_path: Path to .sql file (read and split).
         sql_statements: Alternatively, pre-split list of statements.
-        dialect: SQL dialect (only databricks supported in v1).
+        dialect: Reserved for future use. Parsing and serialization currently
+            use the Databricks dialect only; this argument is ignored.
 
     Returns:
         (state_dict, report). state_dict is UnityState as dict for ProviderState.

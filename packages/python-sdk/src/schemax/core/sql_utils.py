@@ -31,6 +31,7 @@ def split_sql_statements(sql_text: str) -> list[str]:
         if stripped.startswith("--"):
             continue
 
+        saw_statement_end = False
         for char in line:
             if char == "'" and not in_double_quote:
                 in_single_quote = not in_single_quote
@@ -42,9 +43,12 @@ def split_sql_statements(sql_text: str) -> list[str]:
                 if statement:
                     statements.append(statement)
                 current = []
+                saw_statement_end = True
+                break  # rest of line is trailing comment/whitespace; skip
             else:
                 current.append(char)
-        current.append("\n")
+        if not saw_statement_end:
+            current.append("\n")
 
     tail = "".join(current).strip()
     if tail:

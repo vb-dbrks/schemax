@@ -216,7 +216,8 @@ class Provider(ABC):
         Args:
             sql_path: Path to a .sql file (read and split internally).
             sql_statements: Alternatively, a list of raw SQL statements.
-            dialect: SQL dialect for parsing (e.g. databricks).
+            dialect: SQL dialect for parsing (e.g. databricks). May be ignored
+                by providers that only support one dialect.
 
         Returns:
             Tuple of (provider_state, report). Report is provider-specific (e.g.

@@ -219,8 +219,10 @@ export function ImportAssetsPanel({
           <div className="import-tabs" role="tablist" aria-label="Import source">
             <button
               type="button"
+              id="import-tab-databricks"
               role="tab"
               aria-selected={activeTab === 'databricks'}
+              aria-controls="import-panel-databricks"
               className={`import-tab ${activeTab === 'databricks' ? 'import-tab--active' : ''}`}
               onClick={() => setActiveTab('databricks')}
               disabled={isRunning}
@@ -229,8 +231,10 @@ export function ImportAssetsPanel({
             </button>
             <button
               type="button"
+              id="import-tab-sql"
               role="tab"
               aria-selected={activeTab === 'sql'}
+              aria-controls="import-panel-sql"
               className={`import-tab ${activeTab === 'sql' ? 'import-tab--active' : ''}`}
               onClick={() => setActiveTab('sql')}
               disabled={isRunning}
@@ -240,7 +244,12 @@ export function ImportAssetsPanel({
           </div>
 
           {activeTab === 'sql' && (
-            <div className="import-tab-panel" role="tabpanel" aria-labelledby="import-tab-sql">
+            <div
+              id="import-panel-sql"
+              className="import-tab-panel"
+              role="tabpanel"
+              aria-labelledby="import-tab-sql"
+            >
               <div className="modal-field">
                 <FieldLabel
                   text="SQL file path"
@@ -306,7 +315,12 @@ export function ImportAssetsPanel({
           )}
 
           {activeTab === 'databricks' && (
-            <>
+            <div
+              id="import-panel-databricks"
+              className="import-tab-panel"
+              role="tabpanel"
+              aria-labelledby="import-tab-databricks"
+            >
           <div className="modal-field">
             <FieldLabel
               text="Target Environment"
@@ -468,7 +482,7 @@ export function ImportAssetsPanel({
                   ? 'Execution summary: write import operations and adopt the imported snapshot as deployed baseline.'
                   : 'Execution summary: write import operations without adopting baseline.')}
           </p>
-            </>
+            </div>
           )}
 
           {validationError && (

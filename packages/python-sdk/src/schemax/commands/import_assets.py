@@ -269,8 +269,26 @@ def import_from_sql_file(
         import_warnings.append(f"... and {len(parse_errors) - 5} more parse error(s).")
 
     old_state = provider.create_initial_state() if mode == "replace" else state
-    new_state = parsed_state
     old_ops = [] if mode == "replace" else changelog.get("ops", [])
+
+    # In diff mode with target_env, normalize parsed state so ids align with local state
+    # (avoids spurious drop+recreate when names match but ids differ).
+    mappings_updated = False
+    catalog_mappings: dict[str, str] = {}
+    if mode == "diff" and target_env:
+        project = read_project(workspace)
+        env_config = get_environment_config(project, target_env)
+        try:
+            new_state, catalog_mappings, mappings_updated = provider.prepare_import_state(
+                local_state=state,
+                discovered_state=parsed_state,
+                env_config=env_config,
+                mapping_overrides=None,
+            )
+        except Exception as e:
+            raise ImportError(str(e)) from e
+    else:
+        new_state = parsed_state
 
     differ = provider.get_state_differ(
         old_state=old_state,
@@ -329,6 +347,13 @@ def import_from_sql_file(
         console.print(f"[green]✓[/green] Imported {len(import_ops)} operation(s) into changelog")
     else:
         console.print("[green]✓[/green] No import operations required")
+
+    if mappings_updated and target_env:
+        project = read_project(workspace)
+        env_config = get_environment_config(project, target_env)
+        provider.update_env_import_mappings(env_config, catalog_mappings)
+        write_project(workspace, project)
+        console.print(f"[green]✓[/green] Updated catalog mappings for environment '{target_env}'")
 
     console.print("[dim]Next:[/dim] Create a snapshot and run apply when you are ready to deploy.")
     return summary
