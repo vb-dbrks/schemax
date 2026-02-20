@@ -6,7 +6,6 @@ from typing import Any
 
 from schemax.providers import ProviderRegistry
 from schemax.providers.base.executor import ExecutionConfig
-
 from tests.utils.live_databricks import (
     LiveDatabricksConfig,
     build_execution_config,

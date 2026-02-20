@@ -61,6 +61,13 @@ SchemaX uses a `.schemax` folder in your workspace:
 
 ---
 
+## Development / Testing
+
+- Run tests: `npm test` (unit + integration).
+- UI testing guide (unit, integration, E2E): see [TESTING-UI.md](TESTING-UI.md).
+
+---
+
 ## Links
 
 - **Documentation**: [vb-dbrks.github.io/schemax](https://vb-dbrks.github.io/schemax/)

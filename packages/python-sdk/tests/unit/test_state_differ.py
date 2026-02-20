@@ -2156,7 +2156,13 @@ class TestUnityStateDifferVolumeFunctionMaterializedView:
                     "id": "cat_1",
                     "name": "analytics",
                     "schemas": [
-                        {"id": "sch_1", "name": "bronze", "tables": [], "views": [], "functions": []},
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "functions": [],
+                        },
                     ],
                 },
             ]
@@ -2206,7 +2212,13 @@ class TestUnityStateDifferVolumeFunctionMaterializedView:
                             "tables": [],
                             "views": [],
                             "functions": [
-                                {"id": "func_1", "name": "old_fn", "language": "SQL", "returnType": "INT", "body": "1"},
+                                {
+                                    "id": "func_1",
+                                    "name": "old_fn",
+                                    "language": "SQL",
+                                    "returnType": "INT",
+                                    "body": "1",
+                                },
                             ],
                         },
                     ],
@@ -2219,7 +2231,13 @@ class TestUnityStateDifferVolumeFunctionMaterializedView:
                     "id": "cat_1",
                     "name": "analytics",
                     "schemas": [
-                        {"id": "sch_1", "name": "bronze", "tables": [], "views": [], "functions": []},
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "functions": [],
+                        },
                     ],
                 },
             ]
@@ -2344,7 +2362,13 @@ class TestUnityStateDifferVolumeFunctionMaterializedView:
                                 {"id": "vol_1", "name": "data_vol", "volumeType": "managed"},
                             ],
                             "functions": [
-                                {"id": "func_1", "name": "helper", "language": "SQL", "returnType": "INT", "body": "1"},
+                                {
+                                    "id": "func_1",
+                                    "name": "helper",
+                                    "language": "SQL",
+                                    "returnType": "INT",
+                                    "body": "1",
+                                },
                             ],
                             "materialized_views": [
                                 {"id": "mv_1", "name": "summary_mv", "definition": "SELECT 1"},

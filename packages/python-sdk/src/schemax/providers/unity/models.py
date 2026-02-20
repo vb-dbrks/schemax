@@ -143,9 +143,7 @@ class UnityVolume(BaseModel):
 
     id: str
     name: str
-    volume_type: Literal["managed", "external"] = Field(
-        "managed", alias="volumeType"
-    )
+    volume_type: Literal["managed", "external"] = Field("managed", alias="volumeType")
     comment: str | None = None
     location: str | None = None  # For external volumes
     grants: list[UnityGrant] = []
@@ -190,15 +188,11 @@ class UnityMaterializedView(BaseModel):
     definition: str  # SQL query (SELECT statement)
     comment: str | None = None
     refresh_schedule: str | None = Field(None, alias="refreshSchedule")
-    partition_columns: list[str] | None = Field(
-        None, alias="partitionColumns"
-    )
+    partition_columns: list[str] | None = Field(None, alias="partitionColumns")
     cluster_columns: list[str] | None = Field(None, alias="clusterColumns")
     properties: dict[str, str] = {}
     dependencies: list[str] | None = None
-    extracted_dependencies: dict[str, list[str]] | None = Field(
-        None, alias="extractedDependencies"
-    )
+    extracted_dependencies: dict[str, list[str]] | None = Field(None, alias="extractedDependencies")
     grants: list[UnityGrant] = []
 
     model_config = ConfigDict(populate_by_name=True)

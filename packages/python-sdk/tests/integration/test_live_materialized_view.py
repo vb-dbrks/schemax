@@ -31,10 +31,7 @@ from tests.utils.live_databricks import (
 
 def _seed_uc_objects_fixture(executor, config: object, catalog: str, managed_root: str) -> None:
     fixture_path = (
-        Path(__file__).resolve().parents[1]
-        / "resources"
-        / "sql"
-        / "unity_uc_objects_fixture.sql"
+        Path(__file__).resolve().parents[1] / "resources" / "sql" / "unity_uc_objects_fixture.sql"
     )
     statements = load_sql_fixture(
         fixture_path,
@@ -76,11 +73,16 @@ def test_live_import_sees_materialized_view(tmp_path: Path) -> None:
         assert init_result.exit_code == 0, init_result.output
         import_result = invoke_cli(
             "import",
-            "--target", "dev",
-            "--profile", config.profile,
-            "--warehouse-id", config.warehouse_id,
-            "--catalog", catalog,
-            "--catalog-map", f"{catalog}={catalog}",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--catalog",
+            catalog,
+            "--catalog-map",
+            f"{catalog}={catalog}",
             str(workspace),
         )
         assert import_result.exit_code == 0, import_result.output
@@ -144,18 +146,23 @@ def test_live_e2e_apply_materialized_view(tmp_path: Path) -> None:
         )
         import_result = invoke_cli(
             "import",
-            "--target", "dev",
-            "--profile", config.profile,
-            "--warehouse-id", config.warehouse_id,
-            "--catalog", physical_catalog,
-            "--catalog-map", f"{logical_catalog}={physical_catalog}",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--catalog",
+            physical_catalog,
+            "--catalog-map",
+            f"{logical_catalog}={physical_catalog}",
             "--adopt-baseline",
             str(workspace),
         )
         assert import_result.exit_code == 0, import_result.output
-        baseline_version = json.loads(
-            (workspace / ".schemax" / "project.json").read_text()
-        ).get("latestSnapshot")
+        baseline_version = json.loads((workspace / ".schemax" / "project.json").read_text()).get(
+            "latestSnapshot"
+        )
         assert baseline_version, "No baseline snapshot after import adoption"
         state, _, _, _ = load_current_state(workspace, validate=False)
         catalog_state = next(c for c in state["catalogs"] if c.get("name") == logical_catalog)
@@ -167,16 +174,29 @@ def test_live_e2e_apply_materialized_view(tmp_path: Path) -> None:
             workspace,
             [
                 builder.add_table(
-                    table_id, table_name, schema_id, "delta",
+                    table_id,
+                    table_name,
+                    schema_id,
+                    "delta",
                     op_id=f"op_table_mv_{suffix}",
                 ),
                 builder.add_column(
-                    f"col_id_mv_{suffix}", table_id, "event_id", "BIGINT",
-                    nullable=False, comment="Event id", op_id=f"op_col_id_mv_{suffix}",
+                    f"col_id_mv_{suffix}",
+                    table_id,
+                    "event_id",
+                    "BIGINT",
+                    nullable=False,
+                    comment="Event id",
+                    op_id=f"op_col_id_mv_{suffix}",
                 ),
                 builder.add_column(
-                    f"col_val_mv_{suffix}", table_id, "event_type", "STRING",
-                    nullable=True, comment="Event type", op_id=f"op_col_val_mv_{suffix}",
+                    f"col_val_mv_{suffix}",
+                    table_id,
+                    "event_type",
+                    "STRING",
+                    nullable=True,
+                    comment="Event type",
+                    op_id=f"op_col_val_mv_{suffix}",
                 ),
                 builder.add_materialized_view(
                     mv_id,
@@ -189,14 +209,23 @@ def test_live_e2e_apply_materialized_view(tmp_path: Path) -> None:
             ],
         )
         snapshot_v2 = invoke_cli(
-            "snapshot", "create", "--name", "MV delta", "--version", "v0.2.0", str(workspace),
+            "snapshot",
+            "create",
+            "--name",
+            "MV delta",
+            "--version",
+            "v0.2.0",
+            str(workspace),
         )
         assert snapshot_v2.exit_code == 0, snapshot_v2.output
         apply_result = invoke_cli(
             "apply",
-            "--target", "dev",
-            "--profile", config.profile,
-            "--warehouse-id", config.warehouse_id,
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
             "--no-interaction",
             str(workspace),
         )
@@ -205,10 +234,14 @@ def test_live_e2e_apply_materialized_view(tmp_path: Path) -> None:
         assert materialized_view_exists(config, physical_catalog, schema_name, mv_name)
         rollback_result = invoke_cli(
             "rollback",
-            "--target", "dev",
-            "--to-snapshot", baseline_version,
-            "--profile", config.profile,
-            "--warehouse-id", config.warehouse_id,
+            "--target",
+            "dev",
+            "--to-snapshot",
+            baseline_version,
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
             "--no-interaction",
             str(workspace),
         )
@@ -267,18 +300,23 @@ def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> Non
         )
         import_result = invoke_cli(
             "import",
-            "--target", "dev",
-            "--profile", config.profile,
-            "--warehouse-id", config.warehouse_id,
-            "--catalog", physical_catalog,
-            "--catalog-map", f"{logical_catalog}={physical_catalog}",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--catalog",
+            physical_catalog,
+            "--catalog-map",
+            f"{logical_catalog}={physical_catalog}",
             "--adopt-baseline",
             str(workspace),
         )
         assert import_result.exit_code == 0, import_result.output
-        baseline_version = json.loads(
-            (workspace / ".schemax" / "project.json").read_text()
-        ).get("latestSnapshot")
+        baseline_version = json.loads((workspace / ".schemax" / "project.json").read_text()).get(
+            "latestSnapshot"
+        )
         assert baseline_version, "No baseline snapshot after import adoption"
         state, _, _, _ = load_current_state(workspace, validate=False)
         catalog_state = next(c for c in state["catalogs"] if c.get("name") == logical_catalog)
@@ -290,40 +328,76 @@ def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> Non
             workspace,
             [
                 builder.add_table(
-                    table_id, table_name, schema_id, "delta",
+                    table_id,
+                    table_name,
+                    schema_id,
+                    "delta",
                     op_id=f"op_table_uc_{suffix}",
                 ),
                 builder.add_column(
-                    f"col_id_uc_{suffix}", table_id, "event_id", "BIGINT",
-                    nullable=False, comment="Event id", op_id=f"op_col_id_uc_{suffix}",
+                    f"col_id_uc_{suffix}",
+                    table_id,
+                    "event_id",
+                    "BIGINT",
+                    nullable=False,
+                    comment="Event id",
+                    op_id=f"op_col_id_uc_{suffix}",
                 ),
                 builder.add_column(
-                    f"col_val_uc_{suffix}", table_id, "event_type", "STRING",
-                    nullable=True, comment="Event type", op_id=f"op_col_val_uc_{suffix}",
+                    f"col_val_uc_{suffix}",
+                    table_id,
+                    "event_type",
+                    "STRING",
+                    nullable=True,
+                    comment="Event type",
+                    op_id=f"op_col_val_uc_{suffix}",
                 ),
                 builder.add_volume(
-                    vol_id, volume_name, schema_id, "managed",
-                    comment="E2E volume", op_id=f"op_vol_uc_{suffix}",
+                    vol_id,
+                    volume_name,
+                    schema_id,
+                    "managed",
+                    comment="E2E volume",
+                    op_id=f"op_vol_uc_{suffix}",
                 ),
                 builder.add_function(
-                    func_id, function_name, schema_id, "SQL", "INT", "1",
-                    comment="E2E function", op_id=f"op_func_uc_{suffix}",
+                    func_id,
+                    function_name,
+                    schema_id,
+                    "SQL",
+                    "INT",
+                    "1",
+                    comment="E2E function",
+                    op_id=f"op_func_uc_{suffix}",
                 ),
                 builder.add_materialized_view(
-                    mv_id, mv_name, schema_id, f"SELECT * FROM {table_name}",
-                    comment="E2E MV", op_id=f"op_mv_uc_{suffix}",
+                    mv_id,
+                    mv_name,
+                    schema_id,
+                    f"SELECT * FROM {table_name}",
+                    comment="E2E MV",
+                    op_id=f"op_mv_uc_{suffix}",
                 ),
             ],
         )
         snapshot_v2 = invoke_cli(
-            "snapshot", "create", "--name", "UC objects delta", "--version", "v0.2.0", str(workspace),
+            "snapshot",
+            "create",
+            "--name",
+            "UC objects delta",
+            "--version",
+            "v0.2.0",
+            str(workspace),
         )
         assert snapshot_v2.exit_code == 0, snapshot_v2.output
         apply_result = invoke_cli(
             "apply",
-            "--target", "dev",
-            "--profile", config.profile,
-            "--warehouse-id", config.warehouse_id,
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
             "--no-interaction",
             str(workspace),
         )
@@ -334,10 +408,14 @@ def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> Non
         assert materialized_view_exists(config, physical_catalog, schema_name, mv_name)
         rollback_result = invoke_cli(
             "rollback",
-            "--target", "dev",
-            "--to-snapshot", baseline_version,
-            "--profile", config.profile,
-            "--warehouse-id", config.warehouse_id,
+            "--target",
+            "dev",
+            "--to-snapshot",
+            baseline_version,
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
             "--no-interaction",
             str(workspace),
         )

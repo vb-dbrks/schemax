@@ -315,17 +315,20 @@ class UnityStateDiffer(StateDiffer):
                 old_vol = old_volumes[vol_id]
                 if old_vol.get("name") != vol.get("name"):
                     if self._detect_rename(
-                        vol_id, vol_id, old_vol.get("name", ""), vol.get("name", ""), "rename_volume"
+                        vol_id,
+                        vol_id,
+                        old_vol.get("name", ""),
+                        vol.get("name", ""),
+                        "rename_volume",
                     ):
                         ops.append(
                             self._create_rename_volume_op(
                                 vol_id, old_vol.get("name", ""), vol.get("name", "")
                             )
                         )
-                if (
-                    old_vol.get("comment") != vol.get("comment")
-                    or old_vol.get("location") != vol.get("location")
-                ):
+                if old_vol.get("comment") != vol.get("comment") or old_vol.get(
+                    "location"
+                ) != vol.get("location"):
                     ops.append(self._create_update_volume_op(vol_id, vol))
                 ops.extend(
                     self._diff_grants(
@@ -371,10 +374,9 @@ class UnityStateDiffer(StateDiffer):
                                 func_id, old_func.get("name", ""), func.get("name", "")
                             )
                         )
-                if (
-                    old_func.get("body") != func.get("body")
-                    or old_func.get("returnType") != func.get("returnType")
-                ):
+                if old_func.get("body") != func.get("body") or old_func.get(
+                    "returnType"
+                ) != func.get("returnType"):
                     ops.append(self._create_update_function_op(func_id, func))
                 if old_func.get("comment") != func.get("comment"):
                     ops.append(self._create_set_function_comment_op(func_id, func.get("comment")))
@@ -410,9 +412,7 @@ class UnityStateDiffer(StateDiffer):
         for mv_id, mv in new_mvs.items():
             if mv_id not in old_mvs:
                 ops.append(self._create_add_materialized_view_op(mv, schema_id))
-                ops.extend(
-                    self._diff_grants("materialized_view", mv_id, [], mv.get("grants", []))
-                )
+                ops.extend(self._diff_grants("materialized_view", mv_id, [], mv.get("grants", [])))
             else:
                 old_mv = old_mvs[mv_id]
                 if old_mv.get("name") != mv.get("name"):
@@ -428,16 +428,13 @@ class UnityStateDiffer(StateDiffer):
                                 mv_id, old_mv.get("name", ""), mv.get("name", "")
                             )
                         )
-                if (
-                    old_mv.get("definition") != mv.get("definition")
-                    or old_mv.get("refreshSchedule") != mv.get("refreshSchedule")
-                ):
+                if old_mv.get("definition") != mv.get("definition") or old_mv.get(
+                    "refreshSchedule"
+                ) != mv.get("refreshSchedule"):
                     ops.append(self._create_update_materialized_view_op(mv_id, mv))
                 if old_mv.get("comment") != mv.get("comment"):
                     ops.append(
-                        self._create_set_materialized_view_comment_op(
-                            mv_id, mv.get("comment")
-                        )
+                        self._create_set_materialized_view_comment_op(mv_id, mv.get("comment"))
                     )
                 ops.extend(
                     self._diff_grants(
@@ -850,9 +847,7 @@ class UnityStateDiffer(StateDiffer):
         for mv in mvs:
             mv_id = mv["id"]
             ops.append(self._create_add_materialized_view_op(mv, schema_id))
-            ops.extend(
-                self._diff_grants("materialized_view", mv_id, [], mv.get("grants", []))
-            )
+            ops.extend(self._diff_grants("materialized_view", mv_id, [], mv.get("grants", [])))
         return ops
 
     def _add_all_columns_in_table(self, table_id: str, table: dict[str, Any]) -> list[Operation]:
@@ -1155,9 +1150,7 @@ class UnityStateDiffer(StateDiffer):
             payload=payload,
         )
 
-    def _create_rename_volume_op(
-        self, volume_id: str, old_name: str, new_name: str
-    ) -> Operation:
+    def _create_rename_volume_op(self, volume_id: str, old_name: str, new_name: str) -> Operation:
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
@@ -1237,9 +1230,7 @@ class UnityStateDiffer(StateDiffer):
             payload={"oldName": old_name, "newName": new_name},
         )
 
-    def _create_update_function_op(
-        self, function_id: str, func: dict[str, Any]
-    ) -> Operation:
+    def _create_update_function_op(self, function_id: str, func: dict[str, Any]) -> Operation:
         payload: dict[str, Any] = {
             "body": func.get("body"),
             "returnType": func.get("returnType", func.get("return_type")),
@@ -1255,9 +1246,7 @@ class UnityStateDiffer(StateDiffer):
             payload=payload,
         )
 
-    def _create_set_function_comment_op(
-        self, function_id: str, comment: str | None
-    ) -> Operation:
+    def _create_set_function_comment_op(self, function_id: str, comment: str | None) -> Operation:
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
@@ -1285,9 +1274,7 @@ class UnityStateDiffer(StateDiffer):
         )
 
     # Materialized view operation creators
-    def _create_add_materialized_view_op(
-        self, mv: dict[str, Any], schema_id: str
-    ) -> Operation:
+    def _create_add_materialized_view_op(self, mv: dict[str, Any], schema_id: str) -> Operation:
         mv_id = mv.get("id", "")
         payload: dict[str, Any] = {
             "materializedViewId": mv_id,
@@ -1326,9 +1313,7 @@ class UnityStateDiffer(StateDiffer):
             payload={"oldName": old_name, "newName": new_name},
         )
 
-    def _create_update_materialized_view_op(
-        self, mv_id: str, mv: dict[str, Any]
-    ) -> Operation:
+    def _create_update_materialized_view_op(self, mv_id: str, mv: dict[str, Any]) -> Operation:
         payload: dict[str, Any] = {
             "definition": mv.get("definition"),
             "refreshSchedule": mv.get("refreshSchedule", mv.get("refresh_schedule")),

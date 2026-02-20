@@ -966,7 +966,7 @@ class TestUnityProvider:
                 config=config,
                 scope={"catalog": "main", "schema": "analytics"},
             )
-            warnings = unity_provider.collect_import_warnings(
+            _ = unity_provider.collect_import_warnings(
                 config=config,
                 scope={"catalog": "main", "schema": "analytics"},
                 discovered_state=state,

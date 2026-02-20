@@ -978,9 +978,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 view_result = self._generate_view_sql_with_mapping(object_id, batch_info)
                 view_stmts.extend(view_result)  # List of (sql, op_ids) tuples
             elif object_type == "materialized_view":
-                mv_result = self._generate_materialized_view_sql_with_mapping(
-                    object_id, batch_info
-                )
+                mv_result = self._generate_materialized_view_sql_with_mapping(object_id, batch_info)
                 materialized_view_stmts.extend(mv_result)
             elif object_type == "volume":
                 vol_result = self._generate_volume_sql_with_mapping(object_id, batch_info)
@@ -1944,8 +1942,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
             schema_id = op.payload.get("schemaId")
             if not name:
                 return self._build_fqn("unknown", "unknown", "unknown")
-            schema_fqn = self.id_name_map.get(schema_id, "unknown.unknown")
-            catalog_name = self.id_name_map.get(catalog_id, "unknown")
+            schema_fqn = self.id_name_map.get(schema_id or "", "unknown.unknown")
+            catalog_name = self.id_name_map.get(catalog_id or "", "unknown")
             parts_schema = schema_fqn.split(".", 1)
             cat_from_schema = parts_schema[0] if parts_schema else catalog_name
             catalog_physical = self.catalog_name_mapping.get(cat_from_schema, cat_from_schema)
@@ -2199,7 +2197,6 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _update_materialized_view(self, op: Operation) -> str:
         """Generate CREATE OR REPLACE MATERIALIZED VIEW or ALTER for schedule/comment"""
-        schema_id = op.payload.get("schemaId")
         mv_id = op.target
         definition = op.payload.get("definition")
         if definition is not None:

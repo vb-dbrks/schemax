@@ -398,9 +398,7 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                 ]
 
     elif op_type == "set_materialized_view_comment":
-        mv_opt = _find_materialized_view(
-            new_state, op_dict["payload"]["materializedViewId"]
-        )
+        mv_opt = _find_materialized_view(new_state, op_dict["payload"]["materializedViewId"])
         if mv_opt:
             mv_opt.comment = op_dict["payload"]["comment"]
 
@@ -718,9 +716,7 @@ def _find_function(state: UnityState, function_id: str) -> UnityFunction | None:
     return None
 
 
-def _find_materialized_view(
-    state: UnityState, mv_id: str
-) -> UnityMaterializedView | None:
+def _find_materialized_view(state: UnityState, mv_id: str) -> UnityMaterializedView | None:
     """Find a materialized view by ID across all catalogs and schemas."""
     for catalog in state.catalogs:
         for schema in catalog.schemas:

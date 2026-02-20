@@ -440,15 +440,12 @@ class UnityProvider(BaseProvider):
                             )
                         materialized_views.append(
                             {
-                                "id": self._stable_id(
-                                    "mv", catalog_name, schema_name, table_name
-                                ),
+                                "id": self._stable_id("mv", catalog_name, schema_name, table_name),
                                 "name": table_name,
                                 "definition": definition,
                                 "comment": comment,
-                                "refreshSchedule": view_properties.get(
-                                    "refresh_schedule"
-                                ) or view_properties.get("refreshSchedule"),
+                                "refreshSchedule": view_properties.get("refresh_schedule")
+                                or view_properties.get("refreshSchedule"),
                                 "dependencies": None,
                                 "extractedDependencies": extracted_dependencies,
                                 "grants": [],
@@ -1882,7 +1879,9 @@ class UnityProvider(BaseProvider):
                     "name": name,
                     "language": "PYTHON" if body == "PYTHON" else "SQL",
                     "returnType": row.get("data_type") or row.get("DATA_TYPE") or "STRING",
-                    "body": row.get("routine_definition") or row.get("ROUTINE_DEFINITION") or "NULL",
+                    "body": row.get("routine_definition")
+                    or row.get("ROUTINE_DEFINITION")
+                    or "NULL",
                     "comment": row.get("comment") or row.get("COMMENT"),
                     "parameters": [],
                     "grants": [],

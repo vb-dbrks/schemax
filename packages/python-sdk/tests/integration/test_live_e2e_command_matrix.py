@@ -28,10 +28,7 @@ def test_live_command_matrix(tmp_path: Path) -> None:
 
     catalog = f"test_cmd_fixture_{suffix}"
     fixture_path = (
-        Path(__file__).resolve().parents[1]
-        / "resources"
-        / "sql"
-        / "unity_command_fixture.sql"
+        Path(__file__).resolve().parents[1] / "resources" / "sql" / "unity_command_fixture.sql"
     )
     managed_root = f"{config.managed_location.rstrip('/')}/schemax-command-live/{suffix}"
 

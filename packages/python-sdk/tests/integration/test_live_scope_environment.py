@@ -235,9 +235,7 @@ def test_live_greenfield_promote_dev_test_prod_then_rollback_prod(tmp_path: Path
         physical_test,
         tracking_prod,
         physical_prod,
-    ) = write_project_promote_envs(
-        workspace, suffix=suffix, resource_prefix=config.resource_prefix
-    )
+    ) = write_project_promote_envs(workspace, suffix=suffix, resource_prefix=config.resource_prefix)
 
     builder = OperationBuilder()
     cat_id = f"cat_promote_{suffix}"
