@@ -34,7 +34,7 @@ Usually **no**. SchemaX is for people who **define and evolve** catalog/schema/t
 
 ## Is there an audit trail for schema changes?
 
-Yes. All changes are stored as **operations** in `.schematic/changelog.json`, and **snapshots** in `.schematic/snapshots/` capture full state at a point in time. This is versioned in Git, so you have an audit trail of what changed and when. Deployments are also recorded (database-backed when you use `schemax apply`). See [Workflows](/reference/workflows/) and the CLI reference for rollback and deployment tracking.
+Yes. All changes are stored as **operations** in `.schemax/changelog.json`, and **snapshots** in `.schemax/snapshots/` capture full state at a point in time. This is versioned in Git, so you have an audit trail of what changed and when. Deployments are also recorded (database-backed when you use `schemax apply`). See [Workflows](/reference/workflows/) and the CLI reference for rollback and deployment tracking.
 
 ## Can I use the CLI from my own scripts or automation?
 

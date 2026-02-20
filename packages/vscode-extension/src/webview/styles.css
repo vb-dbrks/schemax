@@ -2899,6 +2899,55 @@ body {
   padding: 18px 20px 14px;
 }
 
+.import-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.import-tab {
+  padding: 8px 14px;
+  font-size: 13px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.import-tab:hover:not(:disabled) {
+  color: var(--vscode-list-hoverForeground);
+  background: var(--vscode-list-hoverBackground);
+}
+
+.import-tab--active {
+  border-bottom-color: var(--vscode-focusBorder);
+  font-weight: 500;
+}
+
+.import-tab:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.import-tab-panel {
+  margin-top: 4px;
+}
+
+.import-sql-path-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.import-sql-path-row vscode-text-field,
+.import-sql-path-row vscode-text-field::part(control) {
+  flex: 1;
+  min-width: 0;
+}
+
 .import-assets-panel .modal-footer {
   display: flex;
   justify-content: flex-end;

@@ -5,6 +5,7 @@ Defines the contract that all catalog providers must implement.
 """
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -199,6 +200,36 @@ class Provider(ABC):
         """
         raise NotImplementedError(
             f"Provider '{self.info.id}' does not implement live state discovery yet"
+        )
+
+    def state_from_ddl(
+        self,
+        sql_path: Path | None = None,
+        sql_statements: list[str] | None = None,
+        dialect: str = "databricks",
+    ) -> tuple[ProviderState, Any]:
+        """Build provider state from a SQL DDL script (file or list of statements).
+
+        Used for import-from-SQL workflows. Providers that support DDL import
+        override this; default raises NotImplementedError.
+
+        Args:
+            sql_path: Path to a .sql file (read and split internally).
+            sql_statements: Alternatively, a list of raw SQL statements.
+            dialect: SQL dialect for parsing (e.g. databricks). May be ignored
+                by providers that only support one dialect.
+
+        Returns:
+            Tuple of (provider_state, report). Report is provider-specific (e.g.
+            counts, skipped indices, parse errors) for summary and warnings.
+
+        Raises:
+            NotImplementedError: If this provider does not support DDL import.
+            ValueError: If neither sql_path nor sql_statements is provided.
+        """
+        del sql_path, sql_statements, dialect
+        raise NotImplementedError(
+            f"Provider '{self.info.id}' does not implement state_from_ddl (SQL file import) yet"
         )
 
     def validate_import_scope(self, scope: dict[str, Any]) -> ValidationResult:

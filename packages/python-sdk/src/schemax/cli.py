@@ -21,6 +21,7 @@ from .commands import (
     generate_diff,
     generate_sql_migration,
     import_from_provider,
+    import_from_sql_file,
     rollback_complete,
     validate_project,
 )
@@ -278,10 +279,25 @@ def bundle(target: str, version: str, output: str) -> None:
 
 
 @cli.command(name="import")
-@click.option("--target", "-t", required=True, help="Target environment (dev/test/prod)")
-@click.option("--profile", "-p", required=True, help="Databricks profile name")
-@click.option("--warehouse-id", "-w", required=True, help="SQL warehouse ID")
-@click.option("--catalog", help="Catalog name to import")
+@click.option(
+    "--from-sql",
+    "from_sql_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Import from a SQL DDL file instead of live Databricks (optional --target for catalog mapping)",
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["diff", "replace"]),
+    default="diff",
+    help="For --from-sql: diff = append ops to changelog; replace = treat SQL state as new baseline",
+)
+@click.option(
+    "--target", "-t", help="Target environment (required for live import; optional for --from-sql)"
+)
+@click.option("--profile", "-p", help="Databricks profile name (required for live import)")
+@click.option("--warehouse-id", "-w", help="SQL warehouse ID (required for live import)")
+@click.option("--catalog", help="Catalog name to import (live import only)")
 @click.option("--schema", help="Schema name to import (requires --catalog)")
 @click.option("--table", help="Table name to import (requires --catalog and --schema)")
 @click.option(
@@ -298,9 +314,11 @@ def bundle(target: str, version: str, output: str) -> None:
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def import_command(
-    target: str,
-    profile: str,
-    warehouse_id: str,
+    from_sql_path: Path | None,
+    mode: str,
+    target: str | None,
+    profile: str | None,
+    warehouse_id: str | None,
     catalog: str | None,
     schema: str | None,
     table: str | None,
@@ -311,10 +329,32 @@ def import_command(
 ) -> None:
     """Import existing provider assets into SchemaX changelog.
 
-    This is a CLI-first import workflow similar to Terraform import:
-    discover live assets -> map to provider state -> generate operations into changelog.
+    Two sources:
+
+    \b
+    • Live Databricks: use --target, --profile, --warehouse-id (and optional scope).
+    • SQL DDL file: use --from-sql path [--mode diff|replace] [--dry-run] [--target ENV].
     """
     try:
+        workspace_path = Path(workspace).resolve()
+
+        if from_sql_path is not None:
+            summary = import_from_sql_file(
+                workspace=workspace_path,
+                sql_path=from_sql_path,
+                mode=mode,
+                dry_run=dry_run,
+                target_env=target,
+            )
+            _print_import_summary(summary)
+            return
+        # Live import: require target, profile, warehouse_id
+        if not target or not profile or not warehouse_id:
+            console.print(
+                "[red]✗[/red] Live import requires --target, --profile, and --warehouse-id. "
+                "Use --from-sql for SQL file import."
+            )
+            sys.exit(1)
         if schema and not catalog:
             console.print("[red]✗[/red] --schema requires --catalog")
             sys.exit(1)
@@ -322,8 +362,6 @@ def import_command(
             console.print("[red]✗[/red] --table requires --catalog and --schema")
             sys.exit(1)
         binding_overrides = _parse_catalog_mappings(catalog_map)
-
-        workspace_path = Path(workspace).resolve()
 
         summary = import_from_provider(
             workspace=workspace_path,

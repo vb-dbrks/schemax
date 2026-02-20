@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from schemax.commands.import_assets import import_from_provider
+from schemax.core.sql_utils import split_sql_statements
 from schemax.core.storage import ensure_project_file
 from schemax.providers import ProviderRegistry
 from schemax.providers.base.executor import ExecutionConfig
@@ -25,42 +26,6 @@ def _require_env(var_name: str) -> str:
     if not value:
         pytest.skip(f"{var_name} is not set")
     return value
-
-
-def _split_sql_statements(sql_text: str) -> list[str]:
-    """Split SQL script into statements while preserving quoted semicolons."""
-    statements: list[str] = []
-    current: list[str] = []
-    in_single_quote = False
-    in_double_quote = False
-
-    for line in sql_text.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("--"):
-            continue
-
-        for char in line:
-            if char == "'" and not in_double_quote:
-                in_single_quote = not in_single_quote
-            elif char == '"' and not in_single_quote:
-                in_double_quote = not in_double_quote
-
-            if char == ";" and not in_single_quote and not in_double_quote:
-                statement = "".join(current).strip()
-                if statement:
-                    statements.append(statement)
-                current = []
-            else:
-                current.append(char)
-        current.append("\n")
-
-    tail = "".join(current).strip()
-    if tail:
-        statements.append(tail)
-
-    return statements
 
 
 def _make_random(length: int = 8) -> str:
@@ -91,7 +56,7 @@ def test_import_from_live_databricks_fixture_sql(temp_workspace):
     sql_text = sql_text.replace("test_import_aux", aux_catalog)
     managed_run_root = f"{managed_location_root.rstrip('/')}/schemax-import-live/{suffix}"
     sql_text = sql_text.replace("__MANAGED_ROOT__", managed_run_root)
-    statements = _split_sql_statements(sql_text)
+    statements = split_sql_statements(sql_text)
 
     client = create_databricks_client(profile=profile)
     executor = UnitySQLExecutor(client)

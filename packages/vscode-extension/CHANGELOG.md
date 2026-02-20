@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0] - 2025-02-12
+
+### Added
+
+- **Import from SQL file**: New "From SQL file" tab in the Import assets modal. Pick a `.sql` file, choose mode (diff/replace), optional target and dry-run, then Run to execute `schemax import --from-sql` and bring DDL into the project without a live Databricks connection. Supports CREATE + ALTER in file order (e.g. create table then alter to add columns).
+
+### Changed
+
+- **Import modal**: Two tabs — "From Databricks" (existing live import) and "From SQL file" (new). Validation errors are cleared when switching tabs to avoid showing the wrong tab’s error message.
+
 ## [0.1.4] - 2025-02-19
 
 ### Added

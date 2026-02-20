@@ -1,7 +1,11 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, test, expect, jest } from '@jest/globals';
-import { ImportAssetsPanel, ImportRunRequest } from '../../../src/webview/components/ImportAssetsPanel';
+import {
+  ImportAssetsPanel,
+  ImportRunRequest,
+  isImportFromSql,
+} from '../../../src/webview/components/ImportAssetsPanel';
 import { ProjectFile } from '../../../src/providers/unity/models';
 
 const makeProject = (overrides?: Partial<ProjectFile>): ProjectFile => ({
@@ -239,5 +243,57 @@ describe('ImportAssetsPanel', () => {
 
     fireEvent.click(screen.getByText('Cancel import'));
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  test('From SQL file tab submits request with fromSql when path set and Run clicked', () => {
+    const onRun = jest.fn<(request: ImportRunRequest) => void>();
+
+    render(
+      <ImportAssetsPanel
+        project={makeProject()}
+        isRunning={false}
+        result={null}
+        progress={null}
+        onClose={jest.fn()}
+        onCancel={jest.fn()}
+        onRun={onRun}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'From SQL file' }));
+    const pathInput = screen.getByLabelText('SQL file path') as HTMLInputElement;
+    fireEvent.input(pathInput, { target: { value: '/path/to/schema.sql' } });
+    fireEvent.click(screen.getByText('Run'));
+
+    expect(onRun).toHaveBeenCalledTimes(1);
+    const request = onRun.mock.calls[0][0];
+    expect(isImportFromSql(request)).toBe(true);
+    if (isImportFromSql(request)) {
+      expect(request.fromSql.sqlPath).toBe('/path/to/schema.sql');
+      expect(request.fromSql.mode).toBe('diff');
+      expect(request.fromSql.dryRun).toBe(true);
+    }
+  });
+
+  test('From SQL file tab shows validation error when path empty', () => {
+    const onRun = jest.fn<(request: ImportRunRequest) => void>();
+
+    render(
+      <ImportAssetsPanel
+        project={makeProject()}
+        isRunning={false}
+        result={null}
+        progress={null}
+        onClose={jest.fn()}
+        onCancel={jest.fn()}
+        onRun={onRun}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: 'From SQL file' }));
+    fireEvent.click(screen.getByText('Run'));
+
+    expect(onRun).not.toHaveBeenCalled();
+    expect(screen.getByText('SQL file path is required')).toBeTruthy();
   });
 });
