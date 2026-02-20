@@ -149,6 +149,10 @@ export function ImportAssetsPanel({
     }
   }, [project, target, bindingsTouched, catalogMappingsText, lastSuggestedMappings]);
 
+  React.useEffect(() => {
+    // Clear validation errors when switching between SQL and Databricks tabs
+    setValidationError(null);
+  }, [activeTab]);
   const handleSubmit = () => {
     setValidationError(null);
     if (activeTab === 'sql') {
