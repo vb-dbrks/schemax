@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0] - 2025-02-12
+
+### Added
+
+- **Import from SQL file**: `schemax import --from-sql PATH [--mode diff|replace] [--dry-run] [--target ENV]` parses a Unity Catalog DDL file and diffs against the current project state (or replaces as new baseline). No Databricks connection required. Statements are applied in file order (e.g. CREATE TABLE then ALTER TABLE ADD COLUMN then SET TBLPROPERTIES).
+- **Core**: `schemax.core.sql_utils.split_sql_statements()` for splitting SQL scripts (preserves quoted semicolons; skips comment-only lines).
+- **Provider contract**: `state_from_ddl(sql_path=..., sql_statements=..., dialect=...)` on the base provider; Unity provider implements full DDL parsing and state building.
+- **Unity DDL parser**: Parses CREATE CATALOG/SCHEMA/TABLE/VIEW, COMMENT ON, and ALTER TABLE (ADD/DROP/RENAME column, ALTER COLUMN, RENAME TO, SET TBLPROPERTIES), ALTER CATALOG/SCHEMA/TABLE SET TAGS. Command-path fallback for CREATE CATALOG/SCHEMA (e.g. when MANAGED LOCATION is present) with comment extraction. State builder uses immutable updates (Pydantic `model_copy`).
+- **Documentation**: CLI reference "Import from SQL file" section; workflows table row; statement-order note.
+
+### Changed
+
+- **Import command**: `schemax import` now supports two sources: live Databricks (requires `--target`, `--profile`, `--warehouse-id`) and SQL file (`--from-sql`). When using `--from-sql`, target/profile/warehouse are optional.
+
 ## [0.1.4] - 2025-02-19
 
 ### Fixed
