@@ -296,7 +296,7 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                 sql,
                 re.IGNORECASE | re.DOTALL,
             )
-            name = (m.group(1).rstrip(";").strip("`\"'") if m else "unknown")
+            name = m.group(1).rstrip(";").strip("`\"'") if m else "unknown"
             comment = None
             cm = re.search(r"COMMENT\s+['\"]([^'\"]*)['\"]", sql, re.IGNORECASE)
             if cm:
@@ -308,7 +308,7 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                 sql,
                 re.IGNORECASE | re.DOTALL,
             )
-            full_name = (m.group(1).rstrip(";").strip("`\"'") if m else "unknown")
+            full_name = m.group(1).rstrip(";").strip("`\"'") if m else "unknown"
             parts = full_name.split(".", 1)
             if len(parts) == 2:
                 catalog, schema_name = parts[0], parts[1]
@@ -682,7 +682,9 @@ class UnityDDLStateBuilder:
                 if result.comment is not None or result.tags:
                     self._catalogs[cid] = existing.model_copy(
                         update={
-                            "comment": result.comment if result.comment is not None else existing.comment,
+                            "comment": result.comment
+                            if result.comment is not None
+                            else existing.comment,
                             "tags": result.tags if result.tags else existing.tags,
                         }
                     )
