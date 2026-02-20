@@ -76,6 +76,24 @@ interface DesignerState {
   renameView: (viewId: string, newName: string) => void;
   updateView: (viewId: string, definition: string, extractedDependencies?: any) => void;
   dropView: (viewId: string) => void;
+
+  // Volume operations
+  addVolume: (schemaId: string, name: string, volumeType: 'managed' | 'external', options?: { comment?: string; location?: string }) => void;
+  renameVolume: (volumeId: string, newName: string) => void;
+  updateVolume: (volumeId: string, updates: { comment?: string; location?: string }) => void;
+  dropVolume: (volumeId: string) => void;
+
+  // Function operations
+  addFunction: (schemaId: string, name: string, language: 'SQL' | 'PYTHON', body: string, options?: { returnType?: string; comment?: string; parameters?: any[] }) => void;
+  renameFunction: (functionId: string, newName: string) => void;
+  updateFunction: (functionId: string, updates: { body?: string; returnType?: string; comment?: string; parameters?: any[] }) => void;
+  dropFunction: (functionId: string) => void;
+
+  // Materialized view operations
+  addMaterializedView: (schemaId: string, name: string, definition: string, options?: { comment?: string; refreshSchedule?: string }) => void;
+  renameMaterializedView: (materializedViewId: string, newName: string) => void;
+  updateMaterializedView: (materializedViewId: string, definition: string, extractedDependencies?: any) => void;
+  dropMaterializedView: (materializedViewId: string) => void;
   
   addColumn: (tableId: string, name: string, type: string, nullable: boolean, comment?: string, tags?: Record<string, string>) => void;
   renameColumn: (tableId: string, colId: string, newName: string) => void;
@@ -111,15 +129,18 @@ interface DesignerState {
   updateColumnMask: (tableId: string, maskId: string, updates: Partial<Omit<ColumnMask, 'id' | 'columnId'>>) => void;
   removeColumnMask: (tableId: string, maskId: string) => void;
 
-  // Grant operations (catalog, schema, table, view)
-  addGrant: (targetType: 'catalog' | 'schema' | 'table' | 'view', targetId: string, principal: string, privileges: string[]) => void;
-  revokeGrant: (targetType: 'catalog' | 'schema' | 'table' | 'view', targetId: string, principal: string, privileges?: string[]) => void;
+  // Grant operations (catalog, schema, table, view, volume, function, materialized_view)
+  addGrant: (targetType: 'catalog' | 'schema' | 'table' | 'view' | 'volume' | 'function' | 'materialized_view', targetId: string, principal: string, privileges: string[]) => void;
+  revokeGrant: (targetType: 'catalog' | 'schema' | 'table' | 'view' | 'volume' | 'function' | 'materialized_view', targetId: string, principal: string, privileges?: string[]) => void;
 
   // Helper to find objects
   findCatalog: (catalogId: string) => Catalog | undefined;
   findSchema: (schemaId: string) => { catalog: Catalog; schema: Schema } | undefined;
   findTable: (tableId: string) => { catalog: Catalog; schema: Schema; table: Table } | undefined;
   findView: (viewId: string) => { catalog: Catalog; schema: Schema; view: View } | undefined;
+  findVolume: (volumeId: string) => { catalog: Catalog; schema: Schema; volume: any } | undefined;
+  findFunction: (functionId: string) => { catalog: Catalog; schema: Schema; func: any } | undefined;
+  findMaterializedView: (mvId: string) => { catalog: Catalog; schema: Schema; mv: any } | undefined;
 }
 
 function emitOps(ops: Operation[]) {
@@ -301,6 +322,101 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   dropView: (viewId) => {
     const op = createOperation(get(), 'drop_view', viewId, {});
+    emitOps([op]);
+  },
+
+  addVolume: (schemaId, name, volumeType, options) => {
+    const volumeId = `vol_${uuidv4()}`;
+    const op = createOperation(get(), 'add_volume', volumeId, {
+      volumeId,
+      schemaId,
+      name,
+      volumeType,
+      comment: options?.comment,
+      location: options?.location,
+    });
+    emitOps([op]);
+  },
+
+  renameVolume: (volumeId, newName) => {
+    const state = get();
+    const info = state.findVolume(volumeId);
+    if (!info) throw new Error(`Volume ${volumeId} not found`);
+    const op = createOperation(state, 'rename_volume', volumeId, { oldName: info.volume.name, newName });
+    emitOps([op]);
+  },
+
+  updateVolume: (volumeId, updates) => {
+    const op = createOperation(get(), 'update_volume', volumeId, updates);
+    emitOps([op]);
+  },
+
+  dropVolume: (volumeId) => {
+    const op = createOperation(get(), 'drop_volume', volumeId, {});
+    emitOps([op]);
+  },
+
+  addFunction: (schemaId, name, language, body, options) => {
+    const functionId = `func_${uuidv4()}`;
+    const op = createOperation(get(), 'add_function', functionId, {
+      functionId,
+      schemaId,
+      name,
+      language,
+      body,
+      returnType: options?.returnType ?? 'STRING',
+      comment: options?.comment,
+      parameters: options?.parameters ?? [],
+    });
+    emitOps([op]);
+  },
+
+  renameFunction: (functionId, newName) => {
+    const state = get();
+    const info = state.findFunction(functionId);
+    if (!info) throw new Error(`Function ${functionId} not found`);
+    const op = createOperation(state, 'rename_function', functionId, { oldName: info.func.name, newName });
+    emitOps([op]);
+  },
+
+  updateFunction: (functionId, updates) => {
+    const op = createOperation(get(), 'update_function', functionId, updates);
+    emitOps([op]);
+  },
+
+  dropFunction: (functionId) => {
+    const op = createOperation(get(), 'drop_function', functionId, {});
+    emitOps([op]);
+  },
+
+  addMaterializedView: (schemaId, name, definition, options) => {
+    const materializedViewId = `mv_${uuidv4()}`;
+    const op = createOperation(get(), 'add_materialized_view', materializedViewId, {
+      materializedViewId,
+      schemaId,
+      name,
+      definition,
+      comment: options?.comment,
+      refreshSchedule: options?.refreshSchedule,
+    });
+    emitOps([op]);
+  },
+
+  renameMaterializedView: (materializedViewId, newName) => {
+    const state = get();
+    const info = state.findMaterializedView(materializedViewId);
+    if (!info) throw new Error(`Materialized view ${materializedViewId} not found`);
+    const op = createOperation(state, 'rename_materialized_view', materializedViewId, { oldName: info.mv.name, newName });
+    emitOps([op]);
+  },
+
+  updateMaterializedView: (materializedViewId, definition, extractedDependencies) => {
+    const op = createOperation(get(), 'update_materialized_view', materializedViewId, { definition, extractedDependencies });
+    emitOps([op]);
+  },
+
+  dropMaterializedView: (materializedViewId) => {
+    const op = createOperation(get(), 'drop_materialized_view', materializedViewId, {});
     emitOps([op]);
   },
 
@@ -605,6 +721,45 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
           const view = schema.views.find((v: View) => v.id === viewId);
           if (view) return { catalog, schema, view };
         }
+      }
+    }
+    return undefined;
+  },
+
+  findVolume: (volumeId) => {
+    const { project } = get();
+    if (!project) return undefined;
+    for (const catalog of (project as any).state.catalogs) {
+      for (const schema of catalog.schemas) {
+        const volumes = schema.volumes ?? [];
+        const volume = volumes.find((v: any) => v.id === volumeId);
+        if (volume) return { catalog, schema, volume };
+      }
+    }
+    return undefined;
+  },
+
+  findFunction: (functionId) => {
+    const { project } = get();
+    if (!project) return undefined;
+    for (const catalog of (project as any).state.catalogs) {
+      for (const schema of catalog.schemas) {
+        const functions = schema.functions ?? [];
+        const func = functions.find((f: any) => f.id === functionId);
+        if (func) return { catalog, schema, func };
+      }
+    }
+    return undefined;
+  },
+
+  findMaterializedView: (mvId) => {
+    const { project } = get();
+    if (!project) return undefined;
+    for (const catalog of (project as any).state.catalogs) {
+      for (const schema of catalog.schemas) {
+        const mvs = schema.materializedViews ?? schema.materialized_views ?? [];
+        const mv = mvs.find((m: any) => m.id === mvId);
+        if (mv) return { catalog, schema, mv };
       }
     }
     return undefined;

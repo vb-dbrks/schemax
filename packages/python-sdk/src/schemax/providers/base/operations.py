@@ -36,6 +36,9 @@ class ManagedCategory(StrEnum):
     SCHEMA_STRUCTURE = "schema_structure"
     TABLE_STRUCTURE = "table_structure"
     VIEW_STRUCTURE = "view_structure"
+    VOLUME_STRUCTURE = "volume_structure"
+    FUNCTION_STRUCTURE = "function_structure"
+    MATERIALIZED_VIEW_STRUCTURE = "materialized_view_structure"
     GOVERNANCE = "governance"
 
 

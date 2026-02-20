@@ -62,3 +62,28 @@ TABLE_VIEW_PRIVILEGES = [
     "WRITE VOLUME",
     "APPLY TAG",
 ]
+
+# Volume-level privileges (object-level grants on volumes)
+VOLUME_PRIVILEGES = [
+    "ALL PRIVILEGES",
+    "READ VOLUME",
+    "WRITE VOLUME",
+    "MANAGE",
+    "APPLY TAG",
+]
+
+# Function-level privileges (object-level grants on functions)
+FUNCTION_PRIVILEGES = [
+    "ALL PRIVILEGES",
+    "EXECUTE",
+    "APPLY TAG",
+    "MANAGE",
+]
+
+# Materialized view privileges (SELECT to query, REFRESH to refresh)
+MATERIALIZED_VIEW_PRIVILEGES = [
+    "ALL PRIVILEGES",
+    "SELECT",
+    "REFRESH",
+    "APPLY TAG",
+]

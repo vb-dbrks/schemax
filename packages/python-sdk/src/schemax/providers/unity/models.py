@@ -138,6 +138,72 @@ class UnityView(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class UnityVolume(BaseModel):
+    """Volume definition (managed or external)."""
+
+    id: str
+    name: str
+    volume_type: Literal["managed", "external"] = Field(
+        "managed", alias="volumeType"
+    )
+    comment: str | None = None
+    location: str | None = None  # For external volumes
+    grants: list[UnityGrant] = []
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class UnityFunctionParameter(BaseModel):
+    """Function parameter (name, type, optional default and comment)."""
+
+    name: str
+    data_type: str = Field(..., alias="dataType")
+    default_expression: str | None = Field(None, alias="defaultExpression")
+    comment: str | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class UnityFunction(BaseModel):
+    """Function definition (SQL or Python UDF)."""
+
+    id: str
+    name: str
+    language: Literal["SQL", "PYTHON"] = "SQL"
+    return_type: str | None = Field(None, alias="returnType")
+    returns_table: list[dict[str, str]] | None = Field(
+        None, alias="returnsTable"
+    )  # For table functions: [{column_name, data_type}, ...]
+    body: str  # SQL RETURN expression or Python $$...$$
+    comment: str | None = None
+    parameters: list[UnityFunctionParameter] = []
+    grants: list[UnityGrant] = []
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class UnityMaterializedView(BaseModel):
+    """Materialized view definition."""
+
+    id: str
+    name: str
+    definition: str  # SQL query (SELECT statement)
+    comment: str | None = None
+    refresh_schedule: str | None = Field(None, alias="refreshSchedule")
+    partition_columns: list[str] | None = Field(
+        None, alias="partitionColumns"
+    )
+    cluster_columns: list[str] | None = Field(None, alias="clusterColumns")
+    properties: dict[str, str] = {}
+    dependencies: list[str] | None = None
+    extracted_dependencies: dict[str, list[str]] | None = Field(
+        None, alias="extractedDependencies"
+    )
+    grants: list[UnityGrant] = []
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class UnitySchema(BaseModel):
     """Schema definition"""
 
@@ -150,6 +216,11 @@ class UnitySchema(BaseModel):
     tags: dict[str, str] = {}  # Schema tags (Unity Catalog governance)
     tables: list[UnityTable] = []
     views: list[UnityView] = []  # Views stored alongside tables in schema
+    volumes: list[UnityVolume] = []
+    functions: list[UnityFunction] = []
+    materialized_views: list[UnityMaterializedView] = Field(
+        default_factory=list, alias="materializedViews"
+    )
     grants: list[UnityGrant] = []
 
     model_config = ConfigDict(populate_by_name=True)

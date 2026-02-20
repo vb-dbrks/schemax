@@ -155,15 +155,27 @@ export const Sidebar: React.FC = () => {
     dropSchema,
     dropTable,
     dropView,
+    addVolume,
+    renameVolume,
+    updateVolume,
+    dropVolume,
+    addFunction,
+    renameFunction,
+    updateFunction,
+    dropFunction,
+    addMaterializedView,
+    renameMaterializedView,
+    updateMaterializedView,
+    dropMaterializedView,
   } = useDesignerStore();
 
   const [expandedCatalogs, setExpandedCatalogs] = useState<Set<string>>(new Set());
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set());
   const [addDialog, setAddDialog] = useState<{
-    type: 'catalog'|'schema'|'table',
-    objectType?: 'table'|'view',
-    catalogId?: string,
-    schemaId?: string
+    type: 'catalog'|'schema'|'table';
+    objectType?: 'table'|'view'|'volume'|'function'|'materialized_view';
+    catalogId?: string;
+    schemaId?: string;
   } | null>(null);
   const [hoveredCatalogId, setHoveredCatalogId] = useState<string | null>(null);
   const [tooltipAnchor, setTooltipAnchor] = useState<HTMLElement | null>(null);
@@ -185,6 +197,16 @@ export const Sidebar: React.FC = () => {
   const [addViewName, setAddViewName] = useState('');
   const [addViewNameManual, setAddViewNameManual] = useState(false);
   const [addViewComment, setAddViewComment] = useState('');
+  // Volume/Function/MV add state
+  const [addVolumeType, setAddVolumeType] = useState<'managed'|'external'>('managed');
+  const [addVolumeLocation, setAddVolumeLocation] = useState('');
+  const [addFunctionLanguage, setAddFunctionLanguage] = useState<'SQL'|'PYTHON'>('SQL');
+  const [addFunctionBody, setAddFunctionBody] = useState('');
+  const [addFunctionReturnType, setAddFunctionReturnType] = useState('STRING');
+  const [addFunctionComment, setAddFunctionComment] = useState('');
+  const [addMVDefinition, setAddMVDefinition] = useState('');
+  const [addMVComment, setAddMVComment] = useState('');
+  const [addMVSchedule, setAddMVSchedule] = useState('');
 
   const toggleCatalog = (catalogId: string) => {
     const newExpanded = new Set(expandedCatalogs);
@@ -206,8 +228,16 @@ export const Sidebar: React.FC = () => {
     setExpandedSchemas(newExpanded);
   };
 
-  const [renameDialog, setRenameDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
-  const [dropDialog, setDropDialog] = useState<{type: 'catalog'|'schema'|'table', id: string, name: string} | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{
+    type: 'catalog'|'schema'|'table'|'view'|'volume'|'function'|'materialized_view';
+    id: string;
+    name: string;
+  } | null>(null);
+  const [dropDialog, setDropDialog] = useState<{
+    type: 'catalog'|'schema'|'table'|'view'|'volume'|'function'|'materialized_view';
+    id: string;
+    name: string;
+  } | null>(null);
 
   useEffect(() => {
     if (renameDialog) {
@@ -335,10 +365,15 @@ export const Sidebar: React.FC = () => {
       renameSchema(renameDialog.id, trimmedName);
     } else if (renameDialog.type === 'table') {
       renameTable(renameDialog.id, trimmedName);
-    } else if ((renameDialog.type as any) === 'view') {
+    } else if (renameDialog.type === 'view') {
       renameView(renameDialog.id, trimmedName);
+    } else if (renameDialog.type === 'volume') {
+      renameVolume(renameDialog.id, trimmedName);
+    } else if (renameDialog.type === 'function') {
+      renameFunction(renameDialog.id, trimmedName);
+    } else if (renameDialog.type === 'materialized_view') {
+      renameMaterializedView(renameDialog.id, trimmedName);
     }
-    
     setRenameError(null);
     closeRenameDialog();
   };
@@ -352,8 +387,14 @@ export const Sidebar: React.FC = () => {
       dropSchema(dropDialog.id);
     } else if (dropDialog.type === 'table') {
       dropTable(dropDialog.id);
-    } else if ((dropDialog.type as any) === 'view') {
+    } else if (dropDialog.type === 'view') {
       dropView(dropDialog.id);
+    } else if (dropDialog.type === 'volume') {
+      dropVolume(dropDialog.id);
+    } else if (dropDialog.type === 'function') {
+      dropFunction(dropDialog.id);
+    } else if (dropDialog.type === 'materialized_view') {
+      dropMaterializedView(dropDialog.id);
     }
     setDropDialog(null);
   };
@@ -417,6 +458,33 @@ export const Sidebar: React.FC = () => {
         }
       }
 
+      if (addDialog.objectType === 'volume') {
+        addVolume(addDialog.schemaId!, trimmedName, addVolumeType, {
+          comment: addComment || undefined,
+          location: addVolumeType === 'external' ? addVolumeLocation || undefined : undefined,
+        });
+        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
+        closeAddDialog();
+        return;
+      }
+      if (addDialog.objectType === 'function') {
+        addFunction(addDialog.schemaId!, trimmedName, addFunctionLanguage, addFunctionBody || 'NULL', {
+          returnType: addFunctionReturnType || 'STRING',
+          comment: addFunctionComment || undefined,
+        });
+        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
+        closeAddDialog();
+        return;
+      }
+      if (addDialog.objectType === 'materialized_view') {
+        addMaterializedView(addDialog.schemaId!, trimmedName, addMVDefinition || 'SELECT 1', {
+          comment: addMVComment || undefined,
+          refreshSchedule: addMVSchedule || undefined,
+        });
+        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
+        closeAddDialog();
+        return;
+      }
       if (addDialog.objectType === 'view') {
         // VIEW CREATION
         const sqlError = validateViewSQL(addViewSQL);
@@ -741,7 +809,7 @@ export const Sidebar: React.FC = () => {
                               onClick={(event: React.MouseEvent) => {
                                 event.stopPropagation();
                                 setDropDialog({
-                                  type: 'view' as any,
+                                  type: 'view',
                                   id: view.id,
                                   name: view.name
                                 });
@@ -749,6 +817,66 @@ export const Sidebar: React.FC = () => {
                             >
                               <IconTrash />
                             </VSCodeButton>
+                          </span>
+                        </div>
+                      ))}
+                      {/* VOLUMES */}
+                      {schema.volumes && schema.volumes.length > 0 && schema.volumes.map((vol: any) => (
+                        <div
+                          key={vol.id}
+                          className={`tree-item ${selectedTableId === vol.id ? 'selected' : ''}`}
+                          onClick={() => {
+                            selectCatalog(catalog.id);
+                            selectSchema(schema.id);
+                            selectTable(vol.id);
+                          }}
+                        >
+                          <span className="icon"><i className="codicon codicon-folder" aria-hidden="true" /></span>
+                          <span className="name">{vol.name}</span>
+                          <span className="badge" style={{ background: 'var(--vscode-charts-purple)' }}>VOL</span>
+                          <span className="actions">
+                            <VSCodeButton appearance="icon" aria-label="Rename volume" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setRenameDialog({ type: 'volume', id: vol.id, name: vol.name }); }}><IconEdit /></VSCodeButton>
+                            <VSCodeButton appearance="icon" aria-label="Drop volume" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDropDialog({ type: 'volume', id: vol.id, name: vol.name }); }}><IconTrash /></VSCodeButton>
+                          </span>
+                        </div>
+                      ))}
+                      {/* FUNCTIONS */}
+                      {schema.functions && schema.functions.length > 0 && schema.functions.map((fn: any) => (
+                        <div
+                          key={fn.id}
+                          className={`tree-item ${selectedTableId === fn.id ? 'selected' : ''}`}
+                          onClick={() => {
+                            selectCatalog(catalog.id);
+                            selectSchema(schema.id);
+                            selectTable(fn.id);
+                          }}
+                        >
+                          <span className="icon"><i className="codicon codicon-symbol-method" aria-hidden="true" /></span>
+                          <span className="name">{fn.name}</span>
+                          <span className="badge" style={{ background: 'var(--vscode-charts-orange)' }}>FN</span>
+                          <span className="actions">
+                            <VSCodeButton appearance="icon" aria-label="Rename function" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setRenameDialog({ type: 'function', id: fn.id, name: fn.name }); }}><IconEdit /></VSCodeButton>
+                            <VSCodeButton appearance="icon" aria-label="Drop function" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDropDialog({ type: 'function', id: fn.id, name: fn.name }); }}><IconTrash /></VSCodeButton>
+                          </span>
+                        </div>
+                      ))}
+                      {/* MATERIALIZED VIEWS */}
+                      {((schema as any).materializedViews ?? (schema as any).materialized_views)?.length > 0 && ((schema as any).materializedViews ?? (schema as any).materialized_views).map((mv: any) => (
+                        <div
+                          key={mv.id}
+                          className={`tree-item ${selectedTableId === mv.id ? 'selected' : ''}`}
+                          onClick={() => {
+                            selectCatalog(catalog.id);
+                            selectSchema(schema.id);
+                            selectTable(mv.id);
+                          }}
+                        >
+                          <span className="icon"><i className="codicon codicon-symbol-array" aria-hidden="true" /></span>
+                          <span className="name">{mv.name}</span>
+                          <span className="badge" style={{ background: 'var(--vscode-charts-green)' }}>MV</span>
+                          <span className="actions">
+                            <VSCodeButton appearance="icon" aria-label="Rename materialized view" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setRenameDialog({ type: 'materialized_view', id: mv.id, name: mv.name }); }}><IconEdit /></VSCodeButton>
+                            <VSCodeButton appearance="icon" aria-label="Drop materialized view" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDropDialog({ type: 'materialized_view', id: mv.id, name: mv.name }); }}><IconTrash /></VSCodeButton>
                           </span>
                         </div>
                       ))}
@@ -874,9 +1002,12 @@ export const Sidebar: React.FC = () => {
             }}
           >
             <h3>
-              Add {addDialog.type === 'catalog' ? topLevelName : 
-                   addDialog.type === 'schema' ? secondLevelName : 
-                   addDialog.objectType === 'view' ? 'View' : thirdLevelName}
+              Add {addDialog.type === 'catalog' ? topLevelName :
+                   addDialog.type === 'schema' ? secondLevelName :
+                   addDialog.objectType === 'view' ? 'View' :
+                   addDialog.objectType === 'volume' ? 'Volume' :
+                   addDialog.objectType === 'function' ? 'Function' :
+                   addDialog.objectType === 'materialized_view' ? 'Materialized View' : thirdLevelName}
             </h3>
             
             {/* Object Type Selector - Only for schema-level additions */}
@@ -908,8 +1039,121 @@ export const Sidebar: React.FC = () => {
                     />
                     <span>View</span>
                   </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input type="radio" name="object-type" value="volume" checked={addDialog.objectType === 'volume'} onChange={() => setAddDialog({...addDialog, objectType: 'volume'})} style={{ margin: 0, cursor: 'pointer' }} />
+                    <span>Volume</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input type="radio" name="object-type" value="function" checked={addDialog.objectType === 'function'} onChange={() => setAddDialog({...addDialog, objectType: 'function'})} style={{ margin: 0, cursor: 'pointer' }} />
+                    <span>Function</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input type="radio" name="object-type" value="materialized_view" checked={addDialog.objectType === 'materialized_view'} onChange={() => setAddDialog({...addDialog, objectType: 'materialized_view'})} style={{ margin: 0, cursor: 'pointer' }} />
+                    <span>Materialized View</span>
+                  </label>
                 </div>
               </div>
+            )}
+
+            {/* Name field first for catalog, schema, table, volume, function, materialized view (view has name in its own section) */}
+            {addDialog.objectType !== 'view' && (
+              <div className="modal-field-group">
+                <label htmlFor="add-name-input">
+                  Name {['volume', 'function', 'materialized_view'].includes(addDialog.objectType || '') ? '*' : ''}
+                </label>
+                <VSCodeTextField
+                  id="add-name-input"
+                  value={addNameInput}
+                  placeholder={
+                    addDialog.type === 'catalog' ? 'Enter catalog name' :
+                    addDialog.type === 'schema' ? 'Enter schema name' :
+                    addDialog.objectType === 'volume' ? 'Enter volume name' :
+                    addDialog.objectType === 'function' ? 'Enter function name' :
+                    addDialog.objectType === 'materialized_view' ? 'Enter materialized view name' :
+                    'Enter table name'
+                  }
+                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                    setAddNameInput((event.target as HTMLInputElement).value);
+                    setAddError(null);
+                  }}
+                />
+              </div>
+            )}
+            
+            {/* VOLUME FIELDS */}
+            {addDialog.type === 'table' && addDialog.objectType === 'volume' && (
+              <>
+                <div className="modal-field-group">
+                  <label>Type</label>
+                  <div className="radio-group" style={{ display: 'flex', gap: '16px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="radio" name="vol-type" checked={addVolumeType === 'managed'} onChange={() => setAddVolumeType('managed')} style={{ margin: 0 }} />
+                      <span>Managed</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="radio" name="vol-type" checked={addVolumeType === 'external'} onChange={() => setAddVolumeType('external')} style={{ margin: 0 }} />
+                      <span>External</span>
+                    </label>
+                  </div>
+                </div>
+                {addVolumeType === 'external' && (
+                  <div className="modal-field-group">
+                    <label>Location (path)</label>
+                    <VSCodeTextField value={addVolumeLocation} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddVolumeLocation((e.target as HTMLInputElement).value)} placeholder="abfss://..." />
+                  </div>
+                )}
+                <div className="modal-field-group">
+                  <label>Comment</label>
+                  <VSCodeTextField value={addComment} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddComment((e.target as HTMLInputElement).value)} />
+                </div>
+              </>
+            )}
+            {/* FUNCTION FIELDS */}
+            {addDialog.type === 'table' && addDialog.objectType === 'function' && (
+              <>
+                <div className="modal-field-group">
+                  <label>Language</label>
+                  <div className="radio-group" style={{ display: 'flex', gap: '16px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="radio" name="func-lang" checked={addFunctionLanguage === 'SQL'} onChange={() => setAddFunctionLanguage('SQL')} style={{ margin: 0 }} />
+                      <span>SQL</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="radio" name="func-lang" checked={addFunctionLanguage === 'PYTHON'} onChange={() => setAddFunctionLanguage('PYTHON')} style={{ margin: 0 }} />
+                      <span>Python</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="modal-field-group">
+                  <label>Return type</label>
+                  <VSCodeTextField value={addFunctionReturnType} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddFunctionReturnType((e.target as HTMLInputElement).value)} placeholder="STRING" />
+                </div>
+                <div className="modal-field-group">
+                  <label>Body (SQL expression or Python code)</label>
+                  <textarea value={addFunctionBody} onChange={(e) => setAddFunctionBody(e.target.value)} rows={4} style={{ width: '100%', fontFamily: 'monospace' }} placeholder={addFunctionLanguage === 'SQL' ? 'e.g. 1' : 'e.g. return 1'} />
+                </div>
+                <div className="modal-field-group">
+                  <label>Comment</label>
+                  <VSCodeTextField value={addFunctionComment} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddFunctionComment((e.target as HTMLInputElement).value)} />
+                </div>
+              </>
+            )}
+            {/* MATERIALIZED VIEW FIELDS */}
+            {addDialog.type === 'table' && addDialog.objectType === 'materialized_view' && (
+              <>
+                <div className="modal-field-group">
+                  <label>SQL Definition *</label>
+                  <textarea value={addMVDefinition} onChange={(e) => setAddMVDefinition(e.target.value)} rows={5} style={{ width: '100%', fontFamily: 'monospace' }} placeholder="SELECT ..." />
+                </div>
+                <div className="modal-field-group">
+                  <label>Refresh schedule (optional)</label>
+                  <VSCodeTextField value={addMVSchedule} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddMVSchedule((e.target as HTMLInputElement).value)} placeholder="EVERY 1 DAY" />
+                </div>
+                <div className="modal-field-group">
+                  <label>Comment</label>
+                  <VSCodeTextField value={addMVComment} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddMVComment((e.target as HTMLInputElement).value)} />
+                </div>
+              </>
             )}
             
             {/* VIEW FIELDS */}
@@ -995,21 +1239,6 @@ export const Sidebar: React.FC = () => {
                     }}
                   />
                 </div>
-              </>
-            )}
-            
-            {/* TABLE/CATALOG/SCHEMA FIELDS */}
-            {addDialog.objectType !== 'view' && (
-              <>
-                <VSCodeTextField
-                  id="add-name-input"
-                  value={addNameInput}
-                  placeholder={`Enter ${addDialog.type} name`}
-                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
-                    setAddNameInput((event.target as HTMLInputElement).value);
-                    setAddError(null);
-                  }}
-                />
               </>
             )}
             

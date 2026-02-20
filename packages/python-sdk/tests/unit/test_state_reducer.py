@@ -753,3 +753,141 @@ class TestOperationSequences:
         email_col = next((c for c in table.columns if c.name == "user_email"), None)
         assert email_col.tags["PII"] == "true"
         assert email_col.mask_id == "mask_001"
+
+
+class TestVolumeOperations:
+    """Test volume operations"""
+
+    def test_add_volume(self, sample_unity_state):
+        """Test adding a volume"""
+        builder = OperationBuilder()
+        op = builder.add_volume(
+            "vol_001", "my_volume", "schema_456", "managed", comment="Data volume", op_id="op_v1"
+        )
+        new_state = apply_operation(sample_unity_state, op)
+        assert len(new_state.catalogs[0].schemas[0].volumes) == 1
+        vol = new_state.catalogs[0].schemas[0].volumes[0]
+        assert vol.id == "vol_001"
+        assert vol.name == "my_volume"
+        assert vol.volume_type == "managed"
+        assert vol.comment == "Data volume"
+
+    def test_rename_volume(self, sample_unity_state):
+        """Test renaming a volume"""
+        builder = OperationBuilder()
+        add_op = builder.add_volume("vol_001", "old_vol", "schema_456", op_id="op_v1")
+        state = apply_operation(sample_unity_state, add_op)
+        rename_op = builder.rename_volume("vol_001", "new_vol", "old_vol", op_id="op_v2")
+        new_state = apply_operation(state, rename_op)
+        assert new_state.catalogs[0].schemas[0].volumes[0].name == "new_vol"
+
+    def test_update_volume(self, sample_unity_state):
+        """Test updating a volume"""
+        builder = OperationBuilder()
+        add_op = builder.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
+        state = apply_operation(sample_unity_state, add_op)
+        update_op = builder.update_volume("vol_001", comment="Updated comment", op_id="op_v2")
+        new_state = apply_operation(state, update_op)
+        assert new_state.catalogs[0].schemas[0].volumes[0].comment == "Updated comment"
+
+    def test_drop_volume(self, sample_unity_state):
+        """Test dropping a volume"""
+        builder = OperationBuilder()
+        add_op = builder.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
+        state = apply_operation(sample_unity_state, add_op)
+        drop_op = builder.drop_volume("vol_001", op_id="op_v2")
+        new_state = apply_operation(state, drop_op)
+        assert len(new_state.catalogs[0].schemas[0].volumes) == 0
+
+
+class TestFunctionOperations:
+    """Test function operations"""
+
+    def test_add_function(self, sample_unity_state):
+        """Test adding a function"""
+        builder = OperationBuilder()
+        op = builder.add_function(
+            "func_001",
+            "my_func",
+            "schema_456",
+            "SQL",
+            "INT",
+            "RETURN 1",
+            comment="Helper",
+            op_id="op_f1",
+        )
+        new_state = apply_operation(sample_unity_state, op)
+        assert len(new_state.catalogs[0].schemas[0].functions) == 1
+        fn = new_state.catalogs[0].schemas[0].functions[0]
+        assert fn.id == "func_001"
+        assert fn.name == "my_func"
+        assert fn.language == "SQL"
+        assert fn.body == "RETURN 1"
+        assert fn.comment == "Helper"
+
+    def test_rename_function(self, sample_unity_state):
+        """Test renaming a function"""
+        builder = OperationBuilder()
+        add_op = builder.add_function(
+            "func_001", "old_fn", "schema_456", "SQL", "INT", "RETURN 1", op_id="op_f1"
+        )
+        state = apply_operation(sample_unity_state, add_op)
+        rename_op = builder.rename_function("func_001", "new_fn", "old_fn", op_id="op_f2")
+        new_state = apply_operation(state, rename_op)
+        assert new_state.catalogs[0].schemas[0].functions[0].name == "new_fn"
+
+    def test_drop_function(self, sample_unity_state):
+        """Test dropping a function"""
+        builder = OperationBuilder()
+        add_op = builder.add_function(
+            "func_001", "my_fn", "schema_456", "SQL", "INT", "RETURN 1", op_id="op_f1"
+        )
+        state = apply_operation(sample_unity_state, add_op)
+        drop_op = builder.drop_function("func_001", op_id="op_f2")
+        new_state = apply_operation(state, drop_op)
+        assert len(new_state.catalogs[0].schemas[0].functions) == 0
+
+
+class TestMaterializedViewOperations:
+    """Test materialized view operations"""
+
+    def test_add_materialized_view(self, sample_unity_state):
+        """Test adding a materialized view"""
+        builder = OperationBuilder()
+        op = builder.add_materialized_view(
+            "mv_001",
+            "my_mv",
+            "schema_456",
+            "SELECT id, name FROM t",
+            comment="Summary MV",
+            op_id="op_mv1",
+        )
+        new_state = apply_operation(sample_unity_state, op)
+        assert len(new_state.catalogs[0].schemas[0].materialized_views) == 1
+        mv = new_state.catalogs[0].schemas[0].materialized_views[0]
+        assert mv.id == "mv_001"
+        assert mv.name == "my_mv"
+        assert mv.definition == "SELECT id, name FROM t"
+        assert mv.comment == "Summary MV"
+
+    def test_rename_materialized_view(self, sample_unity_state):
+        """Test renaming a materialized view"""
+        builder = OperationBuilder()
+        add_op = builder.add_materialized_view(
+            "mv_001", "old_mv", "schema_456", "SELECT 1", op_id="op_mv1"
+        )
+        state = apply_operation(sample_unity_state, add_op)
+        rename_op = builder.rename_materialized_view("mv_001", "new_mv", "old_mv", op_id="op_mv2")
+        new_state = apply_operation(state, rename_op)
+        assert new_state.catalogs[0].schemas[0].materialized_views[0].name == "new_mv"
+
+    def test_drop_materialized_view(self, sample_unity_state):
+        """Test dropping a materialized view"""
+        builder = OperationBuilder()
+        add_op = builder.add_materialized_view(
+            "mv_001", "my_mv", "schema_456", "SELECT 1", op_id="op_mv1"
+        )
+        state = apply_operation(sample_unity_state, add_op)
+        drop_op = builder.drop_materialized_view("mv_001", op_id="op_mv2")
+        new_state = apply_operation(state, drop_op)
+        assert len(new_state.catalogs[0].schemas[0].materialized_views) == 0

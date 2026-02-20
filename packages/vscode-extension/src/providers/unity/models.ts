@@ -94,6 +94,51 @@ export interface UnityView extends BaseObject {
   grants: UnityGrant[];
 }
 
+// Volume definition (managed or external)
+export interface UnityVolume extends BaseObject {
+  volumeType: 'managed' | 'external';
+  comment?: string;
+  location?: string; // For external volumes
+  grants?: UnityGrant[];
+}
+
+// Function parameter
+export interface UnityFunctionParameter {
+  name: string;
+  dataType: string;
+  defaultExpression?: string;
+  comment?: string;
+}
+
+// Function definition (SQL or Python UDF)
+export interface UnityFunction extends BaseObject {
+  language: 'SQL' | 'PYTHON';
+  returnType?: string;
+  returnsTable?: Array<{ columnName: string; dataType: string }>;
+  body: string;
+  comment?: string;
+  parameters?: UnityFunctionParameter[];
+  grants?: UnityGrant[];
+}
+
+// Materialized view definition
+export interface UnityMaterializedView extends BaseObject {
+  definition: string;
+  comment?: string;
+  refreshSchedule?: string;
+  partitionColumns?: string[];
+  clusterColumns?: string[];
+  properties?: Record<string, string>;
+  dependencies?: string[];
+  extractedDependencies?: {
+    tables: string[];
+    views: string[];
+    catalogs: string[];
+    schemas: string[];
+  };
+  grants?: UnityGrant[];
+}
+
 // Schema definition
 export interface UnitySchema extends BaseObject {
   managedLocationName?: string; // Reference to env managedLocations
@@ -101,6 +146,9 @@ export interface UnitySchema extends BaseObject {
   tags?: Record<string, string>; // Schema tags (Unity Catalog governance)
   tables: UnityTable[];
   views: UnityView[]; // Views stored alongside tables in schema
+  volumes?: UnityVolume[];
+  functions?: UnityFunction[];
+  materializedViews?: UnityMaterializedView[];
   grants: UnityGrant[];
 }
 

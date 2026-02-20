@@ -10,6 +10,7 @@ import pytest
 from schemax.providers.base.exceptions import SchemaXProviderError
 from schemax.providers.base.operations import Operation, create_operation
 from schemax.providers.unity.sql_generator import UnitySQLGenerator
+from schemax.providers.unity.state_reducer import apply_operation
 from tests.utils import OperationBuilder
 
 
@@ -1353,6 +1354,112 @@ class TestViewSQL:
             f"Views must be created in dependency order: "
             f"view1 (idx={view1_idx}), view2 (idx={view2_idx}), view3 (idx={view3_idx})"
         )
+
+
+class TestVolumeFunctionMaterializedViewSQL:
+    """Test SQL generation for volume, function, and materialized view operations"""
+
+    def test_add_volume_managed(self, sample_unity_state, assert_sql):
+        """Test CREATE VOLUME (managed) SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_volume(
+            "vol_001", "my_volume", "schema_456", "managed", comment="Data volume", op_id="op_v1"
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE VOLUME IF NOT EXISTS" in result.sql
+        assert "EXTERNAL" not in result.sql or "EXTERNAL VOLUME" not in result.sql
+        assert "`my_volume`" in result.sql or "my_volume" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_volume_external(self, sample_unity_state, assert_sql):
+        """Test CREATE EXTERNAL VOLUME SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_volume(
+            "vol_002",
+            "external_vol",
+            "schema_456",
+            "external",
+            location="s3://bucket/path",
+            op_id="op_v2",
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "EXTERNAL VOLUME" in result.sql or "CREATE VOLUME" in result.sql
+        assert_sql(result.sql)
+
+    def test_drop_volume(self, sample_unity_state, assert_sql):
+        """Test DROP VOLUME SQL generation"""
+        builder = OperationBuilder()
+        add_op = builder.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
+        state = apply_operation(sample_unity_state, add_op)
+        generator = UnitySQLGenerator(state.model_dump(by_alias=True))
+        drop_op = builder.drop_volume("vol_001", op_id="op_v2")
+        result = generator.generate_sql_for_operation(drop_op)
+        assert "DROP VOLUME" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_function_sql(self, sample_unity_state, assert_sql):
+        """Test CREATE FUNCTION (SQL) SQL generation. Body is expression only (generator wraps in RETURN)."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_function(
+            "func_001",
+            "my_func",
+            "schema_456",
+            "SQL",
+            "INT",
+            "1",  # SQL UDF body: expression only; generator emits RETURN (body)
+            comment="Helper",
+            op_id="op_f1",
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE" in result.sql and "FUNCTION" in result.sql
+        assert "RETURNS" in result.sql or "RETURN" in result.sql
+        assert_sql(result.sql)
+
+    def test_drop_function(self, sample_unity_state, assert_sql):
+        """Test DROP FUNCTION SQL generation"""
+        builder = OperationBuilder()
+        add_op = builder.add_function(
+            "func_001", "my_fn", "schema_456", "SQL", "INT", "RETURN 1", op_id="op_f1"
+        )
+        state = apply_operation(sample_unity_state, add_op)
+        generator = UnitySQLGenerator(state.model_dump(by_alias=True))
+        drop_op = builder.drop_function("func_001", op_id="op_f2")
+        result = generator.generate_sql_for_operation(drop_op)
+        assert "DROP FUNCTION" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_materialized_view(self, sample_unity_state, assert_sql):
+        """Test CREATE MATERIALIZED VIEW SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_materialized_view(
+            "mv_001",
+            "my_mv",
+            "schema_456",
+            "SELECT id, name FROM users",
+            comment="Summary",
+            op_id="op_mv1",
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "MATERIALIZED VIEW" in result.sql
+        assert "SELECT" in result.sql
+        assert_sql(result.sql)
+
+    def test_drop_materialized_view(self, sample_unity_state, assert_sql):
+        """Test DROP VIEW (materialized view) SQL generation"""
+        builder = OperationBuilder()
+        add_op = builder.add_materialized_view(
+            "mv_001", "my_mv", "schema_456", "SELECT 1", op_id="op_mv1"
+        )
+        state = apply_operation(sample_unity_state, add_op)
+        generator = UnitySQLGenerator(state.model_dump(by_alias=True))
+        drop_op = builder.drop_materialized_view("mv_001", op_id="op_mv2")
+        result = generator.generate_sql_for_operation(drop_op)
+        assert "DROP" in result.sql and "VIEW" in result.sql
+        assert_sql(result.sql)
 
 
 class TestSQLGeneration:

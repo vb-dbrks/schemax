@@ -4,6 +4,9 @@ import { useDesignerStore } from './state/useDesignerStore';
 import { Sidebar } from './components/Sidebar';
 import { TableDesigner } from './components/TableDesigner';
 import { ViewDetails } from './components/ViewDetails';
+import { VolumeDetails } from './components/VolumeDetails';
+import { FunctionDetails } from './components/FunctionDetails';
+import { MaterializedViewDetails } from './components/MaterializedViewDetails';
 import { CatalogDetails } from './components/CatalogDetails';
 import { SchemaDetails } from './components/SchemaDetails';
 import { SnapshotPanel } from './components/SnapshotPanel';
@@ -37,15 +40,18 @@ const IconHelp: React.FC = () => (
 );
 
 export const App: React.FC = () => {
-  const { 
-    project, 
-    setProject, 
-    setProvider, 
-    provider, 
+  const {
+    project,
+    setProject,
+    setProvider,
+    provider,
     selectedCatalogId,
     selectedSchemaId,
-    selectedTableId, 
-    findView 
+    selectedTableId,
+    findView,
+    findVolume,
+    findFunction,
+    findMaterializedView,
   } = useDesignerStore();
   const [loading, setLoading] = React.useState(true);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = React.useState(false);
@@ -61,8 +67,10 @@ export const App: React.FC = () => {
   const [importProgress, setImportProgress] = React.useState<ImportProgress | null>(null);
   const [pickedSqlFilePath, setPickedSqlFilePath] = React.useState<string | null>(null);
 
-  // Determine if selected object is a view
   const isViewSelected = selectedTableId ? !!findView(selectedTableId) : false;
+  const isVolumeSelected = selectedTableId ? !!findVolume(selectedTableId) : false;
+  const isFunctionSelected = selectedTableId ? !!findFunction(selectedTableId) : false;
+  const isMaterializedViewSelected = selectedTableId ? !!findMaterializedView(selectedTableId) : false;
 
   useEffect(() => {
     // Set up message listener from extension
@@ -288,9 +296,14 @@ export const App: React.FC = () => {
         </div>
         {/* Right panel selection logic */}
         {selectedTableId ? (
-          // Table or View selected
           isViewSelected ? (
             <ViewDetails viewId={selectedTableId} />
+          ) : isVolumeSelected ? (
+            <VolumeDetails volumeId={selectedTableId} />
+          ) : isFunctionSelected ? (
+            <FunctionDetails functionId={selectedTableId} />
+          ) : isMaterializedViewSelected ? (
+            <MaterializedViewDetails materializedViewId={selectedTableId} />
           ) : (
             <TableDesigner />
           )

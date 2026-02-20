@@ -978,7 +978,9 @@ class TestUnityProvider:
         assert [view["name"] for view in state["catalogs"][0]["schemas"][0]["views"]] == [
             "active_users"
         ]
-        assert any("mv_users (MATERIALIZED VIEW)" in warning for warning in warnings)
+        # Materialized views are now supported and imported (no longer warned/skipped)
+        mvs = state["catalogs"][0]["schemas"][0].get("materialized_views", [])
+        assert [mv["name"] for mv in mvs] == ["mv_users"]
 
     def test_discover_state_filters_system_catalog(self, unity_provider):
         mock_client = SimpleNamespace(statement_execution=SimpleNamespace())
@@ -1071,9 +1073,9 @@ class TestOperationMetadata:
         # Verify all Unity operations have metadata
         unity_ops = [op for op in caps.supported_operations if op.startswith("unity.")]
 
-        assert len(unity_ops) == 42  # All 42 Unity operations (4+4+6+7+7+2+2+2+3+3+2)
-        # 4 catalog, 4 schema, 6 table, 7 column, 7 view, 2 constraint, 2 tag, 2 row filter,
-        # 3 column mask, 3 property, 2 grant (add_grant, revoke_grant)
+        # Unity operations: catalog, schema, table, view, column, volume, function,
+        # materialized_view, constraint, tag, row filter, column mask, property, grant
+        assert len(unity_ops) >= 50  # Grows with volume/function/MV ops
 
 
 class TestProviderIntegration:

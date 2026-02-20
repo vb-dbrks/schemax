@@ -620,6 +620,256 @@ class OperationBuilder:
             op_id=op_id,
         )
 
+    # Volume Operations
+    def add_volume(
+        self,
+        volume_id: str,
+        name: str,
+        schema_id: str,
+        volume_type: Literal["managed", "external"] = "managed",
+        comment: str | None = None,
+        location: str | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create an add_volume operation"""
+        payload: dict[str, Any] = {
+            "volumeId": volume_id,
+            "name": name,
+            "schemaId": schema_id,
+            "volumeType": volume_type,
+        }
+        if comment is not None:
+            payload["comment"] = comment
+        if location is not None:
+            payload["location"] = location
+        return create_operation(
+            provider=self.provider,
+            op_type="add_volume",
+            target=volume_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
+    def rename_volume(
+        self, volume_id: str, new_name: str, old_name: str, op_id: str | None = None
+    ) -> Operation:
+        """Create a rename_volume operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="rename_volume",
+            target=volume_id,
+            payload={"newName": new_name},
+            op_id=op_id,
+        )
+
+    def update_volume(
+        self,
+        volume_id: str,
+        comment: str | None = None,
+        location: str | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create an update_volume operation"""
+        payload: dict[str, Any] = {}
+        if comment is not None:
+            payload["comment"] = comment
+        if location is not None:
+            payload["location"] = location
+        return create_operation(
+            provider=self.provider,
+            op_type="update_volume",
+            target=volume_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
+    def drop_volume(self, volume_id: str, op_id: str | None = None) -> Operation:
+        """Create a drop_volume operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="drop_volume",
+            target=volume_id,
+            payload={},
+            op_id=op_id,
+        )
+
+    # Function Operations
+    def add_function(
+        self,
+        function_id: str,
+        name: str,
+        schema_id: str,
+        language: Literal["SQL", "PYTHON"],
+        return_type: str,
+        body: str,
+        comment: str | None = None,
+        parameters: list[dict[str, Any]] | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create an add_function operation"""
+        payload: dict[str, Any] = {
+            "functionId": function_id,
+            "name": name,
+            "schemaId": schema_id,
+            "language": language,
+            "returnType": return_type,
+            "body": body,
+        }
+        if comment is not None:
+            payload["comment"] = comment
+        if parameters is not None:
+            payload["parameters"] = parameters
+        return create_operation(
+            provider=self.provider,
+            op_type="add_function",
+            target=function_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
+    def rename_function(
+        self, function_id: str, new_name: str, old_name: str, op_id: str | None = None
+    ) -> Operation:
+        """Create a rename_function operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="rename_function",
+            target=function_id,
+            payload={"newName": new_name},
+            op_id=op_id,
+        )
+
+    def update_function(
+        self,
+        function_id: str,
+        body: str | None = None,
+        comment: str | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create an update_function operation"""
+        payload: dict[str, Any] = {}
+        if body is not None:
+            payload["body"] = body
+        if comment is not None:
+            payload["comment"] = comment
+        return create_operation(
+            provider=self.provider,
+            op_type="update_function",
+            target=function_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
+    def drop_function(self, function_id: str, op_id: str | None = None) -> Operation:
+        """Create a drop_function operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="drop_function",
+            target=function_id,
+            payload={},
+            op_id=op_id,
+        )
+
+    def set_function_comment(
+        self, function_id: str, comment: str, op_id: str | None = None
+    ) -> Operation:
+        """Create a set_function_comment operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="set_function_comment",
+            target=function_id,
+            payload={"functionId": function_id, "comment": comment},
+            op_id=op_id,
+        )
+
+    # Materialized View Operations
+    def add_materialized_view(
+        self,
+        mv_id: str,
+        name: str,
+        schema_id: str,
+        definition: str,
+        comment: str | None = None,
+        refresh_schedule: str | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create an add_materialized_view operation"""
+        payload: dict[str, Any] = {
+            "materializedViewId": mv_id,
+            "name": name,
+            "schemaId": schema_id,
+            "definition": definition,
+        }
+        if comment is not None:
+            payload["comment"] = comment
+        if refresh_schedule is not None:
+            payload["refreshSchedule"] = refresh_schedule
+        return create_operation(
+            provider=self.provider,
+            op_type="add_materialized_view",
+            target=mv_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
+    def rename_materialized_view(
+        self, mv_id: str, new_name: str, old_name: str, op_id: str | None = None
+    ) -> Operation:
+        """Create a rename_materialized_view operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="rename_materialized_view",
+            target=mv_id,
+            payload={"newName": new_name},
+            op_id=op_id,
+        )
+
+    def update_materialized_view(
+        self,
+        mv_id: str,
+        definition: str | None = None,
+        comment: str | None = None,
+        refresh_schedule: str | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        """Create an update_materialized_view operation"""
+        payload: dict[str, Any] = {}
+        if definition is not None:
+            payload["definition"] = definition
+        if comment is not None:
+            payload["comment"] = comment
+        if refresh_schedule is not None:
+            payload["refreshSchedule"] = refresh_schedule
+        return create_operation(
+            provider=self.provider,
+            op_type="update_materialized_view",
+            target=mv_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
+    def drop_materialized_view(self, mv_id: str, op_id: str | None = None) -> Operation:
+        """Create a drop_materialized_view operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="drop_materialized_view",
+            target=mv_id,
+            payload={},
+            op_id=op_id,
+        )
+
+    def set_materialized_view_comment(
+        self, mv_id: str, comment: str, op_id: str | None = None
+    ) -> Operation:
+        """Create a set_materialized_view_comment operation"""
+        return create_operation(
+            provider=self.provider,
+            op_type="set_materialized_view_comment",
+            target=mv_id,
+            payload={"materializedViewId": mv_id, "comment": comment},
+            op_id=op_id,
+        )
+
 
 def make_operation_sequence(
     specs: list[dict[str, Any]], provider: str = "unity"

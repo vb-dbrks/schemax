@@ -109,8 +109,11 @@ class UnityStateDiffer(StateDiffer):
                 ops.append(self._create_add_schema_op(sch, catalog_id))
                 # Add all tables in this new schema
                 ops.extend(self._add_all_tables_in_schema(sch_id, sch))
-                # Add all views in this new schema
+                # Add all views, volumes, functions, materialized views in this new schema
                 ops.extend(self._add_all_views_in_schema(sch_id, sch))
+                ops.extend(self._add_all_volumes_in_schema(sch_id, sch))
+                ops.extend(self._add_all_functions_in_schema(sch_id, sch))
+                ops.extend(self._add_all_materialized_views_in_schema(sch_id, sch))
                 # Add schema grants
                 ops.extend(self._diff_grants("schema", sch_id, [], sch.get("grants", [])))
             else:
@@ -131,6 +134,11 @@ class UnityStateDiffer(StateDiffer):
 
                 # Compare views within schema
                 ops.extend(self._diff_views(catalog_id, sch_id, old_sch, sch))
+
+                # Compare volumes, functions, materialized views within schema
+                ops.extend(self._diff_volumes(catalog_id, sch_id, old_sch, sch))
+                ops.extend(self._diff_functions(catalog_id, sch_id, old_sch, sch))
+                ops.extend(self._diff_materialized_views(catalog_id, sch_id, old_sch, sch))
 
                 # Compare schema grants
                 ops.extend(
@@ -283,8 +291,165 @@ class UnityStateDiffer(StateDiffer):
         # Detect removed views
         for view_id, view in old_views.items():
             if view_id not in new_views:
-                ops.append(self._create_drop_view_op(view))
+                ops.append(self._create_drop_view_op(view, catalog_id, schema_id))
 
+        return ops
+
+    def _diff_volumes(
+        self,
+        catalog_id: str,
+        schema_id: str,
+        old_schema: dict[str, Any],
+        new_schema: dict[str, Any],
+    ) -> list[Operation]:
+        """Compare volumes within a schema"""
+        ops: list[Operation] = []
+        old_volumes = self._build_id_map(old_schema.get("volumes", []))
+        new_volumes = self._build_id_map(new_schema.get("volumes", []))
+
+        for vol_id, vol in new_volumes.items():
+            if vol_id not in old_volumes:
+                ops.append(self._create_add_volume_op(vol, schema_id))
+                ops.extend(self._diff_grants("volume", vol_id, [], vol.get("grants", [])))
+            else:
+                old_vol = old_volumes[vol_id]
+                if old_vol.get("name") != vol.get("name"):
+                    if self._detect_rename(
+                        vol_id, vol_id, old_vol.get("name", ""), vol.get("name", ""), "rename_volume"
+                    ):
+                        ops.append(
+                            self._create_rename_volume_op(
+                                vol_id, old_vol.get("name", ""), vol.get("name", "")
+                            )
+                        )
+                if (
+                    old_vol.get("comment") != vol.get("comment")
+                    or old_vol.get("location") != vol.get("location")
+                ):
+                    ops.append(self._create_update_volume_op(vol_id, vol))
+                ops.extend(
+                    self._diff_grants(
+                        "volume",
+                        vol_id,
+                        old_vol.get("grants", []),
+                        vol.get("grants", []),
+                    )
+                )
+        for vol_id, vol in old_volumes.items():
+            if vol_id not in new_volumes:
+                ops.append(self._create_drop_volume_op(vol, catalog_id, schema_id))
+        return ops
+
+    def _diff_functions(
+        self,
+        catalog_id: str,
+        schema_id: str,
+        old_schema: dict[str, Any],
+        new_schema: dict[str, Any],
+    ) -> list[Operation]:
+        """Compare functions within a schema"""
+        ops: list[Operation] = []
+        old_functions = self._build_id_map(old_schema.get("functions", []))
+        new_functions = self._build_id_map(new_schema.get("functions", []))
+
+        for func_id, func in new_functions.items():
+            if func_id not in old_functions:
+                ops.append(self._create_add_function_op(func, schema_id))
+                ops.extend(self._diff_grants("function", func_id, [], func.get("grants", [])))
+            else:
+                old_func = old_functions[func_id]
+                if old_func.get("name") != func.get("name"):
+                    if self._detect_rename(
+                        func_id,
+                        func_id,
+                        old_func.get("name", ""),
+                        func.get("name", ""),
+                        "rename_function",
+                    ):
+                        ops.append(
+                            self._create_rename_function_op(
+                                func_id, old_func.get("name", ""), func.get("name", "")
+                            )
+                        )
+                if (
+                    old_func.get("body") != func.get("body")
+                    or old_func.get("returnType") != func.get("returnType")
+                ):
+                    ops.append(self._create_update_function_op(func_id, func))
+                if old_func.get("comment") != func.get("comment"):
+                    ops.append(self._create_set_function_comment_op(func_id, func.get("comment")))
+                ops.extend(
+                    self._diff_grants(
+                        "function",
+                        func_id,
+                        old_func.get("grants", []),
+                        func.get("grants", []),
+                    )
+                )
+        for func_id, func in old_functions.items():
+            if func_id not in new_functions:
+                ops.append(self._create_drop_function_op(func, catalog_id, schema_id))
+        return ops
+
+    def _diff_materialized_views(
+        self,
+        catalog_id: str,
+        schema_id: str,
+        old_schema: dict[str, Any],
+        new_schema: dict[str, Any],
+    ) -> list[Operation]:
+        """Compare materialized views within a schema"""
+        ops: list[Operation] = []
+        old_mvs = self._build_id_map(
+            old_schema.get("materialized_views", old_schema.get("materializedViews", []))
+        )
+        new_mvs = self._build_id_map(
+            new_schema.get("materialized_views", new_schema.get("materializedViews", []))
+        )
+
+        for mv_id, mv in new_mvs.items():
+            if mv_id not in old_mvs:
+                ops.append(self._create_add_materialized_view_op(mv, schema_id))
+                ops.extend(
+                    self._diff_grants("materialized_view", mv_id, [], mv.get("grants", []))
+                )
+            else:
+                old_mv = old_mvs[mv_id]
+                if old_mv.get("name") != mv.get("name"):
+                    if self._detect_rename(
+                        mv_id,
+                        mv_id,
+                        old_mv.get("name", ""),
+                        mv.get("name", ""),
+                        "rename_materialized_view",
+                    ):
+                        ops.append(
+                            self._create_rename_materialized_view_op(
+                                mv_id, old_mv.get("name", ""), mv.get("name", "")
+                            )
+                        )
+                if (
+                    old_mv.get("definition") != mv.get("definition")
+                    or old_mv.get("refreshSchedule") != mv.get("refreshSchedule")
+                ):
+                    ops.append(self._create_update_materialized_view_op(mv_id, mv))
+                if old_mv.get("comment") != mv.get("comment"):
+                    ops.append(
+                        self._create_set_materialized_view_comment_op(
+                            mv_id, mv.get("comment")
+                        )
+                    )
+                ops.extend(
+                    self._diff_grants(
+                        "materialized_view",
+                        mv_id,
+                        old_mv.get("grants", []),
+                        mv.get("grants", []),
+                    )
+                )
+        for mv_id, mv in old_mvs.items():
+            if mv_id not in new_mvs:
+                ops.append(self._create_drop_materialized_view_op(mv, catalog_id, schema_id))
         return ops
 
     def _diff_grants(
@@ -616,8 +781,11 @@ class UnityStateDiffer(StateDiffer):
             ops.append(self._create_add_schema_op(schema, catalog_id))
             # Add all tables in this new schema
             ops.extend(self._add_all_tables_in_schema(sch_id, schema))
-            # Add all views in this new schema
+            # Add all views, volumes, functions, materialized views in this new schema
             ops.extend(self._add_all_views_in_schema(sch_id, schema))
+            ops.extend(self._add_all_volumes_in_schema(sch_id, schema))
+            ops.extend(self._add_all_functions_in_schema(sch_id, schema))
+            ops.extend(self._add_all_materialized_views_in_schema(sch_id, schema))
             # Add schema grants (Bug 2: schema-level grants were omitted for new catalogs)
             ops.extend(self._diff_grants("schema", sch_id, [], schema.get("grants", [])))
 
@@ -651,6 +819,40 @@ class UnityStateDiffer(StateDiffer):
             # Add view grants
             ops.extend(self._diff_grants("view", view_id, [], view.get("grants", [])))
 
+        return ops
+
+    def _add_all_volumes_in_schema(self, schema_id: str, schema: dict[str, Any]) -> list[Operation]:
+        """Add all volumes in a newly created schema"""
+        ops: list[Operation] = []
+        for vol in schema.get("volumes", []):
+            vol_id = vol["id"]
+            ops.append(self._create_add_volume_op(vol, schema_id))
+            ops.extend(self._diff_grants("volume", vol_id, [], vol.get("grants", [])))
+        return ops
+
+    def _add_all_functions_in_schema(
+        self, schema_id: str, schema: dict[str, Any]
+    ) -> list[Operation]:
+        """Add all functions in a newly created schema"""
+        ops: list[Operation] = []
+        for func in schema.get("functions", []):
+            func_id = func["id"]
+            ops.append(self._create_add_function_op(func, schema_id))
+            ops.extend(self._diff_grants("function", func_id, [], func.get("grants", [])))
+        return ops
+
+    def _add_all_materialized_views_in_schema(
+        self, schema_id: str, schema: dict[str, Any]
+    ) -> list[Operation]:
+        """Add all materialized views in a newly created schema"""
+        ops: list[Operation] = []
+        mvs = schema.get("materialized_views", schema.get("materializedViews", []))
+        for mv in mvs:
+            mv_id = mv["id"]
+            ops.append(self._create_add_materialized_view_op(mv, schema_id))
+            ops.extend(
+                self._diff_grants("materialized_view", mv_id, [], mv.get("grants", []))
+            )
         return ops
 
     def _add_all_columns_in_table(self, table_id: str, table: dict[str, Any]) -> list[Operation]:
@@ -914,20 +1116,259 @@ class UnityStateDiffer(StateDiffer):
             payload={"viewId": view_id, "comment": comment},
         )
 
-    def _create_drop_view_op(self, view: dict[str, Any]) -> Operation:
-        # Build payload with view metadata
+    def _create_drop_view_op(
+        self, view: dict[str, Any], catalog_id: str, schema_id: str
+    ) -> Operation:
         payload: dict[str, Any] = {}
-
-        # Add view name (required for SQL generation)
         if "name" in view:
             payload["name"] = view["name"]
-
+        payload["catalogId"] = catalog_id
+        payload["schemaId"] = schema_id
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.drop_view",
             target=view["id"],
+            payload=payload,
+        )
+
+    # Volume operation creators
+    def _create_add_volume_op(self, volume: dict[str, Any], schema_id: str) -> Operation:
+        vol_id = volume.get("id", "")
+        payload: dict[str, Any] = {
+            "volumeId": vol_id,
+            "name": volume.get("name", ""),
+            "schemaId": schema_id,
+            "volumeType": volume.get("volumeType", volume.get("volume_type", "managed")),
+        }
+        if volume.get("comment") is not None:
+            payload["comment"] = volume["comment"]
+        if volume.get("location") is not None:
+            payload["location"] = volume["location"]
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.add_volume",
+            target=vol_id,
+            payload=payload,
+        )
+
+    def _create_rename_volume_op(
+        self, volume_id: str, old_name: str, new_name: str
+    ) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.rename_volume",
+            target=volume_id,
+            payload={"oldName": old_name, "newName": new_name},
+        )
+
+    def _create_update_volume_op(self, volume_id: str, volume: dict[str, Any]) -> Operation:
+        payload: dict[str, Any] = {}
+        if "comment" in volume:
+            payload["comment"] = volume.get("comment")
+        if "location" in volume:
+            payload["location"] = volume.get("location")
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.update_volume",
+            target=volume_id,
+            payload=payload,
+        )
+
+    def _create_drop_volume_op(
+        self, volume: dict[str, Any], catalog_id: str, schema_id: str
+    ) -> Operation:
+        payload: dict[str, Any] = {
+            "name": volume.get("name", ""),
+            "catalogId": catalog_id,
+            "schemaId": schema_id,
+        }
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.drop_volume",
+            target=volume["id"],
+            payload=payload,
+        )
+
+    # Function operation creators
+    def _create_add_function_op(self, func: dict[str, Any], schema_id: str) -> Operation:
+        func_id = func.get("id", "")
+        payload: dict[str, Any] = {
+            "functionId": func_id,
+            "name": func.get("name", ""),
+            "schemaId": schema_id,
+            "language": func.get("language", "SQL"),
+            "returnType": func.get("returnType", func.get("return_type")),
+            "body": func.get("body", ""),
+        }
+        if func.get("comment") is not None:
+            payload["comment"] = func["comment"]
+        if func.get("parameters") is not None:
+            payload["parameters"] = func["parameters"]
+        if func.get("returnsTable") is not None:
+            payload["returnsTable"] = func["returnsTable"]
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.add_function",
+            target=func_id,
+            payload=payload,
+        )
+
+    def _create_rename_function_op(
+        self, function_id: str, old_name: str, new_name: str
+    ) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.rename_function",
+            target=function_id,
+            payload={"oldName": old_name, "newName": new_name},
+        )
+
+    def _create_update_function_op(
+        self, function_id: str, func: dict[str, Any]
+    ) -> Operation:
+        payload: dict[str, Any] = {
+            "body": func.get("body"),
+            "returnType": func.get("returnType", func.get("return_type")),
+            "parameters": func.get("parameters"),
+            "comment": func.get("comment"),
+        }
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.update_function",
+            target=function_id,
+            payload=payload,
+        )
+
+    def _create_set_function_comment_op(
+        self, function_id: str, comment: str | None
+    ) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.set_function_comment",
+            target=function_id,
+            payload={"functionId": function_id, "comment": comment},
+        )
+
+    def _create_drop_function_op(
+        self, func: dict[str, Any], catalog_id: str, schema_id: str
+    ) -> Operation:
+        payload: dict[str, Any] = {
+            "name": func.get("name", ""),
+            "catalogId": catalog_id,
+            "schemaId": schema_id,
+        }
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.drop_function",
+            target=func["id"],
+            payload=payload,
+        )
+
+    # Materialized view operation creators
+    def _create_add_materialized_view_op(
+        self, mv: dict[str, Any], schema_id: str
+    ) -> Operation:
+        mv_id = mv.get("id", "")
+        payload: dict[str, Any] = {
+            "materializedViewId": mv_id,
+            "name": mv.get("name", ""),
+            "schemaId": schema_id,
+            "definition": mv.get("definition", "SELECT 1"),
+        }
+        if mv.get("comment") is not None:
+            payload["comment"] = mv["comment"]
+        if mv.get("refreshSchedule") is not None:
+            payload["refreshSchedule"] = mv["refreshSchedule"]
+        if mv.get("refresh_schedule") is not None:
+            payload["refreshSchedule"] = mv["refresh_schedule"]
+        if mv.get("dependencies") is not None:
+            payload["dependencies"] = mv["dependencies"]
+        if mv.get("extractedDependencies") is not None:
+            payload["extractedDependencies"] = mv["extractedDependencies"]
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.add_materialized_view",
+            target=mv_id,
+            payload=payload,
+        )
+
+    def _create_rename_materialized_view_op(
+        self, mv_id: str, old_name: str, new_name: str
+    ) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.rename_materialized_view",
+            target=mv_id,
+            payload={"oldName": old_name, "newName": new_name},
+        )
+
+    def _create_update_materialized_view_op(
+        self, mv_id: str, mv: dict[str, Any]
+    ) -> Operation:
+        payload: dict[str, Any] = {
+            "definition": mv.get("definition"),
+            "refreshSchedule": mv.get("refreshSchedule", mv.get("refresh_schedule")),
+            "extractedDependencies": mv.get("extractedDependencies"),
+        }
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.update_materialized_view",
+            target=mv_id,
+            payload=payload,
+        )
+
+    def _create_set_materialized_view_comment_op(
+        self, mv_id: str, comment: str | None
+    ) -> Operation:
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.set_materialized_view_comment",
+            target=mv_id,
+            payload={"materializedViewId": mv_id, "comment": comment},
+        )
+
+    def _create_drop_materialized_view_op(
+        self, mv: dict[str, Any], catalog_id: str, schema_id: str
+    ) -> Operation:
+        payload: dict[str, Any] = {
+            "name": mv.get("name", ""),
+            "catalogId": catalog_id,
+            "schemaId": schema_id,
+        }
+        return Operation(
+            id=f"op_diff_{uuid4().hex[:8]}",
+            ts=datetime.now(UTC).isoformat(),
+            provider="unity",
+            op="unity.drop_materialized_view",
+            target=mv["id"],
             payload=payload,
         )
 
