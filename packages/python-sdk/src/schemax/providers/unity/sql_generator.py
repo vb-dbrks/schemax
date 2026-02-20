@@ -2177,12 +2177,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
         definition = op.payload.get("definition") or "SELECT 1"
         extracted_deps = op.payload.get("extractedDependencies", {})
         definition = self._qualify_view_definition(definition, extracted_deps)
-        sql = f"CREATE MATERIALIZED VIEW IF NOT EXISTS {mv_esc} AS\n{definition}"
+        comment_clause = ""
+        if op.payload.get("comment"):
+            comment_clause = f" COMMENT '{self.escape_string(op.payload['comment'])}'"
+        sql = f"CREATE MATERIALIZED VIEW IF NOT EXISTS {mv_esc}{comment_clause} AS\n{definition}"
         schedule = op.payload.get("refreshSchedule")
         if schedule:
             sql += f"\nSCHEDULE {schedule}"
-        if op.payload.get("comment"):
-            sql += f"\nCOMMENT '{self.escape_string(op.payload['comment'])}'"
         return sql
 
     def _rename_materialized_view(self, op: Operation) -> str:
@@ -2209,7 +2210,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
             mv_esc = self._build_fqn(*parts)
             extracted_deps = op.payload.get("extractedDependencies", {})
             definition = self._qualify_view_definition(definition, extracted_deps)
-            sql = f"CREATE OR REPLACE MATERIALIZED VIEW {mv_esc} AS\n{definition}"
+            comment_clause = ""
+            if op.payload.get("comment"):
+                comment_clause = f" COMMENT '{self.escape_string(op.payload['comment'])}'"
+            sql = f"CREATE OR REPLACE MATERIALIZED VIEW {mv_esc}{comment_clause} AS\n{definition}"
             if op.payload.get("refreshSchedule"):
                 sql += f"\nSCHEDULE {op.payload['refreshSchedule']}"
             return sql
@@ -2231,9 +2235,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return ";\n".join(stmts) if stmts else "-- No materialized view updates specified"
 
     def _drop_materialized_view(self, op: Operation) -> str:
-        """Generate DROP VIEW statement (Databricks uses DROP VIEW for MVs)"""
+        """Generate DROP MATERIALIZED VIEW statement (Databricks requires this, not DROP VIEW)"""
         mv_esc = self._resolve_fqn_for_drop(op)
-        return f"DROP VIEW IF EXISTS {mv_esc}"
+        return f"DROP MATERIALIZED VIEW IF EXISTS {mv_esc}"
 
     def _set_materialized_view_comment(self, op: Operation) -> str:
         """Generate COMMENT ON MATERIALIZED VIEW statement"""

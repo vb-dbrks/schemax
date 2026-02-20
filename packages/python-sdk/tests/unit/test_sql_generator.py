@@ -1448,8 +1448,30 @@ class TestVolumeFunctionMaterializedViewSQL:
         assert "SELECT" in result.sql
         assert_sql(result.sql)
 
+    def test_add_materialized_view_comment_before_as(self, sample_unity_state, assert_sql):
+        """COMMENT must appear before AS (Databricks syntax); after SELECT is invalid."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_materialized_view(
+            "mv_001",
+            "e2e_mv",
+            "schema_456",
+            "SELECT * FROM events",
+            comment="E2E MV",
+            op_id="op_mv1",
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert_sql(result.sql)
+        # COMMENT must come before AS so Databricks accepts it (not after the query).
+        as_pos = result.sql.index(" AS\n")
+        comment_pos = result.sql.index("COMMENT 'E2E MV'")
+        assert comment_pos < as_pos, (
+            "COMMENT must appear before AS clause for materialized views; "
+            "got COMMENT after AS (Databricks parse error)."
+        )
+
     def test_drop_materialized_view(self, sample_unity_state, assert_sql):
-        """Test DROP VIEW (materialized view) SQL generation"""
+        """Test DROP MATERIALIZED VIEW SQL generation"""
         builder = OperationBuilder()
         add_op = builder.add_materialized_view(
             "mv_001", "my_mv", "schema_456", "SELECT 1", op_id="op_mv1"
@@ -1458,7 +1480,9 @@ class TestVolumeFunctionMaterializedViewSQL:
         generator = UnitySQLGenerator(state.model_dump(by_alias=True))
         drop_op = builder.drop_materialized_view("mv_001", op_id="op_mv2")
         result = generator.generate_sql_for_operation(drop_op)
-        assert "DROP" in result.sql and "VIEW" in result.sql
+        assert "DROP MATERIALIZED VIEW" in result.sql, (
+            "Databricks requires DROP MATERIALIZED VIEW, not DROP VIEW, for MVs"
+        )
         assert_sql(result.sql)
 
 

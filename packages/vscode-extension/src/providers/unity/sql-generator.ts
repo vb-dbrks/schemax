@@ -2179,12 +2179,12 @@ ${columnsSql}
     const mvName = op.payload.name;
     const mvEsc = this.buildFqn(catalogName, schemaName, mvName);
     const definition = op.payload.definition ?? 'SELECT 1';
-    let sql = `CREATE MATERIALIZED VIEW IF NOT EXISTS ${mvEsc} AS\n${definition}`;
+    const commentClause = op.payload.comment
+      ? ` COMMENT '${this.escapeString(op.payload.comment)}'`
+      : '';
+    let sql = `CREATE MATERIALIZED VIEW IF NOT EXISTS ${mvEsc}${commentClause} AS\n${definition}`;
     if (op.payload.refreshSchedule) {
       sql += `\nSCHEDULE ${op.payload.refreshSchedule}`;
-    }
-    if (op.payload.comment) {
-      sql += `\nCOMMENT '${this.escapeString(op.payload.comment)}'`;
     }
     return sql;
   }
@@ -2207,7 +2207,10 @@ ${columnsSql}
       const parts = mvFqn.split('.');
       parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
       const mvEsc = this.buildFqn(...parts);
-      let sql = `CREATE OR REPLACE MATERIALIZED VIEW ${mvEsc} AS\n${definition}`;
+      const commentClause = op.payload.comment
+        ? ` COMMENT '${this.escapeString(op.payload.comment)}'`
+        : '';
+      let sql = `CREATE OR REPLACE MATERIALIZED VIEW ${mvEsc}${commentClause} AS\n${definition}`;
       if (op.payload.refreshSchedule) {
         sql += `\nSCHEDULE ${op.payload.refreshSchedule}`;
       }
@@ -2233,7 +2236,7 @@ ${columnsSql}
 
   private dropMaterializedView(op: Operation): string {
     const mvEsc = this.resolveFqnForDrop(op);
-    return `DROP VIEW IF EXISTS ${mvEsc}`;
+    return `DROP MATERIALIZED VIEW IF EXISTS ${mvEsc}`;
   }
 
   private setMaterializedViewComment(op: Operation): string {

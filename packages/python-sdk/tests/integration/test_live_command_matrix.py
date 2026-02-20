@@ -14,6 +14,7 @@ from schemax.providers.base.executor import ExecutionConfig
 from tests.utils import OperationBuilder
 from tests.utils.cli_helpers import invoke_cli
 from tests.utils.live_databricks import (
+    LiveDatabricksConfig,
     build_execution_config,
     cleanup_objects,
     create_executor,
@@ -84,7 +85,9 @@ def _write_project_promote_envs(
     return tracking_dev, physical_dev, tracking_test, physical_test, tracking_prod, physical_prod
 
 
-def _assert_schema_exists(config, physical_catalog: str, schema_name: str) -> None:
+def _assert_schema_exists(
+    config: LiveDatabricksConfig, physical_catalog: str, schema_name: str
+) -> None:
     provider = ProviderRegistry.get("unity")
     assert provider is not None
     discovered = provider.discover_state(
@@ -101,7 +104,12 @@ def _assert_schema_exists(config, physical_catalog: str, schema_name: str) -> No
     assert any(schema.get("name") == schema_name for schema in schemas)
 
 
-def _table_exists(config, physical_catalog: str, schema_name: str, table_name: str) -> bool:
+def _table_exists(
+    config: LiveDatabricksConfig,
+    physical_catalog: str,
+    schema_name: str,
+    table_name: str,
+) -> bool:
     provider = ProviderRegistry.get("unity")
     assert provider is not None
     discovered = provider.discover_state(
@@ -120,6 +128,90 @@ def _table_exists(config, physical_catalog: str, schema_name: str, table_name: s
         return False
     tables = schemas[0].get("tables", [])
     return any(table.get("name") == table_name for table in tables)
+
+
+def _volume_exists(
+    config: LiveDatabricksConfig,
+    physical_catalog: str,
+    schema_name: str,
+    volume_name: str,
+) -> bool:
+    """Return True if a volume exists in the given catalog.schema (live discovery)."""
+    provider = ProviderRegistry.get("unity")
+    assert provider is not None
+    discovered = provider.discover_state(
+        config=ExecutionConfig(
+            target_env="dev",
+            profile=config.profile,
+            warehouse_id=config.warehouse_id,
+        ),
+        scope={"catalog": physical_catalog, "schema": schema_name},
+    )
+    catalogs = discovered.get("catalogs", [])
+    if not catalogs:
+        return False
+    for schema in catalogs[0].get("schemas", []):
+        if schema.get("name") != schema_name:
+            continue
+        volumes = schema.get("volumes", [])
+        return any(v.get("name") == volume_name for v in volumes)
+    return False
+
+
+def _function_exists(
+    config: LiveDatabricksConfig,
+    physical_catalog: str,
+    schema_name: str,
+    function_name: str,
+) -> bool:
+    """Return True if a function exists in the given catalog.schema (live discovery)."""
+    provider = ProviderRegistry.get("unity")
+    assert provider is not None
+    discovered = provider.discover_state(
+        config=ExecutionConfig(
+            target_env="dev",
+            profile=config.profile,
+            warehouse_id=config.warehouse_id,
+        ),
+        scope={"catalog": physical_catalog, "schema": schema_name},
+    )
+    catalogs = discovered.get("catalogs", [])
+    if not catalogs:
+        return False
+    for schema in catalogs[0].get("schemas", []):
+        if schema.get("name") != schema_name:
+            continue
+        functions = schema.get("functions", [])
+        return any(f.get("name") == function_name for f in functions)
+    return False
+
+
+def _materialized_view_exists(
+    config: LiveDatabricksConfig,
+    physical_catalog: str,
+    schema_name: str,
+    mv_name: str,
+) -> bool:
+    """Return True if a materialized view exists in the given catalog.schema (live discovery)."""
+    provider = ProviderRegistry.get("unity")
+    assert provider is not None
+    discovered = provider.discover_state(
+        config=ExecutionConfig(
+            target_env="dev",
+            profile=config.profile,
+            warehouse_id=config.warehouse_id,
+        ),
+        scope={"catalog": physical_catalog, "schema": schema_name},
+    )
+    catalogs = discovered.get("catalogs", [])
+    if not catalogs:
+        return False
+    for schema in catalogs[0].get("schemas", []):
+        if schema.get("name") != schema_name:
+            continue
+        mvs = schema.get("materialized_views", schema.get("materializedViews", []))
+        return any(m.get("name") == mv_name for m in mvs)
+    return False
 
 
 @pytest.mark.integration
@@ -1194,4 +1286,306 @@ def test_live_greenfield_promote_dev_test_prod_then_rollback_prod(tmp_path: Path
     finally:
         executor = create_executor(config)
         cleanup_objects(executor, config, all_catalogs)
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+@pytest.mark.integration
+def test_live_import_sees_volume_function_materialized_view(tmp_path: Path) -> None:
+    """Live E2E: Seed catalog/schema/table/volume/function/MV via SQL → init → import → validate/sql.
+
+    Asserts that import discovers volumes, functions, and materialized views and that
+    validate and sql run successfully. Requires SCHEMAX_RUN_LIVE_COMMAND_TESTS=1.
+    """
+    config = require_live_command_tests()
+    suffix = make_namespaced_id(config).split("_", 2)[-1]
+
+    workspace = tmp_path / f"workspace_uc_objects_{suffix}"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    catalog = f"test_uc_objects_{suffix}"
+    schema_name = "uc_core"
+    fixture_path = (
+        Path(__file__).resolve().parents[1]
+        / "resources"
+        / "sql"
+        / "unity_uc_objects_fixture.sql"
+    )
+    managed_root = (
+        f"{config.managed_location.rstrip('/')}/schemax-uc-objects-live/{suffix}"
+    )
+
+    statements = load_sql_fixture(
+        fixture_path,
+        {
+            "test_uc_objects": catalog,
+            "__MANAGED_ROOT__": managed_root,
+        },
+    )
+
+    executor = create_executor(config)
+    try:
+        seed = executor.execute_statements(
+            statements=statements,
+            config=build_execution_config(config),
+        )
+        if seed.status not in ("success", "partial"):
+            failed = [
+                (
+                    stmt.sql.splitlines()[0] if stmt.sql else "<unknown>",
+                    stmt.error_message or "unknown error",
+                )
+                for stmt in seed.statement_results
+                if stmt.status != "success"
+            ]
+            pytest.fail(
+                f"UC objects fixture seed failed: {seed.status}, "
+                f"error={getattr(seed, 'error_message', '')}, failed={failed}"
+            )
+
+        init_result = invoke_cli("init", "--provider", "unity", str(workspace))
+        assert init_result.exit_code == 0, init_result.output
+
+        import_result = invoke_cli(
+            "import",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--catalog",
+            catalog,
+            "--catalog-map",
+            f"{catalog}={catalog}",
+            str(workspace),
+        )
+        assert import_result.exit_code == 0, import_result.output
+
+        state, _, _, _ = load_current_state(workspace, validate=False)
+        catalogs = state.get("catalogs", [])
+        assert catalogs, "No catalogs after import"
+        schemas = catalogs[0].get("schemas", [])
+        schema_uc = next((s for s in schemas if s.get("name") == schema_name), None)
+        assert schema_uc is not None, f"Schema {schema_name} not found after import"
+
+        volumes = schema_uc.get("volumes", [])
+        functions = schema_uc.get("functions", [])
+        mvs = schema_uc.get("materialized_views", schema_uc.get("materializedViews", []))
+
+        assert any(v.get("name") == "managed_vol" for v in volumes), (
+            f"Volume managed_vol not in state: {[v.get('name') for v in volumes]}"
+        )
+        assert any(f.get("name") == "live_e2e_func" for f in functions), (
+            f"Function live_e2e_func not in state: {[f.get('name') for f in functions]}"
+        )
+        assert any(m.get("name") == "live_e2e_mv" for m in mvs), (
+            f"Materialized view live_e2e_mv not in state: {[m.get('name') for m in mvs]}"
+        )
+
+        validate_result = invoke_cli("validate", str(workspace))
+        assert validate_result.exit_code == 0, validate_result.output
+
+        sql_result = invoke_cli("sql", "--target", "dev", str(workspace))
+        assert sql_result.exit_code == 0, sql_result.output
+    finally:
+        cleanup_objects(executor, config, [catalog])
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+@pytest.mark.integration
+def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> None:
+    """Live E2E: Create project, add table + volume + function + MV → apply → assert all exist → rollback.
+
+    Requires SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 and DATABRICKS_* env vars.
+    """
+    config = require_live_command_tests()
+    suffix = make_namespaced_id(config).split("_", 2)[-1]
+
+    workspace = tmp_path / f"workspace_apply_uc_{suffix}"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    logical_catalog = f"logical_uc_{suffix}"
+    physical_catalog = f"{config.resource_prefix}_apply_uc_{suffix}"
+    tracking_catalog = f"{config.resource_prefix}_track_uc_{suffix}"
+    schema_name = "core"
+    table_name = "events"
+    volume_name = "e2e_vol"
+    function_name = "e2e_func"
+    mv_name = "e2e_mv"
+
+    ensure_project_file(workspace, provider_id="unity")
+    _write_project_env_overrides(
+        workspace,
+        top_level_name=tracking_catalog,
+        catalog_mappings={logical_catalog: physical_catalog},
+    )
+
+    builder = OperationBuilder()
+    table_id = f"table_uc_{suffix}"
+    vol_id = f"vol_uc_{suffix}"
+    func_id = f"func_uc_{suffix}"
+    mv_id = f"mv_uc_{suffix}"
+
+    try:
+        executor = create_executor(config)
+        managed_root = (
+            f"{config.managed_location.rstrip('/')}/schemax-apply-uc-live/{suffix}"
+        )
+        preseed = executor.execute_statements(
+            statements=[
+                f"CREATE CATALOG IF NOT EXISTS {tracking_catalog} "
+                f"MANAGED LOCATION '{managed_root}/tracking'",
+                f"CREATE CATALOG IF NOT EXISTS {physical_catalog} "
+                f"MANAGED LOCATION '{managed_root}/physical'",
+                f"CREATE SCHEMA IF NOT EXISTS {physical_catalog}.{schema_name}",
+            ],
+            config=build_execution_config(config),
+        )
+        assert preseed.status in {"success", "partial"}, (
+            f"Preseed failed: {preseed.status} {getattr(preseed, 'error_message', '')}"
+        )
+
+        changelog_path = workspace / ".schemax" / "changelog.json"
+        changelog = json.loads(changelog_path.read_text())
+        changelog["ops"] = []
+        changelog_path.write_text(json.dumps(changelog, indent=2))
+
+        import_result = invoke_cli(
+            "import",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--catalog",
+            physical_catalog,
+            "--catalog-map",
+            f"{logical_catalog}={physical_catalog}",
+            "--adopt-baseline",
+            str(workspace),
+        )
+        assert import_result.exit_code == 0, import_result.output
+
+        baseline_version = json.loads(
+            (workspace / ".schemax" / "project.json").read_text()
+        ).get("latestSnapshot")
+        assert baseline_version, "No baseline snapshot after import adoption"
+
+        state, _, _, _ = load_current_state(workspace, validate=False)
+        catalog_state = next(c for c in state["catalogs"] if c.get("name") == logical_catalog)
+        schema_state = next(
+            s for s in catalog_state.get("schemas", []) if s.get("name") == schema_name
+        )
+        schema_id = schema_state["id"]
+
+        append_ops(
+            workspace,
+            [
+                builder.add_table(
+                    table_id,
+                    table_name,
+                    schema_id,
+                    "delta",
+                    op_id=f"op_table_uc_{suffix}",
+                ),
+                builder.add_column(
+                    f"col_id_uc_{suffix}",
+                    table_id,
+                    "event_id",
+                    "BIGINT",
+                    nullable=False,
+                    comment="Event id",
+                    op_id=f"op_col_id_uc_{suffix}",
+                ),
+                builder.add_column(
+                    f"col_val_uc_{suffix}",
+                    table_id,
+                    "event_type",
+                    "STRING",
+                    nullable=True,
+                    comment="Event type",
+                    op_id=f"op_col_val_uc_{suffix}",
+                ),
+                builder.add_volume(
+                    vol_id,
+                    volume_name,
+                    schema_id,
+                    "managed",
+                    comment="E2E volume",
+                    op_id=f"op_vol_uc_{suffix}",
+                ),
+                builder.add_function(
+                    func_id,
+                    function_name,
+                    schema_id,
+                    "SQL",
+                    "INT",
+                    "1",
+                    comment="E2E function",
+                    op_id=f"op_func_uc_{suffix}",
+                ),
+                builder.add_materialized_view(
+                    mv_id,
+                    mv_name,
+                    schema_id,
+                    f"SELECT * FROM {table_name}",
+                    comment="E2E MV",
+                    op_id=f"op_mv_uc_{suffix}",
+                ),
+            ],
+        )
+
+        snapshot_v2 = invoke_cli(
+            "snapshot",
+            "create",
+            "--name",
+            "UC objects delta",
+            "--version",
+            "v0.2.0",
+            str(workspace),
+        )
+        assert snapshot_v2.exit_code == 0, snapshot_v2.output
+
+        apply_result = invoke_cli(
+            "apply",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert apply_result.exit_code == 0, apply_result.output
+
+        assert _table_exists(config, physical_catalog, schema_name, table_name)
+        assert _volume_exists(config, physical_catalog, schema_name, volume_name)
+        assert _function_exists(config, physical_catalog, schema_name, function_name)
+        assert _materialized_view_exists(config, physical_catalog, schema_name, mv_name)
+
+        rollback_result = invoke_cli(
+            "rollback",
+            "--target",
+            "dev",
+            "--to-snapshot",
+            baseline_version,
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert rollback_result.exit_code == 0, rollback_result.output
+
+        assert not _table_exists(config, physical_catalog, schema_name, table_name)
+        assert not _volume_exists(config, physical_catalog, schema_name, volume_name)
+        assert not _function_exists(config, physical_catalog, schema_name, function_name)
+        assert not _materialized_view_exists(config, physical_catalog, schema_name, mv_name)
+        _assert_schema_exists(config, physical_catalog, schema_name)
+    finally:
+        executor = create_executor(config)
+        cleanup_objects(executor, config, [physical_catalog, tracking_catalog])
         shutil.rmtree(workspace, ignore_errors=True)

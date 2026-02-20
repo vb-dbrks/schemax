@@ -24,6 +24,8 @@ Optional:
 - **test_live_greenfield_promote_dev_test_prod_then_rollback_prod** – Greenfield project: create catalog/schema/table (no import), snapshot v0.1.0, apply to dev → test → prod; add second table, snapshot v0.2.0, apply to all three; then rollback **prod only** to v0.1.0; asserts prod loses the new table while dev/test keep it.
 - **test_live_apply_governance_only** – Managed scope: set `managedCategories: ["governance"]`; add table + columns, apply (v0.2.0); add set_table_comment, snapshot v0.3.0, apply; asserts SQL has no CREATE CATALOG/SCHEMA/TABLE and has COMMENT; apply runs successfully (governance-only DDL only).
 - **test_live_apply_existing_catalog_skips_create** – Managed scope: preseed catalog + schema; set `existingObjects.catalog: [logical]`; add ops for catalog + schema + table + column; snapshot v0.1.0, apply; asserts SQL has no CREATE CATALOG and apply succeeds (catalog “already exists”, only CREATE SCHEMA/TABLE/ADD COLUMN).
+- **test_live_import_sees_volume_function_materialized_view** – Seed catalog/schema/table/volume/function/MV via `unity_uc_objects_fixture.sql`; init → import; asserts state contains volume, function, materialized view; validate and sql.
+- **test_live_e2e_apply_volume_function_materialized_view** – Preseed catalog+schema, import adopt-baseline; add table + volume + function + materialized view; apply; asserts all exist (live discovery); rollback to baseline; asserts all removed.
 
 Run all live tests (with env set):
 
