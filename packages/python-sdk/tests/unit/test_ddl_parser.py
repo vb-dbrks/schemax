@@ -57,6 +57,13 @@ class TestParseDdlStatementCreateCatalog:
         assert isinstance(result, CreateCatalog)
         assert result.name.strip("`\"'").replace(";", "") == "prod_cat"
 
+    def test_create_catalog_command_path_trailing_semicolon_stripped(self) -> None:
+        # Bug: [^\s]+ captured "my_cat;" when SQL was "CREATE CATALOG my_cat;". Strip semicolons.
+        sql = "CREATE CATALOG my_cat;"
+        result = parse_ddl_statement(sql, index=0)
+        assert isinstance(result, CreateCatalog)
+        assert result.name == "my_cat"
+
 
 class TestParseDdlStatementCreateSchema:
     """Parse: CREATE SCHEMA variants."""
@@ -90,6 +97,13 @@ class TestParseDdlStatementCreateSchema:
         assert result.catalog == "main"
         assert result.name == "analytics"
         assert result.comment == "Analytics schema"
+
+    def test_create_schema_command_path_trailing_semicolon_stripped(self) -> None:
+        # Bug: full_name could be "main.public;" from regex; strip semicolons so schema name is clean.
+        result = parse_ddl_statement("CREATE SCHEMA main.public;", index=0)
+        assert isinstance(result, CreateSchema)
+        assert result.catalog == "main"
+        assert result.name == "public"
 
 
 class TestParseDdlStatementCreateTable:
@@ -392,6 +406,20 @@ class TestStateFromDdl:
         implicit = [c for c in catalogs if c["name"] == "__implicit__"]
         assert len(implicit) >= 1
         assert any(s["name"] == "public" for s in implicit[0].get("schemas", []))
+
+    def test_state_from_ddl_schema_before_catalog_preserves_catalog_comment(self) -> None:
+        # Bug: CREATE SCHEMA main.public creates implicit catalog "main"; then CREATE CATALOG main
+        # was skipped (cid in _catalogs), losing comment/tags. Now we update existing catalog.
+        statements = [
+            "CREATE SCHEMA main.public",
+            "CREATE CATALOG main COMMENT 'main catalog'",
+        ]
+        state_dict, report = state_from_ddl(sql_statements=statements)
+        catalogs = state_dict["catalogs"]
+        main_cats = [c for c in catalogs if c["name"] == "main"]
+        assert len(main_cats) == 1
+        assert main_cats[0].get("comment") == "main catalog"
+        assert any(s["name"] == "public" for s in main_cats[0].get("schemas", []))
 
     def test_state_from_ddl_multiple_catalogs(self) -> None:
         statements = [

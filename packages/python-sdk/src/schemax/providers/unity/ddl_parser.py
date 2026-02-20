@@ -296,7 +296,7 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                 sql,
                 re.IGNORECASE | re.DOTALL,
             )
-            name = m.group(1).strip("`\"'") if m else "unknown"
+            name = (m.group(1).rstrip(";").strip("`\"'") if m else "unknown")
             comment = None
             cm = re.search(r"COMMENT\s+['\"]([^'\"]*)['\"]", sql, re.IGNORECASE)
             if cm:
@@ -308,7 +308,7 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                 sql,
                 re.IGNORECASE | re.DOTALL,
             )
-            full_name = m.group(1).strip("`\"'") if m else "unknown"
+            full_name = (m.group(1).rstrip(";").strip("`\"'") if m else "unknown")
             parts = full_name.split(".", 1)
             if len(parts) == 2:
                 catalog, schema_name = parts[0], parts[1]
@@ -326,8 +326,8 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
                 re.IGNORECASE | re.DOTALL,
             )
             if m:
-                full_table = m.group(1).strip("`\"'")
-                col_name = m.group(2).strip("`\"'")
+                full_table = m.group(1).rstrip(";").strip("`\"'")
+                col_name = m.group(2).rstrip(";").strip("`\"'")
                 parts = full_table.split(".")
                 if len(parts) == 3:
                     catalog, schema_name, table_name = parts[0], parts[1], parts[2]
@@ -676,6 +676,16 @@ class UnityDDLStateBuilder:
                     schemas=[],
                 )
                 self._report["created"]["catalogs"] += 1
+            else:
+                # Catalog was created implicitly (e.g. by CREATE SCHEMA); apply comment/tags from explicit CREATE CATALOG
+                existing = self._catalogs[cid]
+                if result.comment is not None or result.tags:
+                    self._catalogs[cid] = existing.model_copy(
+                        update={
+                            "comment": result.comment if result.comment is not None else existing.comment,
+                            "tags": result.tags if result.tags else existing.tags,
+                        }
+                    )
             return
 
         if isinstance(result, CreateSchema):
