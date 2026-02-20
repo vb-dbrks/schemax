@@ -339,6 +339,8 @@ export const Sidebar: React.FC = () => {
     setAddError(null);
     setAddNameInput('');
     setAddFormatInput('delta');
+    setAddVolumeType('managed');
+    setAddVolumeLocation('');
   };
 
   const handleRenameConfirm = (newName: string) => {
@@ -459,9 +461,13 @@ export const Sidebar: React.FC = () => {
       }
 
       if (addDialog.objectType === 'volume') {
+        if (addVolumeType === 'external' && !addVolumeLocation?.trim()) {
+          setAddError('Location is required for external volumes.');
+          return;
+        }
         addVolume(addDialog.schemaId!, trimmedName, addVolumeType, {
           comment: addComment || undefined,
-          location: addVolumeType === 'external' ? addVolumeLocation || undefined : undefined,
+          location: addVolumeType === 'external' ? addVolumeLocation?.trim() || undefined : undefined,
         });
         setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
         closeAddDialog();
@@ -787,7 +793,7 @@ export const Sidebar: React.FC = () => {
                             </svg>
                           </span>
                           <span className="name">{view.name}</span>
-                          <span className="badge" style={{background: 'var(--vscode-charts-blue)'}}>VIEW</span>
+                          <span className="badge" style={{ background: 'var(--vscode-charts-blue)', color: 'white' }}>VIEW</span>
                           <span className="actions">
                             <VSCodeButton
                               appearance="icon"
@@ -833,7 +839,7 @@ export const Sidebar: React.FC = () => {
                         >
                           <span className="icon"><i className="codicon codicon-folder" aria-hidden="true" /></span>
                           <span className="name">{vol.name}</span>
-                          <span className="badge" style={{ background: 'var(--vscode-charts-purple)' }}>VOL</span>
+                          <span className="badge" style={{ background: 'var(--vscode-charts-purple)', color: 'white' }}>VOL</span>
                           <span className="actions">
                             <VSCodeButton appearance="icon" aria-label="Rename volume" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setRenameDialog({ type: 'volume', id: vol.id, name: vol.name }); }}><IconEdit /></VSCodeButton>
                             <VSCodeButton appearance="icon" aria-label="Drop volume" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDropDialog({ type: 'volume', id: vol.id, name: vol.name }); }}><IconTrash /></VSCodeButton>
@@ -853,7 +859,7 @@ export const Sidebar: React.FC = () => {
                         >
                           <span className="icon"><i className="codicon codicon-symbol-method" aria-hidden="true" /></span>
                           <span className="name">{fn.name}</span>
-                          <span className="badge" style={{ background: 'var(--vscode-charts-orange)' }}>FN</span>
+                          <span className="badge" style={{ background: 'var(--vscode-charts-orange)', color: 'white' }}>FN</span>
                           <span className="actions">
                             <VSCodeButton appearance="icon" aria-label="Rename function" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setRenameDialog({ type: 'function', id: fn.id, name: fn.name }); }}><IconEdit /></VSCodeButton>
                             <VSCodeButton appearance="icon" aria-label="Drop function" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDropDialog({ type: 'function', id: fn.id, name: fn.name }); }}><IconTrash /></VSCodeButton>
@@ -873,7 +879,7 @@ export const Sidebar: React.FC = () => {
                         >
                           <span className="icon"><i className="codicon codicon-symbol-array" aria-hidden="true" /></span>
                           <span className="name">{mv.name}</span>
-                          <span className="badge" style={{ background: 'var(--vscode-charts-green)' }}>MV</span>
+                          <span className="badge" style={{ background: 'var(--vscode-charts-green)', color: 'white' }}>MV</span>
                           <span className="actions">
                             <VSCodeButton appearance="icon" aria-label="Rename materialized view" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setRenameDialog({ type: 'materialized_view', id: mv.id, name: mv.name }); }}><IconEdit /></VSCodeButton>
                             <VSCodeButton appearance="icon" aria-label="Drop materialized view" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setDropDialog({ type: 'materialized_view', id: mv.id, name: mv.name }); }}><IconTrash /></VSCodeButton>
@@ -1084,10 +1090,10 @@ export const Sidebar: React.FC = () => {
             {addDialog.type === 'table' && addDialog.objectType === 'volume' && (
               <>
                 <div className="modal-field-group">
-                  <label>Type</label>
+                  <label>Volume type</label>
                   <div className="radio-group" style={{ display: 'flex', gap: '16px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <input type="radio" name="vol-type" checked={addVolumeType === 'managed'} onChange={() => setAddVolumeType('managed')} style={{ margin: 0 }} />
+                      <input type="radio" name="vol-type" checked={addVolumeType === 'managed'} onChange={() => { setAddVolumeType('managed'); setAddVolumeLocation(''); }} style={{ margin: 0 }} />
                       <span>Managed</span>
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
@@ -1098,13 +1104,14 @@ export const Sidebar: React.FC = () => {
                 </div>
                 {addVolumeType === 'external' && (
                   <div className="modal-field-group">
-                    <label>Location (path)</label>
-                    <VSCodeTextField value={addVolumeLocation} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddVolumeLocation((e.target as HTMLInputElement).value)} placeholder="abfss://..." />
+                    <label>Location *</label>
+                    <VSCodeTextField value={addVolumeLocation} onInput={(e: React.FormEvent<HTMLInputElement>) => { setAddVolumeLocation((e.target as HTMLInputElement).value); setAddError(null); }} placeholder="abfss://container@storage.dfs.core.windows.net/path or s3://bucket/path" />
+                    <span className="modal-field-hint">Required for external volumes. Use a cloud storage path (ABFSS, S3, or GCS).</span>
                   </div>
                 )}
                 <div className="modal-field-group">
                   <label>Comment</label>
-                  <VSCodeTextField value={addComment} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddComment((e.target as HTMLInputElement).value)} />
+                  <VSCodeTextField value={addComment} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddComment((e.target as HTMLInputElement).value)} placeholder="Optional description" />
                 </div>
               </>
             )}

@@ -387,6 +387,7 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
       if (mv) {
         if ('definition' in op.payload) mv.definition = op.payload.definition;
         if ('refreshSchedule' in op.payload) mv.refreshSchedule = op.payload.refreshSchedule;
+        if ('comment' in op.payload) mv.comment = op.payload.comment;
         if ('extractedDependencies' in op.payload) {
           mv.extractedDependencies = op.payload.extractedDependencies;
         }

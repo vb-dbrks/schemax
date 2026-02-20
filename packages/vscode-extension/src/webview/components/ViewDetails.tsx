@@ -1,10 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
+import { parsePrivileges } from '../utils/grants';
 import { extractDependenciesFromView } from '../../providers/base/sql-parser';
 import { RichComment } from './RichComment';
 import './ViewDetails.css';
 
+const IconEdit: React.FC = () => (
+  <i slot="start" className="codicon codicon-edit" aria-hidden="true"></i>
+);
 const IconTrash: React.FC = () => (
   <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
 );
@@ -18,6 +22,7 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
   const [isEditingSQL, setIsEditingSQL] = useState(false);
   const [editedSQL, setEditedSQL] = useState('');
   const [addGrantDialog, setAddGrantDialog] = useState(false);
+  const [editingGrant, setEditingGrant] = useState<{ principal: string; privileges: string[] } | null>(null);
   const [revokeGrantDialog, setRevokeGrantDialog] = useState<{ principal: string } | null>(null);
   const [grantForm, setGrantForm] = useState({ principal: '', privileges: '' });
 
@@ -258,6 +263,13 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
                   <td>
                     <VSCodeButton
                       appearance="icon"
+                      onClick={() => { setEditingGrant({ principal: g.principal, privileges: g.privileges || [] }); setGrantForm({ principal: g.principal, privileges: (g.privileges || []).join(', ') }); setAddGrantDialog(true); }}
+                      title="Edit grant"
+                    >
+                      <IconEdit />
+                    </VSCodeButton>
+                    <VSCodeButton
+                      appearance="icon"
                       onClick={() => setRevokeGrantDialog({ principal: g.principal })}
                       title="Revoke all"
                     >
@@ -269,30 +281,36 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
             </tbody>
           </table>
         )}
-        <button className="add-property-btn" onClick={() => setAddGrantDialog(true)}>
+        <button className="add-property-btn" onClick={() => { setEditingGrant(null); setGrantForm({ principal: '', privileges: '' }); setAddGrantDialog(true); }}>
           + Add Grant
         </button>
       </div>
 
       {addGrantDialog && (
-        <div className="modal-overlay" onClick={() => setAddGrantDialog(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div className="modal-overlay" onClick={() => { setAddGrantDialog(false); setEditingGrant(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ background: 'var(--vscode-editor-background)', padding: '16px', borderRadius: '8px', minWidth: '320px' }}>
-            <h3>Add Grant</h3>
+            <h3>{editingGrant ? 'Edit Grant' : 'Add Grant'}</h3>
             <label>Principal</label>
-            <input type="text" value={grantForm.principal} onChange={(e) => setGrantForm({ ...grantForm, principal: e.target.value })} placeholder="e.g. data_engineers" style={{ width: '100%', marginBottom: '8px' }} />
+            <input type="text" value={grantForm.principal} onChange={(e) => setGrantForm({ ...grantForm, principal: e.target.value })} placeholder="e.g. data_engineers" style={{ width: '100%', marginBottom: '8px' }} readOnly={!!editingGrant} />
             <label>Privileges (comma-separated, e.g. SELECT, MODIFY)</label>
             <input type="text" value={grantForm.privileges} onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })} placeholder="SELECT, MODIFY" style={{ width: '100%', marginBottom: '12px' }} />
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <VSCodeButton appearance="secondary" onClick={() => { setAddGrantDialog(false); setGrantForm({ principal: '', privileges: '' }); }}>Cancel</VSCodeButton>
+              <VSCodeButton appearance="secondary" onClick={() => { setAddGrantDialog(false); setEditingGrant(null); }}>Cancel</VSCodeButton>
               <VSCodeButton
                 onClick={() => {
                   const principal = grantForm.principal.trim();
-                  const privs = grantForm.privileges.split(/[\s,]+/).filter(Boolean);
-                  if (principal && privs.length > 0) { addGrant('view', viewId, principal, privs); setAddGrantDialog(false); setGrantForm({ principal: '', privileges: '' }); }
+                  const privs = parsePrivileges(grantForm.privileges);
+                  if (principal && privs.length > 0) {
+                    if (editingGrant) revokeGrant('view', viewId, editingGrant.principal);
+                    addGrant('view', viewId, principal, privs);
+                    setAddGrantDialog(false);
+                    setEditingGrant(null);
+                    setGrantForm({ principal: '', privileges: '' });
+                  }
                 }}
                 disabled={!grantForm.principal.trim() || !grantForm.privileges.trim()}
               >
-                Add Grant
+                {editingGrant ? 'Save' : 'Add Grant'}
               </VSCodeButton>
             </div>
           </div>

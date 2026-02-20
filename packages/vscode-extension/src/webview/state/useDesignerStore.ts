@@ -92,7 +92,7 @@ interface DesignerState {
   // Materialized view operations
   addMaterializedView: (schemaId: string, name: string, definition: string, options?: { comment?: string; refreshSchedule?: string }) => void;
   renameMaterializedView: (materializedViewId: string, newName: string) => void;
-  updateMaterializedView: (materializedViewId: string, definition: string, extractedDependencies?: any) => void;
+  updateMaterializedView: (materializedViewId: string, definition: string, extractedDependencies?: any, options?: { refreshSchedule?: string; comment?: string }) => void;
   dropMaterializedView: (materializedViewId: string) => void;
   
   addColumn: (tableId: string, name: string, type: string, nullable: boolean, comment?: string, tags?: Record<string, string>) => void;
@@ -410,8 +410,11 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     emitOps([op]);
   },
 
-  updateMaterializedView: (materializedViewId, definition, extractedDependencies) => {
-    const op = createOperation(get(), 'update_materialized_view', materializedViewId, { definition, extractedDependencies });
+  updateMaterializedView: (materializedViewId, definition, extractedDependencies, options) => {
+    const payload: Record<string, unknown> = { definition, extractedDependencies };
+    if (options?.refreshSchedule !== undefined) payload.refreshSchedule = options.refreshSchedule;
+    if (options?.comment !== undefined) payload.comment = options.comment;
+    const op = createOperation(get(), 'update_materialized_view', materializedViewId, payload);
     emitOps([op]);
   },
 
