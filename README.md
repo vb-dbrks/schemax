@@ -54,7 +54,7 @@ SchemaX is a modern, low-touch, interactive schema migration and management tool
 
 ### VS Code Extension
 
-**Node:** The project uses Node 24 (see `.nvmrc`). Install Node 24 from [nodejs.org](https://nodejs.org/) or use a version manager (e.g. **nvm**: `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash`, then `nvm install 24` and `nvm use`; or **fnm**, **n**). Using Node 24 avoids Jest 30 engine warnings.
+**Node:** Node 18+ is required. If you see Jest engine warnings during `npm install`, they are harmless; use Node 20 or 22 to avoid them.
 
 1. **Launch Extension Development Host**:
    ```bash
