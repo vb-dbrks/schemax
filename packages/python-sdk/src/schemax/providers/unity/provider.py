@@ -15,8 +15,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from databricks.sdk.service.sql import StatementState
-
 from schemax.providers.base.executor import ExecutionConfig, ExecutionResult, SQLExecutor
 from schemax.providers.base.models import ProviderState, ValidationError, ValidationResult
 from schemax.providers.base.operations import Operation
@@ -42,11 +40,10 @@ class UnityProvider(BaseProvider):
     SYSTEM_SCHEMA_NAME = "information_schema"
     SYSTEM_CATALOG_NAMES = frozenset({"system"})
     VIEW_TABLE_TYPES = frozenset({"VIEW"})
+    MATERIALIZED_VIEW_TABLE_TYPES = frozenset({"MATERIALIZED VIEW", "MATERIALIZED_VIEW"})
     UNSUPPORTED_DISCOVERY_TABLE_TYPES = frozenset(
         {
-            "MATERIALIZED VIEW",
             "STREAMING TABLE",
-            "MATERIALIZED_VIEW",
             "STREAMING_TABLE",
         }
     )
@@ -67,7 +64,16 @@ class UnityProvider(BaseProvider):
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
             supported_operations=list(UNITY_OPERATIONS.values()),
-            supported_object_types=["catalog", "schema", "table", "column"],
+            supported_object_types=[
+                "catalog",
+                "schema",
+                "table",
+                "column",
+                "view",
+                "volume",
+                "function",
+                "materialized_view",
+            ],
             hierarchy=unity_hierarchy,
             features={
                 "constraints": True,
@@ -77,9 +83,10 @@ class UnityProvider(BaseProvider):
                 "table_properties": True,
                 "comments": True,
                 "partitioning": False,  # Future
-                "views": False,  # Future
-                "materialized_views": False,  # Future
-                "functions": False,  # Future
+                "views": True,
+                "volumes": True,
+                "functions": True,
+                "materialized_views": True,
                 "indexes": False,  # Not applicable to Unity Catalog
                 "baseline_adoption": True,
             },
@@ -363,6 +370,8 @@ class UnityProvider(BaseProvider):
                     for row in table_rows
                     if str(row.get("table_type", "BASE TABLE")).upper() not in self.VIEW_TABLE_TYPES
                     and str(row.get("table_type", "BASE TABLE")).upper()
+                    not in self.MATERIALIZED_VIEW_TABLE_TYPES
+                    and str(row.get("table_type", "BASE TABLE")).upper()
                     not in self.UNSUPPORTED_DISCOVERY_TABLE_TYPES
                     and row.get("table_name")
                 ]
@@ -372,6 +381,14 @@ class UnityProvider(BaseProvider):
                     if str(row.get("table_type", "BASE TABLE")).upper() in self.VIEW_TABLE_TYPES
                     and row.get("table_name")
                 ]
+                mv_names = [
+                    str(row.get("table_name", ""))
+                    for row in table_rows
+                    if str(row.get("table_type", "BASE TABLE")).upper()
+                    in self.MATERIALIZED_VIEW_TABLE_TYPES
+                    and row.get("table_name")
+                ]
+                view_and_mv_names = view_names + mv_names
                 properties_by_table = self._fetch_table_properties_for_tables(
                     config=config,
                     catalog_name=catalog_name,
@@ -392,11 +409,12 @@ class UnityProvider(BaseProvider):
                     config=config,
                     catalog_name=catalog_name,
                     schema_name=schema_name,
-                    table_names=view_names,
+                    table_names=view_and_mv_names,
                 )
 
                 tables = []
                 views: list[dict[str, Any]] = []
+                materialized_views: list[dict[str, Any]] = []
                 for row in table_rows:
                     table_name = str(row["table_name"])
                     table_kind = str(row.get("table_type", "BASE TABLE")).upper()
@@ -405,6 +423,33 @@ class UnityProvider(BaseProvider):
                         self._last_import_warnings.append(
                             "Unsupported Unity object type discovered during import and skipped: "
                             f"{catalog_name}.{schema_name}.{table_name} ({table_kind})."
+                        )
+                        continue
+
+                    if table_kind in self.MATERIALIZED_VIEW_TABLE_TYPES:
+                        definition = str(
+                            view_definitions.get(table_name, {}).get("definition") or ""
+                        )
+                        view_properties = properties_by_view.get(table_name, {})
+                        comment = row.get("comment") or view_properties.get("comment")
+                        extracted_dependencies = None
+                        if definition:
+                            extracted_dependencies = extract_table_references(
+                                definition,
+                                dialect="databricks",
+                            )
+                        materialized_views.append(
+                            {
+                                "id": self._stable_id("mv", catalog_name, schema_name, table_name),
+                                "name": table_name,
+                                "definition": definition,
+                                "comment": comment,
+                                "refreshSchedule": view_properties.get("refresh_schedule")
+                                or view_properties.get("refreshSchedule"),
+                                "dependencies": None,
+                                "extractedDependencies": extracted_dependencies,
+                                "grants": [],
+                            }
                         )
                         continue
 
@@ -516,6 +561,24 @@ class UnityProvider(BaseProvider):
                         }
                     )
 
+                volumes: list[dict[str, Any]] = []
+                functions: list[dict[str, Any]] = []
+                try:
+                    volumes = self._discover_volumes_for_schema(
+                        client, config.warehouse_id, catalog_name, schema_name
+                    )
+                except Exception as e:
+                    self._last_import_warnings.append(
+                        f"Could not discover volumes for {catalog_name}.{schema_name}: {e}"
+                    )
+                try:
+                    functions = self._discover_functions_for_schema(
+                        client, config.warehouse_id, catalog_name, schema_name
+                    )
+                except Exception as e:
+                    self._last_import_warnings.append(
+                        f"Could not discover functions for {catalog_name}.{schema_name}: {e}"
+                    )
                 schema_meta = schema_metadata.get(schema_name, {})
                 state_schemas.append(
                     {
@@ -526,6 +589,9 @@ class UnityProvider(BaseProvider):
                         "tags": schema_meta.get("tags", {}),
                         "tables": tables,
                         "views": views,
+                        "volumes": volumes,
+                        "functions": functions,
+                        "materialized_views": materialized_views,
                     }
                 )
 
@@ -1691,6 +1757,10 @@ class UnityProvider(BaseProvider):
         warehouse_id: str,
         sql: str,
     ) -> list[dict[str, Any]]:
+        from databricks.sdk.service.sql import (
+            StatementState,  # pyright: ignore[reportMissingImports]
+        )
+
         response = client.statement_execution.execute_statement(
             warehouse_id=warehouse_id,
             statement=sql,
@@ -1733,6 +1803,95 @@ class UnityProvider(BaseProvider):
         except Exception:
             self._last_import_warnings.append(warning)
             return []
+
+    def _discover_volumes_for_schema(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+    ) -> list[dict[str, Any]]:
+        """Discover volumes in a schema via information_schema.volumes."""
+        cat_esc = catalog_name.replace("'", "''")
+        sch_esc = schema_name.replace("'", "''")
+        sql = (
+            f"SELECT volume_name, volume_type, storage_location, comment "
+            f"FROM system.information_schema.volumes "
+            f"WHERE volume_catalog = '{cat_esc}' AND volume_schema = '{sch_esc}'"
+        )
+        rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql,
+            warning=(
+                f"Could not discover volumes for {catalog_name}.{schema_name}; "
+                "continuing without volumes."
+            ),
+        )
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            vol_name = str(row.get("volume_name") or row.get("VOLUME_NAME") or "")
+            if not vol_name:
+                continue
+            vol_type = str(row.get("volume_type") or row.get("VOLUME_TYPE") or "MANAGED").upper()
+            result.append(
+                {
+                    "id": self._stable_id("vol", catalog_name, schema_name, vol_name),
+                    "name": vol_name,
+                    "volumeType": "external" if vol_type == "EXTERNAL" else "managed",
+                    "comment": row.get("comment") or row.get("COMMENT"),
+                    "location": row.get("storage_location") or row.get("STORAGE_LOCATION"),
+                    "grants": [],
+                }
+            )
+        return result
+
+    def _discover_functions_for_schema(
+        self,
+        client: Any,
+        warehouse_id: str,
+        catalog_name: str,
+        schema_name: str,
+    ) -> list[dict[str, Any]]:
+        """Discover functions in a schema via information_schema.routines."""
+        cat_esc = catalog_name.replace("'", "''")
+        sch_esc = schema_name.replace("'", "''")
+        sql = (
+            f"SELECT routine_name, routine_body, data_type, routine_definition, comment "
+            f"FROM system.information_schema.routines "
+            f"WHERE routine_catalog = '{cat_esc}' AND routine_schema = '{sch_esc}' "
+            f"AND UPPER(COALESCE(routine_type, 'FUNCTION')) = 'FUNCTION'"
+        )
+        rows = self._execute_query_optional(
+            client,
+            warehouse_id,
+            sql,
+            warning=(
+                f"Could not discover functions for {catalog_name}.{schema_name}; "
+                "continuing without functions."
+            ),
+        )
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            name = str(row.get("routine_name") or row.get("ROUTINE_NAME") or "")
+            if not name:
+                continue
+            body = str(row.get("routine_body") or row.get("ROUTINE_BODY") or "SQL").upper()
+            result.append(
+                {
+                    "id": self._stable_id("func", catalog_name, schema_name, name),
+                    "name": name,
+                    "language": "PYTHON" if body == "PYTHON" else "SQL",
+                    "returnType": row.get("data_type") or row.get("DATA_TYPE") or "STRING",
+                    "body": row.get("routine_definition")
+                    or row.get("ROUTINE_DEFINITION")
+                    or "NULL",
+                    "comment": row.get("comment") or row.get("COMMENT"),
+                    "parameters": [],
+                    "grants": [],
+                }
+            )
+        return result
 
     def _coerce_string_list(self, value: Any) -> list[str] | None:
         if value is None:

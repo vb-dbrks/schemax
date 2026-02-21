@@ -70,6 +70,21 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
             map[view.id] = `${catalogName}.${schema.name}.${view.name}`;
           }
         }
+        if (schema.volumes) {
+          for (const vol of schema.volumes) {
+            map[vol.id] = `${catalogName}.${schema.name}.${vol.name}`;
+          }
+        }
+        if (schema.functions) {
+          for (const fn of schema.functions) {
+            map[fn.id] = `${catalogName}.${schema.name}.${fn.name}`;
+          }
+        }
+        if (schema.materializedViews) {
+          for (const mv of schema.materializedViews) {
+            map[mv.id] = `${catalogName}.${schema.name}.${mv.name}`;
+          }
+        }
       }
     }
     
@@ -225,8 +240,16 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   private getOperationLevel(opType: string): number {
     if (opType.includes('catalog')) return 0;
     if (opType.includes('schema')) return 1;
-    if (opType.includes('add_table') || opType.includes('add_view')) return 2;
-    return 3; // All other table/view operations (columns, properties, etc.)
+    if (
+      opType.includes('add_table') ||
+      opType.includes('add_view') ||
+      opType.includes('add_volume') ||
+      opType.includes('add_function') ||
+      opType.includes('add_materialized_view')
+    ) {
+      return 2;
+    }
+    return 3; // All other operations (columns, properties, etc.)
   }
 
   /**
@@ -246,8 +269,8 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         for (const depId of op.payload.dependencies) {
           dependencies.push([
             depId as string,
-            'view_dependency' as any, // DependencyType.VIEW_DEPENDENCY
-            'informational' as any, // DependencyEnforcement.INFORMATIONAL
+            'view_dependency' as any,
+            'informational' as any,
           ]);
         }
       }
@@ -255,13 +278,34 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
       // Extract dependencies from SQL definition if available
       if (op.payload.extractedDependencies) {
         const extracted = op.payload.extractedDependencies as Record<string, any>;
-        // Add table dependencies
         if (extracted.tables && Array.isArray(extracted.tables)) {
-          for (const tableFqn of extracted.tables) {
-            // For now, we can't easily map FQNs back to IDs without the full state
-            // This is a limitation of the simple extraction approach
-            // In practice, explicit dependencies should be used for proper dependency tracking
+          for (const _tableFqn of extracted.tables) {
+            // FQN-to-ID mapping limitation as with views
           }
+        }
+      }
+    }
+
+    // Materialized view dependencies (same pattern as views)
+    if (opType === 'add_materialized_view' || opType === 'update_materialized_view') {
+      if (op.payload.dependencies && Array.isArray(op.payload.dependencies)) {
+        for (const depId of op.payload.dependencies) {
+          dependencies.push([
+            depId as string,
+            'view_dependency' as any,
+            'informational' as any,
+          ]);
+        }
+      }
+      const extracted = op.payload.extractedDependencies as Record<string, any> | undefined;
+      if (extracted?.tables && Array.isArray(extracted.tables)) {
+        for (const _tid of extracted.tables) {
+          // Optional: map to IDs if needed
+        }
+      }
+      if (extracted?.views && Array.isArray(extracted.views)) {
+        for (const _vid of extracted.views) {
+          // Optional: map to IDs if needed
         }
       }
     }
@@ -321,6 +365,10 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
           ['unity.add_catalog', 'unity.drop_catalog'],
           ['unity.add_schema', 'unity.drop_schema'],
           ['unity.add_table', 'unity.drop_table'],
+          ['unity.add_view', 'unity.drop_view'],
+          ['unity.add_volume', 'unity.drop_volume'],
+          ['unity.add_function', 'unity.drop_function'],
+          ['unity.add_materialized_view', 'unity.drop_materialized_view'],
         ];
 
         // Check if this is a cancellation pair
@@ -488,7 +536,11 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     // table modifications (processed in order with other table operations), not object drops.
     return op.op === 'unity.drop_catalog' ||
            op.op === 'unity.drop_schema' ||
-           op.op === 'unity.drop_table';
+           op.op === 'unity.drop_table' ||
+           op.op === 'unity.drop_view' ||
+           op.op === 'unity.drop_volume' ||
+           op.op === 'unity.drop_function' ||
+           op.op === 'unity.drop_materialized_view';
   }
   
   generateSQLForOperation(op: Operation): SQLGenerationResult {
@@ -1677,6 +1729,40 @@ ${columnsSql}
       case 'remove_column_mask':
         return this.removeColumnMask(op);
       
+      // Volume operations
+      case 'add_volume':
+        return this.addVolume(op);
+      case 'rename_volume':
+        return this.renameVolume(op);
+      case 'update_volume':
+        return this.updateVolume(op);
+      case 'drop_volume':
+        return this.dropVolume(op);
+      
+      // Function operations
+      case 'add_function':
+        return this.addFunction(op);
+      case 'rename_function':
+        return this.renameFunction(op);
+      case 'update_function':
+        return this.updateFunction(op);
+      case 'drop_function':
+        return this.dropFunction(op);
+      case 'set_function_comment':
+        return this.setFunctionComment(op);
+      
+      // Materialized view operations
+      case 'add_materialized_view':
+        return this.addMaterializedView(op);
+      case 'rename_materialized_view':
+        return this.renameMaterializedView(op);
+      case 'update_materialized_view':
+        return this.updateMaterializedView(op);
+      case 'drop_materialized_view':
+        return this.dropMaterializedView(op);
+      case 'set_materialized_view_comment':
+        return this.setMaterializedViewComment(op);
+      
       // Grant operations
       case 'add_grant':
         return this.addGrant(op);
@@ -1947,13 +2033,232 @@ ${columnsSql}
     return '-- Column mask removal';
   }
 
-  // Grant operations (Unity: GRANT / REVOKE on CATALOG | SCHEMA | TABLE | VIEW)
+  /** Resolve escaped FQN for DROP of a schema-level object; use idNameMap or build from payload. */
+  private resolveFqnForDrop(op: Operation): string {
+    let raw = this.idNameMap[op.target];
+    if (!raw || raw === 'unknown') {
+      const name = op.payload.name;
+      const catalogId = op.payload.catalogId;
+      const schemaId = op.payload.schemaId;
+      if (!name) return this.buildFqn('unknown', 'unknown', 'unknown');
+      const schemaFqn = this.idNameMap[schemaId] ?? 'unknown.unknown';
+      const catalogName = this.idNameMap[catalogId] ?? 'unknown';
+      const partsSchema = schemaFqn.split('.');
+      const catFromSchema = partsSchema[0] ?? catalogName;
+      const catalogPhysical = this.catalogNameMapping[catFromSchema] ?? catFromSchema;
+      const schemaPart = partsSchema[1] ?? 'unknown';
+      raw = `${catalogPhysical}.${schemaPart}.${name}`;
+    }
+    const parts = raw.split('.');
+    const catalogPhysical = this.catalogNameMapping[parts[0]] ?? parts[0];
+    parts[0] = catalogPhysical;
+    return this.buildFqn(...parts);
+  }
+
+  // Volume operations
+  private addVolume(op: Operation): string {
+    const schemaFqn = this.idNameMap[op.payload.schemaId] ?? 'unknown.unknown';
+    const parts = schemaFqn.split('.');
+    const catalogName = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const schemaName = parts[1] ?? 'unknown';
+    const volName = op.payload.name;
+    const volEsc = this.buildFqn(catalogName, schemaName, volName);
+    const volumeType = op.payload.volumeType ?? 'managed';
+    const isExternal = volumeType === 'external';
+    let sql = isExternal ? 'CREATE EXTERNAL VOLUME' : 'CREATE VOLUME';
+    sql += ` IF NOT EXISTS ${volEsc}`;
+    if (op.payload.location && isExternal) {
+      sql += ` LOCATION '${this.escapeString(op.payload.location)}'`;
+    }
+    if (op.payload.comment) {
+      sql += ` COMMENT '${this.escapeString(op.payload.comment)}'`;
+    }
+    return sql;
+  }
+
+  private renameVolume(op: Operation): string {
+    const oldFqn = this.idNameMap[op.target] ?? 'unknown';
+    const parts = oldFqn.split('.');
+    parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const oldEsc = this.buildFqn(...parts);
+    parts[parts.length - 1] = op.payload.newName;
+    const newEsc = this.buildFqn(...parts);
+    return `ALTER VOLUME ${oldEsc} RENAME TO ${newEsc}`;
+  }
+
+  private updateVolume(op: Operation): string {
+    const volFqn = this.idNameMap[op.target] ?? 'unknown';
+    const parts = volFqn.split('.');
+    parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const volEsc = this.buildFqn(...parts);
+    const stmts: string[] = [];
+    if ('comment' in op.payload) {
+      stmts.push(`ALTER VOLUME ${volEsc} SET COMMENT '${this.escapeString(op.payload.comment ?? '')}'`);
+    }
+    if (op.payload.location != null) {
+      stmts.push(`ALTER VOLUME ${volEsc} SET LOCATION '${this.escapeString(op.payload.location)}'`);
+    }
+    return stmts.length > 0 ? stmts.join(';\n') : '-- No volume updates specified';
+  }
+
+  private dropVolume(op: Operation): string {
+    const volEsc = this.resolveFqnForDrop(op);
+    return `DROP VOLUME IF EXISTS ${volEsc}`;
+  }
+
+  // Function operations
+  private addFunction(op: Operation): string {
+    const schemaFqn = this.idNameMap[op.payload.schemaId] ?? 'unknown.unknown';
+    const parts = schemaFqn.split('.');
+    const catalogName = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const schemaName = parts[1] ?? 'unknown';
+    const funcName = op.payload.name;
+    const funcEsc = this.buildFqn(catalogName, schemaName, funcName);
+    const language = (op.payload.language ?? 'SQL').toUpperCase();
+    const returnType = op.payload.returnType ?? 'STRING';
+    const body = op.payload.body ?? 'NULL';
+    const params = (op.payload.parameters as Array<{ name?: string; dataType?: string }>) ?? [];
+    const paramStr = params
+      .map((p: { name?: string; dataType?: string }) => `${this.escapeIdentifier(p.name ?? 'x')} ${p.dataType ?? 'STRING'}`)
+      .join(', ');
+    if (language === 'SQL') {
+      return `CREATE OR REPLACE FUNCTION ${funcEsc}(${paramStr}) RETURNS ${returnType} LANGUAGE SQL RETURN (${body})`;
+    }
+    return `CREATE OR REPLACE FUNCTION ${funcEsc}(${paramStr}) RETURNS ${returnType} LANGUAGE PYTHON AS $$ ${body} $$`;
+  }
+
+  private renameFunction(op: Operation): string {
+    const oldFqn = this.idNameMap[op.target] ?? 'unknown';
+    const parts = oldFqn.split('.');
+    parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const oldEsc = this.buildFqn(...parts);
+    parts[parts.length - 1] = op.payload.newName;
+    const newEsc = this.buildFqn(...parts);
+    return `ALTER FUNCTION ${oldEsc} RENAME TO ${newEsc}`;
+  }
+
+  private updateFunction(op: Operation): string {
+    const funcFqn = this.idNameMap[op.target] ?? 'unknown';
+    const parts = funcFqn.split('.');
+    parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const funcEsc = this.buildFqn(...parts);
+    const language = (op.payload.language ?? 'SQL').toUpperCase();
+    const returnType = op.payload.returnType ?? 'STRING';
+    const body = op.payload.body ?? 'NULL';
+    const params = (op.payload.parameters as Array<{ name?: string; dataType?: string }>) ?? [];
+    const paramStr = params
+      .map((p: { name?: string; dataType?: string }) => `${this.escapeIdentifier(p.name ?? 'x')} ${p.dataType ?? 'STRING'}`)
+      .join(', ');
+    if (language === 'SQL') {
+      return `CREATE OR REPLACE FUNCTION ${funcEsc}(${paramStr}) RETURNS ${returnType} LANGUAGE SQL RETURN (${body})`;
+    }
+    return `CREATE OR REPLACE FUNCTION ${funcEsc}(${paramStr}) RETURNS ${returnType} LANGUAGE PYTHON AS $$ ${body} $$`;
+  }
+
+  private dropFunction(op: Operation): string {
+    const funcEsc = this.resolveFqnForDrop(op);
+    return `DROP FUNCTION IF EXISTS ${funcEsc}`;
+  }
+
+  private setFunctionComment(op: Operation): string {
+    const funcId = op.payload.functionId ?? op.target;
+    const funcFqn = this.idNameMap[funcId] ?? 'unknown';
+    const parts = funcFqn.split('.');
+    parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const funcEsc = this.buildFqn(...parts);
+    const comment = (op.payload.comment ?? '').replace(/'/g, "\\'");
+    return `COMMENT ON FUNCTION ${funcEsc} IS '${comment}'`;
+  }
+
+  // Materialized view operations
+  private addMaterializedView(op: Operation): string {
+    const schemaFqn = this.idNameMap[op.payload.schemaId] ?? 'unknown.unknown';
+    const parts = schemaFqn.split('.');
+    const catalogName = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const schemaName = parts[1] ?? 'unknown';
+    const mvName = op.payload.name;
+    const mvEsc = this.buildFqn(catalogName, schemaName, mvName);
+    const definition = op.payload.definition ?? 'SELECT 1';
+    const commentClause = op.payload.comment
+      ? ` COMMENT '${this.escapeString(op.payload.comment)}'`
+      : '';
+    let sql = `CREATE MATERIALIZED VIEW IF NOT EXISTS ${mvEsc}${commentClause} AS\n${definition}`;
+    if (op.payload.refreshSchedule) {
+      sql += `\nSCHEDULE ${op.payload.refreshSchedule}`;
+    }
+    return sql;
+  }
+
+  private renameMaterializedView(op: Operation): string {
+    const oldFqn = this.idNameMap[op.target] ?? 'unknown';
+    const parts = oldFqn.split('.');
+    parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const oldEsc = this.buildFqn(...parts);
+    parts[parts.length - 1] = op.payload.newName;
+    const newEsc = this.buildFqn(...parts);
+    return `ALTER MATERIALIZED VIEW ${oldEsc} RENAME TO ${newEsc}`;
+  }
+
+  private updateMaterializedView(op: Operation): string {
+    const mvId = op.target;
+    const definition = op.payload.definition;
+    if (definition != null) {
+      const mvFqn = this.idNameMap[mvId] ?? 'unknown';
+      const parts = mvFqn.split('.');
+      parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
+      const mvEsc = this.buildFqn(...parts);
+      const commentClause = op.payload.comment
+        ? ` COMMENT '${this.escapeString(op.payload.comment)}'`
+        : '';
+      let sql = `CREATE OR REPLACE MATERIALIZED VIEW ${mvEsc}${commentClause} AS\n${definition}`;
+      if (op.payload.refreshSchedule) {
+        sql += `\nSCHEDULE ${op.payload.refreshSchedule}`;
+      }
+      return sql;
+    }
+    const mvFqn = this.idNameMap[mvId] ?? 'unknown';
+    const parts = mvFqn.split('.');
+    parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const mvEsc = this.buildFqn(...parts);
+    const stmts: string[] = [];
+    if (op.payload.refreshSchedule != null) {
+      if (op.payload.refreshSchedule) {
+        stmts.push(`ALTER MATERIALIZED VIEW ${mvEsc} SET SCHEDULE ${op.payload.refreshSchedule}`);
+      } else {
+        stmts.push(`ALTER MATERIALIZED VIEW ${mvEsc} UNSET SCHEDULE`);
+      }
+    }
+    if ('comment' in op.payload) {
+      stmts.push(`COMMENT ON MATERIALIZED VIEW ${mvEsc} IS '${this.escapeString(op.payload.comment ?? '')}'`);
+    }
+    return stmts.length > 0 ? stmts.join(';\n') : '-- No materialized view updates specified';
+  }
+
+  private dropMaterializedView(op: Operation): string {
+    const mvEsc = this.resolveFqnForDrop(op);
+    return `DROP MATERIALIZED VIEW IF EXISTS ${mvEsc}`;
+  }
+
+  private setMaterializedViewComment(op: Operation): string {
+    const mvId = op.payload.materializedViewId ?? op.target;
+    const mvFqn = this.idNameMap[mvId] ?? 'unknown';
+    const parts = mvFqn.split('.');
+    parts[0] = this.catalogNameMapping[parts[0]] ?? parts[0];
+    const mvEsc = this.buildFqn(...parts);
+    const comment = (op.payload.comment ?? '').replace(/'/g, "\\'");
+    return `COMMENT ON MATERIALIZED VIEW ${mvEsc} IS '${comment}'`;
+  }
+
+  // Grant operations (Unity: GRANT / REVOKE on CATALOG | SCHEMA | TABLE | VIEW | VOLUME | FUNCTION)
   private grantObjectKind(targetType: string): string {
     const kind: Record<string, string> = {
       catalog: 'CATALOG',
       schema: 'SCHEMA',
       table: 'TABLE',
       view: 'VIEW',
+      volume: 'VOLUME',
+      function: 'FUNCTION',
+      materialized_view: 'VIEW',
     };
     return kind[targetType] ?? 'TABLE';
   }

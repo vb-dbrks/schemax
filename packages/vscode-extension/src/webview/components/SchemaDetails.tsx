@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
+import { parsePrivileges } from '../utils/grants';
 import { RichComment } from './RichComment';
 
 // Codicon icons - theme-aware and vector-based
@@ -44,6 +45,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const [newTagValue, setNewTagValue] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [addGrantDialog, setAddGrantDialog] = useState(false);
+  const [editingGrant, setEditingGrant] = useState<{ principal: string; privileges: string[] } | null>(null);
   const [revokeGrantDialog, setRevokeGrantDialog] = useState<{ principal: string } | null>(null);
   const [grantForm, setGrantForm] = useState({ principal: '', privileges: '' });
 
@@ -441,6 +443,9 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
                   <td>{g.principal}</td>
                   <td>{(g.privileges || []).join(', ')}</td>
                   <td>
+                    <VSCodeButton appearance="icon" onClick={() => { setEditingGrant({ principal: g.principal, privileges: g.privileges || [] }); setGrantForm({ principal: g.principal, privileges: (g.privileges || []).join(', ') }); setAddGrantDialog(true); }} title="Edit grant">
+                      <IconEdit />
+                    </VSCodeButton>
                     <VSCodeButton appearance="icon" onClick={() => setRevokeGrantDialog({ principal: g.principal })} title="Revoke all">
                       <IconTrash />
                     </VSCodeButton>
@@ -450,32 +455,38 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
             </tbody>
           </table>
         )}
-        <button className="add-property-btn" onClick={() => setAddGrantDialog(true)}>
+        <button className="add-property-btn" onClick={() => { setEditingGrant(null); setGrantForm({ principal: '', privileges: '' }); setAddGrantDialog(true); }}>
           + Add Grant
         </button>
       </div>
 
       {addGrantDialog && (
-        <div className="modal-overlay" onClick={() => setAddGrantDialog(false)}>
+        <div className="modal-overlay" onClick={() => { setAddGrantDialog(false); setEditingGrant(null); }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Add Grant</h3>
+            <h3>{editingGrant ? 'Edit Grant' : 'Add Grant'}</h3>
             <div className="modal-body">
               <label>Principal</label>
-              <input type="text" value={grantForm.principal} onChange={(e) => setGrantForm({ ...grantForm, principal: e.target.value })} placeholder="e.g. data_engineers" />
+              <input type="text" value={grantForm.principal} onChange={(e) => setGrantForm({ ...grantForm, principal: e.target.value })} placeholder="e.g. data_engineers" readOnly={!!editingGrant} />
               <label>Privileges (comma-separated, e.g. USE SCHEMA, CREATE TABLE)</label>
               <input type="text" value={grantForm.privileges} onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })} placeholder="USE SCHEMA, CREATE TABLE" />
             </div>
             <div className="modal-buttons">
-              <button onClick={() => { setAddGrantDialog(false); setGrantForm({ principal: '', privileges: '' }); }}>Cancel</button>
+              <button onClick={() => { setAddGrantDialog(false); setEditingGrant(null); setGrantForm({ principal: '', privileges: '' }); }}>Cancel</button>
               <button
                 onClick={() => {
                   const principal = grantForm.principal.trim();
-                  const privs = grantForm.privileges.split(/[\s,]+/).filter(Boolean);
-                  if (principal && privs.length > 0) { addGrant('schema', schemaId, principal, privs); setAddGrantDialog(false); setGrantForm({ principal: '', privileges: '' }); }
+                  const privs = parsePrivileges(grantForm.privileges);
+                  if (principal && privs.length > 0) {
+                    if (editingGrant) revokeGrant('schema', schemaId, editingGrant.principal);
+                    addGrant('schema', schemaId, principal, privs);
+                    setAddGrantDialog(false);
+                    setEditingGrant(null);
+                    setGrantForm({ principal: '', privileges: '' });
+                  }
                 }}
                 disabled={!grantForm.principal.trim() || !grantForm.privileges.trim()}
               >
-                Add Grant
+                {editingGrant ? 'Save' : 'Add Grant'}
               </button>
             </div>
           </div>

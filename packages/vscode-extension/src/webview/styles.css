@@ -1282,6 +1282,12 @@ body {
   margin-bottom: 4px;
 }
 
+.modal-field-group .modal-field-hint {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 2px;
+}
+
 .modal-surface vscode-text-field,
 .modal-surface vscode-dropdown {
   width: 100%;

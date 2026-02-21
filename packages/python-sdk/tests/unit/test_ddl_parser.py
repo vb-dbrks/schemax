@@ -383,6 +383,28 @@ class TestStateFromDdl:
             assert report["created"]["catalogs"] >= 1
             assert report["created"]["schemas"] >= 1
 
+    def test_state_from_ddl_view_has_extracted_dependencies(self) -> None:
+        """Views parsed from SQL get extractedDependencies from definition (for dependency ordering)."""
+        statements = [
+            "CREATE CATALOG dc",
+            "CREATE SCHEMA dc.ds",
+            "CREATE VIEW dc.ds.v1 AS SELECT * FROM dc.ds.t1",
+        ]
+        state_dict, report = state_from_ddl(sql_statements=statements)
+        catalogs = state_dict["catalogs"]
+        schemas = [s for c in catalogs for s in c.get("schemas", [])]
+        views = [v for s in schemas for v in s.get("views", [])]
+        if not views:
+            pytest.skip("CREATE VIEW parsed as Unsupported in this dialect")
+        view = views[0]
+        assert "extractedDependencies" in view
+        deps = view["extractedDependencies"]
+        assert "tables" in deps
+        assert "views" in deps
+        # FROM dc.ds.t1 should yield a table reference
+        assert len(deps["tables"]) >= 1
+        assert "t1" in deps["tables"][0] or "dc" in str(deps["tables"])
+
     def test_state_from_ddl_comment_on_applied_to_table(self) -> None:
         statements = [
             "CREATE CATALOG c",

@@ -17,6 +17,10 @@ import {
   UnityColumnMask,
   UnityGrant,
   UnityView,
+  UnityVolume,
+  UnityFunction,
+  UnityFunctionParameter,
+  UnityMaterializedView,
 } from './models';
 import { UNITY_OPERATIONS } from './operations';
 
@@ -84,6 +88,9 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
           tags: op.payload.tags || {},
           tables: [],
           views: [],
+          volumes: [],
+          functions: [],
+          materializedViews: [],
           grants: [],
         };
         catalog.schemas.push(schema);
@@ -245,6 +252,164 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
       }
       break;
     }
+
+    // Volume operations
+    case 'add_volume': {
+      for (const catalog of newState.catalogs) {
+        const schema = catalog.schemas.find(s => s.id === op.payload.schemaId);
+        if (schema) {
+          const volume: UnityVolume = {
+            id: op.payload.volumeId,
+            name: op.payload.name,
+            volumeType: op.payload.volumeType ?? 'managed',
+            comment: op.payload.comment,
+            location: op.payload.location,
+            grants: [],
+          };
+          if (!schema.volumes) schema.volumes = [];
+          schema.volumes.push(volume);
+          break;
+        }
+      }
+      break;
+    }
+    case 'rename_volume': {
+      const volume = findVolume(newState, op.target);
+      if (volume) volume.name = op.payload.newName;
+      break;
+    }
+    case 'update_volume': {
+      const volume = findVolume(newState, op.target);
+      if (volume) {
+        if ('comment' in op.payload) volume.comment = op.payload.comment;
+        if ('location' in op.payload) volume.location = op.payload.location;
+      }
+      break;
+    }
+    case 'drop_volume': {
+      for (const catalog of newState.catalogs) {
+        for (const schema of catalog.schemas) {
+          if (schema.volumes) {
+            schema.volumes = schema.volumes.filter(v => v.id !== op.target);
+          }
+        }
+      }
+      break;
+    }
+
+    // Function operations
+    case 'add_function': {
+      for (const catalog of newState.catalogs) {
+        const schema = catalog.schemas.find(s => s.id === op.payload.schemaId);
+        if (schema) {
+          const params = op.payload.parameters as UnityFunctionParameter[] | undefined;
+          const func: UnityFunction = {
+            id: op.payload.functionId,
+            name: op.payload.name,
+            language: op.payload.language ?? 'SQL',
+            returnType: op.payload.returnType,
+            returnsTable: op.payload.returnsTable,
+            body: op.payload.body,
+            comment: op.payload.comment,
+            parameters: params ?? [],
+            grants: [],
+          };
+          if (!schema.functions) schema.functions = [];
+          schema.functions.push(func);
+          break;
+        }
+      }
+      break;
+    }
+    case 'rename_function': {
+      const fn = findFunction(newState, op.target);
+      if (fn) fn.name = op.payload.newName;
+      break;
+    }
+    case 'update_function': {
+      const fn = findFunction(newState, op.target);
+      if (fn) {
+        if ('body' in op.payload) fn.body = op.payload.body;
+        if ('returnType' in op.payload) fn.returnType = op.payload.returnType;
+        if ('parameters' in op.payload) fn.parameters = op.payload.parameters ?? [];
+        if ('comment' in op.payload) fn.comment = op.payload.comment;
+      }
+      break;
+    }
+    case 'drop_function': {
+      for (const catalog of newState.catalogs) {
+        for (const schema of catalog.schemas) {
+          if (schema.functions) {
+            schema.functions = schema.functions.filter(f => f.id !== op.target);
+          }
+        }
+      }
+      break;
+    }
+    case 'set_function_comment': {
+      const fn = findFunction(newState, op.payload.functionId);
+      if (fn) fn.comment = op.payload.comment;
+      break;
+    }
+
+    // Materialized view operations
+    case 'add_materialized_view': {
+      for (const catalog of newState.catalogs) {
+        const schema = catalog.schemas.find(s => s.id === op.payload.schemaId);
+        if (schema) {
+          const mv: UnityMaterializedView = {
+            id: op.payload.materializedViewId,
+            name: op.payload.name,
+            definition: op.payload.definition,
+            comment: op.payload.comment,
+            refreshSchedule: op.payload.refreshSchedule,
+            partitionColumns: op.payload.partitionColumns,
+            clusterColumns: op.payload.clusterColumns,
+            properties: op.payload.properties ?? {},
+            dependencies: op.payload.dependencies,
+            extractedDependencies: op.payload.extractedDependencies,
+            grants: [],
+          };
+          if (!schema.materializedViews) schema.materializedViews = [];
+          schema.materializedViews.push(mv);
+          break;
+        }
+      }
+      break;
+    }
+    case 'rename_materialized_view': {
+      const mv = findMaterializedView(newState, op.target);
+      if (mv) mv.name = op.payload.newName;
+      break;
+    }
+    case 'update_materialized_view': {
+      const mv = findMaterializedView(newState, op.target);
+      if (mv) {
+        if ('definition' in op.payload) mv.definition = op.payload.definition;
+        if ('refreshSchedule' in op.payload) mv.refreshSchedule = op.payload.refreshSchedule;
+        if ('comment' in op.payload) mv.comment = op.payload.comment;
+        if ('extractedDependencies' in op.payload) {
+          mv.extractedDependencies = op.payload.extractedDependencies;
+        }
+      }
+      break;
+    }
+    case 'drop_materialized_view': {
+      for (const catalog of newState.catalogs) {
+        for (const schema of catalog.schemas) {
+          if (schema.materializedViews) {
+            schema.materializedViews = schema.materializedViews.filter(m => m.id !== op.target);
+          }
+        }
+      }
+      break;
+    }
+    case 'set_materialized_view_comment': {
+      const mv = findMaterializedView(newState, op.payload.materializedViewId);
+      if (mv) mv.comment = op.payload.comment;
+      break;
+    }
+
     case 'set_table_property': {
       const table = findTable(newState, op.payload.tableId);
       if (table) {
@@ -556,7 +721,53 @@ function findView(state: UnityState, viewId: string): UnityView | undefined {
   return undefined;
 }
 
-type GrantTarget = UnityCatalog | UnitySchema | UnityTable | UnityView;
+function findVolume(state: UnityState, volumeId: string): UnityVolume | undefined {
+  for (const catalog of state.catalogs) {
+    for (const schema of catalog.schemas) {
+      if (schema.volumes) {
+        const v = schema.volumes.find(vol => vol.id === volumeId);
+        if (v) return v;
+      }
+    }
+  }
+  return undefined;
+}
+
+function findFunction(state: UnityState, functionId: string): UnityFunction | undefined {
+  for (const catalog of state.catalogs) {
+    for (const schema of catalog.schemas) {
+      if (schema.functions) {
+        const f = schema.functions.find(fn => fn.id === functionId);
+        if (f) return f;
+      }
+    }
+  }
+  return undefined;
+}
+
+function findMaterializedView(
+  state: UnityState,
+  mvId: string
+): UnityMaterializedView | undefined {
+  for (const catalog of state.catalogs) {
+    for (const schema of catalog.schemas) {
+      if (schema.materializedViews) {
+        const mv = schema.materializedViews.find(m => m.id === mvId);
+        if (mv) return mv;
+      }
+    }
+  }
+  return undefined;
+}
+
+type GrantTarget =
+  | UnityCatalog
+  | UnitySchema
+  | UnityTable
+  | UnityView
+  | UnityVolume
+  | UnityFunction
+  | UnityMaterializedView;
 
 /**
  * Find a securable object by type and ID for grant operations
@@ -578,6 +789,9 @@ function findGrantTarget(
   }
   if (targetType === 'table') return findTable(state, targetId);
   if (targetType === 'view') return findView(state, targetId);
+  if (targetType === 'volume') return findVolume(state, targetId);
+  if (targetType === 'function') return findFunction(state, targetId);
+  if (targetType === 'materialized_view') return findMaterializedView(state, targetId);
   return undefined;
 }
 

@@ -5,7 +5,7 @@ title: Unity Catalog Grants
 
 # Unity Catalog Grants
 
-SchemaX lets you manage **Unity Catalog grants** (privileges) on catalogs, schemas, tables, and views from the designer and via the CLI. Grants are stored in your schema state and emitted as `GRANT` / `REVOKE` statements when you generate SQL or run `schemax apply`.
+SchemaX lets you manage **Unity Catalog grants** (privileges) on catalogs, schemas, tables, views, volumes, functions, and materialized views from the designer and via the CLI. Grants are stored in your schema state and emitted as `GRANT` / `REVOKE` statements when you generate SQL or run `schemax apply`.
 
 ---
 
@@ -17,6 +17,9 @@ SchemaX lets you manage **Unity Catalog grants** (privileges) on catalogs, schem
 | **Schema** | Select a schema in the tree → detail panel → **Grants** section |
 | **Table** | Select a table → **Security & Governance** (or table detail) → **Grants** section |
 | **View** | Select a view → detail panel → **Grants** section |
+| **Volume** | Select a volume → detail panel → **Grants** section |
+| **Function** | Select a function → detail panel → **Grants** section |
+| **Materialized View** | Select a materialized view → detail panel → **Grants** section |
 
 Add or remove grants per principal (user, group, or service principal). Each grant has a **principal** and a list of **privileges**.
 
@@ -97,8 +100,8 @@ Use the same principal names and formats that Unity Catalog expects (see [Databr
 
 ## In the VS Code designer
 
-1. Select a **catalog**, **schema**, **table**, or **view** in the tree.
-2. Open the **Grants** section in the detail panel (catalog/schema) or in **Security & Governance** (table/view).
+1. Select a **catalog**, **schema**, **table**, **view**, **volume**, **function**, or **materialized view** in the tree.
+2. Open the **Grants** section in the detail panel (catalog/schema/volume/function/materialized view) or in **Security & Governance** (table/view).
 3. **Add grant:** Click **Add grant**, enter the principal (e.g. group name or email), and choose one or more privileges.
 4. **Revoke:** Remove a grant or uncheck privileges; SchemaX will emit the appropriate `REVOKE` when you generate SQL or apply.
 5. **Generate SQL** or **Apply** — grants are included in the generated DDL and in `schemax apply` when the **Governance** managed category is enabled for that environment.

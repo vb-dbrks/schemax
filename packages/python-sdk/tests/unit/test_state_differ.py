@@ -2063,6 +2063,333 @@ class TestUnityStateDifferViewRegression:
         assert view_names == {"bronze_view", "silver_view", "gold_view"}
 
 
+class TestUnityStateDifferVolumeFunctionMaterializedView:
+    """Test state differ for volumes, functions, and materialized views"""
+
+    def test_diff_added_volume(self) -> None:
+        """Should generate add_volume for new volume"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {"id": "sch_1", "name": "bronze", "tables": [], "views": [], "volumes": []},
+                    ],
+                },
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "volumes": [
+                                {
+                                    "id": "vol_1",
+                                    "name": "my_volume",
+                                    "volumeType": "managed",
+                                    "comment": "Data volume",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+        add_vol = [o for o in ops if o.op == "unity.add_volume"]
+        assert len(add_vol) == 1
+        assert add_vol[0].payload["name"] == "my_volume"
+        assert add_vol[0].payload.get("volumeType") == "managed"
+
+    def test_diff_removed_volume(self) -> None:
+        """Should generate drop_volume for removed volume"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "volumes": [
+                                {"id": "vol_1", "name": "old_vol", "volumeType": "managed"},
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {"id": "sch_1", "name": "bronze", "tables": [], "views": [], "volumes": []},
+                    ],
+                },
+            ]
+        }
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+        drop_vol = [o for o in ops if o.op == "unity.drop_volume"]
+        assert len(drop_vol) == 1
+        assert drop_vol[0].target == "vol_1"
+
+    def test_diff_added_function(self) -> None:
+        """Should generate add_function for new function"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "functions": [],
+                        },
+                    ],
+                },
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "functions": [
+                                {
+                                    "id": "func_1",
+                                    "name": "my_func",
+                                    "language": "SQL",
+                                    "returnType": "INT",
+                                    "body": "1",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+        add_fn = [o for o in ops if o.op == "unity.add_function"]
+        assert len(add_fn) == 1
+        assert add_fn[0].payload["name"] == "my_func"
+
+    def test_diff_removed_function(self) -> None:
+        """Should generate drop_function for removed function"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "functions": [
+                                {
+                                    "id": "func_1",
+                                    "name": "old_fn",
+                                    "language": "SQL",
+                                    "returnType": "INT",
+                                    "body": "1",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "functions": [],
+                        },
+                    ],
+                },
+            ]
+        }
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+        drop_fn = [o for o in ops if o.op == "unity.drop_function"]
+        assert len(drop_fn) == 1
+        assert drop_fn[0].target == "func_1"
+
+    def test_diff_added_materialized_view(self) -> None:
+        """Should generate add_materialized_view for new materialized view"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "materialized_views": [],
+                        },
+                    ],
+                },
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "materialized_views": [
+                                {
+                                    "id": "mv_1",
+                                    "name": "my_mv",
+                                    "definition": "SELECT id FROM t",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+        add_mv = [o for o in ops if o.op == "unity.add_materialized_view"]
+        assert len(add_mv) == 1
+        assert add_mv[0].payload["name"] == "my_mv"
+
+    def test_diff_removed_materialized_view(self) -> None:
+        """Should generate drop_materialized_view for removed materialized view"""
+        old_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "materialized_views": [
+                                {"id": "mv_1", "name": "old_mv", "definition": "SELECT 1"},
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "bronze",
+                            "tables": [],
+                            "views": [],
+                            "materialized_views": [],
+                        },
+                    ],
+                },
+            ]
+        }
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+        drop_mv = [o for o in ops if o.op == "unity.drop_materialized_view"]
+        assert len(drop_mv) == 1
+        assert drop_mv[0].target == "mv_1"
+
+    def test_new_schema_with_volumes_functions_mvs_includes_all(self) -> None:
+        """New schema with volumes, functions, and materialized views must include all in diff"""
+        old_state = {
+            "catalogs": [
+                {"id": "cat_1", "name": "analytics", "schemas": []},
+            ]
+        }
+        new_state = {
+            "catalogs": [
+                {
+                    "id": "cat_1",
+                    "name": "analytics",
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "sales",
+                            "tables": [],
+                            "views": [],
+                            "volumes": [
+                                {"id": "vol_1", "name": "data_vol", "volumeType": "managed"},
+                            ],
+                            "functions": [
+                                {
+                                    "id": "func_1",
+                                    "name": "helper",
+                                    "language": "SQL",
+                                    "returnType": "INT",
+                                    "body": "1",
+                                },
+                            ],
+                            "materialized_views": [
+                                {"id": "mv_1", "name": "summary_mv", "definition": "SELECT 1"},
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+        differ = UnityStateDiffer(old_state, new_state)
+        ops = differ.generate_diff_operations()
+        op_types = [o.op for o in ops]
+        assert "unity.add_schema" in op_types
+        assert "unity.add_volume" in op_types
+        assert "unity.add_function" in op_types
+        assert "unity.add_materialized_view" in op_types
+        assert op_types.count("unity.add_volume") == 1
+        assert op_types.count("unity.add_function") == 1
+        assert op_types.count("unity.add_materialized_view") == 1
+
+
 class TestUnityStateDifferGenericObjectCoverage:
     """
     Generic tests that validate ALL nested object types are handled consistently

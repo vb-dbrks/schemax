@@ -151,6 +151,43 @@
   color: var(--vscode-textLink-foreground);
 }
 
+.dependencies-help {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.5;
+}
+
+.dependency-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--vscode-list-hoverBackground);
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.dependency-row code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 13px;
+}
+
+.dependency-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.dependency-add input {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+}
+
 .no-dependencies {
   margin: 0;
   padding: 12px;

@@ -40,6 +40,7 @@ See [Environments and deployment scope](guide/environments-and-scope) for **full
 
 - Intuitive interface for schema modeling
 - **Provider-based**: Unity Catalog (now), Hive/PostgreSQL (coming soon)
+- **Dependency-aware creation order** for views and materialized views (automatic extraction from SQL; optional manual override in the Designer)
 - Data governance: constraints, tags, grants, row filters, column masks
 - External tables, partitioning, liquid clustering
 - Snapshot-based versioning with semantic versions
@@ -52,7 +53,7 @@ See [Environments and deployment scope](guide/environments-and-scope) for **full
 - Deployment tracking with database-backed audit trail
 - Automatic and manual rollback
 - Snapshot lifecycle: create, validate, rebase
-- Schema validation and circular dependency detection
+- Schema validation, circular dependency detection, and dependency-aware view/MV ordering
 
 ## Quick links
 
@@ -81,6 +82,6 @@ See [Environments and deployment scope](guide/environments-and-scope) for **full
 
 | Provider          | Status   | Hierarchy                    |
 |-------------------|----------|------------------------------|
-| **Unity Catalog** | Available | Catalog → Schema → Table/View |
+| **Unity Catalog** | Available | Catalog → Schema → Table/View/Volume/Function/Materialized View |
 | **Hive Metastore** | Coming soon | Database → Table           |
 | **PostgreSQL**    | Coming soon | Database → Schema → Table  |

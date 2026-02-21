@@ -245,7 +245,7 @@ class DeploymentTracker:
                     else "unknown"
                 )
 
-                # Expected errors on first deployment (catalog/schema doesn't exist)
+                # Expected errors on first deployment (catalog/schema/table doesn't exist)
                 if any(
                     pattern in error_msg.lower()
                     for pattern in [
@@ -254,6 +254,7 @@ class DeploymentTracker:
                         "not found",
                         "does not exist",
                         "table_or_view_not_found",
+                        "cannot be found",
                     ]
                 ):
                     return None
@@ -274,7 +275,7 @@ class DeploymentTracker:
             return None
 
         except Exception as e:
-            # Check if it's a catalog/schema not found error (expected on first deployment)
+            # Check if it's a catalog/schema/table not found error (expected on first deployment)
             error_str = str(e).lower()
             if any(
                 pattern in error_str
@@ -284,6 +285,7 @@ class DeploymentTracker:
                     "not found",
                     "does not exist",
                     "table_or_view_not_found",
+                    "cannot be found",
                 ]
             ):
                 return None
@@ -340,6 +342,7 @@ class DeploymentTracker:
                         "not found",
                         "does not exist",
                         "table_or_view_not_found",
+                        "cannot be found",
                     ]
                 ):
                     return None
@@ -365,6 +368,7 @@ class DeploymentTracker:
                     "not found",
                     "does not exist",
                     "table_or_view_not_found",
+                    "cannot be found",
                 ]
             ):
                 return None
@@ -433,7 +437,7 @@ class DeploymentTracker:
                     else "unknown"
                 )
 
-                # Expected errors (catalog/schema doesn't exist)
+                # Expected errors (catalog/schema/table doesn't exist)
                 if any(
                     pattern in error_msg.lower()
                     for pattern in [
@@ -442,6 +446,7 @@ class DeploymentTracker:
                         "not found",
                         "does not exist",
                         "table_or_view_not_found",
+                        "cannot be found",
                     ]
                 ):
                     return None
@@ -543,7 +548,7 @@ class DeploymentTracker:
             return deployment
 
         except Exception as e:
-            # Check if it's a catalog/schema not found error (expected)
+            # Check if it's a catalog/schema/table not found error (expected)
             error_str = str(e).lower()
             if any(
                 pattern in error_str
@@ -553,6 +558,7 @@ class DeploymentTracker:
                     "not found",
                     "does not exist",
                     "table_or_view_not_found",
+                    "cannot be found",
                 ]
             ):
                 return None
@@ -617,6 +623,7 @@ class DeploymentTracker:
                             "schema",
                             "not found",
                             "table_or_view_not_found",
+                            "cannot be found",
                         ]
                     ):
                         return None
@@ -640,6 +647,7 @@ class DeploymentTracker:
                     "not found",
                     "does not exist",
                     "table_or_view",
+                    "cannot be found",
                 ]
             ):
                 return None

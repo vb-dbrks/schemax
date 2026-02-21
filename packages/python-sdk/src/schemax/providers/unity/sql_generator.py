@@ -110,6 +110,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     view_fqn = f"{catalog_name}.{schema_name}.{view_name}"
                     id_map[view_id] = view_fqn
 
+                # Process volumes, functions, materialized views in this schema
+                for attr in ("volumes", "functions", "materialized_views"):
+                    items = (
+                        schema.get(attr, [])
+                        if isinstance(schema, dict)
+                        else getattr(schema, attr, [])
+                    )
+                    for item in items:
+                        item_name = item.name if hasattr(item, "name") else item["name"]
+                        item_id = item.id if hasattr(item, "id") else item["id"]
+                        item_fqn = f"{catalog_name}.{schema_name}.{item_name}"
+                        id_map[item_id] = item_fqn
+
         return id_map
 
     def _resolve_table_location(
@@ -247,9 +260,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return 0
         if "schema" in op_type:
             return 1
-        if "add_table" in op_type or "add_view" in op_type:
+        if (
+            "add_table" in op_type
+            or "add_view" in op_type
+            or "add_volume" in op_type
+            or "add_function" in op_type
+            or "add_materialized_view" in op_type
+        ):
             return 2
-        return 3  # All other table/view operations (columns, properties, updates, etc.)
+        return 3  # All other table/view/volume/function/MV operations
 
     def _get_target_object_id(self, op: Operation) -> str | None:
         """
@@ -283,6 +302,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "unset_view_property",
         ]:
             return f"view:{op.target}"  # Prefix to avoid ID collisions
+
+        # Volume-level operations
+        if op_type in [
+            "add_volume",
+            "rename_volume",
+            "update_volume",
+            "drop_volume",
+        ]:
+            return f"volume:{op.target}"
+
+        # Function-level operations
+        if op_type in [
+            "add_function",
+            "rename_function",
+            "update_function",
+            "drop_function",
+            "set_function_comment",
+        ]:
+            return f"function:{op.target}"
+
+        # Materialized view-level operations
+        if op_type in [
+            "add_materialized_view",
+            "rename_materialized_view",
+            "update_materialized_view",
+            "drop_materialized_view",
+            "set_materialized_view_comment",
+        ]:
+            return f"materialized_view:{op.target}"
 
         # Column and table property operations
         if op_type in [
@@ -324,6 +372,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "unity.add_schema",
             "unity.add_table",
             "unity.add_view",
+            "unity.add_volume",
+            "unity.add_function",
+            "unity.add_materialized_view",
         ]
 
     def _is_drop_operation(self, op: Operation) -> bool:
@@ -340,6 +391,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "unity.drop_catalog",
             "unity.drop_schema",
             "unity.drop_table",
+            "unity.drop_view",
+            "unity.drop_volume",
+            "unity.drop_function",
+            "unity.drop_materialized_view",
         ]
 
     def _generate_batched_create_sql(self, object_id: str, batch_info: BatchInfo) -> str:
@@ -533,6 +588,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     ("unity.add_catalog", "unity.drop_catalog"),
                     ("unity.add_schema", "unity.drop_schema"),
                     ("unity.add_table", "unity.drop_table"),
+                    ("unity.add_view", "unity.drop_view"),
+                    ("unity.add_volume", "unity.drop_volume"),
+                    ("unity.add_function", "unity.drop_function"),
+                    ("unity.add_materialized_view", "unity.drop_materialized_view"),
                     ("unity.add_column", "unity.drop_column"),
                 ]
 
@@ -572,34 +631,104 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return filtered
 
+    def _build_name_to_node_id_map(self) -> dict[str, str]:
+        """
+        Build a map from table/view/MV name (or qualified name or raw ID) to graph node ID.
+
+        Used to resolve extractedDependencies (names from UI) and dependencies (IDs) to
+        node IDs like "table:xyz" so the dependency graph can order table before view/MV.
+        """
+        name_to_node: dict[str, str] = {}
+        catalogs = (
+            self.state.catalogs
+            if hasattr(self.state, "catalogs")
+            else self.state.get("catalogs", [])
+        )
+        for catalog in catalogs:
+            cat_name = catalog.name if hasattr(catalog, "name") else catalog["name"]
+            catalog_name = self.catalog_name_mapping.get(cat_name, cat_name)
+            schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
+            for schema in schemas:
+                schema_name = schema.name if hasattr(schema, "name") else schema["name"]
+                for attr, prefix in [
+                    ("tables", "table"),
+                    ("views", "view"),
+                    ("materialized_views", "materialized_view"),
+                ]:
+                    items = (
+                        schema.get(attr, [])
+                        if isinstance(schema, dict)
+                        else getattr(schema, attr, [])
+                    )
+                    for item in items:
+                        item_name = item.name if hasattr(item, "name") else item["name"]
+                        item_id = item.id if hasattr(item, "id") else item["id"]
+                        node_id = f"{prefix}:{item_id}"
+                        name_to_node[item_id] = node_id
+                        name_to_node[item_name] = node_id
+                        name_to_node[f"{schema_name}.{item_name}"] = node_id
+                        name_to_node[f"{catalog_name}.{schema_name}.{item_name}"] = node_id
+        return name_to_node
+
+    def _resolve_dependency_to_node_id(self, name_or_id: str) -> str | None:
+        """Resolve a dependency name or object ID to a graph node ID (e.g. table:xyz)."""
+        if not name_or_id or not isinstance(name_or_id, str):
+            return None
+        name_or_id = name_or_id.strip()
+        if not name_or_id:
+            return None
+        if getattr(self, "_name_to_node_id_map", None) is None:
+            self._name_to_node_id_map = self._build_name_to_node_id_map()
+        node_id = self._name_to_node_id_map.get(name_or_id)
+        if node_id:
+            return node_id
+        # Already a node ID (table:xyz)?
+        if name_or_id.startswith(("table:", "view:", "materialized_view:")):
+            return name_or_id
+        return None
+
     def _extract_operation_dependencies(
         self, op: Operation
     ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
         """
         Extract dependencies from Unity Catalog operations.
 
-        Currently supports:
-        - View dependencies on tables/views (from add_view operation)
-        - Foreign key dependencies (from add_constraint operation with type=foreign_key)
-        - Constraint modification dependencies (add_constraint depends on prior drop_constraint)
-
-        Args:
-            op: Operation to analyze
-
-        Returns:
-            List of tuples: (dependency_id, dependency_type, enforcement)
+        Supports:
+        - View/MV dependencies on tables/views: from dependencies (IDs) or
+          extractedDependencies (names from UI); resolved to node IDs so tables are created first.
+        - Foreign key dependencies (from add_constraint).
         """
         dependencies: list[tuple[str, DependencyType, DependencyEnforcement]] = []
 
-        # Extract view dependencies
+        def add_resolved(name_or_id: str) -> None:
+            node_id = self._resolve_dependency_to_node_id(name_or_id)
+            if node_id:
+                dependencies.append(
+                    (node_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
+                )
+
+        # View dependencies (IDs or names from extractedDependencies)
         if op.op == "unity.add_view":
-            # Dependencies field contains list of table/view IDs this view depends on
-            dep_ids = op.payload.get("dependencies", [])
+            dep = op.payload.get("dependencies", [])
+            extracted = op.payload.get("extractedDependencies", {})
+            if isinstance(dep, list):
+                for name_or_id in dep:
+                    add_resolved(name_or_id)
+            if isinstance(extracted, dict):
+                for name_or_id in extracted.get("tables", []) + extracted.get("views", []):
+                    add_resolved(name_or_id)
+
+        # Materialized view dependencies (same as views: tables/views must be created first)
+        if op.op == "unity.add_materialized_view":
+            dep_ids = op.payload.get("dependencies", []) or op.payload.get(
+                "extractedDependencies", {}
+            )
             if isinstance(dep_ids, list):
-                for dep_id in dep_ids:
-                    dependencies.append(
-                        (dep_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
-                    )
+                for name_or_id in dep_ids:
+                    add_resolved(name_or_id)
+            elif isinstance(dep_ids, dict):
+                for name_or_id in dep_ids.get("tables", []) + dep_ids.get("views", []):
+                    add_resolved(name_or_id)
 
         # Extract foreign key dependencies
         elif op.op == "unity.add_constraint":
@@ -852,6 +981,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         schema_stmts = []
         table_stmts = []
         view_stmts = []
+        materialized_view_stmts = []
+        volume_stmts = []
+        function_stmts = []
         other_ops = []
 
         # Process batched operations (CREATE and ALTER only)
@@ -859,7 +991,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             op_ids = batch_info.op_ids
             processed_op_ids.update(op_ids)
 
-            # Determine object type from ID prefix (catalog:, schema:, table:, view:)
+            # Determine object type from ID prefix
             if object_id.startswith("catalog:"):
                 object_type = "catalog"
             elif object_id.startswith("schema:"):
@@ -868,6 +1000,12 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 object_type = "table"
             elif object_id.startswith("view:"):
                 object_type = "view"
+            elif object_id.startswith("materialized_view:"):
+                object_type = "materialized_view"
+            elif object_id.startswith("volume:"):
+                object_type = "volume"
+            elif object_id.startswith("function:"):
+                object_type = "function"
             else:
                 # Skip unknown object types
                 continue
@@ -888,6 +1026,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 # View operations - simpler than tables
                 view_result = self._generate_view_sql_with_mapping(object_id, batch_info)
                 view_stmts.extend(view_result)  # List of (sql, op_ids) tuples
+            elif object_type == "materialized_view":
+                mv_result = self._generate_materialized_view_sql_with_mapping(object_id, batch_info)
+                materialized_view_stmts.extend(mv_result)
+            elif object_type == "volume":
+                vol_result = self._generate_volume_sql_with_mapping(object_id, batch_info)
+                volume_stmts.extend(vol_result)
+            elif object_type == "function":
+                func_result = self._generate_function_sql_with_mapping(object_id, batch_info)
+                function_stmts.extend(func_result)
 
         # Process unbatched non-DROP operations
         for op in non_drop_ops:
@@ -926,6 +1073,24 @@ class UnitySQLGenerator(BaseSQLGenerator):
             )
 
         for sql, op_ids in view_stmts:
+            execution_order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
+            )
+
+        for sql, op_ids in materialized_view_stmts:
+            execution_order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
+            )
+
+        for sql, op_ids in volume_stmts:
+            execution_order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
+            )
+
+        for sql, op_ids in function_stmts:
             execution_order += 1
             statement_infos.append(
                 StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
@@ -1045,6 +1210,40 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._set_view_property(op)
         elif op_type == "unset_view_property":
             return self._unset_view_property(op)
+
+        # Volume operations
+        elif op_type == "add_volume":
+            return self._add_volume(op)
+        elif op_type == "rename_volume":
+            return self._rename_volume(op)
+        elif op_type == "update_volume":
+            return self._update_volume(op)
+        elif op_type == "drop_volume":
+            return self._drop_volume(op)
+
+        # Function operations
+        elif op_type == "add_function":
+            return self._add_function(op)
+        elif op_type == "rename_function":
+            return self._rename_function(op)
+        elif op_type == "update_function":
+            return self._update_function(op)
+        elif op_type == "drop_function":
+            return self._drop_function(op)
+        elif op_type == "set_function_comment":
+            return self._set_function_comment(op)
+
+        # Materialized view operations
+        elif op_type == "add_materialized_view":
+            return self._add_materialized_view(op)
+        elif op_type == "rename_materialized_view":
+            return self._rename_materialized_view(op)
+        elif op_type == "update_materialized_view":
+            return self._update_materialized_view(op)
+        elif op_type == "drop_materialized_view":
+            return self._drop_materialized_view(op)
+        elif op_type == "set_materialized_view_comment":
+            return self._set_materialized_view_comment(op)
 
         # Column operations
         elif op_type == "add_column":
@@ -1780,17 +1979,33 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return f"ALTER VIEW {old_esc} RENAME TO {new_esc}"
 
+    def _resolve_fqn_for_drop(self, op: Operation) -> str:
+        """
+        Resolve escaped FQN for DROP of a schema-level object.
+        Uses id_name_map when available; otherwise builds from payload (name, catalogId, schemaId).
+        """
+        raw = self.id_name_map.get(op.target)
+        if not raw or raw == "unknown":
+            name = op.payload.get("name")
+            catalog_id = op.payload.get("catalogId")
+            schema_id = op.payload.get("schemaId")
+            if not name:
+                return self._build_fqn("unknown", "unknown", "unknown")
+            schema_fqn = self.id_name_map.get(schema_id or "", "unknown.unknown")
+            catalog_name = self.id_name_map.get(catalog_id or "", "unknown")
+            parts_schema = schema_fqn.split(".", 1)
+            cat_from_schema = parts_schema[0] if parts_schema else catalog_name
+            catalog_physical = self.catalog_name_mapping.get(cat_from_schema, cat_from_schema)
+            schema_part = parts_schema[1] if len(parts_schema) == 2 else "unknown"
+            raw = f"{catalog_physical}.{schema_part}.{name}"
+        parts = raw.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        return self._build_fqn(*parts)
+
     def _drop_view(self, op: Operation) -> str:
         """Generate DROP VIEW statement"""
-        view_fqn = self.id_name_map.get(op.target, "unknown")
-        parts = view_fqn.split(".")
-        catalog_name = parts[0] if len(parts) > 0 else "unknown"
-
-        # Apply catalog name mapping (logical → physical)
-        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
-        parts[0] = catalog_name
-
-        view_esc = self._build_fqn(*parts)
+        view_esc = self._resolve_fqn_for_drop(op)
         return f"DROP VIEW IF EXISTS {view_esc}"
 
     def _update_view(self, op: Operation) -> str:
@@ -1873,6 +2088,213 @@ class UnitySQLGenerator(BaseSQLGenerator):
         view_esc = self._build_fqn(*parts)
         key = op.payload["key"]
         return f"ALTER VIEW {view_esc} UNSET TBLPROPERTIES ('{key}')"
+
+    # Volume operations
+    def _add_volume(self, op: Operation) -> str:
+        """Generate CREATE [EXTERNAL] VOLUME statement"""
+        schema_fqn = self.id_name_map.get(op.payload["schemaId"], "unknown.unknown")
+        parts = schema_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        vol_name = op.payload["name"]
+        vol_esc = self._build_fqn(*parts, vol_name)
+        volume_type = op.payload.get("volumeType", "managed")
+        external = volume_type == "external"
+        sql = "CREATE EXTERNAL VOLUME" if external else "CREATE VOLUME"
+        sql += f" IF NOT EXISTS {vol_esc}"
+        if op.payload.get("location") and external:
+            sql += f" LOCATION '{self.escape_string(op.payload['location'])}'"
+        if op.payload.get("comment"):
+            sql += f" COMMENT '{self.escape_string(op.payload['comment'])}'"
+        return sql
+
+    def _rename_volume(self, op: Operation) -> str:
+        """Generate ALTER VOLUME RENAME statement"""
+        old_fqn = self.id_name_map.get(op.target, "unknown")
+        parts = old_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        old_esc = self._build_fqn(*parts)
+        parts[-1] = op.payload["newName"]
+        new_esc = self._build_fqn(*parts)
+        return f"ALTER VOLUME {old_esc} RENAME TO {new_esc}"
+
+    def _update_volume(self, op: Operation) -> str:
+        """Generate ALTER VOLUME SET COMMENT / LOCATION statements"""
+        vol_fqn = self.id_name_map.get(op.target, "unknown")
+        parts = vol_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        vol_esc = self._build_fqn(*parts)
+        stmts = []
+        if "comment" in op.payload:
+            c = op.payload.get("comment") or ""
+            stmts.append(f"ALTER VOLUME {vol_esc} SET COMMENT '{self.escape_string(c)}'")
+        if "location" in op.payload and op.payload.get("location"):
+            stmts.append(
+                f"ALTER VOLUME {vol_esc} SET LOCATION '{self.escape_string(op.payload['location'])}'"
+            )
+        return ";\n".join(stmts) if stmts else "-- No volume updates specified"
+
+    def _drop_volume(self, op: Operation) -> str:
+        """Generate DROP VOLUME statement"""
+        vol_esc = self._resolve_fqn_for_drop(op)
+        return f"DROP VOLUME IF EXISTS {vol_esc}"
+
+    # Function operations
+    def _add_function(self, op: Operation) -> str:
+        """Generate CREATE OR REPLACE FUNCTION statement"""
+        schema_fqn = self.id_name_map.get(op.payload["schemaId"], "unknown.unknown")
+        parts = schema_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        func_name = op.payload["name"]
+        func_esc = self._build_fqn(*parts, func_name)
+        language = (op.payload.get("language") or "SQL").upper()
+        return_type = op.payload.get("returnType") or "STRING"
+        body = op.payload.get("body") or "NULL"
+        params = op.payload.get("parameters") or []
+        param_str = ", ".join(
+            f"{self.escape_identifier(p.get('name', 'x'))} {p.get('dataType', 'STRING')}"
+            for p in params
+            if isinstance(p, dict)
+        )
+        if language == "SQL":
+            sql = f"CREATE OR REPLACE FUNCTION {func_esc}({param_str}) RETURNS {return_type} LANGUAGE SQL RETURN ({body});"
+        else:
+            sql = f"CREATE OR REPLACE FUNCTION {func_esc}({param_str}) RETURNS {return_type} LANGUAGE PYTHON AS $$ {body} $$;"
+        return sql
+
+    def _rename_function(self, op: Operation) -> str:
+        """Generate ALTER FUNCTION RENAME statement (Databricks: recreate or ALTER if supported)"""
+        old_fqn = self.id_name_map.get(op.target, "unknown")
+        parts = old_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        old_esc = self._build_fqn(*parts)
+        parts[-1] = op.payload["newName"]
+        new_esc = self._build_fqn(*parts)
+        return f"ALTER FUNCTION {old_esc} RENAME TO {new_esc}"
+
+    def _update_function(self, op: Operation) -> str:
+        """Generate CREATE OR REPLACE FUNCTION with updated body/return type from payload."""
+        func_fqn = self.id_name_map.get(op.target, "unknown")
+        parts = func_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        func_esc = self._build_fqn(*parts)
+        language = (op.payload.get("language") or "SQL").upper()
+        return_type = op.payload.get("returnType") or "STRING"
+        body = op.payload.get("body") or "NULL"
+        params = op.payload.get("parameters") or []
+        param_str = ", ".join(
+            f"{self.escape_identifier(p.get('name', 'x'))} {p.get('dataType', 'STRING')}"
+            for p in params
+            if isinstance(p, dict)
+        )
+        if language == "SQL":
+            return f"CREATE OR REPLACE FUNCTION {func_esc}({param_str}) RETURNS {return_type} LANGUAGE SQL RETURN ({body});"
+        return f"CREATE OR REPLACE FUNCTION {func_esc}({param_str}) RETURNS {return_type} LANGUAGE PYTHON AS $$ {body} $$;"
+
+    def _drop_function(self, op: Operation) -> str:
+        """Generate DROP FUNCTION statement"""
+        func_esc = self._resolve_fqn_for_drop(op)
+        return f"DROP FUNCTION IF EXISTS {func_esc}"
+
+    def _set_function_comment(self, op: Operation) -> str:
+        """Generate COMMENT ON FUNCTION statement"""
+        func_id = op.payload.get("functionId", op.target)
+        func_fqn = self.id_name_map.get(func_id, "unknown")
+        parts = func_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        func_esc = self._build_fqn(*parts)
+        comment = (op.payload.get("comment") or "").replace("'", "\\'")
+        return f"COMMENT ON FUNCTION {func_esc} IS '{comment}'"
+
+    # Materialized view operations
+    def _add_materialized_view(self, op: Operation) -> str:
+        """Generate CREATE MATERIALIZED VIEW statement"""
+        schema_fqn = self.id_name_map.get(op.payload["schemaId"], "unknown.unknown")
+        parts = schema_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        mv_name = op.payload["name"]
+        mv_esc = self._build_fqn(*parts, mv_name)
+        definition = op.payload.get("definition") or "SELECT 1"
+        extracted_deps = op.payload.get("extractedDependencies", {})
+        definition = self._qualify_view_definition(definition, extracted_deps)
+        comment_clause = ""
+        if op.payload.get("comment"):
+            comment_clause = f" COMMENT '{self.escape_string(op.payload['comment'])}'"
+        sql = f"CREATE MATERIALIZED VIEW IF NOT EXISTS {mv_esc}{comment_clause} AS\n{definition}"
+        schedule = op.payload.get("refreshSchedule")
+        if schedule:
+            sql += f"\nSCHEDULE {schedule}"
+        return sql
+
+    def _rename_materialized_view(self, op: Operation) -> str:
+        """Generate ALTER MATERIALIZED VIEW RENAME (or DROP + CREATE if needed)"""
+        old_fqn = self.id_name_map.get(op.target, "unknown")
+        parts = old_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        old_esc = self._build_fqn(*parts)
+        parts[-1] = op.payload["newName"]
+        new_esc = self._build_fqn(*parts)
+        return f"ALTER MATERIALIZED VIEW {old_esc} RENAME TO {new_esc}"
+
+    def _update_materialized_view(self, op: Operation) -> str:
+        """Generate CREATE OR REPLACE MATERIALIZED VIEW or ALTER for schedule/comment"""
+        mv_id = op.target
+        definition = op.payload.get("definition")
+        if definition is not None:
+            mv_fqn = self.id_name_map.get(mv_id, "unknown")
+            parts = mv_fqn.split(".")
+            catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+            parts[0] = catalog_physical
+            mv_esc = self._build_fqn(*parts)
+            extracted_deps = op.payload.get("extractedDependencies", {})
+            definition = self._qualify_view_definition(definition, extracted_deps)
+            comment_clause = ""
+            if op.payload.get("comment"):
+                comment_clause = f" COMMENT '{self.escape_string(op.payload['comment'])}'"
+            sql = f"CREATE OR REPLACE MATERIALIZED VIEW {mv_esc}{comment_clause} AS\n{definition}"
+            if op.payload.get("refreshSchedule"):
+                sql += f"\nSCHEDULE {op.payload['refreshSchedule']}"
+            return sql
+        stmts = []
+        mv_fqn = self.id_name_map.get(mv_id, "unknown")
+        parts = mv_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        mv_esc = self._build_fqn(*parts)
+        if "refreshSchedule" in op.payload:
+            s = op.payload.get("refreshSchedule")
+            if s:
+                stmts.append(f"ALTER MATERIALIZED VIEW {mv_esc} SET SCHEDULE {s}")
+            else:
+                stmts.append(f"ALTER MATERIALIZED VIEW {mv_esc} UNSET SCHEDULE")
+        if "comment" in op.payload:
+            c = op.payload.get("comment") or ""
+            stmts.append(f"COMMENT ON MATERIALIZED VIEW {mv_esc} IS '{self.escape_string(c)}'")
+        return ";\n".join(stmts) if stmts else "-- No materialized view updates specified"
+
+    def _drop_materialized_view(self, op: Operation) -> str:
+        """Generate DROP MATERIALIZED VIEW statement (Databricks requires this, not DROP VIEW)"""
+        mv_esc = self._resolve_fqn_for_drop(op)
+        return f"DROP MATERIALIZED VIEW IF EXISTS {mv_esc}"
+
+    def _set_materialized_view_comment(self, op: Operation) -> str:
+        """Generate COMMENT ON MATERIALIZED VIEW statement"""
+        mv_id = op.payload.get("materializedViewId", op.target)
+        mv_fqn = self.id_name_map.get(mv_id, "unknown")
+        parts = mv_fqn.split(".")
+        catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
+        parts[0] = catalog_physical
+        mv_esc = self._build_fqn(*parts)
+        comment = (op.payload.get("comment") or "").replace("'", "\\'")
+        return f"COMMENT ON MATERIALIZED VIEW {mv_esc} IS '{comment}'"
 
     # Column operations
     def _add_column(self, op: Operation) -> str:
@@ -2220,6 +2642,63 @@ class UnitySQLGenerator(BaseSQLGenerator):
             except Exception as e:
                 statements.append((f"-- Error generating SQL for {op.id}: {e}", [op.id]))
 
+        return statements
+
+    def _generate_volume_sql_with_mapping(
+        self, object_id: str, batch_info: BatchInfo
+    ) -> list[tuple[str, list[str]]]:
+        """Generate SQL for volume operations. Returns list of (sql, op_ids)."""
+        statements = []
+        if batch_info.create_op:
+            sql = self._add_volume(batch_info.create_op)
+            if sql and not sql.startswith("--"):
+                statements.append((sql, [batch_info.create_op.id]))
+        for op in batch_info.modify_ops:
+            op_type = op.op.replace("unity.", "")
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append((sql, [op.id]))
+            except Exception as e:
+                statements.append((f"-- Error generating SQL for {op.id}: {e}", [op.id]))
+        return statements
+
+    def _generate_function_sql_with_mapping(
+        self, object_id: str, batch_info: BatchInfo
+    ) -> list[tuple[str, list[str]]]:
+        """Generate SQL for function operations. Returns list of (sql, op_ids)."""
+        statements = []
+        if batch_info.create_op:
+            sql = self._add_function(batch_info.create_op)
+            if sql and not sql.startswith("--"):
+                statements.append((sql, [batch_info.create_op.id]))
+        for op in batch_info.modify_ops:
+            op_type = op.op.replace("unity.", "")
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append((sql, [op.id]))
+            except Exception as e:
+                statements.append((f"-- Error generating SQL for {op.id}: {e}", [op.id]))
+        return statements
+
+    def _generate_materialized_view_sql_with_mapping(
+        self, object_id: str, batch_info: BatchInfo
+    ) -> list[tuple[str, list[str]]]:
+        """Generate SQL for materialized view operations. Returns list of (sql, op_ids)."""
+        statements = []
+        if batch_info.create_op:
+            sql = self._add_materialized_view(batch_info.create_op)
+            if sql and not sql.startswith("--"):
+                statements.append((sql, [batch_info.create_op.id]))
+        for op in batch_info.modify_ops:
+            op_type = op.op.replace("unity.", "")
+            try:
+                sql = self._generate_sql_for_op_type(op_type, op)
+                if sql and not sql.startswith("--"):
+                    statements.append((sql, [op.id]))
+            except Exception as e:
+                statements.append((f"-- Error generating SQL for {op.id}: {e}", [op.id]))
         return statements
 
     def _generate_optimized_table_sql(
@@ -2990,9 +3469,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
     # Grant operations (Unity: GRANT / REVOKE on CATALOG | SCHEMA | TABLE | VIEW)
     def _grant_object_kind(self, target_type: str) -> str:
         """Map targetType to SQL object kind (uppercase)."""
-        return {"catalog": "CATALOG", "schema": "SCHEMA", "table": "TABLE", "view": "VIEW"}.get(
-            target_type, "TABLE"
-        )
+        return {
+            "catalog": "CATALOG",
+            "schema": "SCHEMA",
+            "table": "TABLE",
+            "view": "VIEW",
+            "volume": "VOLUME",
+            "function": "FUNCTION",
+            "materialized_view": "VIEW",
+        }.get(target_type, "TABLE")
 
     def _grant_fqn(self, target_type: str, target_id: str) -> str:
         """Resolve fully-qualified name for grant target from id_name_map, with fallback from state."""
@@ -3034,6 +3519,26 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     view_name = view.name if hasattr(view, "name") else view["name"]
                     if target_type == "view" and view_id == target_id:
                         return self._build_fqn(catalog_name, schema_name, view_name)
+                volumes = getattr(schema, "volumes", None) or schema.get("volumes", [])
+                for vol in volumes:
+                    vol_id = vol.id if hasattr(vol, "id") else vol["id"]
+                    vol_name = vol.name if hasattr(vol, "name") else vol["name"]
+                    if target_type == "volume" and vol_id == target_id:
+                        return self._build_fqn(catalog_name, schema_name, vol_name)
+                functions = getattr(schema, "functions", None) or schema.get("functions", [])
+                for func in functions:
+                    func_id = func.id if hasattr(func, "id") else func["id"]
+                    func_name = func.name if hasattr(func, "name") else func["name"]
+                    if target_type == "function" and func_id == target_id:
+                        return self._build_fqn(catalog_name, schema_name, func_name)
+                mvs = getattr(schema, "materialized_views", None) or schema.get(
+                    "materialized_views", []
+                )
+                for mv in mvs:
+                    mv_id = mv.id if hasattr(mv, "id") else mv["id"]
+                    mv_name = mv.name if hasattr(mv, "name") else mv["name"]
+                    if target_type == "materialized_view" and mv_id == target_id:
+                        return self._build_fqn(catalog_name, schema_name, mv_name)
         return ""
 
     def _escape_principal(self, principal: str) -> str:

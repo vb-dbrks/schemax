@@ -145,8 +145,11 @@ The visual designer opens!
 **Note**: SchemaX automatically:
 - Extracts dependencies from your view SQL
 - Qualifies table references with fully-qualified names (FQN)
-- Orders SQL generation so tables are created before views
+- Orders SQL generation so tables are created before views (and before materialized views)
+- Applies the same ordering for materialized views: tables and views are created before MVs
 - Detects circular dependencies between views
+
+You can edit dependencies manually in the view or materialized view detail panel (Dependencies section → Edit) if you need to fix extraction gaps or force creation order.
 
 **Step 7**: Create a Snapshot
 

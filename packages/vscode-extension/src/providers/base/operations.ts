@@ -51,6 +51,9 @@ export enum ManagedCategory {
   SchemaStructure = 'schema_structure',
   TableStructure = 'table_structure',
   ViewStructure = 'view_structure',
+  VolumeStructure = 'volume_structure',
+  FunctionStructure = 'function_structure',
+  MaterializedViewStructure = 'materialized_view_structure',
   Governance = 'governance',
 }
 

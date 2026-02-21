@@ -17,6 +17,7 @@ from sqlglot import expressions as exp
 
 from schemax.core.sql_utils import split_sql_statements
 from schemax.providers.base.models import ProviderState
+from schemax.providers.base.sql_parser import extract_table_references
 
 from .models import (
     UnityCatalog,
@@ -754,11 +755,19 @@ class UnityDDLStateBuilder:
             sid = f"schema_{result.catalog}_{result.schema_name}"
             vid = f"view_{result.catalog}_{result.schema_name}_{result.name}"
             if vid not in self._views:
+                extracted_deps: dict[str, list[str]] | None = None
+                if result.definition:
+                    raw = extract_table_references(result.definition, dialect="databricks")
+                    extracted_deps = {
+                        "tables": raw.get("tables", []) or [],
+                        "views": raw.get("views", []) or [],
+                    }
                 new_view = UnityView(
                     id=vid,
                     name=result.name,
                     definition=result.definition,
                     comment=result.comment,
+                    extracted_dependencies=extracted_deps,
                 )
                 self._views[vid] = new_view
                 self._schemas[sid] = self._schemas[sid].model_copy(

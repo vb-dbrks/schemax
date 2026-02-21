@@ -15,12 +15,16 @@ from .models import (
     UnityColumn,
     UnityColumnMask,
     UnityConstraint,
+    UnityFunction,
+    UnityFunctionParameter,
     UnityGrant,
+    UnityMaterializedView,
     UnityRowFilter,
     UnitySchema,
     UnityState,
     UnityTable,
     UnityView,
+    UnityVolume,
 )
 
 
@@ -99,6 +103,9 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     tags=op_dict["payload"].get("tags", {}),
                     tables=[],
                     views=[],
+                    volumes=[],
+                    functions=[],
+                    materialized_views=[],
                     grants=[],
                 )
                 catalog.schemas.append(schema)
@@ -242,6 +249,158 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
         view_opt = _find_view(new_state, op_dict["payload"]["viewId"])
         if view_opt and op_dict["payload"]["key"] in view_opt.properties:
             del view_opt.properties[op_dict["payload"]["key"]]
+
+    # Volume operations
+    elif op_type == "add_volume":
+        for catalog in new_state.catalogs:
+            for schema in catalog.schemas:
+                if schema.id == op_dict["payload"]["schemaId"]:
+                    volume = UnityVolume(
+                        id=op_dict["payload"]["volumeId"],
+                        name=op_dict["payload"]["name"],
+                        volume_type=op_dict["payload"].get("volumeType", "managed"),
+                        comment=op_dict["payload"].get("comment"),
+                        location=op_dict["payload"].get("location"),
+                        grants=[],
+                    )
+                    schema.volumes.append(volume)
+                    return new_state
+
+    elif op_type == "rename_volume":
+        volume_opt = _find_volume(new_state, op_dict["target"])
+        if volume_opt:
+            volume_opt.name = op_dict["payload"]["newName"]
+
+    elif op_type == "update_volume":
+        volume_opt = _find_volume(new_state, op_dict["target"])
+        if volume_opt:
+            if "comment" in op_dict["payload"]:
+                volume_opt.comment = op_dict["payload"].get("comment")
+            if "location" in op_dict["payload"]:
+                volume_opt.location = op_dict["payload"].get("location")
+
+    elif op_type == "drop_volume":
+        for catalog in new_state.catalogs:
+            for schema in catalog.schemas:
+                schema.volumes = [v for v in schema.volumes if v.id != op_dict["target"]]
+
+    # Function operations
+    elif op_type == "add_function":
+        for catalog in new_state.catalogs:
+            for schema in catalog.schemas:
+                if schema.id == op_dict["payload"]["schemaId"]:
+                    params = op_dict["payload"].get("parameters") or []
+                    if isinstance(params, list):
+                        param_models = [
+                            UnityFunctionParameter(
+                                name=p.get("name", ""),
+                                data_type=p.get("dataType", "STRING"),
+                                default_expression=p.get("defaultExpression"),
+                                comment=p.get("comment"),
+                            )
+                            for p in params
+                            if isinstance(p, dict)
+                        ]
+                    else:
+                        param_models = []
+                    func = UnityFunction(
+                        id=op_dict["payload"]["functionId"],
+                        name=op_dict["payload"]["name"],
+                        language=op_dict["payload"].get("language", "SQL"),
+                        return_type=op_dict["payload"].get("returnType"),
+                        returns_table=op_dict["payload"].get("returnsTable"),
+                        body=op_dict["payload"]["body"],
+                        comment=op_dict["payload"].get("comment"),
+                        parameters=param_models,
+                        grants=[],
+                    )
+                    schema.functions.append(func)
+                    return new_state
+
+    elif op_type == "rename_function":
+        func_opt = _find_function(new_state, op_dict["target"])
+        if func_opt:
+            func_opt.name = op_dict["payload"]["newName"]
+
+    elif op_type == "update_function":
+        func_opt = _find_function(new_state, op_dict["target"])
+        if func_opt:
+            if "body" in op_dict["payload"]:
+                func_opt.body = op_dict["payload"]["body"]
+            if "returnType" in op_dict["payload"]:
+                func_opt.return_type = op_dict["payload"].get("returnType")
+            if "parameters" in op_dict["payload"]:
+                params = op_dict["payload"]["parameters"] or []
+                func_opt.parameters = [
+                    UnityFunctionParameter(
+                        name=p.get("name", ""),
+                        data_type=p.get("dataType", "STRING"),
+                        default_expression=p.get("defaultExpression"),
+                        comment=p.get("comment"),
+                    )
+                    for p in params
+                    if isinstance(p, dict)
+                ]
+            if "comment" in op_dict["payload"]:
+                func_opt.comment = op_dict["payload"].get("comment")
+
+    elif op_type == "drop_function":
+        for catalog in new_state.catalogs:
+            for schema in catalog.schemas:
+                schema.functions = [f for f in schema.functions if f.id != op_dict["target"]]
+
+    elif op_type == "set_function_comment":
+        func_opt = _find_function(new_state, op_dict["payload"]["functionId"])
+        if func_opt:
+            func_opt.comment = op_dict["payload"]["comment"]
+
+    # Materialized view operations
+    elif op_type == "add_materialized_view":
+        for catalog in new_state.catalogs:
+            for schema in catalog.schemas:
+                if schema.id == op_dict["payload"]["schemaId"]:
+                    mv = UnityMaterializedView(
+                        id=op_dict["payload"]["materializedViewId"],
+                        name=op_dict["payload"]["name"],
+                        definition=op_dict["payload"]["definition"],
+                        comment=op_dict["payload"].get("comment"),
+                        refresh_schedule=op_dict["payload"].get("refreshSchedule"),
+                        partition_columns=op_dict["payload"].get("partitionColumns"),
+                        cluster_columns=op_dict["payload"].get("clusterColumns"),
+                        properties=op_dict["payload"].get("properties", {}),
+                        dependencies=op_dict["payload"].get("dependencies"),
+                        extracted_dependencies=op_dict["payload"].get("extractedDependencies"),
+                        grants=[],
+                    )
+                    schema.materialized_views.append(mv)
+                    return new_state
+
+    elif op_type == "rename_materialized_view":
+        mv_opt = _find_materialized_view(new_state, op_dict["target"])
+        if mv_opt:
+            mv_opt.name = op_dict["payload"]["newName"]
+
+    elif op_type == "update_materialized_view":
+        mv_opt = _find_materialized_view(new_state, op_dict["target"])
+        if mv_opt:
+            if "definition" in op_dict["payload"]:
+                mv_opt.definition = op_dict["payload"]["definition"]
+            if "refreshSchedule" in op_dict["payload"]:
+                mv_opt.refresh_schedule = op_dict["payload"].get("refreshSchedule")
+            if "extractedDependencies" in op_dict["payload"]:
+                mv_opt.extracted_dependencies = op_dict["payload"].get("extractedDependencies")
+
+    elif op_type == "drop_materialized_view":
+        for catalog in new_state.catalogs:
+            for schema in catalog.schemas:
+                schema.materialized_views = [
+                    m for m in schema.materialized_views if m.id != op_dict["target"]
+                ]
+
+    elif op_type == "set_materialized_view_comment":
+        mv_opt = _find_materialized_view(new_state, op_dict["payload"]["materializedViewId"])
+        if mv_opt:
+            mv_opt.comment = op_dict["payload"]["comment"]
 
     # Column operations
     elif op_type == "add_column":
@@ -537,14 +696,54 @@ def _find_view(state: UnityState, view_id: str) -> UnityView | None:
     return None
 
 
+def _find_volume(state: UnityState, volume_id: str) -> UnityVolume | None:
+    """Find a volume by ID across all catalogs and schemas."""
+    for catalog in state.catalogs:
+        for schema in catalog.schemas:
+            for volume in schema.volumes:
+                if volume.id == volume_id:
+                    return volume
+    return None
+
+
+def _find_function(state: UnityState, function_id: str) -> UnityFunction | None:
+    """Find a function by ID across all catalogs and schemas."""
+    for catalog in state.catalogs:
+        for schema in catalog.schemas:
+            for func in schema.functions:
+                if func.id == function_id:
+                    return func
+    return None
+
+
+def _find_materialized_view(state: UnityState, mv_id: str) -> UnityMaterializedView | None:
+    """Find a materialized view by ID across all catalogs and schemas."""
+    for catalog in state.catalogs:
+        for schema in catalog.schemas:
+            for mv in schema.materialized_views:
+                if mv.id == mv_id:
+                    return mv
+    return None
+
+
 def _find_grant_target(
     state: UnityState, target_type: str, target_id: str
-) -> UnityCatalog | UnitySchema | UnityTable | UnityView | None:
+) -> (
+    UnityCatalog
+    | UnitySchema
+    | UnityTable
+    | UnityView
+    | UnityVolume
+    | UnityFunction
+    | UnityMaterializedView
+    | None
+):
     """
     Find a securable object by type and ID for grant operations.
 
     Returns:
-        The catalog, schema, table, or view, or None if not found.
+        The catalog, schema, table, view, volume, function, or materialized view,
+        or None if not found.
     """
     if target_type == "catalog":
         for catalog in state.catalogs:
@@ -561,4 +760,10 @@ def _find_grant_target(
         return _find_table(state, target_id)
     if target_type == "view":
         return _find_view(state, target_id)
+    if target_type == "volume":
+        return _find_volume(state, target_id)
+    if target_type == "function":
+        return _find_function(state, target_id)
+    if target_type == "materialized_view":
+        return _find_materialized_view(state, target_id)
     return None

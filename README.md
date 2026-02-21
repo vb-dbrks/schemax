@@ -14,7 +14,7 @@ SchemaX is a modern, low-touch, interactive schema migration and management tool
 - Intuitive drag-and-drop interface for schema modeling
 - **Provider-based**: Unity Catalog (now), Hive/PostgreSQL (coming soon)
 - Adapts to provider-specific hierarchy and features
-- **Views with dependency-aware SQL generation** (automatic FQN qualification)
+- **Dependency-aware views and materialized views**: Creation order is derived from your SQL (tables → views → MVs); you can also edit dependencies manually in the Designer (automatic FQN qualification)
 - Data governance features (constraints, tags, row filters, column masks)
 - External table support with named locations per environment
 - Partitioning and liquid clustering support
@@ -33,8 +33,8 @@ SchemaX is a modern, low-touch, interactive schema migration and management tool
 
 ### 🚀 Key Capabilities
 - **Extensible Provider System**: Easy to add new catalog types
-- **31+ Operation Types**: Complete coverage of Unity Catalog DDL (including views)
-- **Dependency-Aware SQL Generation**: Topological sorting with circular dependency detection
+- **50+ Operation Types**: Complete coverage of Unity Catalog DDL (tables, views, volumes, functions, materialized views, governance)
+- **Dependency-Aware SQL Generation**: Views and materialized views are created in the correct order based on extracted or manually edited dependencies; topological sorting with circular dependency detection
 - **Dual Implementation**: TypeScript (VS Code) + Python (CLI/SDK)
 - **SQL Generation**: Provider-specific, idempotent DDL with automatic FQN qualification
 - **Version Control**: Git-friendly JSON format with snapshots
@@ -44,7 +44,7 @@ SchemaX is a modern, low-touch, interactive schema migration and management tool
 
 | Provider | Status | Hierarchy | Features |
 |----------|--------|-----------|----------|
-| **Unity Catalog** | ✅ Available (v1.0) | Catalog → Schema → Table/View | Full governance (views, constraints, tags, filters, masks, external tables) |
+| **Unity Catalog** | ✅ Available (v1.0) | Catalog → Schema → Table/View/Volume/Function/MV | Full governance (views, volumes, functions, materialized views, constraints, tags, filters, masks, external tables) |
 | **Hive Metastore** | 🔜 Coming Soon | Database → Table | Tables, partitions, views |
 | **PostgreSQL** | 🔜 Coming Soon | Database → Schema → Table | Tables, indexes, constraints, views |
 
@@ -53,6 +53,8 @@ SchemaX is a modern, low-touch, interactive schema migration and management tool
 ## Quick Start
 
 ### VS Code Extension
+
+**Node:** Node 18+ is required. If you see Jest engine warnings during `npm install`, they are harmless; use Node 20 or 22 to avoid them.
 
 1. **Launch Extension Development Host**:
    ```bash
@@ -308,6 +310,9 @@ SchemaX supports all major Unity Catalog features:
   - Partitioning (`PARTITIONED BY`)
   - Liquid Clustering (`CLUSTER BY`)
 - ✅ Columns (ADD, RENAME, ALTER TYPE, DROP)
+- ✅ **Volumes** (CREATE [EXTERNAL] VOLUME, ALTER, DROP) – managed or external storage for files
+- ✅ **Functions** (CREATE OR REPLACE FUNCTION, DROP) – SQL and Python UDFs
+- ✅ **Materialized Views** (CREATE MATERIALIZED VIEW, ALTER, REFRESH, DROP) – precomputed query results
 
 ### Data Governance
 - ✅ **Constraints**: PRIMARY KEY, FOREIGN KEY, CHECK
@@ -523,7 +528,7 @@ pip install sqlglot>=20.0.0
 - Python SDK & CLI
 - SQL generation (TypeScript + Python)
 - Deployment tracking
-- All 31 Unity Catalog operation types
+- All 50+ Unity Catalog operation types (incl. volumes, functions, materialized views)
 - Examples and documentation
 
 **v0.2.0 - Provider Architecture (Current)**
@@ -539,7 +544,7 @@ pip install sqlglot>=20.0.0
 - [ ] **PostgreSQL/Lakebase provider**
 - [ ] Provider compliance test suite
 - [ ] Dynamic UI components
-- [ ] Extended Unity Catalog (volumes, functions)
+- ✅ Extended Unity Catalog (volumes, functions, materialized views)
 
 ### 🔄 Future
 - [ ] Multi-provider projects

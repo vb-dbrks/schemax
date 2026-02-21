@@ -503,7 +503,7 @@ line-length = 100
 target-version = ['py39', 'py310', 'py311', 'py312']
 ```
 
-## Operation Types (Complete List - 31 Unity Catalog Operations)
+## Operation Types (Complete List - 50+ Unity Catalog Operations)
 
 **Catalog Operations** (4):
 - `add_catalog` - payload: `{catalogId, name, managedLocationName?}`
@@ -560,7 +560,7 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ Visual schema designer (VS Code extension)
 - ✅ Snapshot-based versioning
 - ✅ Operation log architecture
-- ✅ All 29 Unity Catalog operation types
+- ✅ All 50+ Unity Catalog operation types (incl. volumes, functions, materialized views)
 - ✅ Inline column editing
 - ✅ Context-aware UI elements
 - ✅ Implicit catalog mode for single-catalog projects
@@ -593,7 +593,7 @@ target-version = ['py39', 'py310', 'py311', 'py312']
 - ✅ TypeScript implementation (VS Code)
 - ✅ Python implementation (SDK/CLI)
 - ✅ Idempotent DDL statements
-- ✅ All 31 Unity Catalog operations supported (added UPDATE_CATALOG, UPDATE_SCHEMA)
+- ✅ All 50+ Unity Catalog operations supported (catalogs, schemas, tables, views, volumes, functions, materialized views, columns, constraints, grants, etc.)
 - ✅ Environment-specific catalog name mapping (fixed: id_name_map rebuild)
 - ✅ SQL dependency ordering (catalog → schema → table → operations)
 - ✅ SQL file export with environment suffix
@@ -1239,7 +1239,7 @@ When starting a new conversation about this project:
    - Snapshot rebase: Unpack, replay on new base, conflict detection
    - Conflict resolution: Manual via UI, conflict logs in `.schemax/conflicts/`
    - Commands: `schemax snapshot validate`, `schemax snapshot rebase`
-11. **Operations**: Provider-based architecture (Unity Catalog = 31 operations)
+11. **Operations**: Provider-based architecture (Unity Catalog = 50+ operations, incl. volumes, functions, materialized views)
    - Added: `update_catalog`, `update_schema` for managed location changes
 12. **Catalog Mapping**: Logical names (`__implicit__`, explicit) → Physical names per environment
 13. **External Tables**: ✅ Fully supported

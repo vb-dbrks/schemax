@@ -49,7 +49,7 @@ module.exports = {
     {
       displayName: 'jsdom',
       testEnvironment: 'jsdom',
-      testMatch: ['<rootDir>/tests/webview/**/*.test.tsx'],
+      testMatch: ['<rootDir>/tests/webview/**/*.test.tsx', '<rootDir>/tests/webview/**/*.test.ts'],
       transform: {
         '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: 'tsconfig.webview.json' }],
       },

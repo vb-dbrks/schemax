@@ -29,6 +29,19 @@ It creates:
 
 Use this when validating multi-command live workflows (`import`, `sql`, `validate`, `diff`, `apply --dry-run`, `rollback --dry-run`, snapshots).
 
+### `unity_uc_objects_fixture.sql`
+
+Unity Catalog fixture for schema-level objects (volume, function, materialized view).
+
+It creates:
+
+- catalog + schema + base table
+- managed volume
+- SQL function (returns INT)
+- materialized view (depends on base table)
+
+Use this for live E2E tests that verify import discovers volumes/functions/MVs and that validate/sql work. Tokens: `test_uc_objects` → catalog name, `__MANAGED_ROOT__` → managed location path.
+
 ### Optional live integration tests
 
 There are opt-in pytest integration tests that apply these fixture SQL files and run live commands against Databricks.

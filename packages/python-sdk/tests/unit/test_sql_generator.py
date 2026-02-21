@@ -10,6 +10,7 @@ import pytest
 from schemax.providers.base.exceptions import SchemaXProviderError
 from schemax.providers.base.operations import Operation, create_operation
 from schemax.providers.unity.sql_generator import UnitySQLGenerator
+from schemax.providers.unity.state_reducer import apply_operation
 from tests.utils import OperationBuilder
 
 
@@ -1353,6 +1354,248 @@ class TestViewSQL:
             f"Views must be created in dependency order: "
             f"view1 (idx={view1_idx}), view2 (idx={view2_idx}), view3 (idx={view3_idx})"
         )
+
+    def test_materialized_view_dependencies_ordered_correctly(self, empty_unity_state, assert_sql):
+        """Materialized view with extractedDependencies on table: CREATE TABLE before CREATE MATERIALIZED VIEW."""
+        state = empty_unity_state.model_dump(by_alias=True)
+        state["catalogs"] = [
+            {
+                "id": "cat1",
+                "name": "sales",
+                "schemas": [
+                    {
+                        "id": "schema1",
+                        "name": "core",
+                        "tables": [
+                            {
+                                "id": "table1",
+                                "name": "products",
+                                "format": "delta",
+                                "columns": [],
+                            }
+                        ],
+                        "views": [],
+                    }
+                ],
+            }
+        ]
+        generator = UnitySQLGenerator(state)
+        builder = OperationBuilder()
+        op_table = builder.add_table("table1", "products", "schema1", "delta", op_id="op_t1")
+        op_mv = builder.add_materialized_view(
+            "mv_1",
+            "summary_mv",
+            "schema1",
+            "SELECT * FROM products",
+            extracted_dependencies={"tables": ["products"], "views": []},
+            op_id="op_mv1",
+        )
+        # Intentionally wrong order: MV before table
+        sql = generator.generate_sql([op_mv, op_table])
+        assert_sql(sql)
+        all_stmts = [s.strip() for s in sql.split(";") if s.strip()]
+        table_stmts = [s for s in all_stmts if "CREATE TABLE" in s and "products" in s]
+        mv_stmts = [s for s in all_stmts if "CREATE MATERIALIZED VIEW" in s]
+        assert table_stmts, "CREATE TABLE products not found"
+        assert mv_stmts, "CREATE MATERIALIZED VIEW not found"
+        idx_table = next(i for i, s in enumerate(all_stmts) if s == table_stmts[0])
+        idx_mv = next(i for i, s in enumerate(all_stmts) if s == mv_stmts[0])
+        assert idx_table < idx_mv, (
+            f"Table must be created before MV: table at {idx_table}, MV at {idx_mv}"
+        )
+
+    def test_materialized_view_and_view_dependencies_ordered_correctly(
+        self, empty_unity_state, assert_sql
+    ):
+        """MV depends on view and table via extractedDependencies: table → view → MV order."""
+        state = empty_unity_state.model_dump(by_alias=True)
+        state["catalogs"] = [
+            {
+                "id": "cat1",
+                "name": "analytics",
+                "schemas": [
+                    {
+                        "id": "schema1",
+                        "name": "reporting",
+                        "tables": [
+                            {"id": "table1", "name": "base", "format": "delta", "columns": []}
+                        ],
+                        "views": [
+                            {"id": "view1", "name": "v1", "definition": "SELECT * FROM base"}
+                        ],
+                    }
+                ],
+            }
+        ]
+        generator = UnitySQLGenerator(state)
+        builder = OperationBuilder()
+        op_table = builder.add_table("table1", "base", "schema1", "delta", op_id="op_t1")
+        op_view = Operation(
+            id="op_v1",
+            provider="unity",
+            op="unity.add_view",
+            target="view1",
+            payload={
+                "viewId": "view1",
+                "name": "v1",
+                "schemaId": "schema1",
+                "definition": "SELECT * FROM base",
+                "extractedDependencies": {"tables": ["base"], "views": []},
+            },
+            ts="2024-01-01T00:00:01Z",
+        )
+        op_mv = builder.add_materialized_view(
+            "mv_1",
+            "agg_mv",
+            "schema1",
+            "SELECT * FROM v1",
+            extracted_dependencies={"tables": ["base"], "views": ["v1"]},
+            op_id="op_mv1",
+        )
+        # Wrong order: MV first, then view, then table
+        sql = generator.generate_sql([op_mv, op_view, op_table])
+        assert_sql(sql)
+        all_stmts = [s.strip() for s in sql.split(";") if s.strip()]
+        create_table = [s for s in all_stmts if "CREATE TABLE" in s and "`base`" in s]
+        create_view = [s for s in all_stmts if "CREATE VIEW" in s and "`v1`" in s]
+        create_mv = [s for s in all_stmts if "CREATE MATERIALIZED VIEW" in s]
+        assert create_table and create_view and create_mv
+        idx_t = next(i for i, s in enumerate(all_stmts) if s == create_table[0])
+        idx_v = next(i for i, s in enumerate(all_stmts) if s == create_view[0])
+        idx_m = next(i for i, s in enumerate(all_stmts) if s == create_mv[0])
+        assert idx_t < idx_v < idx_m, (
+            f"Order must be table < view < MV: table={idx_t}, view={idx_v}, mv={idx_m}"
+        )
+
+
+class TestVolumeFunctionMaterializedViewSQL:
+    """Test SQL generation for volume, function, and materialized view operations"""
+
+    def test_add_volume_managed(self, sample_unity_state, assert_sql):
+        """Test CREATE VOLUME (managed) SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_volume(
+            "vol_001", "my_volume", "schema_456", "managed", comment="Data volume", op_id="op_v1"
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE VOLUME IF NOT EXISTS" in result.sql
+        assert "EXTERNAL" not in result.sql or "EXTERNAL VOLUME" not in result.sql
+        assert "`my_volume`" in result.sql or "my_volume" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_volume_external(self, sample_unity_state, assert_sql):
+        """Test CREATE EXTERNAL VOLUME SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_volume(
+            "vol_002",
+            "external_vol",
+            "schema_456",
+            "external",
+            location="s3://bucket/path",
+            op_id="op_v2",
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "EXTERNAL VOLUME" in result.sql or "CREATE VOLUME" in result.sql
+        assert_sql(result.sql)
+
+    def test_drop_volume(self, sample_unity_state, assert_sql):
+        """Test DROP VOLUME SQL generation"""
+        builder = OperationBuilder()
+        add_op = builder.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
+        state = apply_operation(sample_unity_state, add_op)
+        generator = UnitySQLGenerator(state.model_dump(by_alias=True))
+        drop_op = builder.drop_volume("vol_001", op_id="op_v2")
+        result = generator.generate_sql_for_operation(drop_op)
+        assert "DROP VOLUME" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_function_sql(self, sample_unity_state, assert_sql):
+        """Test CREATE FUNCTION (SQL) SQL generation. Body is expression only (generator wraps in RETURN)."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_function(
+            "func_001",
+            "my_func",
+            "schema_456",
+            "SQL",
+            "INT",
+            "1",  # SQL UDF body: expression only; generator emits RETURN (body)
+            comment="Helper",
+            op_id="op_f1",
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "CREATE" in result.sql and "FUNCTION" in result.sql
+        assert "RETURNS" in result.sql or "RETURN" in result.sql
+        assert_sql(result.sql)
+
+    def test_drop_function(self, sample_unity_state, assert_sql):
+        """Test DROP FUNCTION SQL generation"""
+        builder = OperationBuilder()
+        add_op = builder.add_function(
+            "func_001", "my_fn", "schema_456", "SQL", "INT", "RETURN 1", op_id="op_f1"
+        )
+        state = apply_operation(sample_unity_state, add_op)
+        generator = UnitySQLGenerator(state.model_dump(by_alias=True))
+        drop_op = builder.drop_function("func_001", op_id="op_f2")
+        result = generator.generate_sql_for_operation(drop_op)
+        assert "DROP FUNCTION" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_materialized_view(self, sample_unity_state, assert_sql):
+        """Test CREATE MATERIALIZED VIEW SQL generation"""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_materialized_view(
+            "mv_001",
+            "my_mv",
+            "schema_456",
+            "SELECT id, name FROM users",
+            comment="Summary",
+            op_id="op_mv1",
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert "MATERIALIZED VIEW" in result.sql
+        assert "SELECT" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_materialized_view_comment_before_as(self, sample_unity_state, assert_sql):
+        """COMMENT must appear before AS (Databricks syntax); after SELECT is invalid."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op = builder.add_materialized_view(
+            "mv_001",
+            "e2e_mv",
+            "schema_456",
+            "SELECT * FROM events",
+            comment="E2E MV",
+            op_id="op_mv1",
+        )
+        result = generator.generate_sql_for_operation(op)
+        assert_sql(result.sql)
+        # COMMENT must come before AS so Databricks accepts it (not after the query).
+        as_pos = result.sql.index(" AS\n")
+        comment_pos = result.sql.index("COMMENT 'E2E MV'")
+        assert comment_pos < as_pos, (
+            "COMMENT must appear before AS clause for materialized views; "
+            "got COMMENT after AS (Databricks parse error)."
+        )
+
+    def test_drop_materialized_view(self, sample_unity_state, assert_sql):
+        """Test DROP MATERIALIZED VIEW SQL generation"""
+        builder = OperationBuilder()
+        add_op = builder.add_materialized_view(
+            "mv_001", "my_mv", "schema_456", "SELECT 1", op_id="op_mv1"
+        )
+        state = apply_operation(sample_unity_state, add_op)
+        generator = UnitySQLGenerator(state.model_dump(by_alias=True))
+        drop_op = builder.drop_materialized_view("mv_001", op_id="op_mv2")
+        result = generator.generate_sql_for_operation(drop_op)
+        assert "DROP MATERIALIZED VIEW" in result.sql, (
+            "Databricks requires DROP MATERIALIZED VIEW, not DROP VIEW, for MVs"
+        )
+        assert_sql(result.sql)
 
 
 class TestSQLGeneration:

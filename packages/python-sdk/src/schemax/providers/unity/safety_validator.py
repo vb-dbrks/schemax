@@ -58,6 +58,14 @@ class SafetyValidator:
             return self._validate_drop_schema(op, catalog_mapping)
         elif op_type == UNITY_OPERATIONS["DROP_TABLE"]:
             return self._validate_drop_table(op, catalog_mapping)
+        elif op_type == UNITY_OPERATIONS["DROP_VIEW"]:
+            return self._safe_operation(op)
+        elif op_type == UNITY_OPERATIONS["DROP_VOLUME"]:
+            return self._safe_operation(op)
+        elif op_type == UNITY_OPERATIONS["DROP_FUNCTION"]:
+            return self._safe_operation(op)
+        elif op_type == UNITY_OPERATIONS["DROP_MATERIALIZED_VIEW"]:
+            return self._safe_operation(op)
         elif op_type == UNITY_OPERATIONS["DROP_COLUMN"]:
             return self._validate_drop_column(op, catalog_mapping)
         elif op_type == UNITY_OPERATIONS["CHANGE_COLUMN_TYPE"]:

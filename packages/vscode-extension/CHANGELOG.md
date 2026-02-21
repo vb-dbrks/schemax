@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1] - 2026-02-21
+
+### Added
+
+- **Volumes, functions, and materialized views** — Design and manage Unity Catalog volumes, functions, and materialized views in the Designer. Create, comment, grant, and control deployment scope per environment.
+- **View and materialized view dependencies** — In View and Materialized View details, you can see and edit which tables or views they depend on. Dependencies are inferred from SQL and you can add or remove them. Generated SQL creates base tables and views before dependent views and MVs.
+- **Edit grants** — Change who has access to what: edit grants on catalogs, schemas, tables, views, volumes, functions, and materialized views from the UI. Use the edit dialog to change principals and privileges; generated SQL stays correct.
+
+### Changed
+
+- **Materialized view SQL** — Comments and DROP statements for materialized views now follow Databricks syntax. Generated migrations create dependencies in the right order.
+- **Documentation** — Docs and README updated for volumes, functions, and materialized views. Unity Catalog grants documentation now covers all supported object types.
+
 ## [0.2.0] - 2025-02-12
 
 ### Added
