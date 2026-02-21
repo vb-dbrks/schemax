@@ -32,8 +32,8 @@ from tests.integration.live_helpers import (
 from tests.utils import OperationBuilder
 from tests.utils.cli_helpers import invoke_cli
 from tests.utils.live_databricks import (
-    create_executor,
     cleanup_objects,
+    create_executor,
     require_live_command_tests,
 )
 

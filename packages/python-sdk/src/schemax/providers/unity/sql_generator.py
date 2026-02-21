@@ -646,12 +646,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
         )
         for catalog in catalogs:
             cat_name = catalog.name if hasattr(catalog, "name") else catalog["name"]
-            cat_id = catalog.id if hasattr(catalog, "id") else catalog["id"]
             catalog_name = self.catalog_name_mapping.get(cat_name, cat_name)
             schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
             for schema in schemas:
                 schema_name = schema.name if hasattr(schema, "name") else schema["name"]
-                schema_id = schema.id if hasattr(schema, "id") else schema["id"]
                 for attr, prefix in [
                     ("tables", "table"),
                     ("views", "view"),

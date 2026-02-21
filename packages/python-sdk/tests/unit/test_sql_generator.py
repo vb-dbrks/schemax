@@ -1381,9 +1381,7 @@ class TestViewSQL:
         ]
         generator = UnitySQLGenerator(state)
         builder = OperationBuilder()
-        op_table = builder.add_table(
-            "table1", "products", "schema1", "delta", op_id="op_t1"
-        )
+        op_table = builder.add_table("table1", "products", "schema1", "delta", op_id="op_t1")
         op_mv = builder.add_materialized_view(
             "mv_1",
             "summary_mv",
