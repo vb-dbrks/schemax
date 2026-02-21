@@ -14,7 +14,7 @@ SchemaX is a modern, low-touch, interactive schema migration and management tool
 - Intuitive drag-and-drop interface for schema modeling
 - **Provider-based**: Unity Catalog (now), Hive/PostgreSQL (coming soon)
 - Adapts to provider-specific hierarchy and features
-- **Views with dependency-aware SQL generation** (automatic FQN qualification)
+- **Dependency-aware views and materialized views**: Creation order is derived from your SQL (tables → views → MVs); you can also edit dependencies manually in the Designer (automatic FQN qualification)
 - Data governance features (constraints, tags, row filters, column masks)
 - External table support with named locations per environment
 - Partitioning and liquid clustering support
@@ -34,7 +34,7 @@ SchemaX is a modern, low-touch, interactive schema migration and management tool
 ### 🚀 Key Capabilities
 - **Extensible Provider System**: Easy to add new catalog types
 - **50+ Operation Types**: Complete coverage of Unity Catalog DDL (tables, views, volumes, functions, materialized views, governance)
-- **Dependency-Aware SQL Generation**: Topological sorting with circular dependency detection
+- **Dependency-Aware SQL Generation**: Views and materialized views are created in the correct order based on extracted or manually edited dependencies; topological sorting with circular dependency detection
 - **Dual Implementation**: TypeScript (VS Code) + Python (CLI/SDK)
 - **SQL Generation**: Provider-specific, idempotent DDL with automatic FQN qualification
 - **Version Control**: Git-friendly JSON format with snapshots

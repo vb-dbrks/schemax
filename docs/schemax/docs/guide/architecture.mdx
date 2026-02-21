@@ -1343,9 +1343,9 @@ enum DependencyEnforcement {
 }
 ```
 
-#### View Dependency Extraction
+#### View and Materialized View Dependency Extraction
 
-Views are the primary use case for dependency-aware ordering. SchemaX extracts dependencies from view SQL:
+Views and **materialized views** are the primary use case for dependency-aware ordering. SchemaX extracts dependencies from view/MV SQL (FROM and JOIN references). The same mechanism applies to both: each view or materialized view stores `extractedDependencies` (tables and views it references), and the SQL generator orders creation so that tables and views are created before any view or materialized view that depends on them. Chains of arbitrary depth are supported: e.g. table → view1 → view2 → … → view_n (and materialized views at the end) are ordered correctly via the dependency graph.
 
 **Python (SQLGlot):**
 
@@ -1376,6 +1376,10 @@ function extractDependenciesFromView(viewSql: string) {
 }
 ```
 
+#### Manual Dependency Override
+
+In the VS Code Designer, views and materialized views show a **Dependencies** section (tables and views they depend on). Dependencies are filled automatically from the SQL when you save the definition. You can also **edit the list manually** (add or remove table or view names) to fix extraction gaps or force creation order. Use object names as they appear in the project (e.g. table name or `schema.table`). Saving the definition again re-extracts from SQL and replaces the dependency list; use Edit dependencies after saving to adjust if needed.
+
 #### Hierarchy Levels
 
 Operations are assigned hierarchy levels for fallback ordering:
@@ -1383,7 +1387,7 @@ Operations are assigned hierarchy levels for fallback ordering:
 ```typescript
 Level 0: Catalog operations (CREATE CATALOG)
 Level 1: Schema operations (CREATE SCHEMA)
-Level 2: Table/View creation (CREATE TABLE, CREATE VIEW)
+Level 2: Table/View/Materialized view creation (CREATE TABLE, CREATE VIEW, CREATE MATERIALIZED VIEW)
 Level 3: Modifications (ALTER TABLE, ADD COLUMN, SET PROPERTIES)
 ```
 
