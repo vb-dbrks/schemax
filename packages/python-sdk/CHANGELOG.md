@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.1] - 2026-02-21
+
+### Added
+
+- **Volumes, functions, and materialized views** — Full support in the CLI and SDK: design them in the Designer, generate SQL, and apply or import. Live import from Databricks and import from SQL files both support the new object types. View and MV definitions and dependencies are extracted when importing from SQL.
+- **Materialized view dependency ordering** — Generated SQL creates base tables and views before dependent views and materialized views. Dependencies come from the UI or from parsing view/MV definitions.
+- **First deployment** — When you run apply for the first time (or the deployment tracking table doesn’t exist yet), the CLI no longer errors. It treats “table not found” as “no previous deployment” and continues.
+
+### Changed
+
+- **Materialized view SQL** — Comments and DROP statements for materialized views follow Databricks syntax. DDL import extracts dependencies from view and MV definitions.
+- **Live import** — Import from Databricks no longer fails when your workspace has materialized views. Discovery skips table-only metadata for MVs so it works correctly.
+
+### Fixed
+
+- **Live import with materialized views** — Import from Databricks works when catalogs or schemas contain materialized views.
+- **Apply on a fresh environment** — Apply no longer fails when the deployment tracking table hasn’t been created yet.
+
 ## [0.2.0] - 2025-02-12
 
 ### Added

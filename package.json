@@ -1,6 +1,6 @@
 {
   "name": "schemax",
-  "version": "0.1.2",
+  "version": "0.2.1",
   "private": true,
   "description": "SchemaX - Databricks Unity Catalog schema management with version control",
   "repository": {
