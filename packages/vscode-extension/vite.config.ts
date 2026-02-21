@@ -8,6 +8,8 @@ export default defineConfig({
   build: {
     outDir: '../../media',
     emptyOutDir: true,
+    // Single bundle: webview CSP only allows one script tag (nonce); dynamic chunk imports are blocked.
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       input: path.resolve(__dirname, 'src/webview/index.html'),
       output: {

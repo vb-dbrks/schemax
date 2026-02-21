@@ -15,8 +15,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from databricks.sdk.service.sql import StatementState
-
 from schemax.providers.base.executor import ExecutionConfig, ExecutionResult, SQLExecutor
 from schemax.providers.base.models import ProviderState, ValidationError, ValidationResult
 from schemax.providers.base.operations import Operation
@@ -1759,6 +1757,10 @@ class UnityProvider(BaseProvider):
         warehouse_id: str,
         sql: str,
     ) -> list[dict[str, Any]]:
+        from databricks.sdk.service.sql import (
+            StatementState,  # pyright: ignore[reportMissingImports]
+        )
+
         response = client.statement_execution.execute_statement(
             warehouse_id=warehouse_id,
             statement=sql,
