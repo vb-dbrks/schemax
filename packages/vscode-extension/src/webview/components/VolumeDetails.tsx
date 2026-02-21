@@ -245,17 +245,19 @@ export const VolumeDetails: React.FC<VolumeDetailsProps> = ({ volumeId }) => {
               style={{ width: '100%', marginBottom: '8px' }}
               readOnly={!!editingGrant}
             />
-            <label>Privileges (comma-separated; e.g. READ VOLUME, WRITE VOLUME)</label>
-            <input
-              type="text"
-              value={grantForm.privileges}
-              onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })}
-              placeholder="READ VOLUME, WRITE VOLUME"
-              style={{ width: '100%', marginBottom: '8px' }}
-            />
-            <p className="modal-field-hint" style={{ marginTop: 0, marginBottom: '12px' }}>
-              Use commas to separate privileges. &quot;READ VOLUME&quot; is one privilege, not two.
-            </p>
+            <div className="modal-field-group">
+              <label>Privileges (comma-separated; e.g. READ VOLUME, WRITE VOLUME)</label>
+              <input
+                type="text"
+                value={grantForm.privileges}
+                onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })}
+                placeholder="READ VOLUME, WRITE VOLUME"
+                style={{ width: '100%', marginBottom: '8px' }}
+              />
+              <p className="modal-field-hint" style={{ marginTop: 0, marginBottom: '12px' }}>
+                Use commas to separate privileges. &quot;READ VOLUME&quot; is one privilege, not two.
+              </p>
+            </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <VSCodeButton appearance="secondary" onClick={() => { setAddGrantDialog(false); setEditingGrant(null); }}>Cancel</VSCodeButton>
               <VSCodeButton
