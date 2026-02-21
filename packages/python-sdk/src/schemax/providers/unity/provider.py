@@ -372,6 +372,8 @@ class UnityProvider(BaseProvider):
                     for row in table_rows
                     if str(row.get("table_type", "BASE TABLE")).upper() not in self.VIEW_TABLE_TYPES
                     and str(row.get("table_type", "BASE TABLE")).upper()
+                    not in self.MATERIALIZED_VIEW_TABLE_TYPES
+                    and str(row.get("table_type", "BASE TABLE")).upper()
                     not in self.UNSUPPORTED_DISCOVERY_TABLE_TYPES
                     and row.get("table_name")
                 ]
