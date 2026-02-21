@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import { FunctionDetails } from '../../../src/webview/components/FunctionDetails';
 
@@ -55,10 +55,18 @@ describe('FunctionDetails Component', () => {
     expect(screen.getByText('A test function')).toBeInTheDocument();
   });
 
-  test('renders Body section', () => {
+  test('renders Body as property row under Properties', () => {
     render(<FunctionDetails functionId="func_1" />);
     expect(screen.getByText('Body')).toBeInTheDocument();
     expect(screen.getByText('SELECT 1')).toBeInTheDocument();
+  });
+
+  test('opens body modal when Edit body is clicked', () => {
+    render(<FunctionDetails functionId="func_1" />);
+    const bodyEdit = screen.getByTitle('Edit body');
+    fireEvent.click(bodyEdit);
+    expect(screen.getByText('Set Function Body')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('SELECT 1')).toBeInTheDocument();
   });
 
   test('renders Grants section', () => {

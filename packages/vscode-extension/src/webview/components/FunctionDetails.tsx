@@ -18,10 +18,12 @@ interface FunctionDetailsProps {
 export const FunctionDetails: React.FC<FunctionDetailsProps> = ({ functionId }) => {
   const { findFunction, updateFunction, addGrant, revokeGrant } = useDesignerStore();
   const info = findFunction(functionId);
-  const [editingBody, setEditingBody] = useState(false);
-  const [editBody, setEditBody] = useState('');
-  const [editReturnType, setEditReturnType] = useState('');
-  const [editComment, setEditComment] = useState('');
+  const [commentDialog, setCommentDialog] = useState(false);
+  const [commentInput, setCommentInput] = useState('');
+  const [returnTypeDialog, setReturnTypeDialog] = useState(false);
+  const [returnTypeInput, setReturnTypeInput] = useState('');
+  const [bodyDialog, setBodyDialog] = useState(false);
+  const [bodyInput, setBodyInput] = useState('');
   const [addGrantDialog, setAddGrantDialog] = useState(false);
   const [editingGrant, setEditingGrant] = useState<{ principal: string; privileges: string[] } | null>(null);
   const [revokeGrantDialog, setRevokeGrantDialog] = useState<{ principal: string } | null>(null);
@@ -47,27 +49,57 @@ export const FunctionDetails: React.FC<FunctionDetailsProps> = ({ functionId }) 
     grants?: { principal: string; privileges: string[] }[];
   };
 
-  const startEdit = () => {
-    setEditBody(f.body ?? '');
-    setEditReturnType(f.returnType ?? 'STRING');
-    setEditComment(f.comment ?? '');
-    setEditingBody(true);
+  const openCommentDialog = () => {
+    setCommentInput(f.comment ?? '');
+    setCommentDialog(true);
   };
 
-  const saveEdit = () => {
-    updateFunction(functionId, {
-      body: editBody.trim() || 'NULL',
-      returnType: editReturnType.trim() || 'STRING',
-      comment: editComment.trim() || undefined,
-    });
-    setEditingBody(false);
+  const saveComment = () => {
+    updateFunction(functionId, { comment: commentInput.trim() || undefined });
+    setCommentDialog(false);
   };
 
-  const cancelEdit = () => {
-    setEditBody(f.body ?? '');
-    setEditReturnType(f.returnType ?? 'STRING');
-    setEditComment(f.comment ?? '');
-    setEditingBody(false);
+  const openReturnTypeDialog = () => {
+    setReturnTypeInput(f.returnType ?? 'STRING');
+    setReturnTypeDialog(true);
+  };
+
+  const saveReturnType = () => {
+    updateFunction(functionId, { returnType: returnTypeInput.trim() || 'STRING' });
+    setReturnTypeDialog(false);
+  };
+
+  const openBodyDialog = () => {
+    setBodyInput(f.body ?? '');
+    setBodyDialog(true);
+  };
+
+  const saveBody = () => {
+    updateFunction(functionId, { body: bodyInput.trim() || 'NULL' });
+    setBodyDialog(false);
+  };
+
+  const openAddGrant = () => {
+    setEditingGrant(null);
+    setGrantForm({ principal: '', privileges: '' });
+    setAddGrantDialog(true);
+  };
+
+  const openEditGrant = (principal: string, privileges: string[]) => {
+    setEditingGrant({ principal, privileges });
+    setGrantForm({ principal, privileges: privileges.join(', ') });
+    setAddGrantDialog(true);
+  };
+
+  const saveGrant = () => {
+    const principal = grantForm.principal.trim();
+    const privs = parsePrivileges(grantForm.privileges);
+    if (!principal || privs.length === 0) return;
+    if (editingGrant) revokeGrant('function', functionId, editingGrant.principal);
+    addGrant('function', functionId, principal, privs);
+    setAddGrantDialog(false);
+    setEditingGrant(null);
+    setGrantForm({ principal: '', privileges: '' });
   };
 
   const grants = f.grants ?? [];
@@ -82,67 +114,51 @@ export const FunctionDetails: React.FC<FunctionDetailsProps> = ({ functionId }) 
         <span className="view-badge" style={{ background: 'var(--vscode-charts-orange)', color: 'white' }}>FUNCTION</span>
       </div>
 
+      {/* Properties - table-inspired: one section, property rows with pencil → modal */}
       <div className="view-section">
-        <div className="section-header">
-          <h3>Properties</h3>
-          {!editingBody ? (
-            <VSCodeButton appearance="secondary" onClick={startEdit}>Edit</VSCodeButton>
-          ) : (
-            <>
-              <VSCodeButton appearance="primary" onClick={saveEdit}>Save</VSCodeButton>
-              <VSCodeButton appearance="secondary" onClick={cancelEdit}>Cancel</VSCodeButton>
-            </>
-          )}
-        </div>
-        <dl className="properties-list">
-          <dt>Language</dt>
-          <dd>{f.language ?? 'SQL'}</dd>
-          <dt>Return type</dt>
-          <dd>
-            {editingBody ? (
-              <input
-                type="text"
-                value={editReturnType}
-                onChange={(e) => setEditReturnType(e.target.value)}
-                placeholder="STRING"
-                style={{ width: '100%', padding: '6px 8px', fontFamily: 'monospace' }}
-              />
-            ) : (
+        <h3>Properties</h3>
+        <div className="table-properties">
+          <div className="property-row">
+            <label>Language</label>
+            <div className="property-value">
+              <span>{f.language ?? 'SQL'}</span>
+            </div>
+          </div>
+          <div className="property-row">
+            <label>Return type</label>
+            <div className="property-value">
               <code>{f.returnType ?? 'STRING'}</code>
-            )}
-          </dd>
-          <dt>Comment</dt>
-          <dd>
-            {editingBody ? (
-              <textarea
-                value={editComment}
-                onChange={(e) => setEditComment(e.target.value)}
-                rows={2}
-                placeholder="Optional description"
-                style={{ width: '100%', padding: '6px 8px', fontSize: '13px', resize: 'vertical' }}
-              />
-            ) : (
-              f.comment ?? '—'
-            )}
-          </dd>
-        </dl>
-      </div>
-
-      <div className="view-section">
-        <div className="section-header">
-          <h3>Body</h3>
+              <VSCodeButton appearance="icon" onClick={openReturnTypeDialog} title="Edit return type">
+                <IconEdit />
+              </VSCodeButton>
+            </div>
+          </div>
+          <div className="property-row">
+            <label>Comment</label>
+            <div className="property-value">
+              {f.comment ? (
+                <span style={{ flex: 1 }}>{f.comment}</span>
+              ) : (
+                <span className="inline-warning" style={{ flex: 1 }}>
+                  <span className="inline-warning__dot" aria-hidden="true" />
+                  Comment recommended
+                </span>
+              )}
+              <VSCodeButton appearance="icon" onClick={openCommentDialog} title="Edit comment">
+                <IconEdit />
+              </VSCodeButton>
+            </div>
+          </div>
+          <div className="property-row">
+            <label>Body</label>
+            <div className="property-value" style={{ alignItems: 'flex-start', flex: 1 }}>
+              <pre className="code-block" style={{ flex: 1, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '120px', overflow: 'auto' }}>{f.body ?? 'NULL'}</pre>
+              <VSCodeButton appearance="icon" onClick={openBodyDialog} title="Edit body">
+                <IconEdit />
+              </VSCodeButton>
+            </div>
+          </div>
         </div>
-        {editingBody ? (
-          <textarea
-            value={editBody}
-            onChange={(e) => setEditBody(e.target.value)}
-            rows={8}
-            style={{ width: '100%', fontFamily: 'monospace', fontSize: '13px', padding: '8px' }}
-            placeholder="SQL expression or Python code"
-          />
-        ) : (
-          <pre className="code-block" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{f.body ?? 'NULL'}</pre>
-        )}
       </div>
 
       {/* Grants */}
@@ -167,7 +183,7 @@ export const FunctionDetails: React.FC<FunctionDetailsProps> = ({ functionId }) 
                   <td>{g.principal}</td>
                   <td>{(g.privileges || []).join(', ')}</td>
                   <td>
-                    <VSCodeButton appearance="icon" onClick={() => { setEditingGrant({ principal: g.principal, privileges: g.privileges || [] }); setGrantForm({ principal: g.principal, privileges: (g.privileges || []).join(', ') }); setAddGrantDialog(true); }} title="Edit grant">
+                    <VSCodeButton appearance="icon" onClick={() => openEditGrant(g.principal, g.privileges || [])} title="Edit grant">
                       <IconEdit />
                     </VSCodeButton>
                     <VSCodeButton appearance="icon" onClick={() => setRevokeGrantDialog({ principal: g.principal })} title="Revoke all">
@@ -179,11 +195,75 @@ export const FunctionDetails: React.FC<FunctionDetailsProps> = ({ functionId }) 
             </tbody>
           </table>
         )}
-        <button className="add-property-btn" onClick={() => setAddGrantDialog(true)}>
+        <button className="add-property-btn" onClick={openAddGrant}>
           + Add Grant
         </button>
       </div>
 
+      {/* Comment modal */}
+      {commentDialog && (
+        <div className="modal" onClick={() => setCommentDialog(false)} role="dialog">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Set Function Comment</h3>
+            <textarea
+              value={commentInput}
+              onChange={(e) => setCommentInput(e.target.value)}
+              placeholder="Optional description"
+              rows={3}
+              style={{ width: '100%', marginBottom: '12px', padding: '8px', resize: 'vertical' }}
+              autoFocus
+            />
+            <div className="modal-buttons">
+              <VSCodeButton onClick={saveComment}>Set</VSCodeButton>
+              <VSCodeButton appearance="secondary" onClick={() => setCommentDialog(false)}>Cancel</VSCodeButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return type modal */}
+      {returnTypeDialog && (
+        <div className="modal" onClick={() => setReturnTypeDialog(false)} role="dialog">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Set Return Type</h3>
+            <input
+              type="text"
+              value={returnTypeInput}
+              onChange={(e) => setReturnTypeInput(e.target.value)}
+              placeholder="STRING"
+              style={{ width: '100%', marginBottom: '12px', padding: '8px', fontFamily: 'monospace' }}
+              autoFocus
+            />
+            <div className="modal-buttons">
+              <VSCodeButton onClick={saveReturnType}>Set</VSCodeButton>
+              <VSCodeButton appearance="secondary" onClick={() => setReturnTypeDialog(false)}>Cancel</VSCodeButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Body modal */}
+      {bodyDialog && (
+        <div className="modal" onClick={() => setBodyDialog(false)} role="dialog">
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ minWidth: '400px', maxWidth: '90vw' }}>
+            <h3>Set Function Body</h3>
+            <textarea
+              value={bodyInput}
+              onChange={(e) => setBodyInput(e.target.value)}
+              placeholder="SQL expression or Python code"
+              rows={12}
+              style={{ width: '100%', marginBottom: '12px', padding: '8px', fontFamily: 'monospace', fontSize: '13px', resize: 'vertical' }}
+              autoFocus
+            />
+            <div className="modal-buttons">
+              <VSCodeButton onClick={saveBody}>Set</VSCodeButton>
+              <VSCodeButton appearance="secondary" onClick={() => setBodyDialog(false)}>Cancel</VSCodeButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Grant modal */}
       {addGrantDialog && (
         <div className="modal-overlay" onClick={() => { setAddGrantDialog(false); setEditingGrant(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ background: 'var(--vscode-editor-background)', padding: '16px', borderRadius: '8px', minWidth: '320px' }}>
@@ -193,21 +273,8 @@ export const FunctionDetails: React.FC<FunctionDetailsProps> = ({ functionId }) 
             <label>Privileges (comma-separated, e.g. EXECUTE)</label>
             <input type="text" value={grantForm.privileges} onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })} placeholder="EXECUTE" style={{ width: '100%', marginBottom: '12px' }} />
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <VSCodeButton appearance="secondary" onClick={() => { setAddGrantDialog(false); setEditingGrant(null); setGrantForm({ principal: '', privileges: '' }); }}>Cancel</VSCodeButton>
-              <VSCodeButton
-                onClick={() => {
-                  const principal = grantForm.principal.trim();
-                  const privs = parsePrivileges(grantForm.privileges);
-                  if (principal && privs.length > 0) {
-                    if (editingGrant) revokeGrant('function', functionId, editingGrant.principal);
-                    addGrant('function', functionId, principal, privs);
-                    setAddGrantDialog(false);
-                    setEditingGrant(null);
-                    setGrantForm({ principal: '', privileges: '' });
-                  }
-                }}
-                disabled={!grantForm.principal.trim() || !grantForm.privileges.trim()}
-              >
+              <VSCodeButton appearance="secondary" onClick={() => { setAddGrantDialog(false); setEditingGrant(null); }}>Cancel</VSCodeButton>
+              <VSCodeButton onClick={saveGrant} disabled={!grantForm.principal.trim() || !grantForm.privileges.trim()}>
                 {editingGrant ? 'Save' : 'Add Grant'}
               </VSCodeButton>
             </div>

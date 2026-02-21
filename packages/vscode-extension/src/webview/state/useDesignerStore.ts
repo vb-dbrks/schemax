@@ -90,7 +90,7 @@ interface DesignerState {
   dropFunction: (functionId: string) => void;
 
   // Materialized view operations
-  addMaterializedView: (schemaId: string, name: string, definition: string, options?: { comment?: string; refreshSchedule?: string }) => void;
+  addMaterializedView: (schemaId: string, name: string, definition: string, options?: { comment?: string; refreshSchedule?: string; extractedDependencies?: { tables: string[]; views: string[] } }) => void;
   renameMaterializedView: (materializedViewId: string, newName: string) => void;
   updateMaterializedView: (materializedViewId: string, definition: string, extractedDependencies?: any, options?: { refreshSchedule?: string; comment?: string }) => void;
   dropMaterializedView: (materializedViewId: string) => void;
@@ -398,6 +398,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       definition,
       comment: options?.comment,
       refreshSchedule: options?.refreshSchedule,
+      extractedDependencies: options?.extractedDependencies,
     });
     emitOps([op]);
   },

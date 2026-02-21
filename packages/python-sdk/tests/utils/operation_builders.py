@@ -791,9 +791,14 @@ class OperationBuilder:
         definition: str,
         comment: str | None = None,
         refresh_schedule: str | None = None,
+        extracted_dependencies: dict[str, list[str]] | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_materialized_view operation"""
+        """Create an add_materialized_view operation.
+
+        extracted_dependencies: optional {"tables": [...], "views": [...]} so SQL generator
+        orders table/view creation before the materialized view (same as UI-extracted deps).
+        """
         payload: dict[str, Any] = {
             "materializedViewId": mv_id,
             "name": name,
@@ -804,6 +809,8 @@ class OperationBuilder:
             payload["comment"] = comment
         if refresh_schedule is not None:
             payload["refreshSchedule"] = refresh_schedule
+        if extracted_dependencies is not None:
+            payload["extractedDependencies"] = extracted_dependencies
         return create_operation(
             provider=self.provider,
             op_type="add_materialized_view",

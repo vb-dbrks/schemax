@@ -63,9 +63,8 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
     if (editedSQL.trim()) {
       let cleanSQL = editedSQL.trim();
       
-      // Strip CREATE VIEW/CREATE OR REPLACE VIEW prefix if user accidentally included it
-      // Only the SELECT statement should be stored in the definition field
-      const createViewPattern = /^CREATE\s+(OR\s+REPLACE\s+)?VIEW(\s+IF\s+NOT\s+EXISTS)?\s+(`[^`]+`|[\w.]+)(\s+COMMENT\s+[^\s]+)?\s+AS\s+/i;
+      // Strip CREATE VIEW ... prefix (best-effort: optional column list and COMMENT before AS)
+      const createViewPattern = /^CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[\w.]+\.)?\w+\s*(?:\([^)]*\))?\s*(?:COMMENT\s+(?:'[^']*'|"[^"]*"))?\s+AS\s+/i;
       cleanSQL = cleanSQL.replace(createViewPattern, '');
       
       // Re-extract dependencies from updated SQL

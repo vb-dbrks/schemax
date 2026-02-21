@@ -12,24 +12,31 @@ interface EnvironmentConfig {
   [key: string]: any;
 }
 
-// SQL parsing and validation helpers for views
+// SQL parsing and validation helpers for views (best-effort; handles name, optional (col list), optional COMMENT, AS)
 const parseViewSQL = (sql: string): { name: string | null; cleanSQL: string } => {
-  // Try to extract view name from CREATE VIEW statement
-  const createViewPattern = /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[\w.]+\.)?(\w+)\s+AS\s+([\s\S]+)/i;
+  const createViewPattern = /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[\w.]+\.)?(\w+)\s*(?:\([^)]*\))?\s*(?:COMMENT\s+(?:'[^']*'|"[^"]*"))?\s+AS\s+([\s\S]+)/i;
   const match = sql.match(createViewPattern);
-  
+  if (match) return { name: match[1], cleanSQL: match[2].trim() };
+  return { name: null, cleanSQL: sql.trim() };
+};
+
+// SQL parsing for materialized views (extract name and definition from CREATE MATERIALIZED VIEW ... AS SELECT)
+const parseMaterializedViewSQL = (sql: string): { name: string | null; cleanSQL: string } => {
+  const createMVPattern = /CREATE\s+(?:OR\s+REPLACE\s+)?MATERIALIZED\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[\w.]+\.)?(\w+)\s+AS\s+([\s\S]+)/i;
+  const match = sql.match(createMVPattern);
   if (match) {
     return {
       name: match[1],
       cleanSQL: match[2].trim()
     };
   }
-  
-  // If no CREATE VIEW found, return SQL as-is
-  return {
-    name: null,
-    cleanSQL: sql.trim()
-  };
+  return { name: null, cleanSQL: sql.trim() };
+};
+
+const validateMaterializedViewSQL = (sql: string): string | null => {
+  if (!sql.trim()) return 'SQL definition is required';
+  if (!/SELECT/i.test(sql)) return 'Materialized view must contain a SELECT statement';
+  return null;
 };
 
 const validateViewSQL = (sql: string): string | null => {
@@ -196,6 +203,7 @@ export const Sidebar: React.FC = () => {
   const [addViewSQL, setAddViewSQL] = useState('');
   const [addViewName, setAddViewName] = useState('');
   const [addViewNameManual, setAddViewNameManual] = useState(false);
+  const [addMVNameManual, setAddMVNameManual] = useState(false);
   const [addViewComment, setAddViewComment] = useState('');
   // Volume/Function/MV add state
   const [addVolumeType, setAddVolumeType] = useState<'managed'|'external'>('managed');
@@ -273,6 +281,11 @@ export const Sidebar: React.FC = () => {
       setAddViewName('');
       setAddViewNameManual(false);
       setAddViewComment('');
+      // Initialize materialized view-specific state
+      setAddMVDefinition('');
+      setAddMVNameManual(false);
+      setAddMVComment('');
+      setAddMVSchedule('');
       
       // Default to 'table' if objectType not specified (for schema-level additions)
       if (addDialog.type === 'table' && !addDialog.objectType) {
@@ -483,9 +496,18 @@ export const Sidebar: React.FC = () => {
         return;
       }
       if (addDialog.objectType === 'materialized_view') {
-        addMaterializedView(addDialog.schemaId!, trimmedName, addMVDefinition || 'SELECT 1', {
+        const mvError = validateMaterializedViewSQL(addMVDefinition || '');
+        if (mvError) {
+          setAddError(mvError);
+          return;
+        }
+        const parsed = parseMaterializedViewSQL(addMVDefinition || '');
+        const definitionToUse = parsed.cleanSQL || addMVDefinition || 'SELECT 1';
+        const mvDependencies = extractDependenciesFromView(definitionToUse);
+        addMaterializedView(addDialog.schemaId!, trimmedName, definitionToUse, {
           comment: addMVComment || undefined,
           refreshSchedule: addMVSchedule || undefined,
+          extractedDependencies: { tables: mvDependencies.tables, views: mvDependencies.views },
         });
         setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
         closeAddDialog();
@@ -1080,6 +1102,7 @@ export const Sidebar: React.FC = () => {
                   }
                   onInput={(event: React.FormEvent<HTMLInputElement>) => {
                     setAddNameInput((event.target as HTMLInputElement).value);
+                    if (addDialog.objectType === 'materialized_view') setAddMVNameManual(true);
                     setAddError(null);
                   }}
                 />
@@ -1149,8 +1172,33 @@ export const Sidebar: React.FC = () => {
             {addDialog.type === 'table' && addDialog.objectType === 'materialized_view' && (
               <>
                 <div className="modal-field-group">
-                  <label>SQL Definition *</label>
-                  <textarea value={addMVDefinition} onChange={(e) => setAddMVDefinition(e.target.value)} rows={5} style={{ width: '100%', fontFamily: 'monospace' }} placeholder="SELECT ..." />
+                  <label htmlFor="mv-sql">
+                    SQL Definition *
+                    <span className="info-icon" title="Paste CREATE MATERIALIZED VIEW ... AS SELECT or just SELECT statement"> ℹ️</span>
+                  </label>
+                  <textarea
+                    id="mv-sql"
+                    value={addMVDefinition}
+                    rows={6}
+                    style={{ width: '100%', fontFamily: 'var(--vscode-editor-font-family, monospace)', fontSize: '12px', padding: '8px', border: '1px solid var(--vscode-input-border)', background: 'var(--vscode-input-background)', color: 'var(--vscode-input-foreground)', resize: 'vertical' }}
+                    placeholder="CREATE MATERIALIZED VIEW mv1 AS SELECT ... or just SELECT..."
+                    onInput={(e: React.FormEvent<HTMLTextAreaElement>) => {
+                      const sql = (e.target as HTMLTextAreaElement).value;
+                      setAddMVDefinition(sql);
+                      setAddError(null);
+                      if (!addMVNameManual) {
+                        const parsed = parseMaterializedViewSQL(sql);
+                        if (parsed.name) {
+                          setAddNameInput(parsed.name);
+                        }
+                      }
+                    }}
+                  />
+                  {addNameInput && !addMVNameManual && addMVDefinition && parseMaterializedViewSQL(addMVDefinition).name && (
+                    <small style={{ color: 'var(--vscode-descriptionForeground)', display: 'block', marginTop: '4px' }}>
+                      ✓ Name auto-extracted from SQL
+                    </small>
+                  )}
                 </div>
                 <div className="modal-field-group">
                   <label>Refresh schedule (optional)</label>

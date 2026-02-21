@@ -631,55 +631,106 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return filtered
 
+    def _build_name_to_node_id_map(self) -> dict[str, str]:
+        """
+        Build a map from table/view/MV name (or qualified name or raw ID) to graph node ID.
+
+        Used to resolve extractedDependencies (names from UI) and dependencies (IDs) to
+        node IDs like "table:xyz" so the dependency graph can order table before view/MV.
+        """
+        name_to_node: dict[str, str] = {}
+        catalogs = (
+            self.state.catalogs
+            if hasattr(self.state, "catalogs")
+            else self.state.get("catalogs", [])
+        )
+        for catalog in catalogs:
+            cat_name = catalog.name if hasattr(catalog, "name") else catalog["name"]
+            cat_id = catalog.id if hasattr(catalog, "id") else catalog["id"]
+            catalog_name = self.catalog_name_mapping.get(cat_name, cat_name)
+            schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
+            for schema in schemas:
+                schema_name = schema.name if hasattr(schema, "name") else schema["name"]
+                schema_id = schema.id if hasattr(schema, "id") else schema["id"]
+                for attr, prefix in [
+                    ("tables", "table"),
+                    ("views", "view"),
+                    ("materialized_views", "materialized_view"),
+                ]:
+                    items = (
+                        schema.get(attr, [])
+                        if isinstance(schema, dict)
+                        else getattr(schema, attr, [])
+                    )
+                    for item in items:
+                        item_name = item.name if hasattr(item, "name") else item["name"]
+                        item_id = item.id if hasattr(item, "id") else item["id"]
+                        node_id = f"{prefix}:{item_id}"
+                        name_to_node[item_id] = node_id
+                        name_to_node[item_name] = node_id
+                        name_to_node[f"{schema_name}.{item_name}"] = node_id
+                        name_to_node[f"{catalog_name}.{schema_name}.{item_name}"] = node_id
+        return name_to_node
+
+    def _resolve_dependency_to_node_id(self, name_or_id: str) -> str | None:
+        """Resolve a dependency name or object ID to a graph node ID (e.g. table:xyz)."""
+        if not name_or_id or not isinstance(name_or_id, str):
+            return None
+        name_or_id = name_or_id.strip()
+        if not name_or_id:
+            return None
+        if getattr(self, "_name_to_node_id_map", None) is None:
+            self._name_to_node_id_map = self._build_name_to_node_id_map()
+        node_id = self._name_to_node_id_map.get(name_or_id)
+        if node_id:
+            return node_id
+        # Already a node ID (table:xyz)?
+        if name_or_id.startswith(("table:", "view:", "materialized_view:")):
+            return name_or_id
+        return None
+
     def _extract_operation_dependencies(
         self, op: Operation
     ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
         """
         Extract dependencies from Unity Catalog operations.
 
-        Currently supports:
-        - View dependencies on tables/views (from add_view operation)
-        - Foreign key dependencies (from add_constraint operation with type=foreign_key)
-        - Constraint modification dependencies (add_constraint depends on prior drop_constraint)
-
-        Args:
-            op: Operation to analyze
-
-        Returns:
-            List of tuples: (dependency_id, dependency_type, enforcement)
+        Supports:
+        - View/MV dependencies on tables/views: from dependencies (IDs) or
+          extractedDependencies (names from UI); resolved to node IDs so tables are created first.
+        - Foreign key dependencies (from add_constraint).
         """
         dependencies: list[tuple[str, DependencyType, DependencyEnforcement]] = []
 
-        # Extract view dependencies
-        if op.op == "unity.add_view":
-            # Dependencies field contains list of table/view IDs this view depends on
-            dep_ids = op.payload.get("dependencies", [])
-            if isinstance(dep_ids, list):
-                for dep_id in dep_ids:
-                    dependencies.append(
-                        (dep_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
-                    )
+        def add_resolved(name_or_id: str) -> None:
+            node_id = self._resolve_dependency_to_node_id(name_or_id)
+            if node_id:
+                dependencies.append(
+                    (node_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
+                )
 
-        # Extract materialized view dependencies (same pattern as views)
+        # View dependencies (IDs or names from extractedDependencies)
+        if op.op == "unity.add_view":
+            dep = op.payload.get("dependencies", [])
+            extracted = op.payload.get("extractedDependencies", {})
+            if isinstance(dep, list):
+                for name_or_id in dep:
+                    add_resolved(name_or_id)
+            if isinstance(extracted, dict):
+                for name_or_id in extracted.get("tables", []) + extracted.get("views", []):
+                    add_resolved(name_or_id)
+
+        # Materialized view dependencies (same as views: tables/views must be created first)
         if op.op == "unity.add_materialized_view":
             dep_ids = op.payload.get("dependencies", []) or op.payload.get(
                 "extractedDependencies", {}
             )
             if isinstance(dep_ids, list):
-                for dep_id in dep_ids:
-                    dependencies.append(
-                        (dep_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
-                    )
+                for name_or_id in dep_ids:
+                    add_resolved(name_or_id)
             elif isinstance(dep_ids, dict):
-                # extractedDependencies may be { "tables": [...], "views": [...] }
-                for tid in dep_ids.get("tables", []):
-                    dependencies.append(
-                        (tid, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
-                    )
-                for vid in dep_ids.get("views", []):
-                    dependencies.append(
-                        (vid, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
-                    )
+                for name_or_id in dep_ids.get("tables", []) + dep_ids.get("views", []):
+                    add_resolved(name_or_id)
 
         # Extract foreign key dependencies
         elif op.op == "unity.add_constraint":

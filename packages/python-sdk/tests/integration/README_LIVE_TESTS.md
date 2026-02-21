@@ -116,11 +116,12 @@ This keeps:
 ```
 tests/integration/
   live_helpers.py                # shared: project writers, discovery helpers, preseed
+  test_e2e_ui_to_live.py         # E2E: UI-equivalent state → CLI → SDK → live (table + volume + function)
   test_live_catalog_schema.py    # catalog, schema, existingObjects
   test_live_table.py             # table, columns, apply/rollback
-  test_live_volume.py             # volume (import + E2E apply/rollback)
+  test_live_volume.py            # volume (import + E2E apply/rollback)
   test_live_function.py          # function (import + E2E apply/rollback)
-  test_live_materialized_view.py  # materialized view (import + E2E apply/rollback + combined UC objects E2E)
+  test_live_materialized_view.py # materialized view (import + E2E apply/rollback + combined UC objects E2E)
   test_live_grants.py            # grants on table
   test_live_scope_environment.py # managedCategories, promote dev/test/prod
   test_live_e2e_command_matrix.py # full CLI sweep
@@ -141,6 +142,20 @@ The former single file `test_live_command_matrix.py` has been removed; all tests
 6. **Update README** – Update `tests/README.md` (and this file) with the new file map and how to run per-file or per-object live tests.
 
 ---
+
+## E2E pipeline: UI → CLI → SDK → live environment
+
+The live tests validate the **full E2E pipeline**:
+
+1. **UI (Designer)** produces `.schemax/` state (project.json, changelog.json with ops).
+2. **CLI** runs `schemax apply`, `schemax rollback`, etc.
+3. **SDK** (storage, sql_generator, executor) reads state and executes SQL.
+4. **Live env** is a real Databricks workspace; tests assert objects exist after apply and are gone after rollback.
+
+We do not automate the VS Code webview. Tests build the **same state the UI would produce** (same op shapes via `OperationBuilder`, `append_ops`) and run the CLI against a live workspace. So **UI → CLI → SDK → live** is tested end-to-end.
+
+- **Dedicated E2E:** `test_e2e_ui_to_live.py` — one test that runs UI-equivalent changelog (table + volume + function) → apply → assert in live → rollback → assert gone.
+- **Per-object / combined:** `test_live_function.py`, `test_live_volume.py`, `test_live_table.py`, `test_live_materialized_view.py`, etc. — same pipeline per object type or combined.
 
 ## Running live tests
 

@@ -1355,6 +1355,120 @@ class TestViewSQL:
             f"view1 (idx={view1_idx}), view2 (idx={view2_idx}), view3 (idx={view3_idx})"
         )
 
+    def test_materialized_view_dependencies_ordered_correctly(self, empty_unity_state, assert_sql):
+        """Materialized view with extractedDependencies on table: CREATE TABLE before CREATE MATERIALIZED VIEW."""
+        state = empty_unity_state.model_dump(by_alias=True)
+        state["catalogs"] = [
+            {
+                "id": "cat1",
+                "name": "sales",
+                "schemas": [
+                    {
+                        "id": "schema1",
+                        "name": "core",
+                        "tables": [
+                            {
+                                "id": "table1",
+                                "name": "products",
+                                "format": "delta",
+                                "columns": [],
+                            }
+                        ],
+                        "views": [],
+                    }
+                ],
+            }
+        ]
+        generator = UnitySQLGenerator(state)
+        builder = OperationBuilder()
+        op_table = builder.add_table(
+            "table1", "products", "schema1", "delta", op_id="op_t1"
+        )
+        op_mv = builder.add_materialized_view(
+            "mv_1",
+            "summary_mv",
+            "schema1",
+            "SELECT * FROM products",
+            extracted_dependencies={"tables": ["products"], "views": []},
+            op_id="op_mv1",
+        )
+        # Intentionally wrong order: MV before table
+        sql = generator.generate_sql([op_mv, op_table])
+        assert_sql(sql)
+        all_stmts = [s.strip() for s in sql.split(";") if s.strip()]
+        table_stmts = [s for s in all_stmts if "CREATE TABLE" in s and "products" in s]
+        mv_stmts = [s for s in all_stmts if "CREATE MATERIALIZED VIEW" in s]
+        assert table_stmts, "CREATE TABLE products not found"
+        assert mv_stmts, "CREATE MATERIALIZED VIEW not found"
+        idx_table = next(i for i, s in enumerate(all_stmts) if s == table_stmts[0])
+        idx_mv = next(i for i, s in enumerate(all_stmts) if s == mv_stmts[0])
+        assert idx_table < idx_mv, (
+            f"Table must be created before MV: table at {idx_table}, MV at {idx_mv}"
+        )
+
+    def test_materialized_view_and_view_dependencies_ordered_correctly(
+        self, empty_unity_state, assert_sql
+    ):
+        """MV depends on view and table via extractedDependencies: table → view → MV order."""
+        state = empty_unity_state.model_dump(by_alias=True)
+        state["catalogs"] = [
+            {
+                "id": "cat1",
+                "name": "analytics",
+                "schemas": [
+                    {
+                        "id": "schema1",
+                        "name": "reporting",
+                        "tables": [
+                            {"id": "table1", "name": "base", "format": "delta", "columns": []}
+                        ],
+                        "views": [
+                            {"id": "view1", "name": "v1", "definition": "SELECT * FROM base"}
+                        ],
+                    }
+                ],
+            }
+        ]
+        generator = UnitySQLGenerator(state)
+        builder = OperationBuilder()
+        op_table = builder.add_table("table1", "base", "schema1", "delta", op_id="op_t1")
+        op_view = Operation(
+            id="op_v1",
+            provider="unity",
+            op="unity.add_view",
+            target="view1",
+            payload={
+                "viewId": "view1",
+                "name": "v1",
+                "schemaId": "schema1",
+                "definition": "SELECT * FROM base",
+                "extractedDependencies": {"tables": ["base"], "views": []},
+            },
+            ts="2024-01-01T00:00:01Z",
+        )
+        op_mv = builder.add_materialized_view(
+            "mv_1",
+            "agg_mv",
+            "schema1",
+            "SELECT * FROM v1",
+            extracted_dependencies={"tables": ["base"], "views": ["v1"]},
+            op_id="op_mv1",
+        )
+        # Wrong order: MV first, then view, then table
+        sql = generator.generate_sql([op_mv, op_view, op_table])
+        assert_sql(sql)
+        all_stmts = [s.strip() for s in sql.split(";") if s.strip()]
+        create_table = [s for s in all_stmts if "CREATE TABLE" in s and "`base`" in s]
+        create_view = [s for s in all_stmts if "CREATE VIEW" in s and "`v1`" in s]
+        create_mv = [s for s in all_stmts if "CREATE MATERIALIZED VIEW" in s]
+        assert create_table and create_view and create_mv
+        idx_t = next(i for i, s in enumerate(all_stmts) if s == create_table[0])
+        idx_v = next(i for i, s in enumerate(all_stmts) if s == create_view[0])
+        idx_m = next(i for i, s in enumerate(all_stmts) if s == create_mv[0])
+        assert idx_t < idx_v < idx_m, (
+            f"Order must be table < view < MV: table={idx_t}, view={idx_v}, mv={idx_m}"
+        )
+
 
 class TestVolumeFunctionMaterializedViewSQL:
     """Test SQL generation for volume, function, and materialized view operations"""

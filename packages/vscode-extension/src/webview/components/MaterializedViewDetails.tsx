@@ -49,8 +49,12 @@ export const MaterializedViewDetails: React.FC<MaterializedViewDetailsProps> = (
 
   const handleSaveDefinition = () => {
     if (editedDefinition.trim()) {
-      const deps = extractDependenciesFromView(editedDefinition);
-      updateMaterializedView(materializedViewId, editedDefinition.trim(), deps);
+      // Strip CREATE MATERIALIZED VIEW ... AS prefix if user pasted full DDL (store only SELECT)
+      const createMVPattern = /^CREATE\s+(?:OR\s+REPLACE\s+)?MATERIALIZED\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[\w.]+\.)?\w+\s+AS\s+([\s\S]+)/i;
+      const match = editedDefinition.trim().match(createMVPattern);
+      const definitionToStore = match ? match[1].trim() : editedDefinition.trim();
+      const deps = extractDependenciesFromView(definitionToStore);
+      updateMaterializedView(materializedViewId, definitionToStore, deps);
       setIsEditing(false);
     }
   };

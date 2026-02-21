@@ -204,6 +204,7 @@ def test_live_e2e_apply_materialized_view(tmp_path: Path) -> None:
                     schema_id,
                     f"SELECT * FROM {table_name}",
                     comment="E2E MV",
+                    extracted_dependencies={"tables": [table_name], "views": []},
                     op_id=f"op_mv_{suffix}",
                 ),
             ],
@@ -230,6 +231,164 @@ def test_live_e2e_apply_materialized_view(tmp_path: Path) -> None:
             str(workspace),
         )
         assert apply_result.exit_code == 0, apply_result.output
+        assert table_exists(config, physical_catalog, schema_name, table_name)
+        assert materialized_view_exists(config, physical_catalog, schema_name, mv_name)
+        rollback_result = invoke_cli(
+            "rollback",
+            "--target",
+            "dev",
+            "--to-snapshot",
+            baseline_version,
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert rollback_result.exit_code == 0, rollback_result.output
+        assert not table_exists(config, physical_catalog, schema_name, table_name)
+        assert not materialized_view_exists(config, physical_catalog, schema_name, mv_name)
+        assert_schema_exists(config, physical_catalog, schema_name)
+    finally:
+        executor = create_executor(config)
+        cleanup_objects(executor, config, cleanup_catalogs)
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+@pytest.mark.integration
+def test_live_e2e_mv_dependency_order(tmp_path: Path) -> None:
+    """Live E2E: Changelog with MV op before table op; apply must succeed via dependency ordering.
+
+    Appends add_materialized_view (with extractedDependencies) then add_table + columns
+    so that the dependency graph orders CREATE TABLE before CREATE MATERIALIZED VIEW.
+    """
+    config = require_live_command_tests()
+    suffix = make_suffix(config)
+    workspace = make_workspace(tmp_path, "mv_order", suffix)
+    logical_catalog = f"logical_mvord_{suffix}"
+    physical_catalog = f"{config.resource_prefix}_mvord_{suffix}"
+    tracking_catalog = f"{config.resource_prefix}_track_mvord_{suffix}"
+    schema_name = "core"
+    table_name = "events"
+    mv_name = "e2e_mv"
+    cleanup_catalogs = [physical_catalog, tracking_catalog]
+
+    ensure_project_file(workspace, provider_id="unity")
+    write_project_env_overrides(
+        workspace,
+        top_level_name=tracking_catalog,
+        catalog_mappings={logical_catalog: physical_catalog},
+    )
+    builder = OperationBuilder()
+    table_id = f"table_ord_{suffix}"
+    mv_id = f"mv_ord_{suffix}"
+
+    try:
+        executor = create_executor(config)
+        managed_root = f"{config.managed_location.rstrip('/')}/schemax-mv-order-live/{suffix}"
+        preseed = preseed_catalog_schema(
+            executor,
+            config,
+            physical_catalog=physical_catalog,
+            tracking_catalog=tracking_catalog,
+            schema_name=schema_name,
+            managed_root=managed_root,
+            clear_changelog_in=workspace,
+        )
+        assert preseed.status in {"success", "partial"}, (
+            f"Preseed failed: {preseed.status} {getattr(preseed, 'error_message', '')}"
+        )
+        import_result = invoke_cli(
+            "import",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--catalog",
+            physical_catalog,
+            "--catalog-map",
+            f"{logical_catalog}={physical_catalog}",
+            "--adopt-baseline",
+            str(workspace),
+        )
+        assert import_result.exit_code == 0, import_result.output
+        baseline_version = json.loads((workspace / ".schemax" / "project.json").read_text()).get(
+            "latestSnapshot"
+        )
+        assert baseline_version, "No baseline snapshot after import adoption"
+        state, _, _, _ = load_current_state(workspace, validate=False)
+        catalog_state = next(c for c in state["catalogs"] if c.get("name") == logical_catalog)
+        schema_state = next(
+            s for s in catalog_state.get("schemas", []) if s.get("name") == schema_name
+        )
+        schema_id = schema_state["id"]
+        # Intentionally wrong order: MV op before table op; generator must order table first
+        append_ops(
+            workspace,
+            [
+                builder.add_materialized_view(
+                    mv_id,
+                    mv_name,
+                    schema_id,
+                    f"SELECT * FROM {table_name}",
+                    comment="E2E MV dependency order",
+                    extracted_dependencies={"tables": [table_name], "views": []},
+                    op_id=f"op_mv_ord_{suffix}",
+                ),
+                builder.add_table(
+                    table_id,
+                    table_name,
+                    schema_id,
+                    "delta",
+                    op_id=f"op_table_ord_{suffix}",
+                ),
+                builder.add_column(
+                    f"col_id_ord_{suffix}",
+                    table_id,
+                    "event_id",
+                    "BIGINT",
+                    nullable=False,
+                    comment="Event id",
+                    op_id=f"op_col_id_ord_{suffix}",
+                ),
+                builder.add_column(
+                    f"col_val_ord_{suffix}",
+                    table_id,
+                    "event_type",
+                    "STRING",
+                    nullable=True,
+                    comment="Event type",
+                    op_id=f"op_col_val_ord_{suffix}",
+                ),
+            ],
+        )
+        snapshot_v2 = invoke_cli(
+            "snapshot",
+            "create",
+            "--name",
+            "MV order delta",
+            "--version",
+            "v0.2.0",
+            str(workspace),
+        )
+        assert snapshot_v2.exit_code == 0, snapshot_v2.output
+        apply_result = invoke_cli(
+            "apply",
+            "--target",
+            "dev",
+            "--profile",
+            config.profile,
+            "--warehouse-id",
+            config.warehouse_id,
+            "--no-interaction",
+            str(workspace),
+        )
+        assert apply_result.exit_code == 0, (
+            f"Apply must succeed when MV op is before table op (dependency ordering): {apply_result.output}"
+        )
         assert table_exists(config, physical_catalog, schema_name, table_name)
         assert materialized_view_exists(config, physical_catalog, schema_name, mv_name)
         rollback_result = invoke_cli(
@@ -376,6 +535,7 @@ def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> Non
                     schema_id,
                     f"SELECT * FROM {table_name}",
                     comment="E2E MV",
+                    extracted_dependencies={"tables": [table_name], "views": []},
                     op_id=f"op_mv_uc_{suffix}",
                 ),
             ],

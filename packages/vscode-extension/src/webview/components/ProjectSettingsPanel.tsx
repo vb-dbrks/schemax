@@ -20,6 +20,9 @@ const ALL_MANAGED_CATEGORIES = [
   { id: 'schema_structure', label: 'Schema structure' },
   { id: 'table_structure', label: 'Table structure' },
   { id: 'view_structure', label: 'View structure' },
+  { id: 'volume_structure', label: 'Volume structure' },
+  { id: 'function_structure', label: 'Function structure' },
+  { id: 'materialized_view_structure', label: 'Materialized view structure' },
   { id: 'governance', label: 'Governance' },
 ] as const;
 
@@ -565,7 +568,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                       <h4>Deployment scope</h4>
                       <p className="help-text">
                         What SchemaX manages in this environment. Governance only = comments, tags,
-                        grants, row filters, column masks (no CREATE catalog/schema/table).
+                        grants, row filters, column masks (no CREATE catalog/schema/table/volume/function/materialized view).
                       </p>
                       <div className="managed-categories-list">
                         {ALL_MANAGED_CATEGORIES.map(({ id, label }) => {
