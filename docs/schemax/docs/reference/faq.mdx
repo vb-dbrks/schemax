@@ -36,6 +36,10 @@ Usually **no**. SchemaX is for people who **define and evolve** catalog/schema/t
 
 Yes. All changes are stored as **operations** in `.schemax/changelog.json`, and **snapshots** in `.schemax/snapshots/` capture full state at a point in time. This is versioned in Git, so you have an audit trail of what changed and when. Deployments are also recorded (database-backed when you use `schemax apply`). See [Workflows](/docs/reference/workflows/) and the CLI reference for rollback and deployment tracking.
 
+## Can I add grants or tags to many objects at once?
+
+Yes. In the VS Code designer, select a **catalog** or **schema** in the tree, then click **Bulk operations** in the detail panel. You can add the same grant (principal + privileges) or tag (name + value) to all objects in that scope—e.g. all tables in a schema, or all schemas and tables in a catalog. The generated operations are the same as adding them one by one; they are just batched for convenience. See [Unity Catalog grants — Bulk grants and tags](/docs/guide/unity-catalog-grants/#bulk-grants-and-tags).
+
 ## Can I use the CLI from my own scripts or automation?
 
 Yes. The CLI is a standard Python CLI; you can call it from scripts, cron, or other automation. For example: `schemax sql --target dev --output migration.sql` then run the SQL with your own runner, or `schemax apply --target dev --no-interaction` from a pipeline. See [Git and CI/CD setup](/docs/guide/git-and-cicd-setup/).

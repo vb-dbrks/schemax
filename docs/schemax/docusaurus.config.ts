@@ -56,7 +56,7 @@ const config: Config = {
       respectPrefersColorScheme: false,
     },
     navbar: {
-      title: 'SchemaX',
+      title: '', // Combined text logo used instead
       logo: {
         alt: 'SchemaX',
         src: 'img/schemax_logov2.svg',

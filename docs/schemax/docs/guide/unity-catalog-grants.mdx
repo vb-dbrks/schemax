@@ -108,6 +108,24 @@ Use the same principal names and formats that Unity Catalog expects (see [Databr
 
 ---
 
+## Bulk grants and tags
+
+You can add the same **grant** or **tag** to many objects at once from the designer.
+
+1. Select a **catalog** or **schema** in the tree (this defines the scope).
+2. In the detail panel, click **Bulk operations**.
+3. The panel shows the scope: for a catalog, that catalog and all its schemas and tables (and views, volumes, etc.); for a schema, that schema and all its tables (and views, etc.).
+4. Choose the operation:
+   - **Add grant** — Enter principal (user, group, or service principal) and privileges (comma-separated). The same grant is applied to all securables in scope (catalog, schemas, tables, views, volumes, functions, materialized views as applicable).
+   - **Add catalog tag** — (Catalog scope only.) Set a tag name and value on the catalog.
+   - **Add schema tag** — Set a tag name and value on each schema in scope.
+   - **Add table tag** — Set a tag name and value on each table (and view) in scope.
+5. Review the preview (number of objects affected), then click **Apply**.
+
+The operations are appended to the changelog exactly as if you had added each grant or tag individually. Generate SQL or run `schemax apply` as usual to deploy them.
+
+---
+
 ## CLI and SQL generation
 
 - **Generate SQL:** `schemax sql --target ENV` (or VS Code **Generate SQL Migration** with an environment selected) includes `GRANT` and `REVOKE` statements for grant operations in the changelog or diff.

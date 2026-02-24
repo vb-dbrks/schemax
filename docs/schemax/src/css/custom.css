@@ -3,11 +3,37 @@
  * Infima is bundled by the classic template.
  */
 
-/* Navbar logo: compact size and alignment */
+/* Red theme: primary color for all buttons and links */
+:root {
+  --ifm-color-primary: #d32f2f;
+  --ifm-color-primary-dark: #c62828;
+  --ifm-color-primary-darker: #b71c1c;
+  --ifm-color-primary-darkest: #8e0000;
+  --ifm-color-primary-light: #e53935;
+  --ifm-color-primary-lighter: #ef5350;
+  --ifm-color-primary-lightest: #ffcdd2;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #ef5350;
+  --ifm-color-primary-dark: #e53935;
+  --ifm-color-primary-darker: #d32f2f;
+  --ifm-color-primary-darkest: #c62828;
+  --ifm-color-primary-light: #f06292;
+  --ifm-color-primary-lighter: #f48fb1;
+  --ifm-color-primary-lightest: #f8bbd9;
+}
+
+/* Navbar: combined text logo only (no separate title) */
 .navbar__logo {
-  height: 32px;
+  height: 28px;
   width: auto;
-  margin-right: 0.5rem;
+  margin-right: 0;
+}
+
+/* Hide title when using combined text logo */
+.navbar__title {
+  display: none;
 }
 
 .navbar__brand {
