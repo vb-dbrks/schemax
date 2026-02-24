@@ -54,38 +54,38 @@ function Hero(): React.ReactElement {
       </p>
       <div className="landing-hero__links">
         <Button
-          link="/docs/guide/quickstart/"
+          link={useBaseUrl('/docs/guide/quickstart/')}
           label="Quickstart"
           variant="secondary"
           outline
           size="large"
         />
         <Button
-          link="/docs/guide/prerequisites/"
+          link={useBaseUrl('/docs/guide/prerequisites/')}
           label="Prerequisites"
           variant="secondary"
           outline
         />
         <Button
-          link="/docs/guide/setup/"
+          link={useBaseUrl('/docs/guide/setup/')}
           label="Setup"
           variant="secondary"
           outline
         />
         <Button
-          link="/docs/reference/cli/"
+          link={useBaseUrl('/docs/reference/cli/')}
           label="CLI Reference"
           variant="secondary"
           outline
         />
         <Button
-          link="/docs/guide/architecture/"
+          link={useBaseUrl('/docs/guide/architecture/')}
           label="Architecture"
           variant="secondary"
           outline
         />
         <Button
-          link="/docs/reference/faq/"
+          link={useBaseUrl('/docs/reference/faq/')}
           label="FAQ"
           variant="secondary"
           outline
@@ -120,7 +120,7 @@ function CallToAction(): React.ReactElement {
         apply your first schema.
       </p>
       <Button
-        link="/docs/guide/quickstart/"
+        link={useBaseUrl('/docs/guide/quickstart/')}
         label="Start using SchemaX"
         variant="primary"
         size="large"
