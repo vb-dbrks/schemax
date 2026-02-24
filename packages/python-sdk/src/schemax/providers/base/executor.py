@@ -101,4 +101,3 @@ class SQLExecutor(Protocol):
             AuthenticationError: If authentication fails
             ExecutionError: If statement execution fails
         """
-        ...

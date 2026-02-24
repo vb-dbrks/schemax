@@ -30,13 +30,9 @@ console = Console()
 class RebaseError(Exception):
     """Raised when snapshot rebase fails"""
 
-    pass
-
 
 class ConflictError(Exception):
     """Raised when operation conflict is detected during rebase"""
-
-    pass
 
 
 @dataclass
@@ -241,47 +237,46 @@ def rebase_snapshot(
                 conflict_log_path=conflict_log_path,
             )
 
-        else:
-            # Success - create new snapshot with rebased state
-            console.print()
-            console.print("[green]✓ All operations applied successfully[/green]")
-            console.print()
-            console.print("Creating rebased snapshot...")
+        # Success - create new snapshot with rebased state
+        console.print()
+        console.print("[green]✓ All operations applied successfully[/green]")
+        console.print()
+        console.print("Creating rebased snapshot...")
 
-            # Create new snapshot
-            new_snapshot = {
-                **snapshot,
+        # Create new snapshot
+        new_snapshot = {
+            **snapshot,
+            "previousSnapshot": new_base_version,
+            "state": current_state,
+            "operations": feature_ops,
+            "rebasedFrom": old_base,
+            "rebasedAt": datetime.now(UTC).isoformat(),
+        }
+
+        write_snapshot(workspace, new_snapshot)
+
+        # Update project.json
+        project = read_project(workspace)
+        project["snapshots"].append(
+            {
+                "id": snapshot["id"],
+                "version": snapshot_version,
+                "name": snapshot["name"],
+                "ts": snapshot["ts"],
+                "createdBy": snapshot["createdBy"],
+                "file": f".schemax/snapshots/{snapshot_version}.json",
                 "previousSnapshot": new_base_version,
-                "state": current_state,
-                "operations": feature_ops,
-                "rebasedFrom": old_base,
-                "rebasedAt": datetime.now(UTC).isoformat(),
+                "opsCount": len(feature_ops),
+                "hash": snapshot.get("hash"),
+                "tags": snapshot.get("tags", []),
+                "comment": snapshot.get("comment", ""),
             }
+        )
+        write_project(workspace, project)
 
-            write_snapshot(workspace, new_snapshot)
+        console.print(f"[green]✓ Rebased {snapshot_version} onto {new_base_version}[/green]")
 
-            # Update project.json
-            project = read_project(workspace)
-            project["snapshots"].append(
-                {
-                    "id": snapshot["id"],
-                    "version": snapshot_version,
-                    "name": snapshot["name"],
-                    "ts": snapshot["ts"],
-                    "createdBy": snapshot["createdBy"],
-                    "file": f".schemax/snapshots/{snapshot_version}.json",
-                    "previousSnapshot": new_base_version,
-                    "opsCount": len(feature_ops),
-                    "hash": snapshot.get("hash"),
-                    "tags": snapshot.get("tags", []),
-                    "comment": snapshot.get("comment", ""),
-                }
-            )
-            write_project(workspace, project)
-
-            console.print(f"[green]✓ Rebased {snapshot_version} onto {new_base_version}[/green]")
-
-            return RebaseResult(success=True, applied_count=len(applied_ops), conflict_count=0)
+        return RebaseResult(success=True, applied_count=len(applied_ops), conflict_count=0)
 
     except RebaseError:
         raise
@@ -393,7 +388,7 @@ def _save_conflict_log(
 
     log_file = conflicts_dir / f"{snapshot_version}_rebase.json"
 
-    with open(log_file, "w") as f:
+    with open(log_file, "w", encoding="utf-8") as f:
         json.dump(log, f, indent=2)
 
     return str(log_file.relative_to(workspace))
@@ -412,12 +407,12 @@ def _show_conflict_details(conflict: dict, new_base_version: str) -> None:
     console.print("└─────────────────────────────────────────────┘")
 
 
-def detect_stale_snapshots(workspace: Path, json_output: bool = False) -> list[dict]:
+def detect_stale_snapshots(workspace: Path, _json_output: bool = False) -> list[dict]:
     """Detect snapshots that need rebasing after git rebase
 
     Args:
         workspace: Path to workspace
-        json_output: If True, return data suitable for JSON output
+        _json_output: If True, return data suitable for JSON output (reserved for future use)
 
     Returns:
         List of stale snapshots with details about what's missing

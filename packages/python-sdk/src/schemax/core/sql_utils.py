@@ -45,8 +45,7 @@ def split_sql_statements(sql_text: str) -> list[str]:
                 current = []
                 saw_statement_end = True
                 break  # rest of line is trailing comment/whitespace; skip
-            else:
-                current.append(char)
+            current.append(char)
         if not saw_statement_end:
             current.append("\n")
 

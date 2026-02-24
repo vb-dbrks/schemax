@@ -519,7 +519,7 @@ class UnityStateDiffer(StateDiffer):
         for col_id, col in new_columns.items():
             if col_id not in old_columns:
                 # Safety check - skip columns missing required fields
-                if all(key in col for key in ["id", "name", "type"]):
+                if all(key in col for key in ("id", "name", "type")):
                     ops.append(self._create_add_column_op(col, table_id))
             else:
                 # Column exists in both - check for changes
@@ -856,7 +856,7 @@ class UnityStateDiffer(StateDiffer):
 
         for column in table.get("columns", []):
             # Safety check - skip columns missing required fields
-            if not all(key in column for key in ["id", "name", "type"]):
+            if not all(key in column for key in ("id", "name", "type")):
                 continue
 
             ops.append(self._create_add_column_op(column, table_id))
@@ -892,7 +892,7 @@ class UnityStateDiffer(StateDiffer):
 
         for constraint in table.get("constraints", []):
             # Safety check - skip constraints missing required fields
-            if not all(key in constraint for key in ["id", "type", "columns"]):
+            if not all(key in constraint for key in ("id", "type", "columns")):
                 continue
 
             ops.append(self._create_add_constraint_op(constraint, table_id))

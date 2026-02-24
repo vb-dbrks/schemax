@@ -17,8 +17,6 @@ console = Console()
 class ValidationError(Exception):
     """Raised when validation fails"""
 
-    pass
-
 
 def validate_dependencies(state: Any, ops: list[Any], provider: Any) -> tuple[list[str], list[str]]:
     """

@@ -35,8 +35,6 @@ console = Console()
 class RollbackError(Exception):
     """Raised when rollback cannot proceed safely"""
 
-    pass
-
 
 @dataclass
 class RollbackResult:
@@ -184,7 +182,7 @@ def rollback_partial(
 
     # 4.5. Check for CASCADE drops in partial rollback (common when reverting from empty state)
     cascade_ops = [
-        op for op in rollback_ops if op.op in ["unity.drop_catalog", "unity.drop_schema"]
+        op for op in rollback_ops if op.op in {"unity.drop_catalog", "unity.drop_schema"}
     ]
     if cascade_ops:
         console.print()
@@ -283,14 +281,13 @@ def rollback_partial(
                         f"   {safety.reason}"
                     )
                     break
-                else:
-                    # Manual rollback shows warning but can proceed with confirmation
-                    console.print()
-                    console.print(f"   [yellow]⚠️  {safety.level.value}: {safety.reason}[/yellow]")
-                    if safety.sample_data:
-                        console.print("   Sample data at risk:")
-                        for row in safety.sample_data[:3]:
-                            console.print(f"      {row}")
+                # Manual rollback shows warning but can proceed with confirmation
+                console.print()
+                console.print(f"   [yellow]⚠️  {safety.level.value}: {safety.reason}[/yellow]")
+                if safety.sample_data:
+                    console.print("   Sample data at risk:")
+                    for row in safety.sample_data[:3]:
+                        console.print(f"      {row}")
         except Exception as e:
             console.print()
             console.print(
@@ -475,26 +472,23 @@ def rollback_partial(
                     "[dim]  (Catalog was dropped; rollback not recorded in database)[/dim]"
                 )
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
+        # Rollback execution failed
+        failed_idx = result.failed_statement_index or 0
+        console.print(f"[red]✗ Rollback failed at statement {failed_idx + 1}[/red]")
+        console.print(f"[yellow]{result.successful_statements} statements succeeded[/yellow]")
+        if result.error_message:
+            console.print(f"[red]Error: {result.error_message}[/red]")
+        schema_loc = f"{deployment_catalog}.schemax"
+        if rollback_deployment_id:
+            console.print(f"[dim]  Tracked in {schema_loc} (ID: {rollback_deployment_id})[/dim]")
         else:
-            # Rollback execution failed
-            failed_idx = result.failed_statement_index or 0
-            console.print(f"[red]✗ Rollback failed at statement {failed_idx + 1}[/red]")
-            console.print(f"[yellow]{result.successful_statements} statements succeeded[/yellow]")
-            if result.error_message:
-                console.print(f"[red]Error: {result.error_message}[/red]")
-            schema_loc = f"{deployment_catalog}.schemax"
-            if rollback_deployment_id:
-                console.print(
-                    f"[dim]  Tracked in {schema_loc} (ID: {rollback_deployment_id})[/dim]"
-                )
-            else:
-                console.print(f"[dim]  Tracking schema: {schema_loc}[/dim]")
+            console.print(f"[dim]  Tracking schema: {schema_loc}[/dim]")
 
-            return RollbackResult(
-                success=False,
-                operations_rolled_back=result.successful_statements,
-                error_message=result.error_message,
-            )
+        return RollbackResult(
+            success=False,
+            operations_rolled_back=result.successful_statements,
+            error_message=result.error_message,
+        )
 
     except Exception as e:
         console.print(f"[red]✗ Rollback execution failed: {e}[/red]")
@@ -511,7 +505,7 @@ def rollback_complete(
     to_snapshot: str,
     profile: str,
     warehouse_id: str,
-    create_clone: str | None = None,
+    _create_clone: str | None = None,
     safe_only: bool = False,
     dry_run: bool = False,
     no_interaction: bool = False,
@@ -528,7 +522,7 @@ def rollback_complete(
         to_snapshot: Target snapshot version to roll back to
         profile: Databricks CLI profile
         warehouse_id: SQL Warehouse ID
-        create_clone: Optional name for backup SHALLOW CLONE (not yet implemented)
+        _create_clone: Optional name for backup SHALLOW CLONE (not yet implemented)
         safe_only: Only execute safe operations (skip destructive)
         dry_run: Preview impact without executing
         no_interaction: If True, skip confirmation prompt
@@ -867,22 +861,19 @@ def rollback_complete(
                     "[dim]  (Catalog was dropped; rollback not recorded in database)[/dim]"
                 )
             return RollbackResult(success=True, operations_rolled_back=len(rollback_ops))
-        else:
-            failed_idx = result.failed_statement_index or 0
-            console.print(f"[red]✗ Rollback failed at statement {failed_idx + 1}[/red]")
-            console.print(f"[yellow]{result.successful_statements} statements succeeded[/yellow]")
-            if result.error_message:
-                console.print(f"[red]Error: {result.error_message}[/red]")
-            if rollback_deployment_id:
-                console.print(
-                    f"[yellow]Partial rollback recorded: {rollback_deployment_id}[/yellow]"
-                )
+        failed_idx = result.failed_statement_index or 0
+        console.print(f"[red]✗ Rollback failed at statement {failed_idx + 1}[/red]")
+        console.print(f"[yellow]{result.successful_statements} statements succeeded[/yellow]")
+        if result.error_message:
+            console.print(f"[red]Error: {result.error_message}[/red]")
+        if rollback_deployment_id:
+            console.print(f"[yellow]Partial rollback recorded: {rollback_deployment_id}[/yellow]")
 
-            return RollbackResult(
-                success=False,
-                operations_rolled_back=result.successful_statements,
-                error_message=result.error_message,
-            )
+        return RollbackResult(
+            success=False,
+            operations_rolled_back=result.successful_statements,
+            error_message=result.error_message,
+        )
 
     except RollbackError:
         raise

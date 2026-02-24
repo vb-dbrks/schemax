@@ -73,8 +73,8 @@ def test_sql_routes_arguments(monkeypatch, temp_workspace: Path) -> None:
     assert result.exit_code == 0
     assert captured["workspace"] == temp_workspace.resolve()
     assert captured["output"] == output.resolve()
-    assert captured["from_version"] == "v0.1.0"
-    assert captured["to_version"] == "v0.2.0"
+    assert captured["_from_version"] == "v0.1.0"
+    assert captured["_to_version"] == "v0.2.0"
     assert captured["target_env"] == "dev"
 
 
@@ -265,7 +265,7 @@ def test_snapshot_validate_json_output(monkeypatch, temp_workspace: Path) -> Non
     runner = CliRunner()
     monkeypatch.setattr(
         "schemax.commands.snapshot_rebase.detect_stale_snapshots",
-        lambda _workspace, json_output=False: [],
+        lambda _workspace, _json_output=False: [],
     )
 
     result = runner.invoke(

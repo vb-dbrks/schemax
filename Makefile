@@ -5,7 +5,7 @@ PYTHON_SDK  := packages/python-sdk
 VSCODE_EXT  := packages/vscode-extension
 DOCS_DIR    := docs/schemax
 
-.PHONY: fmt format lint typecheck test test-ext check ci pre-commit all help
+.PHONY: fmt format lint typecheck test test-python test-ext integration check ci pre-commit all help
 .PHONY: docs-build docs-serve clean
 
 fmt format lint typecheck check pre-commit:
@@ -22,6 +22,10 @@ test-ext:
 
 # Run all tests: Python SDK + VS Code extension
 test: test-python test-ext
+
+# Run all Python integration tests (including live Databricks when env is set)
+integration:
+	$(MAKE) -C $(PYTHON_SDK) integration
 
 # Full checks: Python format/lint/typecheck/test, then extension test
 all:
@@ -67,6 +71,7 @@ help:
 	@echo "  make test        - Run all tests (Python SDK + VS Code extension Jest/UI)"
 	@echo "  make test-python - Run Python SDK tests only"
 	@echo "  make test-ext    - Run VS Code extension (Jest/UI) tests only"
+	@echo "  make integration - Run all Python integration tests (including live Databricks)"
 	@echo "  make check       - Format/lint check only (no fix)"
 	@echo "  make ci          - Full CI checks (format, lint, typecheck, all tests)"
 	@echo "  make pre-commit  - Format + lint + typecheck (no test)"

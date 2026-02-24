@@ -10,7 +10,7 @@ from click.testing import CliRunner
 
 from schemax.cli import cli
 from schemax.commands.import_assets import (
-    ImportError,
+    ImportCommandError,
     import_from_provider,
     import_from_sql_file,
 )
@@ -164,8 +164,8 @@ class TestImportFromProvider:
                     profile="BROKEN",
                     warehouse_id="wh_123",
                 )
-                assert False, "Expected ImportError"
-            except ImportError as err:
+                assert False, "Expected ImportCommandError"
+            except ImportCommandError as err:
                 assert "Invalid execution configuration" in str(err)
                 assert "profile" in str(err)
 
@@ -185,15 +185,15 @@ class TestImportFromProvider:
                     profile="DEFAULT",
                     warehouse_id="wh_123",
                 )
-                assert False, "Expected ImportError"
-            except ImportError as err:
+                assert False, "Expected ImportCommandError"
+            except ImportCommandError as err:
                 assert "discovery not implemented" in str(err)
 
     def test_information_schema_scope_is_rejected(self):
         provider = _make_provider()
         with patch("schemax.commands.import_assets.load_current_state") as mock_load:
             mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-            with pytest.raises(ImportError, match="information_schema"):
+            with pytest.raises(ImportCommandError, match="information_schema"):
                 import_from_provider(
                     workspace=None,
                     target_env="dev",
@@ -253,7 +253,7 @@ class TestImportFromProvider:
             with patch("schemax.commands.import_assets.read_project") as mock_project:
                 mock_project.return_value = _make_project()
                 mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-                with pytest.raises(ImportError, match="does not support baseline adoption"):
+                with pytest.raises(ImportCommandError, match="does not support baseline adoption"):
                     import_from_provider(
                         workspace=None,
                         target_env="dev",
@@ -372,7 +372,7 @@ class TestImportFromSqlFile:
         ensure_project_file(temp_workspace, provider_id="unity")
         missing = temp_workspace / "nonexistent.sql"
         assert not missing.exists()
-        with pytest.raises(ImportError, match="SQL file not found"):
+        with pytest.raises(ImportCommandError, match="SQL file not found"):
             import_from_sql_file(
                 workspace=temp_workspace,
                 sql_path=missing,
@@ -434,7 +434,7 @@ class TestImportFromSqlFile:
         )
         with patch("schemax.commands.import_assets.load_current_state") as mock_load:
             mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-            with pytest.raises(ImportError, match="SQL import not supported"):
+            with pytest.raises(ImportCommandError, match="SQL import not supported"):
                 import_from_sql_file(
                     workspace=temp_workspace,
                     sql_path=sql_file,
@@ -461,7 +461,7 @@ class TestImportFromSqlFile:
         provider.state_from_ddl = lambda **kwargs: (_ for _ in ()).throw(ValueError("Invalid DDL"))
         with patch("schemax.commands.import_assets.load_current_state") as mock_load:
             mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-            with pytest.raises(ImportError, match="Invalid DDL"):
+            with pytest.raises(ImportCommandError, match="Invalid DDL"):
                 import_from_sql_file(
                     workspace=temp_workspace,
                     sql_path=sql_file,
@@ -522,7 +522,7 @@ class TestImportCli:
         runner = CliRunner()
         with patch(
             "schemax.cli.import_from_provider",
-            side_effect=ImportError("Schema 'information_schema' is system-managed"),
+            side_effect=ImportCommandError("Schema 'information_schema' is system-managed"),
         ):
             result = runner.invoke(
                 cli,

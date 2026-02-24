@@ -135,11 +135,11 @@ def get_versions_between(from_version: str, to_version: str, all_versions: list[
     to_parsed = parse_semantic_version(to_version)
 
     between = []
-    for v in all_versions:
+    for version_str in all_versions:
         try:
-            parsed = parse_semantic_version(v)
+            parsed = parse_semantic_version(version_str)
             if from_parsed < parsed < to_parsed:
-                between.append(v)
+                between.append(version_str)
         except ValueError:
             # Skip invalid versions
             continue

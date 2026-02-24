@@ -68,3 +68,6 @@ Thumbs.db
 *.log
 *.tmp
 .temp/
+
+# Generated lint reports (regenerate with scripts/split-lint-output.py)
+packages/python-sdk/lint-reports/

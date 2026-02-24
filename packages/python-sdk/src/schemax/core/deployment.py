@@ -248,19 +248,19 @@ class DeploymentTracker:
                 # Expected errors on first deployment (catalog/schema/table doesn't exist)
                 if any(
                     pattern in error_msg.lower()
-                    for pattern in [
+                    for pattern in (
                         "catalog",
                         "schema",
                         "not found",
                         "does not exist",
                         "table_or_view_not_found",
                         "cannot be found",
-                    ]
+                    )
                 ):
                     return None
 
                 # Real error - raise with state and message (avoid empty message)
-                raise Exception(
+                raise RuntimeError(
                     f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
                 )
 
@@ -279,14 +279,14 @@ class DeploymentTracker:
             error_str = str(e).lower()
             if any(
                 pattern in error_str
-                for pattern in [
+                for pattern in (
                     "catalog",
                     "schema",
                     "not found",
                     "does not exist",
                     "table_or_view_not_found",
                     "cannot be found",
-                ]
+                )
             ):
                 return None
 
@@ -336,17 +336,17 @@ class DeploymentTracker:
                 )
                 if any(
                     pattern in error_msg.lower()
-                    for pattern in [
+                    for pattern in (
                         "catalog",
                         "schema",
                         "not found",
                         "does not exist",
                         "table_or_view_not_found",
                         "cannot be found",
-                    ]
+                    )
                 ):
                     return None
-                raise Exception(
+                raise RuntimeError(
                     f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
                 )
 
@@ -362,14 +362,14 @@ class DeploymentTracker:
             error_str = str(e).lower()
             if any(
                 pattern in error_str
-                for pattern in [
+                for pattern in (
                     "catalog",
                     "schema",
                     "not found",
                     "does not exist",
                     "table_or_view_not_found",
                     "cannot be found",
-                ]
+                )
             ):
                 return None
             raise
@@ -440,19 +440,19 @@ class DeploymentTracker:
                 # Expected errors (catalog/schema/table doesn't exist)
                 if any(
                     pattern in error_msg.lower()
-                    for pattern in [
+                    for pattern in (
                         "catalog",
                         "schema",
                         "not found",
                         "does not exist",
                         "table_or_view_not_found",
                         "cannot be found",
-                    ]
+                    )
                 ):
                     return None
 
                 # Real error - raise with state and message (avoid empty message)
-                raise Exception(
+                raise RuntimeError(
                     f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
                 )
 
@@ -552,14 +552,14 @@ class DeploymentTracker:
             error_str = str(e).lower()
             if any(
                 pattern in error_str
-                for pattern in [
+                for pattern in (
                     "catalog",
                     "schema",
                     "not found",
                     "does not exist",
                     "table_or_view_not_found",
                     "cannot be found",
-                ]
+                )
             ):
                 return None
 
@@ -618,13 +618,13 @@ class DeploymentTracker:
                     msg = str(getattr(response.status.error, "message", None) or "").lower()
                     if any(
                         p in msg
-                        for p in [
+                        for p in (
                             "catalog",
                             "schema",
                             "not found",
                             "table_or_view_not_found",
                             "cannot be found",
-                        ]
+                        )
                     ):
                         return None
                 # Don't raise: fall back so partial rollback can proceed without previous
@@ -641,14 +641,14 @@ class DeploymentTracker:
             err = str(e).lower()
             if any(
                 p in err
-                for p in [
+                for p in (
                     "catalog",
                     "schema",
                     "not found",
                     "does not exist",
                     "table_or_view",
                     "cannot be found",
-                ]
+                )
             ):
                 return None
             # Don't re-raise: allow rollback to proceed with from_version/empty pre-state
@@ -684,7 +684,7 @@ class DeploymentTracker:
 
                 if status.status.state == StatementState.SUCCEEDED:
                     return
-                elif status.status.state in (StatementState.FAILED, StatementState.CANCELED):
+                if status.status.state in (StatementState.FAILED, StatementState.CANCELED):
                     error_msg = (
                         status.status.error.message if status.status.error else "Unknown error"
                     )

@@ -99,7 +99,7 @@ class OperationBuilder:
         table_id: str,
         name: str,
         schema_id: str,
-        format: Literal["delta", "iceberg"] = "delta",
+        table_format: Literal["delta", "iceberg"] = "delta",
         comment: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
@@ -108,7 +108,7 @@ class OperationBuilder:
             "tableId": table_id,
             "name": name,
             "schemaId": schema_id,
-            "format": format,
+            "format": table_format,
         }
         if comment is not None:
             payload["comment"] = comment
@@ -202,7 +202,7 @@ class OperationBuilder:
         col_id: str,
         table_id: str,
         name: str,
-        type: str,
+        col_type: str,
         nullable: bool = True,
         comment: str | None = None,
         op_id: str | None = None,
@@ -212,7 +212,7 @@ class OperationBuilder:
             "tableId": table_id,
             "colId": col_id,
             "name": name,
-            "type": type,
+            "type": col_type,
             "nullable": nullable,
         }
         if comment is not None:
@@ -330,7 +330,7 @@ class OperationBuilder:
         self,
         constraint_id: str,
         table_id: str,
-        type: Literal["primary_key", "foreign_key", "check"],
+        constraint_type: Literal["primary_key", "foreign_key", "check"],
         columns: list[str],
         name: str | None = None,
         op_id: str | None = None,
@@ -348,7 +348,7 @@ class OperationBuilder:
         payload = {
             "tableId": table_id,
             "constraintId": constraint_id,
-            "type": type,
+            "type": constraint_type,
             "columns": columns,
         }
         if name:
@@ -574,7 +574,7 @@ class OperationBuilder:
         )
 
     def rename_view(
-        self, view_id: str, new_name: str, old_name: str, op_id: str | None = None
+        self, view_id: str, new_name: str, _old_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_view operation"""
         return create_operation(
@@ -651,7 +651,7 @@ class OperationBuilder:
         )
 
     def rename_volume(
-        self, volume_id: str, new_name: str, old_name: str, op_id: str | None = None
+        self, volume_id: str, new_name: str, _old_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_volume operation"""
         return create_operation(
@@ -728,7 +728,7 @@ class OperationBuilder:
         )
 
     def rename_function(
-        self, function_id: str, new_name: str, old_name: str, op_id: str | None = None
+        self, function_id: str, new_name: str, _old_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_function operation"""
         return create_operation(
@@ -820,7 +820,7 @@ class OperationBuilder:
         )
 
     def rename_materialized_view(
-        self, mv_id: str, new_name: str, old_name: str, op_id: str | None = None
+        self, mv_id: str, new_name: str, _old_name: str, op_id: str | None = None
     ) -> Operation:
         """Create a rename_materialized_view operation"""
         return create_operation(

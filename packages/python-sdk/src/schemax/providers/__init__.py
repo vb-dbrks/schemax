@@ -35,9 +35,7 @@ def initialize_providers() -> None:
     # Register Unity Catalog provider
     ProviderRegistry.register(unity_provider)
 
-    # Future providers will be registered here:
-    # ProviderRegistry.register(hive_provider)
-    # ProviderRegistry.register(postgres_provider)
+    # Future providers will be registered here when implemented.
 
 
 # Auto-initialize on import

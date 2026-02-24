@@ -225,7 +225,7 @@ class DependencyGraph:
             # so the result is already in correct order (dependencies first)
             sorted_node_ids = list(nx.lexicographical_topological_sort(self.graph, key=sort_key))
         except nx.NetworkXError as e:
-            raise ValueError(f"Failed to perform topological sort: {e}")
+            raise ValueError(f"Failed to perform topological sort: {e}") from e
 
         # Extract operations from sorted nodes
         # For each node, return ALL operations (not just the first one)
@@ -240,7 +240,7 @@ class DependencyGraph:
                 def get_timestamp(op: Operation | dict) -> str:
                     if hasattr(op, "ts"):
                         return str(op.ts)
-                    elif isinstance(op, dict):
+                    if isinstance(op, dict):
                         return str(op.get("ts", ""))
                     return ""
 
@@ -286,7 +286,7 @@ class DependencyGraph:
         return result
 
     def _build_subgraph_for_level(
-        self, level: int, operations: list[Operation]
+        self, level: int, _operations: list[Operation]
     ) -> "DependencyGraph":
         """Build a subgraph containing only nodes at the specified level"""
         subgraph = DependencyGraph()
@@ -348,9 +348,7 @@ class DependencyGraph:
         """
         warnings: list[str] = []
 
-        for node_id in self.nodes.keys():
-            node = self.nodes[node_id]
-
+        for node_id, node in self.nodes.items():
             for edge in self.get_dependencies(node_id):
                 # Check if dependency exists
                 if edge.to_id not in self.nodes:

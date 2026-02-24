@@ -26,10 +26,8 @@ from schemax.providers.base.executor import ExecutionConfig
 console = Console()
 
 
-class ImportError(Exception):
+class ImportCommandError(Exception):
     """Raised when import command fails"""
-
-    pass
 
 
 def import_from_provider(
@@ -62,7 +60,7 @@ def import_from_provider(
     validation = provider.validate_execution_config(config)
     if not validation.valid:
         errors = "\n".join([f"  - {e.field}: {e.message}" for e in validation.errors])
-        raise ImportError(f"Invalid execution configuration:\n{errors}")
+        raise ImportCommandError(f"Invalid execution configuration:\n{errors}")
 
     scope = {
         "catalog": catalog,
@@ -72,7 +70,7 @@ def import_from_provider(
     scope_validation = provider.validate_import_scope(scope)
     if not scope_validation.valid:
         errors = "\n".join([f"  - {e.field}: {e.message}" for e in scope_validation.errors])
-        raise ImportError(f"Invalid import scope:\n{errors}")
+        raise ImportCommandError(f"Invalid import scope:\n{errors}")
 
     console.print("[bold]SchemaX Import[/bold]")
     console.print("─" * 60)
@@ -83,7 +81,7 @@ def import_from_provider(
     try:
         discovered_state = provider.discover_state(config=config, scope=scope)
     except NotImplementedError as e:
-        raise ImportError(str(e)) from e
+        raise ImportCommandError(str(e)) from e
     import_warnings = provider.collect_import_warnings(
         config=config,
         scope=scope,
@@ -100,7 +98,7 @@ def import_from_provider(
             mapping_overrides=catalog_mappings_override,
         )
     except Exception as e:
-        raise ImportError(str(e)) from e
+        raise ImportCommandError(str(e)) from e
 
     differ = provider.get_state_differ(
         old_state=state,
@@ -168,7 +166,9 @@ def import_from_provider(
 
     if adopt_baseline:
         if not provider.capabilities.features.get("baseline_adoption", False):
-            raise ImportError(f"Provider '{provider.info.id}' does not support baseline adoption.")
+            raise ImportCommandError(
+                f"Provider '{provider.info.id}' does not support baseline adoption."
+            )
 
         snapshot_version = project.get("latestSnapshot")
         if import_ops or not snapshot_version:
@@ -190,7 +190,7 @@ def import_from_provider(
             )
 
         if not snapshot_version:
-            raise ImportError("Could not determine snapshot version for baseline adoption")
+            raise ImportCommandError("Could not determine snapshot version for baseline adoption")
 
         try:
             deployment_id = provider.adopt_import_baseline(
@@ -202,7 +202,7 @@ def import_from_provider(
                 snapshot_version=snapshot_version,
             )
         except NotImplementedError as e:
-            raise ImportError(str(e)) from e
+            raise ImportCommandError(str(e)) from e
         env_config["importBaselineSnapshot"] = snapshot_version
         write_project(workspace, project)
         console.print(f"[green]✓[/green] Adopted baseline deployment: {deployment_id}")
@@ -240,7 +240,7 @@ def import_from_sql_file(
         Summary dict with object_counts, operations_generated, warnings, report (created/skipped/parse_errors).
     """
     if not sql_path.exists():
-        raise ImportError(f"SQL file not found: {sql_path}")
+        raise ImportCommandError(f"SQL file not found: {sql_path}")
 
     # Init project if missing
     if not get_project_file_path(workspace).exists():
@@ -252,9 +252,9 @@ def import_from_sql_file(
     try:
         parsed_state, report = provider.state_from_ddl(sql_path=sql_path)
     except NotImplementedError as e:
-        raise ImportError(str(e)) from e
+        raise ImportCommandError(str(e)) from e
     except ValueError as e:
-        raise ImportError(str(e)) from e
+        raise ImportCommandError(str(e)) from e
 
     import_warnings: list[str] = []
     skipped = report.get("skipped", 0)
@@ -286,7 +286,7 @@ def import_from_sql_file(
                 mapping_overrides=None,
             )
         except Exception as e:
-            raise ImportError(str(e)) from e
+            raise ImportCommandError(str(e)) from e
     else:
         new_state = parsed_state
 

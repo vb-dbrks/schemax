@@ -35,8 +35,6 @@ console = Console()
 class ApplyError(Exception):
     """Raised when apply command fails"""
 
-    pass
-
 
 def apply_to_environment(
     workspace: Path,
@@ -60,6 +58,7 @@ def apply_to_environment(
         warehouse_id: SQL warehouse ID
         dry_run: If True, preview without executing
         no_interaction: If True, skip confirmation prompt
+        auto_rollback: If True, automatically roll back on failed deployment
 
     Returns:
         ExecutionResult with deployment details
@@ -102,7 +101,7 @@ def apply_to_environment(
                 if current:
                     match = re.search(r"(\d+)\.(\d+)\.(\d+)", current)
                     if match:
-                        major, minor, patch = match.groups()
+                        major, minor, _patch = match.groups()
                         next_version = f"{version_prefix}{major}.{int(minor) + 1}.0"
                     else:
                         next_version = f"{version_prefix}0.1.0"
@@ -185,7 +184,7 @@ def apply_to_environment(
                 f"\n[blue]Retry with:[/blue] schemax apply --target {target_env} "
                 f"--profile {profile} --warehouse-id {warehouse_id}"
             )
-            raise ApplyError(f"Database query failed: {e}")
+            raise ApplyError(f"Database query failed: {e}") from e
 
         # 7. Desired state = current state (snapshot + changelog) so uncommitted ops are included
         #    After drop_catalog, re-adding catalog + schema in the UI must produce CREATE CATALOG + CREATE SCHEMA
@@ -494,12 +493,12 @@ def apply_to_environment(
         raise ApplyError(str(e)) from e
 
 
-def _create_empty_result(environment: str, version: str) -> ExecutionResult:
+def _create_empty_result(_environment: str, _version: str) -> ExecutionResult:
     """Create empty execution result when no changes to deploy
 
     Args:
-        environment: Target environment name
-        version: Snapshot version
+        _environment: Target environment name
+        _version: Snapshot version
 
     Returns:
         Empty ExecutionResult
