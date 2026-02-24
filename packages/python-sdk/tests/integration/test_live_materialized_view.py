@@ -173,14 +173,14 @@ def test_live_e2e_apply_materialized_view(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.add_table(
+                builder.table.add_table(
                     table_id,
                     table_name,
                     schema_id,
                     "delta",
                     op_id=f"op_table_mv_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_id_mv_{suffix}",
                     table_id,
                     "event_id",
@@ -189,7 +189,7 @@ def test_live_e2e_apply_materialized_view(tmp_path: Path) -> None:
                     comment="Event id",
                     op_id=f"op_col_id_mv_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_val_mv_{suffix}",
                     table_id,
                     "event_type",
@@ -198,7 +198,7 @@ def test_live_e2e_apply_materialized_view(tmp_path: Path) -> None:
                     comment="Event type",
                     op_id=f"op_col_val_mv_{suffix}",
                 ),
-                builder.add_materialized_view(
+                builder.materialized_view.add_materialized_view(
                     mv_id,
                     mv_name,
                     schema_id,
@@ -329,7 +329,7 @@ def test_live_e2e_mv_dependency_order(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.add_materialized_view(
+                builder.materialized_view.add_materialized_view(
                     mv_id,
                     mv_name,
                     schema_id,
@@ -338,14 +338,14 @@ def test_live_e2e_mv_dependency_order(tmp_path: Path) -> None:
                     extracted_dependencies={"tables": [table_name], "views": []},
                     op_id=f"op_mv_ord_{suffix}",
                 ),
-                builder.add_table(
+                builder.table.add_table(
                     table_id,
                     table_name,
                     schema_id,
                     "delta",
                     op_id=f"op_table_ord_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_id_ord_{suffix}",
                     table_id,
                     "event_id",
@@ -354,7 +354,7 @@ def test_live_e2e_mv_dependency_order(tmp_path: Path) -> None:
                     comment="Event id",
                     op_id=f"op_col_id_ord_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_val_ord_{suffix}",
                     table_id,
                     "event_type",
@@ -486,14 +486,14 @@ def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> Non
         append_ops(
             workspace,
             [
-                builder.add_table(
+                builder.table.add_table(
                     table_id,
                     table_name,
                     schema_id,
                     "delta",
                     op_id=f"op_table_uc_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_id_uc_{suffix}",
                     table_id,
                     "event_id",
@@ -502,7 +502,7 @@ def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> Non
                     comment="Event id",
                     op_id=f"op_col_id_uc_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_val_uc_{suffix}",
                     table_id,
                     "event_type",
@@ -511,7 +511,7 @@ def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> Non
                     comment="Event type",
                     op_id=f"op_col_val_uc_{suffix}",
                 ),
-                builder.add_volume(
+                builder.volume.add_volume(
                     vol_id,
                     volume_name,
                     schema_id,
@@ -519,7 +519,7 @@ def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> Non
                     comment="E2E volume",
                     op_id=f"op_vol_uc_{suffix}",
                 ),
-                builder.add_function(
+                builder.function.add_function(
                     func_id,
                     function_name,
                     schema_id,
@@ -529,7 +529,7 @@ def test_live_e2e_apply_volume_function_materialized_view(tmp_path: Path) -> Non
                     comment="E2E function",
                     op_id=f"op_func_uc_{suffix}",
                 ),
-                builder.add_materialized_view(
+                builder.materialized_view.add_materialized_view(
                     mv_id,
                     mv_name,
                     schema_id,

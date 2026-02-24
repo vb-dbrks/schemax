@@ -1,4 +1,4 @@
-<img src="docs/schemax/static/img/schemax_logo.svg" width="320" alt="SchemaX" />
+<img src="docs/schemax/static/img/schemax_text_logo.png" width="320" alt="SchemaX" />
 
 **Modern, low-touch schema migration and management. Git- and CI/CD-friendly. Full or governance-only.**
 

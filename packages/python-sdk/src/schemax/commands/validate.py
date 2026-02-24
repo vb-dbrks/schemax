@@ -39,9 +39,7 @@ def _compute_dependency_errors_and_warnings(
     cycles = graph.detect_cycles()
 
     for cycle in cycles:
-        cycle_names = [
-            generator.id_name_map.get(node_id, node_id) for node_id in cycle
-        ]
+        cycle_names = [generator.id_name_map.get(node_id, node_id) for node_id in cycle]
         cycle_str = " → ".join(cycle_names)
         errors.append(f"Circular dependency: {cycle_str}")
 
@@ -124,9 +122,7 @@ def _print_project_summary(project: dict, provider: Any, changelog: dict, state:
         total_schemas = sum(len(c.get("schemas", [])) for c in state["catalogs"])
         console.print(f"[bold]Schemas:[/bold] {total_schemas}")
         total_tables = sum(
-            len(s.get("tables", []))
-            for c in state["catalogs"]
-            for s in c.get("schemas", [])
+            len(s.get("tables", [])) for c in state["catalogs"] for s in c.get("schemas", [])
         )
         console.print(f"[bold]Tables:[/bold] {total_tables}")
 

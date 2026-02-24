@@ -107,7 +107,7 @@ class TestUnityProvider:
     def test_validate_valid_operation(self, unity_provider):
         """Test validating a valid operation"""
         builder = OperationBuilder()
-        op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
+        op = builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001")
 
         validation = unity_provider.validate_operation(op)
         assert validation.valid
@@ -147,7 +147,7 @@ class TestUnityProvider:
     def test_apply_single_operation(self, unity_provider, empty_unity_state):
         """Test applying single operation to state"""
         builder = OperationBuilder()
-        op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
+        op = builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001")
 
         state_dict = empty_unity_state.model_dump(by_alias=True)
         new_state = unity_provider.apply_operation(state_dict, op)
@@ -190,7 +190,7 @@ class TestUnityProvider:
         assert generator is not None
 
         # Test generating SQL
-        op = builder.add_catalog("cat_001", "test", op_id="op_001")
+        op = builder.catalog.add_catalog("cat_001", "test", op_id="op_001")
 
         result = generator.generate_sql_for_operation(op)
         assert "CREATE CATALOG" in result.sql
@@ -1091,9 +1091,9 @@ class TestProviderIntegration:
         builder = OperationBuilder()
         # Create operations
         ops = [
-            builder.add_catalog("cat_123", "production", op_id="op_001"),
-            builder.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
-            builder.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
+            builder.catalog.add_catalog("cat_123", "production", op_id="op_001"),
+            builder.schema.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
+            builder.table.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
         ]
 
         # Validate all operations
@@ -1154,7 +1154,7 @@ class TestProviderIntegration:
         original_state_dict = sample_unity_state.model_dump(by_alias=True)
         original_catalog_count = len(original_state_dict["catalogs"])
 
-        op = builder.add_catalog("cat_new", "new_catalog", op_id="op_001")
+        op = builder.catalog.add_catalog("cat_new", "new_catalog", op_id="op_001")
 
         # Apply operation
         new_state = unity_provider.apply_operation(original_state_dict, op)
@@ -1196,7 +1196,7 @@ class TestProviderErrorHandling:
         generator = unity_provider.get_sql_generator(state_dict)
 
         # Operation referencing non-existent table
-        op = builder.add_column(
+        op = builder.column.add_column(
             "col_001",
             "nonexistent_table",
             "test_col",

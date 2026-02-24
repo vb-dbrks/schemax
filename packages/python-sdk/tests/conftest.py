@@ -123,7 +123,7 @@ def sample_changelog():
 def sample_catalog_op():
     """Sample add_catalog operation"""
     builder = OperationBuilder()
-    return builder.add_catalog("cat_123", "bronze", op_id="op_001")
+    return builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001")
 
 
 @pytest.fixture
@@ -131,10 +131,10 @@ def sample_operations():
     """Sample operations for testing workflows"""
     builder = OperationBuilder()
     return [
-        builder.add_catalog("cat_123", "bronze", op_id="op_001"),
-        builder.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
-        builder.add_table("table_789", "users", "schema_456", "delta", op_id="op_003"),
-        builder.add_column(
+        builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001"),
+        builder.schema.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
+        builder.table.add_table("table_789", "users", "schema_456", "delta", op_id="op_003"),
+        builder.column.add_column(
             "col_001",
             "table_789",
             "user_id",

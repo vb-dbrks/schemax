@@ -40,9 +40,9 @@ class TestBasicWorkflow:
 
         # Step 2: Add operations
         ops = [
-            builder.add_catalog("cat_123", "production", op_id="op_001"),
-            builder.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
-            builder.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
+            builder.catalog.add_catalog("cat_123", "production", op_id="op_001"),
+            builder.schema.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
+            builder.table.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
         ]
         append_ops(temp_workspace, ops)
 
@@ -82,17 +82,17 @@ class TestBasicWorkflow:
         ensure_project_file(temp_workspace, provider_id="unity")
 
         ops = [
-            builder.add_catalog("cat_123", "production", op_id="op_001"),
-            builder.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
-            builder.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
-            builder.add_grant(
+            builder.catalog.add_catalog("cat_123", "production", op_id="op_001"),
+            builder.schema.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
+            builder.table.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
+            builder.grant.add_grant(
                 "catalog",
                 "cat_123",
                 "data_engineers",
                 ["USE CATALOG", "CREATE SCHEMA"],
                 op_id="op_004",
             ),
-            builder.add_grant(
+            builder.grant.add_grant(
                 "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_005"
             ),
         ]
@@ -203,7 +203,7 @@ class TestSnapshotWorkflow:
 
         # Add more operations after snapshot
         additional_ops = [
-            builder.add_column(
+            builder.column.add_column(
                 "col_new_001",
                 "table_789",
                 "status",
@@ -240,13 +240,13 @@ class TestCompleteSchemaWorkflow:
         builder = OperationBuilder()
         ops = [
             # Create catalog
-            builder.add_catalog("cat_prod", "production", op_id="op_001"),
+            builder.catalog.add_catalog("cat_prod", "production", op_id="op_001"),
             # Create schema
-            builder.add_schema("schema_crm", "crm", "cat_prod", op_id="op_002"),
+            builder.schema.add_schema("schema_crm", "crm", "cat_prod", op_id="op_002"),
             # Create table
-            builder.add_table("table_users", "users", "schema_crm", "delta", op_id="op_003"),
+            builder.table.add_table("table_users", "users", "schema_crm", "delta", op_id="op_003"),
             # Add columns
-            builder.add_column(
+            builder.column.add_column(
                 "col_id",
                 "table_users",
                 "user_id",
@@ -255,7 +255,7 @@ class TestCompleteSchemaWorkflow:
                 comment="Primary key",
                 op_id="op_004",
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_email",
                 "table_users",
                 "email",
@@ -264,7 +264,7 @@ class TestCompleteSchemaWorkflow:
                 comment="User email",
                 op_id="op_005",
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_region",
                 "table_users",
                 "region",
@@ -274,7 +274,7 @@ class TestCompleteSchemaWorkflow:
                 op_id="op_006",
             ),
             # Add primary key constraint
-            builder.add_constraint(
+            builder.constraint.add_constraint(
                 "pk_users",
                 "table_users",
                 "primary_key",
@@ -284,9 +284,11 @@ class TestCompleteSchemaWorkflow:
                 op_id="op_007",
             ),
             # Add PII tag to email
-            builder.set_column_tag("col_email", "table_users", "PII", "true", op_id="op_008"),
+            builder.column.set_column_tag(
+                "col_email", "table_users", "PII", "true", op_id="op_008"
+            ),
             # Add column mask to email
-            builder.add_column_mask(
+            builder.column_mask.add_column_mask(
                 "mask_email",
                 "table_users",
                 "col_email",
@@ -297,7 +299,7 @@ class TestCompleteSchemaWorkflow:
                 op_id="op_009",
             ),
             # Add row filter
-            builder.add_row_filter(
+            builder.row_filter.add_row_filter(
                 "filter_region",
                 "table_users",
                 "region_filter",
@@ -307,7 +309,7 @@ class TestCompleteSchemaWorkflow:
                 op_id="op_010",
             ),
             # Set table properties
-            builder.set_table_property(
+            builder.table.set_table_property(
                 "table_users", "delta.enableChangeDataFeed", "true", op_id="op_011"
             ),
         ]
@@ -354,10 +356,10 @@ class TestCompleteSchemaWorkflow:
         builder = OperationBuilder()
         # Create initial schema
         initial_ops = [
-            builder.add_catalog("cat_test", "test", op_id="op_001"),
-            builder.add_schema("schema_test", "public", "cat_test", op_id="op_002"),
-            builder.add_table("table_test", "data", "schema_test", "delta", op_id="op_003"),
-            builder.add_column(
+            builder.catalog.add_catalog("cat_test", "test", op_id="op_001"),
+            builder.schema.add_schema("schema_test", "public", "cat_test", op_id="op_002"),
+            builder.table.add_table("table_test", "data", "schema_test", "delta", op_id="op_003"),
+            builder.column.add_column(
                 "col_old",
                 "table_test",
                 "old_name",
@@ -375,11 +377,11 @@ class TestCompleteSchemaWorkflow:
         # Modify schema
         modification_ops = [
             # Rename column
-            builder.rename_column(
+            builder.column.rename_column(
                 "col_old", "table_test", "new_name", "old_name", op_id="op_mod_001"
             ),
             # Add new column
-            builder.add_column(
+            builder.column.add_column(
                 "col_new",
                 "table_test",
                 "additional_field",
@@ -389,7 +391,9 @@ class TestCompleteSchemaWorkflow:
                 op_id="op_mod_002",
             ),
             # Change column type
-            builder.change_column_type("col_old", "table_test", "VARCHAR(255)", op_id="op_mod_003"),
+            builder.column.change_column_type(
+                "col_old", "table_test", "VARCHAR(255)", op_id="op_mod_003"
+            ),
         ]
         append_ops(initialized_workspace, modification_ops)
 
@@ -463,7 +467,7 @@ class TestComplexWorkflows:
 
         # Add feature A
         feature_a_ops = [
-            builder.add_column(
+            builder.column.add_column(
                 "col_feature_a",
                 "table_789",
                 "feature_a_field",
@@ -478,7 +482,7 @@ class TestComplexWorkflows:
 
         # Add feature B
         feature_b_ops = [
-            builder.add_column(
+            builder.column.add_column(
                 "col_feature_b",
                 "table_789",
                 "feature_b_field",
@@ -520,7 +524,7 @@ class TestDiffWorkflow:
 
         # Add more columns for v0.2.0
         additional_ops = [
-            builder.add_column(
+            builder.column.add_column(
                 "col_new_1",
                 "table_789",
                 "email",
@@ -529,7 +533,7 @@ class TestDiffWorkflow:
                 comment="User email",
                 op_id="op_add_col_1",
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_new_2",
                 "table_789",
                 "phone",
@@ -578,7 +582,9 @@ class TestDiffWorkflow:
         create_snapshot(initialized_workspace, "Bronze catalog", version="v0.1.0")
 
         # Rename catalog to "silver" for v0.2.0
-        rename_op = builder.rename_catalog("cat_123", "silver", "bronze", op_id="op_rename_cat")
+        rename_op = builder.catalog.rename_catalog(
+            "cat_123", "silver", "bronze", op_id="op_rename_cat"
+        )
         append_ops(initialized_workspace, [rename_op])
         create_snapshot(initialized_workspace, "Renamed to silver", version="v0.2.0")
 
@@ -619,11 +625,13 @@ class TestDiffWorkflow:
         # Make complex changes for v0.2.0
         complex_ops = [
             # Add a new schema
-            builder.add_schema("schema_new", "reporting", "cat_123", op_id="op_add_schema"),
+            builder.schema.add_schema("schema_new", "reporting", "cat_123", op_id="op_add_schema"),
             # Add a new table
-            builder.add_table("table_new", "metrics", "schema_new", "delta", op_id="op_add_table"),
+            builder.table.add_table(
+                "table_new", "metrics", "schema_new", "delta", op_id="op_add_table"
+            ),
             # Add columns to existing table
-            builder.add_column(
+            builder.column.add_column(
                 "col_status",
                 "table_789",
                 "status",
@@ -633,7 +641,7 @@ class TestDiffWorkflow:
                 op_id="op_add_col_status",
             ),
             # Rename a column
-            builder.rename_column(
+            builder.column.rename_column(
                 "col_status", "table_789", "record_state", "status", op_id="op_rename_col"
             ),
         ]
@@ -684,7 +692,7 @@ class TestDiffWorkflow:
         append_ops(
             initialized_workspace,
             [
-                builder.add_column(
+                builder.column.add_column(
                     "col_extra",
                     "table_789",
                     "extra_field",

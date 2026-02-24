@@ -79,12 +79,16 @@ def test_live_apply_existing_catalog_skips_create(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.add_catalog(cat_id, logical_catalog, op_id=f"op_cat_existing_{suffix}"),
-                builder.add_schema(sch_id, schema_name, cat_id, op_id=f"op_sch_existing_{suffix}"),
-                builder.add_table(
+                builder.catalog.add_catalog(
+                    cat_id, logical_catalog, op_id=f"op_cat_existing_{suffix}"
+                ),
+                builder.schema.add_schema(
+                    sch_id, schema_name, cat_id, op_id=f"op_sch_existing_{suffix}"
+                ),
+                builder.table.add_table(
                     tbl_id, table_name, sch_id, "delta", op_id=f"op_tbl_existing_{suffix}"
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     col_id,
                     tbl_id,
                     "event_id",

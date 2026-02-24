@@ -117,14 +117,14 @@ def test_live_apply_and_rollback_non_dry_run(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.add_table(
+                builder.table.add_table(
                     table_id,
                     table_name,
                     schema_id,
                     "delta",
                     op_id=f"op_table_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     col_id_id,
                     table_id,
                     "event_id",
@@ -133,7 +133,7 @@ def test_live_apply_and_rollback_non_dry_run(tmp_path: Path) -> None:
                     comment="Event id",
                     op_id=f"op_col_id_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     col_val_id,
                     table_id,
                     "event_type",

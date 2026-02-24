@@ -103,14 +103,14 @@ def test_live_e2e_create_apply_rollback_with_grants(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.add_table(
+                builder.table.add_table(
                     table_id,
                     table_name,
                     schema_id,
                     "delta",
                     op_id=f"op_table_e2e_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     col_id_id,
                     table_id,
                     "event_id",
@@ -119,7 +119,7 @@ def test_live_e2e_create_apply_rollback_with_grants(tmp_path: Path) -> None:
                     comment="Event id",
                     op_id=f"op_col_id_e2e_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     col_val_id,
                     table_id,
                     "event_type",
@@ -159,7 +159,7 @@ def test_live_e2e_create_apply_rollback_with_grants(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.add_grant(
+                builder.grant.add_grant(
                     "table",
                     table_id,
                     "account users",

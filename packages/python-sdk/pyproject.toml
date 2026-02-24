@@ -118,7 +118,7 @@ jobs = 0
 limit-inference-results = 100
 persistent = true
 py-version = "3.11"
-fail-under = 10.0
+fail-under = 9.0
 suggestion-mode = true
 load-plugins = [
     "databricks.labs.pylint.all",

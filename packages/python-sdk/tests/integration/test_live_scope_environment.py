@@ -104,14 +104,14 @@ def test_live_apply_governance_only(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.add_table(
+                builder.table.add_table(
                     table_id,
                     table_name,
                     schema_id,
                     "delta",
                     op_id=f"op_table_gov_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     col_id_id,
                     table_id,
                     "event_id",
@@ -120,7 +120,7 @@ def test_live_apply_governance_only(tmp_path: Path) -> None:
                     comment="Event id",
                     op_id=f"op_col_id_gov_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     col_val_id,
                     table_id,
                     "event_type",
@@ -160,7 +160,7 @@ def test_live_apply_governance_only(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.set_table_comment(
+                builder.table.set_table_comment(
                     table_id,
                     "Governance-only test comment",
                     op_id=f"op_comment_gov_{suffix}",
@@ -286,17 +286,17 @@ def test_live_greenfield_promote_dev_test_prod_then_rollback_prod(tmp_path: Path
         append_ops(
             workspace,
             [
-                builder.add_catalog(
+                builder.catalog.add_catalog(
                     cat_id,
                     logical_catalog,
                     op_id=f"op_cat_{suffix}",
                     managed_location_name="catalog_root",
                 ),
-                builder.add_schema(sch_id, schema_name, cat_id, op_id=f"op_sch_{suffix}"),
-                builder.add_table(
+                builder.schema.add_schema(sch_id, schema_name, cat_id, op_id=f"op_sch_{suffix}"),
+                builder.table.add_table(
                     tbl_users_id, table_users, sch_id, "delta", op_id=f"op_tbl_users_{suffix}"
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_id_{suffix}",
                     tbl_users_id,
                     "user_id",
@@ -305,7 +305,7 @@ def test_live_greenfield_promote_dev_test_prod_then_rollback_prod(tmp_path: Path
                     "User ID",
                     op_id=f"op_col_id_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_email_{suffix}",
                     tbl_users_id,
                     "email",
@@ -349,14 +349,14 @@ def test_live_greenfield_promote_dev_test_prod_then_rollback_prod(tmp_path: Path
         append_ops(
             workspace,
             [
-                builder.add_table(
+                builder.table.add_table(
                     tbl_orders_id,
                     table_orders,
                     sch_id,
                     "delta",
                     op_id=f"op_tbl_orders_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_order_id_{suffix}",
                     tbl_orders_id,
                     "order_id",
