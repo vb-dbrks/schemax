@@ -229,9 +229,9 @@ describe('formatScopePreview', () => {
       grantTargets: [],
     };
     const text = formatScopePreview(result);
-    expect(text).toContain('2 schema(s)');
-    expect(text).toContain('3 table(s)');
-    expect(text).toContain('1 view(s)');
+    expect(text).toContain('2 schemas');
+    expect(text).toContain('3 tables');
+    expect(text).toContain('1 view');
   });
 
   test('singular schema when count is 1', () => {
@@ -244,7 +244,7 @@ describe('formatScopePreview', () => {
       materializedViews: [],
       grantTargets: [],
     };
-    expect(formatScopePreview(result)).toContain('1 schema(s)');
+    expect(formatScopePreview(result)).toContain('1 schema');
   });
 
   test('includes volumes, functions, materialized views when present', () => {
@@ -258,8 +258,8 @@ describe('formatScopePreview', () => {
       grantTargets: [],
     };
     const text = formatScopePreview(result);
-    expect(text).toContain('1 volume(s)');
-    expect(text).toContain('1 function(s)');
-    expect(text).toContain('1 materialized view(s)');
+    expect(text).toContain('1 volume');
+    expect(text).toContain('1 function');
+    expect(text).toContain('1 materialized view');
   });
 });

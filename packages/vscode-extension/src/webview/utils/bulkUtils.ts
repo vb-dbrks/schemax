@@ -177,19 +177,25 @@ export function getObjectsInScope(
   return empty;
 }
 
+function plural(n: number, singular: string, pluralForm: string): string {
+  return n === 1 ? `1 ${singular}` : `${n} ${pluralForm}`;
+}
+
 /**
  * Human-readable summary of scope for preview (e.g. "5 tables, 2 views, 1 schema").
  */
 export function formatScopePreview(result: ScopeResult): string {
   const parts: string[] = [];
   if (result.catalog) parts.push('1 catalog');
-  if (result.schemas.length) parts.push(`${result.schemas.length} schema(s)`);
-  if (result.tables.length) parts.push(`${result.tables.length} table(s)`);
-  if (result.views.length) parts.push(`${result.views.length} view(s)`);
-  if (result.volumes.length) parts.push(`${result.volumes.length} volume(s)`);
-  if (result.functions.length) parts.push(`${result.functions.length} function(s)`);
+  if (result.schemas.length) parts.push(plural(result.schemas.length, 'schema', 'schemas'));
+  if (result.tables.length) parts.push(plural(result.tables.length, 'table', 'tables'));
+  if (result.views.length) parts.push(plural(result.views.length, 'view', 'views'));
+  if (result.volumes.length) parts.push(plural(result.volumes.length, 'volume', 'volumes'));
+  if (result.functions.length) parts.push(plural(result.functions.length, 'function', 'functions'));
   if (result.materializedViews.length) {
-    parts.push(`${result.materializedViews.length} materialized view(s)`);
+    parts.push(
+      plural(result.materializedViews.length, 'materialized view', 'materialized views')
+    );
   }
   return parts.length ? parts.join(', ') : 'No objects in scope';
 }

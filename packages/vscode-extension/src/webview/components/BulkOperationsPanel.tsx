@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
+import type { Operation } from '../../providers/base/operations';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { formatScopePreview } from '../utils/bulkUtils';
 import { parsePrivileges } from '../utils/grants';
@@ -73,7 +74,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
 
   const handleApply = () => {
     if (!canApply) return;
-    let ops: import('../../providers/base/operations').Operation[] = [];
+    let ops: Operation[] = [];
     switch (operationType) {
       case 'add_grant': {
         const privileges = parsePrivileges(privilegesStr);
