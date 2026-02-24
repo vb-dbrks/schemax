@@ -1275,6 +1275,27 @@ body {
   gap: 6px;
 }
 
+/* Bulk operations panel */
+.bulk-ops-modal .bulk-ops-scope {
+  margin-bottom: 12px;
+}
+.bulk-ops-modal .bulk-ops-preview {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin: 4px 0 0 0;
+}
+.bulk-ops-modal .bulk-ops-empty,
+.bulk-ops-modal .bulk-ops-count {
+  font-size: 12px;
+  margin-top: 8px;
+}
+.bulk-ops-modal .bulk-ops-empty {
+  color: var(--vscode-descriptionForeground);
+}
+.bulk-ops-modal .bulk-ops-count {
+  color: var(--vscode-foreground);
+}
+
 .modal-field-group label {
   font-size: 12px;
   font-weight: 500;

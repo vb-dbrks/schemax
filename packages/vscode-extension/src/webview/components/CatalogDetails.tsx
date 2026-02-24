@@ -4,6 +4,7 @@ import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vs
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
 import { parsePrivileges } from '../utils/grants';
 import { RichComment } from './RichComment';
+import { BulkOperationsPanel } from './BulkOperationsPanel';
 
 // Codicon icons - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -46,6 +47,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const [editingGrant, setEditingGrant] = useState<{ principal: string; privileges: string[] } | null>(null);
   const [revokeGrantDialog, setRevokeGrantDialog] = useState<{ principal: string } | null>(null);
   const [grantForm, setGrantForm] = useState({ principal: '', privileges: '' });
+  const [showBulkPanel, setShowBulkPanel] = useState(false);
 
   // Update local state when catalog changes
   useEffect(() => {
@@ -211,6 +213,13 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
               <i className="codicon codicon-edit" style={{ fontSize: '14px' }}></i>
             </button>
           </div>
+          <VSCodeButton
+            appearance="secondary"
+            onClick={() => setShowBulkPanel(true)}
+            title="Apply grants or tags in bulk to this catalog and all objects under it"
+          >
+            Bulk operations
+          </VSCodeButton>
         </div>
         <div className="table-metadata">
           <span className="badge">CATALOG</span>
@@ -582,6 +591,14 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
             </div>
           </div>
         </div>
+      )}
+
+      {showBulkPanel && (
+        <BulkOperationsPanel
+          scope="catalog"
+          catalogId={catalogId}
+          onClose={() => setShowBulkPanel(false)}
+        />
       )}
     </div>
   );

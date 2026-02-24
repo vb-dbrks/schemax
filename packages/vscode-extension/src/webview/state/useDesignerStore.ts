@@ -4,6 +4,8 @@ import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, Col
 import { Operation } from '../../providers/base/operations';
 import { ProviderInfo, ProviderCapabilities } from '../../providers/base/provider';
 import { getVsCodeApi } from '../vscode-api';
+import type { ScopeResult } from '../utils/bulkUtils';
+import { getObjectsInScope as computeScope } from '../utils/bulkUtils';
 
 const vscode = getVsCodeApi();
 
@@ -141,6 +143,14 @@ interface DesignerState {
   findVolume: (volumeId: string) => { catalog: Catalog; schema: Schema; volume: any } | undefined;
   findFunction: (functionId: string) => { catalog: Catalog; schema: Schema; func: any } | undefined;
   findMaterializedView: (mvId: string) => { catalog: Catalog; schema: Schema; mv: any } | undefined;
+
+  // Bulk operations (scope from catalog or schema selection)
+  getObjectsInScope: (scope: 'catalog' | 'schema', catalogId?: string | null, schemaId?: string | null) => ScopeResult;
+  applyBulkOps: (ops: Operation[]) => void;
+  buildBulkGrantOps: (scopeResult: ScopeResult, principal: string, privileges: string[]) => Operation[];
+  buildBulkTableTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
+  buildBulkSchemaTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
+  buildBulkCatalogTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
 }
 
 function emitOps(ops: Operation[]) {
@@ -767,5 +777,70 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       }
     }
     return undefined;
+  },
+
+  getObjectsInScope: (scope, catalogId, schemaId) => {
+    const { project } = get();
+    return computeScope(project, scope, catalogId ?? undefined, schemaId ?? undefined);
+  },
+
+  applyBulkOps: (ops) => {
+    if (ops.length > 0) emitOps(ops);
+  },
+
+  buildBulkGrantOps: (scopeResult, principal, privileges) => {
+    const state = get();
+    const ops: Operation[] = [];
+    for (const { targetType, targetId } of scopeResult.grantTargets) {
+      ops.push(
+        createOperation(state, 'add_grant', targetId, {
+          targetType,
+          targetId,
+          principal,
+          privileges,
+        })
+      );
+    }
+    return ops;
+  },
+
+  buildBulkTableTagOps: (scopeResult, tagName, tagValue) => {
+    const state = get();
+    const ops: Operation[] = [];
+    for (const { id } of scopeResult.tables) {
+      ops.push(
+        createOperation(state, 'set_table_tag', id, {
+          tableId: id,
+          tagName,
+          tagValue,
+        })
+      );
+    }
+    return ops;
+  },
+
+  buildBulkSchemaTagOps: (scopeResult, tagName, tagValue) => {
+    const state = get();
+    const ops: Operation[] = [];
+    for (const schema of scopeResult.schemas) {
+      const mergedTags = { ...(schema.tags ?? {}), [tagName]: tagValue };
+      ops.push(
+        createOperation(state, 'update_schema', schema.id, {
+          tags: mergedTags,
+        })
+      );
+    }
+    return ops;
+  },
+
+  buildBulkCatalogTagOps: (scopeResult, tagName, tagValue) => {
+    if (!scopeResult.catalog) return [];
+    const state = get();
+    const mergedTags = { ...(scopeResult.catalog.tags ?? {}), [tagName]: tagValue };
+    return [
+      createOperation(state, 'update_catalog', scopeResult.catalog.id, {
+        tags: mergedTags,
+      }),
+    ];
   },
 }));
