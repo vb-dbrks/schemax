@@ -30,9 +30,7 @@ class SQLGenerationError(Exception):
 # TODO: Snapshot-based SQL generation requires issue #56 to be implemented first
 # https://github.com/users/vb-dbrks/projects/1/views/1?pane=issue&itemId=136096732
 #
-# Once #56 is complete, snapshots will preserve full operation objects:
-#   snapshot.operations = [Operation(...), ...]  # Full objects with metadata
-#
+# Once #56 is complete, snapshots will preserve full operation objects.
 # This will enable:
 # - Simpler implementation (no state reconstruction needed)
 # - Accurate operation metadata (timestamps, original payloads)
@@ -81,8 +79,8 @@ def generate_sql_migration(
     workspace: Path,
     output: Path | None = None,
     snapshot: str | None = None,
-    from_version: str | None = None,
-    to_version: str | None = None,
+    _from_version: str | None = None,
+    _to_version: str | None = None,
     target_env: str | None = None,
 ) -> str:
     """Generate SQL migration script from schema changes
@@ -94,8 +92,8 @@ def generate_sql_migration(
         workspace: Path to SchemaX workspace
         output: Optional output file path
         snapshot: Optional snapshot version ('latest' or specific version like 'v0.1.0')
-        from_version: Optional starting version for SQL generation
-        to_version: Optional ending version for SQL generation
+        _from_version: Optional starting version for SQL generation (reserved)
+        _to_version: Optional ending version for SQL generation (reserved)
         target_env: Optional target environment (for catalog name mapping)
 
     Returns:
@@ -204,9 +202,8 @@ def generate_sql_migration(
             if isinstance(op, Operation):
                 if op.op == "unity.add_table" and op.payload.get("external"):
                     external_table_ops.append(op)
-            else:
-                if op.get("op") == "unity.add_table" and op["payload"].get("external"):
-                    external_table_ops.append(op)
+            elif op.get("op") == "unity.add_table" and op["payload"].get("external"):
+                external_table_ops.append(op)
 
         if external_table_ops and target_env:
             console.print(f"\n[cyan]External Tables ({len(external_table_ops)}):[/cyan]")

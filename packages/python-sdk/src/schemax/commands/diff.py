@@ -23,8 +23,6 @@ console = Console()
 class DiffError(Exception):
     """Raised when diff command fails"""
 
-    pass
-
 
 def generate_diff(
     workspace: Path,
@@ -161,13 +159,12 @@ def generate_diff(
                 f"Source snapshot not found: {from_version}\n"
                 f"Check that the snapshot exists in .schemax/snapshots/{from_version}.json"
             ) from e
-        elif to_version in error_msg:
+        if to_version in error_msg:
             raise DiffError(
                 f"Target snapshot not found: {to_version}\n"
                 f"Check that the snapshot exists in .schemax/snapshots/{to_version}.json"
             ) from e
-        else:
-            raise DiffError(f"Snapshot file not found: {e}") from e
+        raise DiffError(f"Snapshot file not found: {e}") from e
     except Exception as e:
         raise DiffError(f"Failed to generate diff: {e}") from e
 

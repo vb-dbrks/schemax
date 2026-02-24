@@ -191,7 +191,7 @@ class DependencyGraph:
         cycles = self.detect_cycles()
         if cycles:
             cycle_str = "\n".join(
-                " → ".join(self._get_node_display_name(nid) for nid in cycle) for cycle in cycles
+                " → ".join(self.get_node_display_name(nid) for nid in cycle) for cycle in cycles
             )
             raise ValueError(f"Circular dependencies detected:\n{cycle_str}")
 
@@ -225,7 +225,7 @@ class DependencyGraph:
             # so the result is already in correct order (dependencies first)
             sorted_node_ids = list(nx.lexicographical_topological_sort(self.graph, key=sort_key))
         except nx.NetworkXError as e:
-            raise ValueError(f"Failed to perform topological sort: {e}")
+            raise ValueError(f"Failed to perform topological sort: {e}") from e
 
         # Extract operations from sorted nodes
         # For each node, return ALL operations (not just the first one)
@@ -240,7 +240,7 @@ class DependencyGraph:
                 def get_timestamp(op: Operation | dict) -> str:
                     if hasattr(op, "ts"):
                         return str(op.ts)
-                    elif isinstance(op, dict):
+                    if isinstance(op, dict):
                         return str(op.get("ts", ""))
                     return ""
 
@@ -286,7 +286,7 @@ class DependencyGraph:
         return result
 
     def _build_subgraph_for_level(
-        self, level: int, operations: list[Operation]
+        self, level: int, _operations: list[Operation]
     ) -> "DependencyGraph":
         """Build a subgraph containing only nodes at the specified level"""
         subgraph = DependencyGraph()
@@ -314,8 +314,8 @@ class DependencyGraph:
 
         return subgraph
 
-    def _get_node_display_name(self, node_id: str) -> str:
-        """Get a human-readable name for a node"""
+    def get_node_display_name(self, node_id: str) -> str:
+        """Return a human-readable name for a graph node (for messages and errors)."""
         node = self.nodes.get(node_id)
         if not node:
             return node_id
@@ -348,14 +348,12 @@ class DependencyGraph:
         """
         warnings: list[str] = []
 
-        for node_id in self.nodes.keys():
-            node = self.nodes[node_id]
-
+        for node_id, node in self.nodes.items():
             for edge in self.get_dependencies(node_id):
                 # Check if dependency exists
                 if edge.to_id not in self.nodes:
                     warnings.append(
-                        f"Missing dependency: {self._get_node_display_name(node_id)} "
+                        f"Missing dependency: {self.get_node_display_name(node_id)} "
                         f"depends on {edge.to_id} (type: {edge.dep_type})"
                     )
 
@@ -366,9 +364,9 @@ class DependencyGraph:
                 dep_node = self.nodes.get(edge.to_id)
                 if dep_node and node.hierarchy_level < dep_node.hierarchy_level:
                     warnings.append(
-                        f"Invalid hierarchy: {self._get_node_display_name(node_id)} "
+                        f"Invalid hierarchy: {self.get_node_display_name(node_id)} "
                         f"(level {node.hierarchy_level}) depends on "
-                        f"{self._get_node_display_name(edge.to_id)} "
+                        f"{self.get_node_display_name(edge.to_id)} "
                         f"(level {dep_node.hierarchy_level})"
                     )
 

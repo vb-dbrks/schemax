@@ -24,7 +24,7 @@ class TestCatalogOperations:
     def test_add_catalog(self, empty_unity_state):
         """Test adding a catalog"""
         builder = OperationBuilder()
-        op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
+        op = builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001")
 
         new_state = apply_operation(empty_unity_state, op)
 
@@ -36,7 +36,7 @@ class TestCatalogOperations:
     def test_rename_catalog(self, sample_unity_state):
         """Test renaming a catalog"""
         builder = OperationBuilder()
-        op = builder.rename_catalog("cat_123", "silver", "bronze", op_id="op_002")
+        op = builder.catalog.rename_catalog("cat_123", "silver", "bronze", op_id="op_002")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -45,7 +45,7 @@ class TestCatalogOperations:
     def test_drop_catalog(self, sample_unity_state):
         """Test dropping a catalog"""
         builder = OperationBuilder()
-        op = builder.drop_catalog("cat_123", op_id="op_003")
+        op = builder.catalog.drop_catalog("cat_123", op_id="op_003")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -59,11 +59,11 @@ class TestSchemaOperations:
         """Test adding a schema"""
         builder = OperationBuilder()
         # First add a catalog
-        catalog_op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
+        catalog_op = builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001")
         state = apply_operation(empty_unity_state, catalog_op)
 
         # Then add a schema
-        schema_op = builder.add_schema("schema_456", "raw", "cat_123", op_id="op_002")
+        schema_op = builder.schema.add_schema("schema_456", "raw", "cat_123", op_id="op_002")
         new_state = apply_operation(state, schema_op)
 
         assert len(new_state.catalogs[0].schemas) == 1
@@ -73,7 +73,7 @@ class TestSchemaOperations:
     def test_rename_schema(self, sample_unity_state):
         """Test renaming a schema"""
         builder = OperationBuilder()
-        op = builder.rename_schema("schema_456", "refined", "raw", op_id="op_002")
+        op = builder.schema.rename_schema("schema_456", "refined", "raw", op_id="op_002")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -104,13 +104,15 @@ class TestTableOperations:
         builder = OperationBuilder()
         # Setup: add catalog and schema
         ops = [
-            builder.add_catalog("cat_123", "bronze", op_id="op_001"),
-            builder.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
+            builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001"),
+            builder.schema.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
         ]
         state = apply_operations(empty_unity_state, ops)
 
         # Add table
-        table_op = builder.add_table("table_789", "users", "schema_456", "delta", op_id="op_003")
+        table_op = builder.table.add_table(
+            "table_789", "users", "schema_456", "delta", op_id="op_003"
+        )
         new_state = apply_operation(state, table_op)
 
         table = new_state.catalogs[0].schemas[0].tables[0]
@@ -121,7 +123,7 @@ class TestTableOperations:
     def test_rename_table(self, sample_unity_state):
         """Test renaming a table"""
         builder = OperationBuilder()
-        op = builder.rename_table("table_789", "customers", "users", op_id="op_004")
+        op = builder.table.rename_table("table_789", "customers", "users", op_id="op_004")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -147,7 +149,7 @@ class TestTableOperations:
     def test_set_table_comment(self, sample_unity_state):
         """Test setting table comment"""
         builder = OperationBuilder()
-        op = builder.set_table_comment("table_789", "User data table", op_id="op_006")
+        op = builder.table.set_table_comment("table_789", "User data table", op_id="op_006")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -157,7 +159,7 @@ class TestTableOperations:
     def test_set_table_property(self, sample_unity_state):
         """Test setting table property"""
         builder = OperationBuilder()
-        op = builder.set_table_property(
+        op = builder.table.set_table_property(
             "table_789", "delta.enableChangeDataFeed", "true", op_id="op_007"
         )
 
@@ -170,15 +172,75 @@ class TestTableOperations:
         """Test unsetting table property"""
         builder = OperationBuilder()
         # First set a property
-        set_op = builder.set_table_property("table_789", "testKey", "testValue", op_id="op_007")
+        set_op = builder.table.set_table_property(
+            "table_789", "testKey", "testValue", op_id="op_007"
+        )
         state = apply_operation(sample_unity_state, set_op)
 
         # Then unset it
-        unset_op = builder.unset_table_property("table_789", "testKey", op_id="op_008")
+        unset_op = builder.table.unset_table_property("table_789", "testKey", op_id="op_008")
         new_state = apply_operation(state, unset_op)
 
         table = new_state.catalogs[0].schemas[0].tables[0]
         assert "testKey" not in table.properties
+
+    def test_set_table_tag(self, sample_unity_state):
+        """Test setting table tag"""
+        builder = OperationBuilder()
+        op = builder.table.set_table_tag("table_789", "env", "dev", op_id="op_tag_1")
+
+        new_state = apply_operation(sample_unity_state, op)
+
+        table = new_state.catalogs[0].schemas[0].tables[0]
+        assert table.tags["env"] == "dev"
+
+    def test_unset_table_tag(self, sample_unity_state):
+        """Test unsetting table tag"""
+        builder = OperationBuilder()
+        set_op = builder.table.set_table_tag("table_789", "env", "dev", op_id="op_tag_1")
+        state = apply_operation(sample_unity_state, set_op)
+
+        unset_op = builder.table.unset_table_tag("table_789", "env", op_id="op_tag_2")
+        new_state = apply_operation(state, unset_op)
+
+        table = new_state.catalogs[0].schemas[0].tables[0]
+        assert "env" not in table.tags
+
+    def test_set_table_tag_on_view(self, empty_unity_state):
+        """Test set_table_tag applies to view when target is view id (bulk table tag)."""
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.table.add_table("tbl_1", "t1", "sch_1", "delta", op_id="op_3"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", comment=None, op_id="op_4"),
+        ]
+        state_with_view = apply_operations(empty_unity_state, setup_ops)
+
+        tag_op = builder.table.set_table_tag("view_1", "department", "eng", op_id="op_5")
+        new_state = apply_operation(state_with_view, tag_op)
+
+        view = new_state.catalogs[0].schemas[0].views[0]
+        assert view.tags["department"] == "eng"
+
+    def test_unset_table_tag_on_view(self, empty_unity_state):
+        """Test unset_table_tag applies to view when target is view id."""
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.table.add_table("tbl_1", "t1", "sch_1", "delta", op_id="op_3"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", comment=None, op_id="op_4"),
+        ]
+        state_with_view = apply_operations(empty_unity_state, setup_ops)
+        set_op = builder.table.set_table_tag("view_1", "department", "eng", op_id="op_5")
+        state_tagged = apply_operation(state_with_view, set_op)
+
+        unset_op = builder.table.unset_table_tag("view_1", "department", op_id="op_6")
+        new_state = apply_operation(state_tagged, unset_op)
+
+        view = new_state.catalogs[0].schemas[0].views[0]
+        assert "department" not in view.tags
 
 
 class TestColumnOperations:
@@ -187,7 +249,7 @@ class TestColumnOperations:
     def test_add_column(self, sample_unity_state):
         """Test adding a column"""
         builder = OperationBuilder()
-        op = builder.add_column(
+        op = builder.column.add_column(
             "col_003",
             "table_789",
             "created_at",
@@ -210,7 +272,7 @@ class TestColumnOperations:
     def test_rename_column(self, sample_unity_state):
         """Test renaming a column"""
         builder = OperationBuilder()
-        op = builder.rename_column("col_001", "table_789", "id", "user_id", op_id="op_010")
+        op = builder.column.rename_column("col_001", "table_789", "id", "user_id", op_id="op_010")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -221,7 +283,7 @@ class TestColumnOperations:
     def test_drop_column(self, sample_unity_state):
         """Test dropping a column"""
         builder = OperationBuilder()
-        op = builder.drop_column("col_002", "table_789", op_id="op_011")
+        op = builder.column.drop_column("col_002", "table_789", op_id="op_011")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -232,7 +294,7 @@ class TestColumnOperations:
     def test_reorder_columns(self, sample_unity_state):
         """Test reordering columns"""
         builder = OperationBuilder()
-        op = builder.reorder_columns("table_789", ["col_002", "col_001"], op_id="op_012")
+        op = builder.column.reorder_columns("table_789", ["col_002", "col_001"], op_id="op_012")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -243,7 +305,9 @@ class TestColumnOperations:
     def test_change_column_type(self, sample_unity_state):
         """Test changing column type"""
         builder = OperationBuilder()
-        op = builder.change_column_type("col_001", "table_789", "DECIMAL(18,0)", op_id="op_013")
+        op = builder.column.change_column_type(
+            "col_001", "table_789", "DECIMAL(18,0)", op_id="op_013"
+        )
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -254,7 +318,7 @@ class TestColumnOperations:
     def test_set_nullable(self, sample_unity_state):
         """Test setting column nullable"""
         builder = OperationBuilder()
-        op = builder.set_nullable("col_001", "table_789", True, op_id="op_014")
+        op = builder.column.set_nullable("col_001", "table_789", True, op_id="op_014")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -265,7 +329,9 @@ class TestColumnOperations:
     def test_set_column_comment(self, sample_unity_state):
         """Test setting column comment"""
         builder = OperationBuilder()
-        op = builder.set_column_comment("col_001", "table_789", "Updated comment", op_id="op_015")
+        op = builder.column.set_column_comment(
+            "col_001", "table_789", "Updated comment", op_id="op_015"
+        )
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -280,7 +346,7 @@ class TestColumnTagOperations:
     def test_set_column_tag(self, sample_unity_state):
         """Test setting column tag"""
         builder = OperationBuilder()
-        op = builder.set_column_tag("col_001", "table_789", "PII", "true", op_id="op_016")
+        op = builder.column.set_column_tag("col_001", "table_789", "PII", "true", op_id="op_016")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -293,8 +359,8 @@ class TestColumnTagOperations:
         """Test setting multiple column tags"""
         builder = OperationBuilder()
         ops = [
-            builder.set_column_tag("col_001", "table_789", "PII", "true", op_id="op_016"),
-            builder.set_column_tag(
+            builder.column.set_column_tag("col_001", "table_789", "PII", "true", op_id="op_016"),
+            builder.column.set_column_tag(
                 "col_001", "table_789", "classification", "sensitive", op_id="op_017"
             ),
         ]
@@ -311,11 +377,13 @@ class TestColumnTagOperations:
         """Test unsetting column tag"""
         builder = OperationBuilder()
         # First set a tag
-        set_op = builder.set_column_tag("col_001", "table_789", "PII", "true", op_id="op_016")
+        set_op = builder.column.set_column_tag(
+            "col_001", "table_789", "PII", "true", op_id="op_016"
+        )
         state = apply_operation(sample_unity_state, set_op)
 
         # Then unset it
-        unset_op = builder.unset_column_tag("col_001", "table_789", "PII", op_id="op_017")
+        unset_op = builder.column.unset_column_tag("col_001", "table_789", "PII", op_id="op_017")
         new_state = apply_operation(state, unset_op)
 
         table = new_state.catalogs[0].schemas[0].tables[0]
@@ -329,7 +397,7 @@ class TestConstraintOperations:
     def test_add_primary_key_constraint(self, sample_unity_state):
         """Test adding primary key constraint"""
         builder = OperationBuilder()
-        op = builder.add_constraint(
+        op = builder.constraint.add_constraint(
             "constraint_001",
             "table_789",
             "primary_key",
@@ -351,7 +419,7 @@ class TestConstraintOperations:
     def test_add_foreign_key_constraint(self, sample_unity_state):
         """Test adding foreign key constraint"""
         builder = OperationBuilder()
-        op = builder.add_constraint(
+        op = builder.constraint.add_constraint(
             "constraint_002",
             "table_789",
             "foreign_key",
@@ -373,7 +441,7 @@ class TestConstraintOperations:
     def test_add_check_constraint(self, sample_unity_state):
         """Test adding CHECK constraint"""
         builder = OperationBuilder()
-        op = builder.add_constraint(
+        op = builder.constraint.add_constraint(
             "constraint_003",
             "table_789",
             "check",
@@ -394,7 +462,7 @@ class TestConstraintOperations:
         """Test dropping constraint"""
         builder = OperationBuilder()
         # First add a constraint
-        add_op = builder.add_constraint(
+        add_op = builder.constraint.add_constraint(
             "constraint_001", "table_789", "primary_key", ["col_001"], op_id="op_018"
         )
         state = apply_operation(sample_unity_state, add_op)
@@ -420,7 +488,7 @@ class TestRowFilterOperations:
     def test_add_row_filter(self, sample_unity_state):
         """Test adding row filter"""
         builder = OperationBuilder()
-        op = builder.add_row_filter(
+        op = builder.row_filter.add_row_filter(
             "filter_001",
             "table_789",
             "region_filter",
@@ -443,7 +511,7 @@ class TestRowFilterOperations:
         """Test updating row filter"""
         builder = OperationBuilder()
         # First add a filter
-        add_op = builder.add_row_filter(
+        add_op = builder.row_filter.add_row_filter(
             "filter_001",
             "table_789",
             "region_filter",
@@ -454,7 +522,7 @@ class TestRowFilterOperations:
         state = apply_operation(sample_unity_state, add_op)
 
         # Then update it
-        update_op = builder.update_row_filter(
+        update_op = builder.row_filter.update_row_filter(
             "filter_001",
             "table_789",
             udfExpression="region = current_user() AND active = true",
@@ -472,7 +540,7 @@ class TestRowFilterOperations:
         """Test removing row filter"""
         builder = OperationBuilder()
         # First add a filter
-        add_op = builder.add_row_filter(
+        add_op = builder.row_filter.add_row_filter(
             "filter_001",
             "table_789",
             "region_filter",
@@ -483,7 +551,7 @@ class TestRowFilterOperations:
         state = apply_operation(sample_unity_state, add_op)
 
         # Then remove it
-        remove_op = builder.remove_row_filter("filter_001", "table_789", op_id="op_022")
+        remove_op = builder.row_filter.remove_row_filter("filter_001", "table_789", op_id="op_022")
         new_state = apply_operation(state, remove_op)
 
         table = new_state.catalogs[0].schemas[0].tables[0]
@@ -496,7 +564,7 @@ class TestGrantOperations:
     def test_add_grant_on_catalog(self, sample_unity_state):
         """Test adding a grant on a catalog"""
         builder = OperationBuilder()
-        op = builder.add_grant(
+        op = builder.grant.add_grant(
             "catalog",
             "cat_123",
             "data_engineers",
@@ -512,7 +580,7 @@ class TestGrantOperations:
     def test_add_grant_on_table(self, sample_unity_state):
         """Test adding a grant on a table"""
         builder = OperationBuilder()
-        op = builder.add_grant(
+        op = builder.grant.add_grant(
             "table",
             "table_789",
             "analysts",
@@ -528,9 +596,9 @@ class TestGrantOperations:
     def test_add_grant_merge_principal(self, sample_unity_state):
         """Test that add_grant for same principal replaces privileges"""
         builder = OperationBuilder()
-        add1 = builder.add_grant("table", "table_789", "analysts", ["SELECT"], op_id="op_g1")
+        add1 = builder.grant.add_grant("table", "table_789", "analysts", ["SELECT"], op_id="op_g1")
         state = apply_operation(sample_unity_state, add1)
-        add2 = builder.add_grant(
+        add2 = builder.grant.add_grant(
             "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g2"
         )
         new_state = apply_operation(state, add2)
@@ -541,11 +609,11 @@ class TestGrantOperations:
     def test_revoke_grant_all(self, sample_unity_state):
         """Test revoking all privileges for a principal"""
         builder = OperationBuilder()
-        add_op = builder.add_grant(
+        add_op = builder.grant.add_grant(
             "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g1"
         )
         state = apply_operation(sample_unity_state, add_op)
-        revoke_op = builder.revoke_grant(
+        revoke_op = builder.grant.revoke_grant(
             "table", "table_789", "analysts", privileges=None, op_id="op_g2"
         )
         new_state = apply_operation(state, revoke_op)
@@ -555,11 +623,11 @@ class TestGrantOperations:
     def test_revoke_grant_partial(self, sample_unity_state):
         """Test revoking only some privileges for a principal"""
         builder = OperationBuilder()
-        add_op = builder.add_grant(
+        add_op = builder.grant.add_grant(
             "table", "table_789", "analysts", ["SELECT", "MODIFY", "READ VOLUME"], op_id="op_g1"
         )
         state = apply_operation(sample_unity_state, add_op)
-        revoke_op = builder.revoke_grant(
+        revoke_op = builder.grant.revoke_grant(
             "table", "table_789", "analysts", privileges=["MODIFY"], op_id="op_g2"
         )
         new_state = apply_operation(state, revoke_op)
@@ -574,7 +642,7 @@ class TestColumnMaskOperations:
     def test_add_column_mask(self, sample_unity_state):
         """Test adding column mask"""
         builder = OperationBuilder()
-        op = builder.add_column_mask(
+        op = builder.column_mask.add_column_mask(
             "mask_001",
             "table_789",
             "col_002",
@@ -602,7 +670,7 @@ class TestColumnMaskOperations:
         """Test updating column mask"""
         builder = OperationBuilder()
         # First add a mask
-        add_op = builder.add_column_mask(
+        add_op = builder.column_mask.add_column_mask(
             "mask_001",
             "table_789",
             "col_002",
@@ -614,7 +682,7 @@ class TestColumnMaskOperations:
         state = apply_operation(sample_unity_state, add_op)
 
         # Then update it
-        update_op = builder.update_column_mask(
+        update_op = builder.column_mask.update_column_mask(
             "mask_001", "table_789", enabled=False, maskFunction="MASK(email, '*')", op_id="op_024"
         )
         new_state = apply_operation(state, update_op)
@@ -628,7 +696,7 @@ class TestColumnMaskOperations:
         """Test removing column mask"""
         builder = OperationBuilder()
         # First add a mask
-        add_op = builder.add_column_mask(
+        add_op = builder.column_mask.add_column_mask(
             "mask_001",
             "table_789",
             "col_002",
@@ -640,7 +708,7 @@ class TestColumnMaskOperations:
         state = apply_operation(sample_unity_state, add_op)
 
         # Then remove it
-        remove_op = builder.remove_column_mask("mask_001", "table_789", op_id="op_024")
+        remove_op = builder.column_mask.remove_column_mask("mask_001", "table_789", op_id="op_024")
         new_state = apply_operation(state, remove_op)
 
         table = new_state.catalogs[0].schemas[0].tables[0]
@@ -660,7 +728,7 @@ class TestStateImmutability:
         original_catalog_count = len(sample_unity_state.catalogs)
         original_catalog_name = sample_unity_state.catalogs[0].name
 
-        op = builder.rename_catalog("cat_123", "modified", "bronze", op_id="op_001")
+        op = builder.catalog.rename_catalog("cat_123", "modified", "bronze", op_id="op_001")
 
         new_state = apply_operation(sample_unity_state, op)
 
@@ -691,13 +759,13 @@ class TestOperationSequences:
         builder = OperationBuilder()
         ops = [
             # Create catalog
-            builder.add_catalog("cat_123", "production", op_id="op_001"),
+            builder.catalog.add_catalog("cat_123", "production", op_id="op_001"),
             # Create schema
-            builder.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
+            builder.schema.add_schema("schema_456", "analytics", "cat_123", op_id="op_002"),
             # Create table
-            builder.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
+            builder.table.add_table("table_789", "events", "schema_456", "delta", op_id="op_003"),
             # Add columns
-            builder.add_column(
+            builder.column.add_column(
                 "col_001",
                 "table_789",
                 "event_id",
@@ -706,7 +774,7 @@ class TestOperationSequences:
                 comment="None",
                 op_id="op_004",
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_002",
                 "table_789",
                 "user_email",
@@ -716,13 +784,13 @@ class TestOperationSequences:
                 op_id="op_005",
             ),
             # Add PK constraint
-            builder.add_constraint(
+            builder.constraint.add_constraint(
                 "constraint_001", "table_789", "primary_key", ["col_001"], op_id="op_006"
             ),
             # Add column tag
-            builder.set_column_tag("col_002", "table_789", "PII", "true", op_id="op_007"),
+            builder.column.set_column_tag("col_002", "table_789", "PII", "true", op_id="op_007"),
             # Add column mask
-            builder.add_column_mask(
+            builder.column_mask.add_column_mask(
                 "mask_001",
                 "table_789",
                 "col_002",
@@ -761,7 +829,7 @@ class TestVolumeOperations:
     def test_add_volume(self, sample_unity_state):
         """Test adding a volume"""
         builder = OperationBuilder()
-        op = builder.add_volume(
+        op = builder.volume.add_volume(
             "vol_001", "my_volume", "schema_456", "managed", comment="Data volume", op_id="op_v1"
         )
         new_state = apply_operation(sample_unity_state, op)
@@ -775,27 +843,29 @@ class TestVolumeOperations:
     def test_rename_volume(self, sample_unity_state):
         """Test renaming a volume"""
         builder = OperationBuilder()
-        add_op = builder.add_volume("vol_001", "old_vol", "schema_456", op_id="op_v1")
+        add_op = builder.volume.add_volume("vol_001", "old_vol", "schema_456", op_id="op_v1")
         state = apply_operation(sample_unity_state, add_op)
-        rename_op = builder.rename_volume("vol_001", "new_vol", "old_vol", op_id="op_v2")
+        rename_op = builder.volume.rename_volume("vol_001", "new_vol", "old_vol", op_id="op_v2")
         new_state = apply_operation(state, rename_op)
         assert new_state.catalogs[0].schemas[0].volumes[0].name == "new_vol"
 
     def test_update_volume(self, sample_unity_state):
         """Test updating a volume"""
         builder = OperationBuilder()
-        add_op = builder.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
+        add_op = builder.volume.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
         state = apply_operation(sample_unity_state, add_op)
-        update_op = builder.update_volume("vol_001", comment="Updated comment", op_id="op_v2")
+        update_op = builder.volume.update_volume(
+            "vol_001", comment="Updated comment", op_id="op_v2"
+        )
         new_state = apply_operation(state, update_op)
         assert new_state.catalogs[0].schemas[0].volumes[0].comment == "Updated comment"
 
     def test_drop_volume(self, sample_unity_state):
         """Test dropping a volume"""
         builder = OperationBuilder()
-        add_op = builder.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
+        add_op = builder.volume.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
         state = apply_operation(sample_unity_state, add_op)
-        drop_op = builder.drop_volume("vol_001", op_id="op_v2")
+        drop_op = builder.volume.drop_volume("vol_001", op_id="op_v2")
         new_state = apply_operation(state, drop_op)
         assert len(new_state.catalogs[0].schemas[0].volumes) == 0
 
@@ -806,7 +876,7 @@ class TestFunctionOperations:
     def test_add_function(self, sample_unity_state):
         """Test adding a function"""
         builder = OperationBuilder()
-        op = builder.add_function(
+        op = builder.function.add_function(
             "func_001",
             "my_func",
             "schema_456",
@@ -828,22 +898,22 @@ class TestFunctionOperations:
     def test_rename_function(self, sample_unity_state):
         """Test renaming a function"""
         builder = OperationBuilder()
-        add_op = builder.add_function(
+        add_op = builder.function.add_function(
             "func_001", "old_fn", "schema_456", "SQL", "INT", "RETURN 1", op_id="op_f1"
         )
         state = apply_operation(sample_unity_state, add_op)
-        rename_op = builder.rename_function("func_001", "new_fn", "old_fn", op_id="op_f2")
+        rename_op = builder.function.rename_function("func_001", "new_fn", "old_fn", op_id="op_f2")
         new_state = apply_operation(state, rename_op)
         assert new_state.catalogs[0].schemas[0].functions[0].name == "new_fn"
 
     def test_drop_function(self, sample_unity_state):
         """Test dropping a function"""
         builder = OperationBuilder()
-        add_op = builder.add_function(
+        add_op = builder.function.add_function(
             "func_001", "my_fn", "schema_456", "SQL", "INT", "RETURN 1", op_id="op_f1"
         )
         state = apply_operation(sample_unity_state, add_op)
-        drop_op = builder.drop_function("func_001", op_id="op_f2")
+        drop_op = builder.function.drop_function("func_001", op_id="op_f2")
         new_state = apply_operation(state, drop_op)
         assert len(new_state.catalogs[0].schemas[0].functions) == 0
 
@@ -854,7 +924,7 @@ class TestMaterializedViewOperations:
     def test_add_materialized_view(self, sample_unity_state):
         """Test adding a materialized view"""
         builder = OperationBuilder()
-        op = builder.add_materialized_view(
+        op = builder.materialized_view.add_materialized_view(
             "mv_001",
             "my_mv",
             "schema_456",
@@ -873,21 +943,23 @@ class TestMaterializedViewOperations:
     def test_rename_materialized_view(self, sample_unity_state):
         """Test renaming a materialized view"""
         builder = OperationBuilder()
-        add_op = builder.add_materialized_view(
+        add_op = builder.materialized_view.add_materialized_view(
             "mv_001", "old_mv", "schema_456", "SELECT 1", op_id="op_mv1"
         )
         state = apply_operation(sample_unity_state, add_op)
-        rename_op = builder.rename_materialized_view("mv_001", "new_mv", "old_mv", op_id="op_mv2")
+        rename_op = builder.materialized_view.rename_materialized_view(
+            "mv_001", "new_mv", "old_mv", op_id="op_mv2"
+        )
         new_state = apply_operation(state, rename_op)
         assert new_state.catalogs[0].schemas[0].materialized_views[0].name == "new_mv"
 
     def test_drop_materialized_view(self, sample_unity_state):
         """Test dropping a materialized view"""
         builder = OperationBuilder()
-        add_op = builder.add_materialized_view(
+        add_op = builder.materialized_view.add_materialized_view(
             "mv_001", "my_mv", "schema_456", "SELECT 1", op_id="op_mv1"
         )
         state = apply_operation(sample_unity_state, add_op)
-        drop_op = builder.drop_materialized_view("mv_001", op_id="op_mv2")
+        drop_op = builder.materialized_view.drop_materialized_view("mv_001", op_id="op_mv2")
         new_state = apply_operation(state, drop_op)
         assert len(new_state.catalogs[0].schemas[0].materialized_views) == 0

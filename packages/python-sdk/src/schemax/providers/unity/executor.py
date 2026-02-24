@@ -20,8 +20,6 @@ console = Console()
 class ExecutionError(Exception):
     """Raised when SQL execution fails"""
 
-    pass
-
 
 class UnitySQLExecutor:
     """Execute SQL statements against Databricks Unity Catalog
@@ -216,7 +214,7 @@ class UnitySQLExecutor:
                         result_data=result_data,
                     )
 
-                elif state == StatementState.FAILED:
+                if state == StatementState.FAILED:
                     error = status_response.status.error
                     error_msg = error.message if error else "Unknown error"
 
@@ -229,7 +227,7 @@ class UnitySQLExecutor:
                         rows_affected=None,
                     )
 
-                elif state == StatementState.CANCELED:
+                if state == StatementState.CANCELED:
                     return StatementResult(
                         statement_id=statement_id or "",
                         sql=sql,

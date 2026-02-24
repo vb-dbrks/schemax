@@ -115,14 +115,14 @@ def test_e2e_ui_equivalent_state_to_cli_to_live_apply_rollback(tmp_path: Path) -
         append_ops(
             workspace,
             [
-                builder.add_table(
+                builder.table.add_table(
                     table_id,
                     table_name,
                     schema_id,
                     "delta",
                     op_id=f"op_table_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_id_{suffix}",
                     table_id,
                     "id",
@@ -130,7 +130,7 @@ def test_e2e_ui_equivalent_state_to_cli_to_live_apply_rollback(tmp_path: Path) -
                     nullable=False,
                     op_id=f"op_col_id_{suffix}",
                 ),
-                builder.add_volume(
+                builder.volume.add_volume(
                     vol_id,
                     volume_name,
                     schema_id,
@@ -138,7 +138,7 @@ def test_e2e_ui_equivalent_state_to_cli_to_live_apply_rollback(tmp_path: Path) -
                     comment="E2E volume",
                     op_id=f"op_vol_{suffix}",
                 ),
-                builder.add_function(
+                builder.function.add_function(
                     func_id,
                     function_name,
                     schema_id,

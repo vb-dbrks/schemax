@@ -1,8 +1,8 @@
 """
 Operation builders for tests
 
-Provides a clean, fluent API for creating operations in tests without verbose boilerplate.
-All methods use the create_operation() helper with provider="unity" pre-configured.
+Domain builders (CatalogOpBuilder, SchemaOpBuilder, etc.) each handle one object kind.
+OperationBuilder is a container: use builder.catalog.add_catalog(...), builder.schema.add_schema(...), etc.
 """
 
 from typing import Any, Literal
@@ -10,36 +10,33 @@ from typing import Any, Literal
 from schemax.providers.base.operations import Operation, create_operation
 
 
-class OperationBuilder:
-    """
-    Builder for creating Unity Catalog operations in tests.
+class CatalogOpBuilder:
+    """Builds catalog operations (add, rename, drop)."""
 
-    Usage:
-        builder = OperationBuilder()
-        op = builder.add_catalog("cat_123", "bronze")
-
-        # Or with custom operation ID:
-        op = builder.add_catalog("cat_123", "bronze", op_id="op_001")
-    """
-
-    def __init__(self, provider: str = "unity"):
+    def __init__(self, provider: str = "unity") -> None:
         self.provider = provider
 
-    # Catalog Operations
-    def add_catalog(self, catalog_id: str, name: str, op_id: str | None = None) -> Operation:
-        """Create an add_catalog operation"""
+    def add_catalog(
+        self,
+        catalog_id: str,
+        name: str,
+        op_id: str | None = None,
+        managed_location_name: str | None = None,
+    ) -> Operation:
+        payload: dict[str, Any] = {"catalogId": catalog_id, "name": name}
+        if managed_location_name is not None:
+            payload["managedLocationName"] = managed_location_name
         return create_operation(
             provider=self.provider,
             op_type="add_catalog",
             target=catalog_id,
-            payload={"catalogId": catalog_id, "name": name},
+            payload=payload,
             op_id=op_id,
         )
 
     def rename_catalog(
         self, catalog_id: str, new_name: str, old_name: str, op_id: str | None = None
     ) -> Operation:
-        """Create a rename_catalog operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_catalog",
@@ -49,7 +46,6 @@ class OperationBuilder:
         )
 
     def drop_catalog(self, catalog_id: str, op_id: str | None = None) -> Operation:
-        """Create a drop_catalog operation"""
         return create_operation(
             provider=self.provider,
             op_type="drop_catalog",
@@ -58,11 +54,16 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Schema Operations
+
+class SchemaOpBuilder:
+    """Builds schema operations (add, rename, drop)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_schema(
         self, schema_id: str, name: str, catalog_id: str, op_id: str | None = None
     ) -> Operation:
-        """Create an add_schema operation"""
         return create_operation(
             provider=self.provider,
             op_type="add_schema",
@@ -74,7 +75,6 @@ class OperationBuilder:
     def rename_schema(
         self, schema_id: str, new_name: str, old_name: str, op_id: str | None = None
     ) -> Operation:
-        """Create a rename_schema operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_schema",
@@ -84,7 +84,6 @@ class OperationBuilder:
         )
 
     def drop_schema(self, schema_id: str, op_id: str | None = None) -> Operation:
-        """Create a drop_schema operation"""
         return create_operation(
             provider=self.provider,
             op_type="drop_schema",
@@ -93,22 +92,27 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Table Operations
+
+class TableOpBuilder:
+    """Builds table operations (add, rename, drop, comment, properties, tags)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_table(
         self,
         table_id: str,
         name: str,
         schema_id: str,
-        format: Literal["delta", "iceberg"] = "delta",
+        table_format: Literal["delta", "iceberg"] = "delta",
         comment: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_table operation"""
         payload: dict[str, Any] = {
             "tableId": table_id,
             "name": name,
             "schemaId": schema_id,
-            "format": format,
+            "format": table_format,
         }
         if comment is not None:
             payload["comment"] = comment
@@ -123,7 +127,6 @@ class OperationBuilder:
     def rename_table(
         self, table_id: str, new_name: str, old_name: str, op_id: str | None = None
     ) -> Operation:
-        """Create a rename_table operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_table",
@@ -133,7 +136,6 @@ class OperationBuilder:
         )
 
     def drop_table(self, table_id: str, op_id: str | None = None) -> Operation:
-        """Create a drop_table operation"""
         return create_operation(
             provider=self.provider,
             op_type="drop_table",
@@ -143,7 +145,6 @@ class OperationBuilder:
         )
 
     def set_table_comment(self, table_id: str, comment: str, op_id: str | None = None) -> Operation:
-        """Create a set_table_comment operation"""
         return create_operation(
             provider=self.provider,
             op_type="set_table_comment",
@@ -155,7 +156,6 @@ class OperationBuilder:
     def set_table_property(
         self, table_id: str, key: str, value: str, op_id: str | None = None
     ) -> Operation:
-        """Create a set_table_property operation"""
         return create_operation(
             provider=self.provider,
             op_type="set_table_property",
@@ -165,7 +165,6 @@ class OperationBuilder:
         )
 
     def unset_table_property(self, table_id: str, key: str, op_id: str | None = None) -> Operation:
-        """Create an unset_table_property operation"""
         return create_operation(
             provider=self.provider,
             op_type="unset_table_property",
@@ -177,7 +176,6 @@ class OperationBuilder:
     def set_table_tag(
         self, table_id: str, tag_name: str, tag_value: str, op_id: str | None = None
     ) -> Operation:
-        """Create a set_table_tag operation"""
         return create_operation(
             provider=self.provider,
             op_type="set_table_tag",
@@ -187,7 +185,6 @@ class OperationBuilder:
         )
 
     def unset_table_tag(self, table_id: str, tag_name: str, op_id: str | None = None) -> Operation:
-        """Create an unset_table_tag operation"""
         return create_operation(
             provider=self.provider,
             op_type="unset_table_tag",
@@ -196,23 +193,28 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Column Operations
+
+class ColumnOpBuilder:
+    """Builds column operations (add, rename, drop, reorder, type, nullable, comment, tags)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_column(
         self,
         col_id: str,
         table_id: str,
         name: str,
-        type: str,
+        col_type: str,
         nullable: bool = True,
         comment: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_column operation"""
-        payload = {
+        payload: dict[str, Any] = {
             "tableId": table_id,
             "colId": col_id,
             "name": name,
-            "type": type,
+            "type": col_type,
             "nullable": nullable,
         }
         if comment is not None:
@@ -233,7 +235,6 @@ class OperationBuilder:
         old_name: str,
         op_id: str | None = None,
     ) -> Operation:
-        """Create a rename_column operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_column",
@@ -243,7 +244,6 @@ class OperationBuilder:
         )
 
     def drop_column(self, col_id: str, table_id: str, op_id: str | None = None) -> Operation:
-        """Create a drop_column operation"""
         return create_operation(
             provider=self.provider,
             op_type="drop_column",
@@ -255,7 +255,6 @@ class OperationBuilder:
     def reorder_columns(
         self, table_id: str, order: list[str], op_id: str | None = None
     ) -> Operation:
-        """Create a reorder_columns operation"""
         return create_operation(
             provider=self.provider,
             op_type="reorder_columns",
@@ -267,7 +266,6 @@ class OperationBuilder:
     def change_column_type(
         self, col_id: str, table_id: str, new_type: str, op_id: str | None = None
     ) -> Operation:
-        """Create a change_column_type operation"""
         return create_operation(
             provider=self.provider,
             op_type="change_column_type",
@@ -279,7 +277,6 @@ class OperationBuilder:
     def set_nullable(
         self, col_id: str, table_id: str, nullable: bool, op_id: str | None = None
     ) -> Operation:
-        """Create a set_nullable operation"""
         return create_operation(
             provider=self.provider,
             op_type="set_nullable",
@@ -291,7 +288,6 @@ class OperationBuilder:
     def set_column_comment(
         self, col_id: str, table_id: str, comment: str, op_id: str | None = None
     ) -> Operation:
-        """Create a set_column_comment operation"""
         return create_operation(
             provider=self.provider,
             op_type="set_column_comment",
@@ -300,23 +296,29 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Column Tag Operations
     def set_column_tag(
-        self, col_id: str, table_id: str, tag_name: str, tag_value: str, op_id: str | None = None
+        self,
+        col_id: str,
+        table_id: str,
+        tag_name: str,
+        tag_value: str,
+        op_id: str | None = None,
     ) -> Operation:
-        """Create a set_column_tag operation"""
         return create_operation(
             provider=self.provider,
             op_type="set_column_tag",
             target=col_id,
-            payload={"tableId": table_id, "tagName": tag_name, "tagValue": tag_value},
+            payload={
+                "tableId": table_id,
+                "tagName": tag_name,
+                "tagValue": tag_value,
+            },
             op_id=op_id,
         )
 
     def unset_column_tag(
         self, col_id: str, table_id: str, tag_name: str, op_id: str | None = None
     ) -> Operation:
-        """Create an unset_column_tag operation"""
         return create_operation(
             provider=self.provider,
             op_type="unset_column_tag",
@@ -325,30 +327,27 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Constraint Operations
+
+class ConstraintOpBuilder:
+    """Builds constraint operations (add, drop)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_constraint(
         self,
         constraint_id: str,
         table_id: str,
-        type: Literal["primary_key", "foreign_key", "check"],
+        constraint_type: Literal["primary_key", "foreign_key", "check"],
         columns: list[str],
         name: str | None = None,
         op_id: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Operation:
-        """
-        Create an add_constraint operation
-
-        For PRIMARY KEY: can include timeseries=True
-        For FOREIGN KEY: requires parentTable, parentColumns
-        For CHECK: requires expression
-
-        Note: Unity Catalog constraints are informational only (not enforced).
-        """
-        payload = {
+        payload: dict[str, Any] = {
             "tableId": table_id,
             "constraintId": constraint_id,
-            "type": type,
+            "type": constraint_type,
             "columns": columns,
         }
         if name:
@@ -363,10 +362,13 @@ class OperationBuilder:
         )
 
     def drop_constraint(
-        self, constraint_id: str, table_id: str, op_id: str | None = None, **kwargs
+        self,
+        constraint_id: str,
+        table_id: str,
+        op_id: str | None = None,
+        **kwargs: Any,
     ) -> Operation:
-        """Create a drop_constraint operation"""
-        payload = {"tableId": table_id}
+        payload: dict[str, Any] = {"tableId": table_id}
         payload.update(kwargs)
         return create_operation(
             provider=self.provider,
@@ -376,7 +378,13 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Row Filter Operations
+
+class RowFilterOpBuilder:
+    """Builds row filter operations (add, update, remove)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_row_filter(
         self,
         filter_id: str,
@@ -387,8 +395,7 @@ class OperationBuilder:
         description: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_row_filter operation"""
-        payload = {
+        payload: dict[str, Any] = {
             "tableId": table_id,
             "filterId": filter_id,
             "name": name,
@@ -406,10 +413,9 @@ class OperationBuilder:
         )
 
     def update_row_filter(
-        self, filter_id: str, table_id: str, op_id: str | None = None, **kwargs
+        self, filter_id: str, table_id: str, op_id: str | None = None, **kwargs: Any
     ) -> Operation:
-        """Create an update_row_filter operation"""
-        payload = {"tableId": table_id}
+        payload: dict[str, Any] = {"tableId": table_id}
         payload.update(kwargs)
         return create_operation(
             provider=self.provider,
@@ -422,7 +428,6 @@ class OperationBuilder:
     def remove_row_filter(
         self, filter_id: str, table_id: str, op_id: str | None = None
     ) -> Operation:
-        """Create a remove_row_filter operation"""
         return create_operation(
             provider=self.provider,
             op_type="remove_row_filter",
@@ -431,7 +436,13 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Column Mask Operations
+
+class ColumnMaskOpBuilder:
+    """Builds column mask operations (add, update, remove)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_column_mask(
         self,
         mask_id: str,
@@ -443,8 +454,7 @@ class OperationBuilder:
         description: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_column_mask operation"""
-        payload = {
+        payload: dict[str, Any] = {
             "tableId": table_id,
             "maskId": mask_id,
             "columnId": column_id,
@@ -463,10 +473,9 @@ class OperationBuilder:
         )
 
     def update_column_mask(
-        self, mask_id: str, table_id: str, op_id: str | None = None, **kwargs
+        self, mask_id: str, table_id: str, op_id: str | None = None, **kwargs: Any
     ) -> Operation:
-        """Create an update_column_mask operation"""
-        payload = {"tableId": table_id}
+        payload: dict[str, Any] = {"tableId": table_id}
         payload.update(kwargs)
         return create_operation(
             provider=self.provider,
@@ -483,7 +492,6 @@ class OperationBuilder:
         column_id: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create a remove_column_mask operation"""
         payload: dict[str, str] = {"tableId": table_id}
         if column_id is not None:
             payload["columnId"] = column_id
@@ -495,7 +503,13 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Grant Operations
+
+class GrantOpBuilder:
+    """Builds grant operations (add, revoke)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_grant(
         self,
         target_type: Literal["catalog", "schema", "table", "view"],
@@ -504,7 +518,6 @@ class OperationBuilder:
         privileges: list[str],
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_grant operation"""
         return create_operation(
             provider=self.provider,
             op_type="add_grant",
@@ -526,7 +539,6 @@ class OperationBuilder:
         privileges: list[str] | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create a revoke_grant operation. privileges=None means revoke all."""
         payload: dict[str, Any] = {
             "targetType": target_type,
             "targetId": target_id,
@@ -542,7 +554,13 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # View Operations
+
+class ViewOpBuilder:
+    """Builds view operations (add, rename, drop, update)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_view(
         self,
         view_id: str,
@@ -553,8 +571,7 @@ class OperationBuilder:
         dependencies: list[str] | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_view operation"""
-        payload = {
+        payload: dict[str, Any] = {
             "viewId": view_id,
             "name": name,
             "schemaId": schema_id,
@@ -564,7 +581,6 @@ class OperationBuilder:
             payload["comment"] = comment
         if dependencies:
             payload["dependencies"] = dependencies
-
         return create_operation(
             provider=self.provider,
             op_type="add_view",
@@ -574,9 +590,8 @@ class OperationBuilder:
         )
 
     def rename_view(
-        self, view_id: str, new_name: str, old_name: str, op_id: str | None = None
+        self, view_id: str, new_name: str, _old_name: str, op_id: str | None = None
     ) -> Operation:
-        """Create a rename_view operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_view",
@@ -586,7 +601,6 @@ class OperationBuilder:
         )
 
     def drop_view(self, view_id: str, op_id: str | None = None) -> Operation:
-        """Create a drop_view operation"""
         return create_operation(
             provider=self.provider,
             op_type="drop_view",
@@ -603,15 +617,13 @@ class OperationBuilder:
         extracted_dependencies: dict[str, list[str]] | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an update_view operation"""
-        payload = {}
+        payload: dict[str, Any] = {}
         if definition:
             payload["definition"] = definition
         if dependencies:
             payload["dependencies"] = dependencies
         if extracted_dependencies:
             payload["extractedDependencies"] = extracted_dependencies
-
         return create_operation(
             provider=self.provider,
             op_type="update_view",
@@ -620,7 +632,13 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Volume Operations
+
+class VolumeOpBuilder:
+    """Builds volume operations (add, rename, update, drop)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_volume(
         self,
         volume_id: str,
@@ -631,7 +649,6 @@ class OperationBuilder:
         location: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_volume operation"""
         payload: dict[str, Any] = {
             "volumeId": volume_id,
             "name": name,
@@ -651,9 +668,8 @@ class OperationBuilder:
         )
 
     def rename_volume(
-        self, volume_id: str, new_name: str, old_name: str, op_id: str | None = None
+        self, volume_id: str, new_name: str, _old_name: str, op_id: str | None = None
     ) -> Operation:
-        """Create a rename_volume operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_volume",
@@ -669,7 +685,6 @@ class OperationBuilder:
         location: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an update_volume operation"""
         payload: dict[str, Any] = {}
         if comment is not None:
             payload["comment"] = comment
@@ -684,7 +699,6 @@ class OperationBuilder:
         )
 
     def drop_volume(self, volume_id: str, op_id: str | None = None) -> Operation:
-        """Create a drop_volume operation"""
         return create_operation(
             provider=self.provider,
             op_type="drop_volume",
@@ -693,7 +707,13 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Function Operations
+
+class FunctionOpBuilder:
+    """Builds function operations (add, rename, update, drop, comment)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_function(
         self,
         function_id: str,
@@ -706,7 +726,6 @@ class OperationBuilder:
         parameters: list[dict[str, Any]] | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_function operation"""
         payload: dict[str, Any] = {
             "functionId": function_id,
             "name": name,
@@ -728,9 +747,8 @@ class OperationBuilder:
         )
 
     def rename_function(
-        self, function_id: str, new_name: str, old_name: str, op_id: str | None = None
+        self, function_id: str, new_name: str, _old_name: str, op_id: str | None = None
     ) -> Operation:
-        """Create a rename_function operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_function",
@@ -746,7 +764,6 @@ class OperationBuilder:
         comment: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an update_function operation"""
         payload: dict[str, Any] = {}
         if body is not None:
             payload["body"] = body
@@ -761,7 +778,6 @@ class OperationBuilder:
         )
 
     def drop_function(self, function_id: str, op_id: str | None = None) -> Operation:
-        """Create a drop_function operation"""
         return create_operation(
             provider=self.provider,
             op_type="drop_function",
@@ -773,7 +789,6 @@ class OperationBuilder:
     def set_function_comment(
         self, function_id: str, comment: str, op_id: str | None = None
     ) -> Operation:
-        """Create a set_function_comment operation"""
         return create_operation(
             provider=self.provider,
             op_type="set_function_comment",
@@ -782,7 +797,13 @@ class OperationBuilder:
             op_id=op_id,
         )
 
-    # Materialized View Operations
+
+class MaterializedViewOpBuilder:
+    """Builds materialized view operations (add, rename, update, drop, comment)."""
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+
     def add_materialized_view(
         self,
         mv_id: str,
@@ -794,11 +815,6 @@ class OperationBuilder:
         extracted_dependencies: dict[str, list[str]] | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an add_materialized_view operation.
-
-        extracted_dependencies: optional {"tables": [...], "views": [...]} so SQL generator
-        orders table/view creation before the materialized view (same as UI-extracted deps).
-        """
         payload: dict[str, Any] = {
             "materializedViewId": mv_id,
             "name": name,
@@ -820,9 +836,8 @@ class OperationBuilder:
         )
 
     def rename_materialized_view(
-        self, mv_id: str, new_name: str, old_name: str, op_id: str | None = None
+        self, mv_id: str, new_name: str, _old_name: str, op_id: str | None = None
     ) -> Operation:
-        """Create a rename_materialized_view operation"""
         return create_operation(
             provider=self.provider,
             op_type="rename_materialized_view",
@@ -839,7 +854,6 @@ class OperationBuilder:
         refresh_schedule: str | None = None,
         op_id: str | None = None,
     ) -> Operation:
-        """Create an update_materialized_view operation"""
         payload: dict[str, Any] = {}
         if definition is not None:
             payload["definition"] = definition
@@ -856,7 +870,6 @@ class OperationBuilder:
         )
 
     def drop_materialized_view(self, mv_id: str, op_id: str | None = None) -> Operation:
-        """Create a drop_materialized_view operation"""
         return create_operation(
             provider=self.provider,
             op_type="drop_materialized_view",
@@ -868,7 +881,6 @@ class OperationBuilder:
     def set_materialized_view_comment(
         self, mv_id: str, comment: str, op_id: str | None = None
     ) -> Operation:
-        """Create a set_materialized_view_comment operation"""
         return create_operation(
             provider=self.provider,
             op_type="set_materialized_view_comment",
@@ -876,6 +888,29 @@ class OperationBuilder:
             payload={"materializedViewId": mv_id, "comment": comment},
             op_id=op_id,
         )
+
+
+class OperationBuilder:
+    """
+    Container of domain builders for Unity Catalog operations in tests.
+
+    Use builder.catalog.add_catalog(...), builder.schema.add_schema(...), etc.
+    """
+
+    def __init__(self, provider: str = "unity") -> None:
+        self.provider = provider
+        self.catalog = CatalogOpBuilder(provider)
+        self.schema = SchemaOpBuilder(provider)
+        self.table = TableOpBuilder(provider)
+        self.column = ColumnOpBuilder(provider)
+        self.constraint = ConstraintOpBuilder(provider)
+        self.row_filter = RowFilterOpBuilder(provider)
+        self.column_mask = ColumnMaskOpBuilder(provider)
+        self.grant = GrantOpBuilder(provider)
+        self.view = ViewOpBuilder(provider)
+        self.volume = VolumeOpBuilder(provider)
+        self.function = FunctionOpBuilder(provider)
+        self.materialized_view = MaterializedViewOpBuilder(provider)
 
 
 def make_operation_sequence(

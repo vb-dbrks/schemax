@@ -156,10 +156,10 @@ def test_live_e2e_apply_volume(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.add_table(
+                builder.table.add_table(
                     table_id, table_name, schema_id, "delta", op_id=f"op_table_vol_{suffix}"
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_id_vol_{suffix}",
                     table_id,
                     "event_id",
@@ -168,7 +168,7 @@ def test_live_e2e_apply_volume(tmp_path: Path) -> None:
                     comment="Event id",
                     op_id=f"op_col_id_vol_{suffix}",
                 ),
-                builder.add_column(
+                builder.column.add_column(
                     f"col_val_vol_{suffix}",
                     table_id,
                     "event_type",
@@ -177,7 +177,7 @@ def test_live_e2e_apply_volume(tmp_path: Path) -> None:
                     comment="Event type",
                     op_id=f"op_col_val_vol_{suffix}",
                 ),
-                builder.add_volume(
+                builder.volume.add_volume(
                     vol_id,
                     volume_name,
                     schema_id,

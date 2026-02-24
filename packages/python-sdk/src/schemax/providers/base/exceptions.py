@@ -6,8 +6,6 @@ Provider-level exceptions for schema operations
 class SchemaXProviderError(Exception):
     """Base exception for provider-level errors"""
 
-    pass
-
 
 class CircularDependencyError(SchemaXProviderError):
     """Raised when circular dependencies are detected in the dependency graph"""
@@ -19,17 +17,14 @@ class CircularDependencyError(SchemaXProviderError):
             cycle_str = " → ".join(cycle)
             cycle_strs.append(cycle_str)
 
-        message = "Circular dependencies detected:\n"
-        for cycle_str in cycle_strs:
-            message += f"  • {cycle_str}\n"
-
+        message = "Circular dependencies detected:\n" + "\n".join(
+            f"  • {cycle_str}" for cycle_str in cycle_strs
+        )
         super().__init__(message)
 
 
 class DependencyValidationError(SchemaXProviderError):
     """Raised when dependency validation fails"""
-
-    pass
 
 
 class MissingDependencyError(DependencyValidationError):

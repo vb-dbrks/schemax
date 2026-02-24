@@ -54,28 +54,27 @@ class SafetyValidator:
         # Dispatch to operation-specific validation
         if op_type == UNITY_OPERATIONS["DROP_CATALOG"]:
             return self._validate_drop_catalog(op, catalog_mapping)
-        elif op_type == UNITY_OPERATIONS["DROP_SCHEMA"]:
+        if op_type == UNITY_OPERATIONS["DROP_SCHEMA"]:
             return self._validate_drop_schema(op, catalog_mapping)
-        elif op_type == UNITY_OPERATIONS["DROP_TABLE"]:
+        if op_type == UNITY_OPERATIONS["DROP_TABLE"]:
             return self._validate_drop_table(op, catalog_mapping)
-        elif op_type == UNITY_OPERATIONS["DROP_VIEW"]:
+        if op_type == UNITY_OPERATIONS["DROP_VIEW"]:
             return self._safe_operation(op)
-        elif op_type == UNITY_OPERATIONS["DROP_VOLUME"]:
+        if op_type == UNITY_OPERATIONS["DROP_VOLUME"]:
             return self._safe_operation(op)
-        elif op_type == UNITY_OPERATIONS["DROP_FUNCTION"]:
+        if op_type == UNITY_OPERATIONS["DROP_FUNCTION"]:
             return self._safe_operation(op)
-        elif op_type == UNITY_OPERATIONS["DROP_MATERIALIZED_VIEW"]:
+        if op_type == UNITY_OPERATIONS["DROP_MATERIALIZED_VIEW"]:
             return self._safe_operation(op)
-        elif op_type == UNITY_OPERATIONS["DROP_COLUMN"]:
+        if op_type == UNITY_OPERATIONS["DROP_COLUMN"]:
             return self._validate_drop_column(op, catalog_mapping)
-        elif op_type == UNITY_OPERATIONS["CHANGE_COLUMN_TYPE"]:
+        if op_type == UNITY_OPERATIONS["CHANGE_COLUMN_TYPE"]:
             return self._validate_change_column_type(op, catalog_mapping)
-        elif op_type in (UNITY_OPERATIONS["ADD_GRANT"], UNITY_OPERATIONS["REVOKE_GRANT"]):
+        if op_type in (UNITY_OPERATIONS["ADD_GRANT"], UNITY_OPERATIONS["REVOKE_GRANT"]):
             # Grant operations are non-destructive (permission changes only)
             return self._safe_operation(op)
-        else:
-            # Non-destructive operations (renames, comments, tags, etc.)
-            return self._safe_operation(op)
+        # Non-destructive operations (renames, comments, tags, etc.)
+        return self._safe_operation(op)
 
     def _safe_operation(self, op: Operation) -> SafetyReport:
         """Mark operation as safe (no data loss)"""
@@ -109,12 +108,11 @@ class SafetyValidator:
                     reason=f"Catalog '{catalog_name}' is empty (0 schemas)",
                     data_at_risk=0,
                 )
-            else:
-                return SafetyReport(
-                    level=SafetyLevel.DESTRUCTIVE,
-                    reason=f"Catalog '{catalog_name}' contains {schema_count} schemas",
-                    data_at_risk=schema_count,
-                )
+            return SafetyReport(
+                level=SafetyLevel.DESTRUCTIVE,
+                reason=f"Catalog '{catalog_name}' contains {schema_count} schemas",
+                data_at_risk=schema_count,
+            )
         except Exception:
             # If catalog doesn't exist, it's safe to "drop"
             return SafetyReport(
@@ -158,18 +156,17 @@ class SafetyValidator:
                     reason=f"Schema '{catalog_name}.{schema_name}' is empty (0 tables)",
                     data_at_risk=0,
                 )
-            elif table_count < self.RISKY_THRESHOLD:
+            if table_count < self.RISKY_THRESHOLD:
                 return SafetyReport(
                     level=SafetyLevel.RISKY,
                     reason=f"Schema '{catalog_name}.{schema_name}' contains {table_count} tables",
                     data_at_risk=table_count,
                 )
-            else:
-                return SafetyReport(
-                    level=SafetyLevel.DESTRUCTIVE,
-                    reason=f"Schema '{catalog_name}.{schema_name}' contains {table_count} tables",
-                    data_at_risk=table_count,
-                )
+            return SafetyReport(
+                level=SafetyLevel.DESTRUCTIVE,
+                reason=f"Schema '{catalog_name}.{schema_name}' contains {table_count} tables",
+                data_at_risk=table_count,
+            )
         except Exception:
             return SafetyReport(
                 level=SafetyLevel.SAFE,
@@ -212,7 +209,7 @@ class SafetyValidator:
                     reason=f"Table {fully_qualified} is empty (0 rows)",
                     data_at_risk=0,
                 )
-            elif row_count < self.RISKY_THRESHOLD:
+            if row_count < self.RISKY_THRESHOLD:
                 # Get sample data for small tables
                 sample = self._query_sample(fully_qualified, limit=3)
                 return SafetyReport(
@@ -221,15 +218,14 @@ class SafetyValidator:
                     data_at_risk=row_count,
                     sample_data=sample,
                 )
-            else:
-                # Get sample data for large tables
-                sample = self._query_sample(fully_qualified, limit=5)
-                return SafetyReport(
-                    level=SafetyLevel.DESTRUCTIVE,
-                    reason=f"Table {fully_qualified} has {row_count:,} rows",
-                    data_at_risk=row_count,
-                    sample_data=sample,
-                )
+            # Get sample data for large tables
+            sample = self._query_sample(fully_qualified, limit=5)
+            return SafetyReport(
+                level=SafetyLevel.DESTRUCTIVE,
+                reason=f"Table {fully_qualified} has {row_count:,} rows",
+                data_at_risk=row_count,
+                sample_data=sample,
+            )
         except Exception as e:
             # Table doesn't exist or can't be queried - safe to "drop"
             return SafetyReport(
@@ -273,7 +269,7 @@ class SafetyValidator:
                     reason=f"Column `{column_name}` has all NULL values (no data loss)",
                     data_at_risk=0,
                 )
-            elif non_null_count < self.RISKY_THRESHOLD:
+            if non_null_count < self.RISKY_THRESHOLD:
                 # Sample non-NULL values
                 sample = self._query(
                     f"SELECT `{column_name}` FROM {fully_qualified} "
@@ -285,17 +281,16 @@ class SafetyValidator:
                     data_at_risk=non_null_count,
                     sample_data=sample,
                 )
-            else:
-                sample = self._query(
-                    f"SELECT `{column_name}` FROM {fully_qualified} "
-                    f"WHERE `{column_name}` IS NOT NULL LIMIT 5"
-                )
-                return SafetyReport(
-                    level=SafetyLevel.DESTRUCTIVE,
-                    reason=f"Column `{column_name}` has {non_null_count:,} non-NULL values",
-                    data_at_risk=non_null_count,
-                    sample_data=sample,
-                )
+            sample = self._query(
+                f"SELECT `{column_name}` FROM {fully_qualified} "
+                f"WHERE `{column_name}` IS NOT NULL LIMIT 5"
+            )
+            return SafetyReport(
+                level=SafetyLevel.DESTRUCTIVE,
+                reason=f"Column `{column_name}` has {non_null_count:,} non-NULL values",
+                data_at_risk=non_null_count,
+                sample_data=sample,
+            )
         except Exception as e:
             return SafetyReport(
                 level=SafetyLevel.SAFE,
@@ -304,7 +299,7 @@ class SafetyValidator:
             )
 
     def _validate_change_column_type(
-        self, op: Operation, catalog_mapping: dict[str, str] | None
+        self, _op: Operation, _catalog_mapping: dict[str, str] | None
     ) -> SafetyReport:
         """Validate CHANGE_COLUMN_TYPE operation
 

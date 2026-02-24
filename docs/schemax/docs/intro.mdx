@@ -1,6 +1,5 @@
 ---
 sidebar_position: 1
-slug: /
 title: Introduction
 ---
 
@@ -9,15 +8,15 @@ title: Introduction
 SchemaX is a **modern, low-touch, interactive schema migration and management tool** for data catalogs. It's **Git- and CI/CD-friendly**: you design schemas in the VS Code designer or define them in code, store changes as versioned operations and snapshots, and generate or apply SQL per environment. Use it in **full mode** (create and manage catalogs, schemas, tables, and governance) or **governance-only mode** (comments, tags, grants, row filters, column masks on existing objects). Unity Catalog is supported today; Hive and PostgreSQL are planned.
 
 :::tip Choose your path
-**New here?** Start with [Prerequisites](guide/prerequisites) and [Quickstart](guide/quickstart).  
-**Only need CI/CD?** Go to [Git and CI/CD setup](guide/git-and-cicd-setup) to run SchemaX in Azure DevOps or GitHub Actions (non-interactive).
+**New here?** Start with [Prerequisites](/docs/guide/prerequisites) and [Quickstart](/docs/guide/quickstart).  
+**Only need CI/CD?** Go to [Git and CI/CD setup](/docs/guide/git-and-cicd-setup) to run SchemaX in Azure DevOps or GitHub Actions (non-interactive).
 :::
 
 :::info Distribution
 SchemaX is **open source** (not a Databricks Labs project). When published:
 - **Python SDK & CLI** → [PyPI](https://pypi.org/project/schemaxpy/) (`pip install schemaxpy`)
 - **VS Code extension** → [VS Code Marketplace](https://marketplace.visualstudio.com/) (search "SchemaX")
-Until then, install from source (see [Quickstart](guide/quickstart) and [Development](guide/development)).
+Until then, install from source (see [Quickstart](/docs/guide/quickstart) and [Development](/docs/guide/development)).
 :::
 
 ## What is schema management and migration?
@@ -32,7 +31,7 @@ Until then, install from source (see [Quickstart](guide/quickstart) and [Develop
 - **Spark / Delta Live Tables** — If tables and schemas are created by Spark or DLT, **creation** may be less relevant for SchemaX. **Governance** is still valuable: comments, tags, grants, row filters, column masks on those existing objects. Use SchemaX in **governance-only mode** so you version and deploy only governance DDL, not CREATE TABLE.
 - **Databricks Apps and Lakebase** — When building applications on the Databricks platform (e.g. Databricks Apps with Streamlit, Dash, or apps that combine Lakebase with the lakehouse), the **Unity Catalog** layer—catalogs, schemas, tables, and governance (grants, tags, row filters)—still needs to be consistent across environments and versioned. SchemaX manages that UC layer (full or governance-only) and fits into Git and CI/CD so app deployments and schema deployments stay aligned. (SchemaX manages Unity Catalog; Lakebase's own Postgres schema is separate.)
 
-See [Environments and deployment scope](guide/environments-and-scope) for **full mode vs governance-only** and how to scope deployments to existing objects.
+See [Environments and deployment scope](/docs/guide/environments-and-scope) for **full mode vs governance-only** and how to scope deployments to existing objects.
 
 ## Features
 
@@ -45,6 +44,7 @@ See [Environments and deployment scope](guide/environments-and-scope) for **full
 - External tables, partitioning, liquid clustering
 - Snapshot-based versioning with semantic versions
 - Real-time SQL generation
+- **Bulk operations:** apply the same grant or tag to all objects in a catalog or schema scope from the detail panel (one action for many tables/schemas)
 
 ### Python SDK & CLI
 
@@ -59,24 +59,24 @@ See [Environments and deployment scope](guide/environments-and-scope) for **full
 
 **For users** — Get started and use SchemaX:
 
-- [Prerequisites](guide/prerequisites) — What you need before starting
-- [Quickstart](guide/quickstart) — Get started with the extension and CLI
-- [Setup](guide/setup) — Install extension, CLI, open a project
-- [Authentication](guide/authentication) — How the CLI authenticates to Databricks (same locally and in CI/CD)
-- [Environments and deployment scope](guide/environments-and-scope) — Configure environments, governance-only mode, existing objects
-- [Unity Catalog grants](guide/unity-catalog-grants) — Manage GRANT/REVOKE on catalogs, schemas, tables, views
-- **Only need CI/CD?** → [Git and CI/CD setup](guide/git-and-cicd-setup) — Run SchemaX in Azure DevOps or GitHub Actions (non-interactive)
-- [Workflows](reference/workflows) — Greenfield, brownfield, apply and rollback
-- [CLI Reference](reference/cli) — Commands and options
-- [Architecture](guide/architecture) — Design and patterns
-- [FAQ](reference/faq) — Common questions
+- [Prerequisites](/docs/guide/prerequisites) — What you need before starting
+- [Quickstart](/docs/guide/quickstart) — Get started with the extension and CLI
+- [Setup](/docs/guide/setup) — Install extension, CLI, open a project
+- [Authentication](/docs/guide/authentication) — How the CLI authenticates to Databricks (same locally and in CI/CD)
+- [Environments and deployment scope](/docs/guide/environments-and-scope) — Configure environments, governance-only mode, existing objects
+- [Unity Catalog grants](/docs/guide/unity-catalog-grants) — Manage GRANT/REVOKE on catalogs, schemas, tables, views
+- **Only need CI/CD?** → [Git and CI/CD setup](/docs/guide/git-and-cicd-setup) — Run SchemaX in Azure DevOps or GitHub Actions (non-interactive)
+- [Workflows](/docs/reference/workflows) — Greenfield, brownfield, apply and rollback
+- [CLI Reference](/docs/reference/cli) — Commands and options
+- [Architecture](/docs/guide/architecture) — Design and patterns
+- [FAQ](/docs/reference/faq) — Common questions
 
 **For contributors** — Develop, test, and contribute:
 
-- [Development](guide/development) — Build, run, and extend SchemaX
-- [Testing](reference/testing) — How to run and write tests
-- [Provider contract](reference/provider-contract) — Implement a new catalog provider
-- [Contributing](contributing) — Code style, PR process, commit signing
+- [Development](/docs/guide/development) — Build, run, and extend SchemaX
+- [Testing](/docs/reference/testing) — How to run and write tests
+- [Provider contract](/docs/reference/provider-contract) — Implement a new catalog provider
+- [Contributing](/docs/contributing/) — Code style, PR process, commit signing
 
 ## Supported providers
 

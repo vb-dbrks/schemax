@@ -62,38 +62,31 @@ class Provider(ABC):
     @abstractmethod
     def info(self) -> ProviderInfo:
         """Provider metadata"""
-        pass
 
     @property
     @abstractmethod
     def capabilities(self) -> ProviderCapabilities:
         """Provider capabilities"""
-        pass
 
     @abstractmethod
     def get_operation_metadata(self, operation_type: str) -> OperationMetadata | None:
         """Get operation metadata for a specific operation type"""
-        pass
 
     @abstractmethod
     def get_all_operations(self) -> list[OperationMetadata]:
         """Get all operation metadata"""
-        pass
 
     @abstractmethod
-    def validate_operation(self, op: Operation) -> ValidationResult:
+    def validate_operation(self, operation: Operation) -> ValidationResult:
         """Validate an operation"""
-        pass
 
     @abstractmethod
-    def apply_operation(self, state: ProviderState, op: Operation) -> ProviderState:
+    def apply_operation(self, state: ProviderState, operation: Operation) -> ProviderState:
         """Apply an operation to state (state reducer)"""
-        pass
 
     @abstractmethod
     def apply_operations(self, state: ProviderState, ops: list[Operation]) -> ProviderState:
         """Apply multiple operations to state"""
-        pass
 
     @abstractmethod
     def get_sql_generator(
@@ -119,17 +112,14 @@ class Provider(ABC):
         Returns:
             SQLGenerator instance
         """
-        pass
 
     @abstractmethod
     def create_initial_state(self) -> ProviderState:
         """Create an empty/initial state for this provider"""
-        pass
 
     @abstractmethod
     def validate_state(self, state: ProviderState) -> ValidationResult:
         """Validate the entire state structure"""
-        pass
 
     @abstractmethod
     def get_sql_executor(self, config: ExecutionConfig) -> SQLExecutor:
@@ -144,7 +134,6 @@ class Provider(ABC):
         Raises:
             NotImplementedError: If provider doesn't support SQL execution
         """
-        pass
 
     @abstractmethod
     def validate_execution_config(self, config: ExecutionConfig) -> ValidationResult:
@@ -159,7 +148,6 @@ class Provider(ABC):
         Returns:
             ValidationResult with any configuration errors
         """
-        pass
 
     @abstractmethod
     def get_state_differ(
@@ -180,7 +168,6 @@ class Provider(ABC):
         Returns:
             StateDiffer instance for generating diff operations
         """
-        pass
 
     def discover_state(
         self,
@@ -272,7 +259,6 @@ class Provider(ABC):
     ) -> None:
         """Persist provider-specific import mappings into environment config."""
         del env_config, mappings
-        return None
 
     def adopt_import_baseline(
         self,
@@ -304,8 +290,8 @@ class BaseProvider(Provider):
 
     def apply_operations(self, state: ProviderState, ops: list[Operation]) -> ProviderState:
         current_state = state
-        for op in ops:
-            current_state = self.apply_operation(current_state, op)
+        for operation in ops:
+            current_state = self.apply_operation(current_state, operation)
         return current_state
 
     def register_operation(self, metadata: OperationMetadata) -> None:

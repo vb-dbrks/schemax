@@ -9,13 +9,13 @@ from typing import Any
 import click
 from rich.console import Console
 
-# Import providers to initialize them
+# Import for side effect: register providers (Unity, etc.)
 import schemax.providers  # noqa: F401
 
 from .commands import (
     ApplyError,
     DiffError,
-    ImportError,
+    ImportCommandError,
     SQLGenerationError,
     apply_to_environment,
     generate_diff,
@@ -38,7 +38,6 @@ console = Console()
 @click.version_option(version="0.2.0", prog_name="schemax")
 def cli() -> None:
     """SchemaX CLI for catalog schema management (Multi-Provider)"""
-    pass
 
 
 @cli.command()
@@ -134,8 +133,8 @@ def sql(
             workspace=workspace_path,
             output=output_path,
             snapshot=snapshot,
-            from_version=from_version,
-            to_version=to_version,
+            _from_version=from_version,
+            _to_version=to_version,
             target_env=target,
         )
 
@@ -269,8 +268,6 @@ def bundle(target: str, version: str, output: str) -> None:
         console.print(f"Generating DAB for [cyan]{target}[/cyan] v{version}...")
 
         # TODO: Implement DAB generation
-        # from .dab import generate_dab
-
         console.print("[yellow]DAB generation not yet implemented[/yellow]")
 
     except Exception as e:
@@ -376,7 +373,7 @@ def import_command(
             catalog_mappings_override=binding_overrides,
         )
         _print_import_summary(summary)
-    except ImportError as e:
+    except (ImportCommandError, ImportError) as e:
         console.print(f"[red]✗ Import failed:[/red] {e}")
         sys.exit(1)
     except Exception as e:
@@ -785,7 +782,7 @@ def rollback(
                 to_snapshot=to_snapshot,
                 profile=profile,
                 warehouse_id=warehouse_id,
-                create_clone=create_clone,
+                _create_clone=create_clone,
                 safe_only=safe_only,
                 dry_run=dry_run,
                 no_interaction=no_interaction,
@@ -815,7 +812,6 @@ def rollback(
 @cli.group()
 def snapshot() -> None:
     """Snapshot management commands"""
-    pass
 
 
 @snapshot.command(name="create")
@@ -840,8 +836,6 @@ def snapshot_create_cmd(
         schemax snapshot create --name "Add users table" --version v0.2.0
         schemax snapshot create --name "Production release" --comment "First prod deployment" --tags prod
     """
-    from pathlib import Path
-
     from schemax.core.storage import create_snapshot, read_changelog
 
     workspace_path = Path(workspace).resolve()
@@ -964,7 +958,7 @@ def snapshot_validate_cmd(workspace: str, json_output: bool) -> None:
 
         from .commands.snapshot_rebase import detect_stale_snapshots
 
-        stale = detect_stale_snapshots(workspace_path, json_output=json_output)
+        stale = detect_stale_snapshots(workspace_path, _json_output=json_output)
 
         if json_output:
             # Output JSON for programmatic use (e.g., VS Code extension)

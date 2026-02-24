@@ -125,7 +125,11 @@ def test_live_command_matrix(tmp_path: Path) -> None:
         builder = OperationBuilder()
         append_ops(
             workspace,
-            [builder.add_catalog("cat_local_live", f"local_live_{suffix}", op_id="op_local_1")],
+            [
+                builder.catalog.add_catalog(
+                    "cat_local_live", f"local_live_{suffix}", op_id="op_local_1"
+                )
+            ],
         )
 
         snapshot_2 = invoke_cli(

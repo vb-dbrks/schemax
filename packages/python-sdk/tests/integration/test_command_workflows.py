@@ -19,9 +19,9 @@ class TestCommandWorkflows:
         append_ops(
             temp_workspace,
             [
-                builder.add_catalog("cat_1", "demo", op_id="op_1"),
-                builder.add_schema("schema_1", "core", "cat_1", op_id="op_2"),
-                builder.add_table("table_1", "users", "schema_1", "delta", op_id="op_3"),
+                builder.catalog.add_catalog("cat_1", "demo", op_id="op_1"),
+                builder.schema.add_schema("schema_1", "core", "cat_1", op_id="op_2"),
+                builder.table.add_table("table_1", "users", "schema_1", "delta", op_id="op_3"),
             ],
         )
 
@@ -46,7 +46,7 @@ class TestCommandWorkflows:
 
         append_ops(
             temp_workspace,
-            [builder.add_table("table_2", "orders", "schema_1", "delta", op_id="op_4")],
+            [builder.table.add_table("table_2", "orders", "schema_1", "delta", op_id="op_4")],
         )
         snapshot_2 = invoke_cli(
             "snapshot",

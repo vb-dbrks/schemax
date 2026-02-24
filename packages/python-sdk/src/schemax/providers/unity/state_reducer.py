@@ -187,14 +187,24 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
             del table_opt.properties[op_dict["payload"]["key"]]
 
     elif op_type == "set_table_tag":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
+        table_id = op_dict["payload"]["tableId"]
+        table_opt = _find_table(new_state, table_id)
         if table_opt:
             table_opt.tags[op_dict["payload"]["tagName"]] = op_dict["payload"]["tagValue"]
+        else:
+            view_opt = _find_view(new_state, table_id)
+            if view_opt:
+                view_opt.tags[op_dict["payload"]["tagName"]] = op_dict["payload"]["tagValue"]
 
     elif op_type == "unset_table_tag":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
+        table_id = op_dict["payload"]["tableId"]
+        table_opt = _find_table(new_state, table_id)
         if table_opt and op_dict["payload"]["tagName"] in table_opt.tags:
             del table_opt.tags[op_dict["payload"]["tagName"]]
+        else:
+            view_opt = _find_view(new_state, table_id)
+            if view_opt and op_dict["payload"]["tagName"] in view_opt.tags:
+                del view_opt.tags[op_dict["payload"]["tagName"]]
 
     # View operations
     elif op_type == "add_view":

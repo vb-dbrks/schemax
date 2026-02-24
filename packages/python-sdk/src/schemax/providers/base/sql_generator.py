@@ -55,7 +55,6 @@ class SQLGenerator(ABC):
         Returns:
             SQL script as string
         """
-        pass
 
     def generate_sql_with_mapping(self, ops: list[Operation]) -> SQLGenerationResult:
         """
@@ -75,35 +74,35 @@ class SQLGenerator(ABC):
         statements = []
         if sql and sql.strip():
             statements = [
-                StatementInfo(sql=sql, operation_ids=[op.id for op in ops], execution_order=1)
+                StatementInfo(
+                    sql=sql, operation_ids=[operation.id for operation in ops], execution_order=1
+                )
             ]
         return SQLGenerationResult(sql=sql, statements=statements)
 
     @abstractmethod
-    def generate_sql_for_operation(self, op: Operation) -> SQLGenerationResult:
+    def generate_sql_for_operation(self, operation: Operation) -> SQLGenerationResult:
         """
         Generate SQL for a single operation
 
         Args:
-            op: Operation to convert to SQL
+            operation: Operation to convert to SQL
 
         Returns:
             SQL generation result
         """
-        pass
 
     @abstractmethod
-    def can_generate_sql(self, op: Operation) -> bool:
+    def can_generate_sql(self, operation: Operation) -> bool:
         """
         Validate that an operation can be converted to SQL
 
         Args:
-            op: Operation to validate
+            operation: Operation to validate
 
         Returns:
             True if operation can be converted to SQL
         """
-        pass
 
 
 class BaseSQLGenerator(SQLGenerator):
@@ -135,6 +134,15 @@ class BaseSQLGenerator(SQLGenerator):
     # DEPENDENCY GRAPH
     # ====================
 
+    def build_dependency_graph(self, ops: list[Operation]) -> DependencyGraph:
+        """
+        Build dependency graph from operations (public API for validation and ordering).
+
+        Call this from validation or orchestration code that needs to check cycles
+        or dependency order. Provider-specific logic lives in _build_dependency_graph.
+        """
+        return self._build_dependency_graph(ops)
+
     def _build_dependency_graph(self, ops: list[Operation]) -> DependencyGraph:
         """
         Build dependency graph from operations.
@@ -158,9 +166,9 @@ class BaseSQLGenerator(SQLGenerator):
         ops_by_target: dict[str, list[Operation]] = {}
 
         # First pass: Group operations by target object and add nodes
-        for op in ops:
-            hierarchy_level = self._get_dependency_level(op)
-            target_id = self._get_target_object_id(op)
+        for operation in ops:
+            hierarchy_level = self._get_dependency_level(operation)
+            target_id = self._get_target_object_id(operation)
 
             if not target_id:
                 continue  # Skip operations without a clear target
@@ -168,16 +176,16 @@ class BaseSQLGenerator(SQLGenerator):
             # Track all operations for this target
             if target_id not in ops_by_target:
                 ops_by_target[target_id] = []
-            ops_by_target[target_id].append(op)
+            ops_by_target[target_id].append(operation)
 
             # Add node only once per target object
             if target_id not in graph.nodes:
                 node = DependencyNode(
                     id=target_id,
-                    type=self._get_object_type_from_operation(op),
+                    type=self._get_object_type_from_operation(operation),
                     hierarchy_level=hierarchy_level,
-                    operation=op,  # Use first operation as representative
-                    metadata={"op_type": op.op, "op_count": 1},
+                    operation=operation,  # Use first operation as representative
+                    metadata={"op_type": operation.op, "op_count": 1},
                 )
                 graph.add_node(node)
             else:
@@ -187,13 +195,13 @@ class BaseSQLGenerator(SQLGenerator):
                     node.metadata["op_count"] += 1
 
         # Second pass: Extract and add dependencies
-        for op in ops:
-            target_id = self._get_target_object_id(op)
+        for operation in ops:
+            target_id = self._get_target_object_id(operation)
             if not target_id:
                 continue
 
             # Extract dependencies for this operation
-            dependencies = self._extract_operation_dependencies(op)
+            dependencies = self._extract_operation_dependencies(operation)
 
             for dep_id, dep_type, enforcement in dependencies:
                 # Add dependency edge if both nodes exist
@@ -210,32 +218,31 @@ class BaseSQLGenerator(SQLGenerator):
         self.dependency_graph = graph
         return graph
 
-    def _get_object_type_from_operation(self, op: Operation) -> str:
+    def _get_object_type_from_operation(self, operation: Operation) -> str:
         """
         Infer object type from operation type.
 
         Args:
-            op: Operation to analyze
+            operation: Operation to analyze
 
         Returns:
             Object type string (e.g., "catalog", "schema", "table", "view")
         """
-        op_type = op.op
+        op_type = operation.op
 
         if "catalog" in op_type:
             return "catalog"
-        elif "schema" in op_type:
+        if "schema" in op_type:
             return "schema"
-        elif "table" in op_type:
+        if "table" in op_type:
             return "table"
-        elif "view" in op_type:
+        if "view" in op_type:
             return "view"
-        elif "column" in op_type:
+        if "column" in op_type:
             return "column"
-        elif "constraint" in op_type:
+        if "constraint" in op_type:
             return "constraint"
-        else:
-            return "unknown"
+        return "unknown"
 
     def generate_sql_with_dependencies(self, ops: list[Operation]) -> SQLGenerationResult:
         """
@@ -285,22 +292,22 @@ class BaseSQLGenerator(SQLGenerator):
 
         # Generate SQL for sorted operations
         statements = []
-        for idx, op in enumerate(sorted_ops):
-            if not self.can_generate_sql(op):
-                warnings.append(f"Cannot generate SQL for operation: {op.op}")
+        for idx, operation in enumerate(sorted_ops):
+            if not self.can_generate_sql(operation):
+                warnings.append(f"Cannot generate SQL for operation: {operation.op}")
                 continue
 
-            result = self.generate_sql_for_operation(op)
+            result = self.generate_sql_for_operation(operation)
 
             # Add header comment with operation metadata
-            header = f"-- Operation: {op.id} ({op.ts})\n"
-            header += f"-- Type: {op.op}"
+            header = f"-- Operation: {operation.id} ({operation.ts})\n"
+            header += f"-- Type: {operation.op}"
 
             # Add to statements list
             statements.append(
                 StatementInfo(
                     sql=result.sql,
-                    operation_ids=[op.id],
+                    operation_ids=[operation.id],
                     execution_order=idx + 1,
                 )
             )
@@ -326,7 +333,9 @@ class BaseSQLGenerator(SQLGenerator):
         Returns:
             Sorted operations
         """
-        return sorted(ops, key=lambda op: (self._get_dependency_level(op), op.ts))
+        return sorted(
+            ops, key=lambda operation: (self._get_dependency_level(operation), operation.ts)
+        )
 
     def _detect_breaking_changes(
         self, ops: list[Operation], graph: DependencyGraph | None = None
@@ -352,8 +361,8 @@ class BaseSQLGenerator(SQLGenerator):
                 return warnings
 
         # Check each drop operation for breaking changes
-        for op in ops:
-            op_type = op.op
+        for operation in ops:
+            op_type = operation.op
 
             # Detect drop operations
             is_drop = (
@@ -363,16 +372,16 @@ class BaseSQLGenerator(SQLGenerator):
             )
 
             if is_drop:
-                target_id = self._get_target_object_id(op)
+                target_id = self._get_target_object_id(operation)
                 if target_id and graph:
                     # Get dependents
                     dependents = graph.get_breaking_changes(target_id)
 
                     if dependents:
                         # Create warning message
-                        object_name = self._get_object_display_name_from_op(op)
+                        object_name = self._get_object_display_name_from_op(operation)
                         dependent_names = [
-                            graph._get_node_display_name(dep_id) for dep_id in dependents
+                            graph.get_node_display_name(dep_id) for dep_id in dependents
                         ]
 
                         warning = (
@@ -386,18 +395,18 @@ class BaseSQLGenerator(SQLGenerator):
 
         return warnings
 
-    def _get_object_display_name_from_op(self, op: Operation) -> str:
+    def _get_object_display_name_from_op(self, operation: Operation) -> str:
         """
         Get human-readable object name from operation.
 
         Args:
-            op: Operation
+            operation: Operation
 
         Returns:
             Display name (e.g., "table my_table", "view my_view")
         """
-        op_type = op.op
-        target_id = op.target
+        op_type = operation.op
+        target_id = operation.target
 
         # Extract object type from operation type
         if "table" in op_type:
@@ -412,7 +421,7 @@ class BaseSQLGenerator(SQLGenerator):
             obj_type = "object"
 
         # Try to get name from payload
-        name = op.payload.get("name", target_id) if op.payload else target_id
+        name = operation.payload.get("name", target_id) if operation.payload else target_id
 
         return f"{obj_type} '{name}'"
 
@@ -445,7 +454,7 @@ class BaseSQLGenerator(SQLGenerator):
     # ====================
 
     @abstractmethod
-    def _get_target_object_id(self, op: Operation) -> str | None:
+    def _get_target_object_id(self, operation: Operation) -> str | None:
         """
         Extract target object ID from operation.
 
@@ -453,46 +462,44 @@ class BaseSQLGenerator(SQLGenerator):
         Used by batching algorithm to group operations.
 
         Args:
-            op: Operation to analyze
+            operation: Operation to analyze
 
         Returns:
             Object ID (e.g., table_id, schema_id) or None if no target
 
         Example (Unity):
-            >>> def _get_target_object_id(self, op):
-            ...     if op.op == "unity.add_table":
-            ...         return op.target
-            ...     elif op.op == "unity.add_column":
-            ...         return op.payload.get("tableId")
+            >>> def _get_target_object_id(self, operation):
+            ...     if operation.op == "unity.add_table":
+            ...         return operation.target
+            ...     elif operation.op == "unity.add_column":
+            ...         return operation.payload.get("tableId")
             ...     return None
         """
-        pass
 
     @abstractmethod
-    def _is_create_operation(self, op: Operation) -> bool:
+    def _is_create_operation(self, operation: Operation) -> bool:
         """
         Check if operation creates a new object.
 
         Used by batching to distinguish CREATE from ALTER operations.
 
         Args:
-            op: Operation to check
+            operation: Operation to check
 
         Returns:
             True if operation creates new object (e.g., add_table, add_schema)
 
         Example (Unity):
-            >>> def _is_create_operation(self, op):
-            ...     return op.op in [
+            >>> def _is_create_operation(self, operation):
+            ...     return operation.op in [
             ...         "unity.add_catalog",
             ...         "unity.add_schema",
             ...         "unity.add_table"
             ...     ]
         """
-        pass
 
     @abstractmethod
-    def _is_drop_operation(self, op: Operation) -> bool:
+    def _is_drop_operation(self, operation: Operation) -> bool:
         """
         Check if operation drops/deletes an object.
 
@@ -500,23 +507,22 @@ class BaseSQLGenerator(SQLGenerator):
         cannot be batched with CREATE/ALTER operations.
 
         Args:
-            op: Operation to check
+            operation: Operation to check
 
         Returns:
             True if operation drops an object (e.g., drop_table, drop_schema, drop_catalog)
 
         Example (Unity):
-            >>> def _is_drop_operation(self, op):
-            ...     return op.op in [
+            >>> def _is_drop_operation(self, operation):
+            ...     return operation.op in [
             ...         "unity.drop_catalog",
             ...         "unity.drop_schema",
             ...         "unity.drop_table"
             ...     ]
         """
-        pass
 
     @abstractmethod
-    def _get_dependency_level(self, op: Operation) -> int:
+    def _get_dependency_level(self, operation: Operation) -> int:
         """
         Get dependency level for operation ordering.
 
@@ -524,26 +530,25 @@ class BaseSQLGenerator(SQLGenerator):
         Ensures proper execution order (catalog before schema before table).
 
         Args:
-            op: Operation to check
+            operation: Operation to check
 
         Returns:
             Dependency level (0 = highest priority, execute first)
 
         Example (Unity):
-            >>> def _get_dependency_level(self, op):
-            ...     if "catalog" in op.op:
+            >>> def _get_dependency_level(self, operation):
+            ...     if "catalog" in operation.op:
             ...         return 0
-            ...     elif "schema" in op.op:
+            ...     elif "schema" in operation.op:
             ...         return 1
-            ...     elif "add_table" in op.op:
+            ...     elif "add_table" in operation.op:
             ...         return 2
             ...     else:
             ...         return 3
         """
-        pass
 
     def _extract_operation_dependencies(
-        self, op: Operation
+        self, _operation: Operation
     ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
         """
         Extract dependencies from an operation.
@@ -552,16 +557,16 @@ class BaseSQLGenerator(SQLGenerator):
         dependencies (e.g., views depending on tables/views, foreign keys).
 
         Args:
-            op: Operation to analyze
+            operation: Operation to analyze
 
         Returns:
             List of tuples: (dependency_id, dependency_type, enforcement)
 
         Example (Unity - for views):
-            >>> def _extract_operation_dependencies(self, op):
-            ...     if op.op == "unity.add_view":
+            >>> def _extract_operation_dependencies(self, operation):
+            ...     if operation.op == "unity.add_view":
             ...         # Parse SQL to extract table/view dependencies
-            ...         deps = parse_view_definition(op.payload.get("definition"))
+            ...         deps = parse_view_definition(operation.payload.get("definition"))
             ...         return [
             ...             (table_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
             ...             for table_id in deps
@@ -592,7 +597,6 @@ class BaseSQLGenerator(SQLGenerator):
             ...     # Generate: CREATE TABLE ... (col1 type1, col2 type2) USING DELTA
             ...     # Instead of: CREATE TABLE ... (); ALTER TABLE ADD col1; ALTER TABLE ADD col2;
         """
-        pass
 
     @abstractmethod
     def _generate_batched_alter_sql(self, object_id: str, batch_info: BatchInfo) -> str:
@@ -606,7 +610,6 @@ class BaseSQLGenerator(SQLGenerator):
         Returns:
             SQL ALTER statements (may be multiple, separated by `;`)
         """
-        pass
 
     # ====================
     # DEFAULT IMPLEMENTATION (can be overridden)
@@ -621,15 +624,15 @@ class BaseSQLGenerator(SQLGenerator):
         """
         statements = []
 
-        for op in ops:
-            if not self.can_generate_sql(op):
-                print(f"Warning: Cannot generate SQL for operation: {op.op}")
+        for operation in ops:
+            if not self.can_generate_sql(operation):
+                print(f"Warning: Cannot generate SQL for operation: {operation.op}")
                 continue
 
-            result = self.generate_sql_for_operation(op)
+            result = self.generate_sql_for_operation(operation)
 
             # Add header comment with operation metadata
-            header = f"-- Operation: {op.id} ({op.ts})\n-- Type: {op.op}"
+            header = f"-- Operation: {operation.id} ({operation.ts})\n-- Type: {operation.op}"
 
             # Add warnings if any
             warnings_comment = ""
@@ -646,6 +649,6 @@ class BaseSQLGenerator(SQLGenerator):
         return f"`{identifier.replace('`', '``')}`"
 
     @staticmethod
-    def escape_string(s: str) -> str:
+    def escape_string(value: str) -> str:
         """Helper to escape SQL string literals"""
-        return s.replace("'", "''")
+        return value.replace("'", "''")

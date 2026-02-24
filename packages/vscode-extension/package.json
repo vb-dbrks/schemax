@@ -3,7 +3,7 @@
   "displayName": "SchemaX",
   "description": "Design and manage Databricks Unity Catalog schemas visually. Version control, SQL generation, apply/rollback/import via CLI. Install Python SDK (pip install schemaxpy) for full features.",
   "publisher": "schematic-dev",
-  "version": "0.2.1",
+  "version": "0.2.5",
   "author": {
     "name": "Field Engineering"
   },
@@ -54,7 +54,8 @@
     "onCommand:schemax.createSnapshot",
     "onCommand:schemax.generateSQL",
     "onCommand:schemax.importAssets",
-    "onCommand:schemax.installPythonSdk"
+    "onCommand:schemax.installPythonSdk",
+    "onView:schemax.welcome"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -83,6 +84,29 @@
         "command": "schemax.installPythonSdk",
         "title": "SchemaX: Install Python SDK (pip install schemaxpy)"
       }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "schemax",
+          "title": "SchemaX",
+          "icon": "images/schemax_logov2.svg"
+        }
+      ]
+    },
+    "views": {
+      "schemax": [
+        {
+          "id": "schemax.welcome",
+          "name": "SchemaX"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "schemax.welcome",
+        "contents": "Design and manage Unity Catalog schemas visually.\n[Open SchemaX Designer](command:schemax.openDesigner)\n[Generate SQL Migration](command:schemax.generateSQL)\n[Create Snapshot](command:schemax.createSnapshot)"
+      }
     ]
   },
   "scripts": {
@@ -95,6 +119,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:integration": "node scripts/prompt-e2e-env.js",
     "package": "vsce package --no-dependencies",
     "deploy": "vsce publish --no-dependencies",
     "vscode:prepublish": "npm run build"

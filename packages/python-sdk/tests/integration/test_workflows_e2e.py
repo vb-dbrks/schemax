@@ -66,7 +66,7 @@ class TestWorkflowS1GreenfieldSingleDev:
         append_ops(
             temp_workspace,
             [
-                builder.add_column(
+                builder.column.add_column(
                     "col_002",
                     "table_789",
                     "email",
@@ -97,9 +97,9 @@ class TestWorkflowS1GreenfieldSingleDev:
         append_ops(
             temp_workspace,
             [
-                builder.add_catalog("cat_1", "demo", op_id="op_1"),
-                builder.add_schema("schema_1", "core", "cat_1", op_id="op_2"),
-                builder.add_table("table_1", "users", "schema_1", "delta", op_id="op_3"),
+                builder.catalog.add_catalog("cat_1", "demo", op_id="op_1"),
+                builder.schema.add_schema("schema_1", "core", "cat_1", op_id="op_2"),
+                builder.table.add_table("table_1", "users", "schema_1", "delta", op_id="op_3"),
             ],
         )
 
@@ -157,7 +157,7 @@ class TestWorkflowS2GreenfieldMultiDev:
         append_ops(
             initialized_workspace,
             [
-                builder.add_column(
+                builder.column.add_column(
                     "col_extra",
                     "table_789",
                     "extra",
@@ -347,9 +347,9 @@ class TestWorkflowS4ApplyFailureAndRollback:
         append_ops(
             temp_workspace,
             [
-                builder.add_catalog("cat_1", "demo", op_id="op_1"),
-                builder.add_schema("schema_1", "core", "cat_1", op_id="op_2"),
-                builder.add_table("table_1", "users", "schema_1", "delta", op_id="op_3"),
+                builder.catalog.add_catalog("cat_1", "demo", op_id="op_1"),
+                builder.schema.add_schema("schema_1", "core", "cat_1", op_id="op_2"),
+                builder.table.add_table("table_1", "users", "schema_1", "delta", op_id="op_3"),
             ],
         )
         create_snapshot(temp_workspace, "v1", version="v0.1.0")
@@ -482,7 +482,11 @@ class TestWorkflowS5DiffValidateSqlOnly:
         builder = OperationBuilder()
         append_ops(
             initialized_workspace,
-            [builder.add_column("col_x", "table_789", "x", "STRING", True, "X", op_id="op_x")],
+            [
+                builder.column.add_column(
+                    "col_x", "table_789", "x", "STRING", True, "X", op_id="op_x"
+                )
+            ],
         )
         create_snapshot(initialized_workspace, "v2", version="v0.2.0")
 
@@ -512,7 +516,7 @@ class TestWorkflowS5DiffValidateSqlOnly:
         builder = OperationBuilder()
         append_ops(
             initialized_workspace,
-            [builder.add_column("c2", "table_789", "y", "INT", False, "Y", op_id="op_y")],
+            [builder.column.add_column("c2", "table_789", "y", "INT", False, "Y", op_id="op_y")],
         )
         create_snapshot(initialized_workspace, "v2", version="v0.2.0")
 
@@ -556,13 +560,13 @@ class TestWorkflowE2EMultiEnvApplyAndRollback:
 
         # Dev-like objects: one catalog, schema, table, columns (matches sample_operations style)
         ops = [
-            builder.add_catalog("cat_123", "bronze", op_id="op_001"),
-            builder.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
-            builder.add_table("table_789", "users", "schema_456", "delta", op_id="op_003"),
-            builder.add_column(
+            builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001"),
+            builder.schema.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
+            builder.table.add_table("table_789", "users", "schema_456", "delta", op_id="op_003"),
+            builder.column.add_column(
                 "col_001", "table_789", "user_id", "BIGINT", False, "User ID", op_id="op_004"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_002", "table_789", "email", "STRING", True, "Email", op_id="op_005"
             ),
         ]
@@ -604,9 +608,9 @@ class TestWorkflowE2EMultiEnvApplyAndRollback:
         append_ops(
             temp_workspace,
             [
-                builder.add_catalog("cat_1", "bronze", op_id="op_1"),
-                builder.add_schema("sch_1", "raw", "cat_1", op_id="op_2"),
-                builder.add_table("tbl_1", "events", "sch_1", "delta", op_id="op_3"),
+                builder.catalog.add_catalog("cat_1", "bronze", op_id="op_1"),
+                builder.schema.add_schema("sch_1", "raw", "cat_1", op_id="op_2"),
+                builder.table.add_table("tbl_1", "events", "sch_1", "delta", op_id="op_3"),
             ],
         )
         create_snapshot(temp_workspace, "Base", version="v0.1.0")
@@ -614,7 +618,7 @@ class TestWorkflowE2EMultiEnvApplyAndRollback:
         append_ops(
             temp_workspace,
             [
-                builder.add_table("tbl_2", "orders", "sch_1", "delta", op_id="op_4"),
+                builder.table.add_table("tbl_2", "orders", "sch_1", "delta", op_id="op_4"),
             ],
         )
         create_snapshot(temp_workspace, "Add orders table", version="v0.2.0")
@@ -671,9 +675,9 @@ class TestWorkflowE2EMultiEnvApplyAndRollback:
         append_ops(
             temp_workspace,
             [
-                builder.add_catalog("cat_1", "bronze", op_id="op_1"),
-                builder.add_schema("sch_1", "raw", "cat_1", op_id="op_2"),
-                builder.add_table("tbl_1", "users", "sch_1", "delta", op_id="op_3"),
+                builder.catalog.add_catalog("cat_1", "bronze", op_id="op_1"),
+                builder.schema.add_schema("sch_1", "raw", "cat_1", op_id="op_2"),
+                builder.table.add_table("tbl_1", "users", "sch_1", "delta", op_id="op_3"),
             ],
         )
         create_snapshot(temp_workspace, "v1", version="v0.1.0")

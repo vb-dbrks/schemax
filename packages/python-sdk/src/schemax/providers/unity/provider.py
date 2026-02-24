@@ -10,6 +10,7 @@ import json
 import os
 import threading
 from ast import literal_eval
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
@@ -1907,7 +1908,8 @@ class UnityProvider(BaseProvider):
         if not text:
             return []
 
-        for parser in (json.loads, literal_eval):
+        parsers: tuple[Callable[[str], Any], ...] = (json.loads, literal_eval)
+        for parser in parsers:
             try:
                 parsed = parser(text)
                 if isinstance(parsed, (list, tuple)):

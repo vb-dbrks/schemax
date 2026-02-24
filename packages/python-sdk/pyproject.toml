@@ -1,6 +1,6 @@
 [project]
 name = "schemaxpy"
-version = "0.2.1"
+version = "0.2.5"
 description = "Python SDK and CLI for Databricks Unity Catalog schema management"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -44,6 +44,10 @@ dev = [
     "types-networkx>=3.0.0",  # Type stubs for networkx (mypy)
     "sqlglot>=20.0.0",  # SQL validation in tests
     "pre-commit>=3.0.0",  # Pre-commit hooks for code quality
+    "pylint~=3.3.1",
+    "databricks-labs-pylint~=0.5",
+    "pylint-per-file-ignores~=1.3",
+    "pylint-pytest==2.0.0a1",
 ]
 validation = [
     "sqlglot>=20.0.0",  # SQL validation for Databricks dialect
@@ -79,6 +83,9 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "N", "W"]
 ignore = ["E501"]  # Line length handled by formatter
+# Optional: enable C901 (complexity) for stricter lint. Run: ruff check --select C901 src/ tests/
+# [tool.ruff.lint.mccabe]
+# max-complexity = 12
 
 [tool.ruff.format]
 quote-style = "double"
@@ -104,4 +111,182 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "networkx"
 ignore_missing_imports = true
+
+[tool.pylint.main]
+ignore-patterns = ["^\\.#"]
+jobs = 0
+limit-inference-results = 100
+persistent = true
+py-version = "3.11"
+fail-under = 9.0
+suggestion-mode = true
+load-plugins = [
+    "databricks.labs.pylint.all",
+    "pylint_pytest",
+    "pylint.extensions.bad_builtin",
+    "pylint.extensions.broad_try_clause",
+    "pylint.extensions.check_elif",
+    "pylint.extensions.code_style",
+    "pylint.extensions.confusing_elif",
+    "pylint.extensions.comparison_placement",
+    "pylint.extensions.consider_refactoring_into_while_condition",
+    "pylint.extensions.dict_init_mutate",
+    "pylint.extensions.docparams",
+    "pylint.extensions.dunder",
+    "pylint.extensions.for_any_all",
+    "pylint.extensions.mccabe",
+    "pylint.extensions.overlapping_exceptions",
+    "pylint.extensions.private_import",
+    "pylint.extensions.redefined_variable_type",
+    "pylint.extensions.set_membership",
+    "pylint.extensions.typing",
+    "pylint_per_file_ignores",
+]
+
+[tool.pylint.basic]
+argument-naming-style = "snake_case"
+argument-rgx = "[a-z_][a-z0-9_]{2,40}$"
+attr-naming-style = "snake_case"
+attr-rgx = "[a-z_][a-z0-9_]{1,}$"
+bad-names = ["foo", "bar", "baz", "toto", "tutu", "tata"]
+class-attribute-naming-style = "any"
+class-attribute-rgx = "([A-Za-z_][A-Za-z0-9_]{1,40}|(__.*__))$"
+class-const-naming-style = "UPPER_CASE"
+class-naming-style = "PascalCase"
+class-rgx = "[A-Z_][a-zA-Z0-9]+$"
+const-naming-style = "UPPER_CASE"
+const-rgx = "(([A-Z_][A-Z0-9_]*)|(__.*__))$"
+docstring-min-length = -1
+function-naming-style = "snake_case"
+function-rgx = "[A-Za-z_][A-Za-z0-9_]{2,}$"
+good-names = ["f", "i", "j", "k", "df", "ex", "e", "fn", "cb", "_", "a", "w", "ws", "me"]
+inlinevar-naming-style = "any"
+inlinevar-rgx = "[A-Za-z_][A-Za-z0-9_]*$"
+method-naming-style = "snake_case"
+method-rgx = "[a-z_][a-z0-9_]{1,}$"
+module-naming-style = "snake_case"
+module-rgx = "(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$"
+no-docstring-rgx = "__.*__"
+property-classes = ["abc.abstractproperty"]
+variable-naming-style = "snake_case"
+variable-rgx = "[a-z_][a-z0-9_]{2,40}$"
+
+[tool.pylint.broad_try_clause]
+max-try-statements = 7
+
+[tool.pylint.classes]
+defining-attr-methods = ["__init__", "__new__", "setUp", "__post_init__"]
+exclude-protected = ["_asdict", "_fields", "_replace", "_source", "_make"]
+valid-classmethod-first-arg = ["cls"]
+
+[tool.pylint.deprecated_builtins]
+bad-functions = ["map", "input"]
+
+[tool.pylint.design]
+max-args = 11
+max-positional-arguments = 11
+max-attributes = 16
+max-bool-expr = 5
+max-branches = 20
+max-locals = 24
+max-parents = 7
+max-public-methods = 21
+max-returns = 11
+max-statements = 50
+min-public-methods = 2
+
+[tool.pylint.exceptions]
+overgeneral-exceptions = ["builtins.Exception"]
+
+[tool.pylint.format]
+ignore-long-lines = "^\\s*(# )?<?https?://\\S+>?$"
+indent-after-paren = 4
+indent-string = "    "
+max-line-length = 100
+max-module-lines = 10000
+
+[tool.pylint.imports]
+deprecated-modules = ["regsub", "TERMIOS", "Bastion", "rexec"]
+
+[tool.pylint.logging]
+logging-format-style = "new"
+logging-modules = ["logging"]
+
+[tool.pylint."messages control"]
+confidence = ["HIGH", "CONTROL_FLOW", "INFERENCE", "INFERENCE_FAILURE", "UNDEFINED"]
+disable = [
+    "prefer-typing-namedtuple",
+    "attribute-defined-outside-init",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-few-public-methods",
+    "line-too-long",
+    "trailing-whitespace",
+    "missing-final-newline",
+    "trailing-newlines",
+    "unnecessary-semicolon",
+    "mixed-line-endings",
+    "unexpected-line-ending-format",
+    "fixme",
+    "consider-using-assignment-expr",
+    "logging-fstring-interpolation",
+    "consider-using-any-or-all",
+    "unnecessary-default-type-args",
+    "mock-no-usage",
+    "broad-exception-caught",
+    "rewrite-as-for-loop",
+    "redundant-returns-doc",
+    "no-spark-argument-in-function",
+    "invalid-unary-operand-type",
+]
+enable = ["useless-suppression", "use-symbolic-message-instead"]
+
+[tool.pylint.method_args]
+timeout-methods = ["requests.api.delete", "requests.api.get", "requests.api.head", "requests.api.options", "requests.api.patch", "requests.api.post", "requests.api.put", "requests.api.request"]
+
+[tool.pylint.miscellaneous]
+notes = ["FIXME", "XXX", "TODO"]
+
+[tool.pylint.parameter_documentation]
+accept-no-param-doc = true
+accept-no-raise-doc = true
+accept-no-return-doc = true
+accept-no-yields-doc = true
+default-docstring-type = "default"
+
+[tool.pylint.refactoring]
+max-nested-blocks = 3
+never-returning-functions = ["sys.exit", "argparse.parse_error"]
+
+[tool.pylint.reports]
+evaluation = "max(0, 0 if fatal else 10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10))"
+score = true
+
+[tool.pylint.similarities]
+ignore-comments = true
+ignore-docstrings = true
+ignore-imports = true
+ignore-signatures = true
+min-similarity-lines = 6
+
+[tool.pylint.typecheck]
+contextmanager-decorators = ["contextlib.contextmanager"]
+generated-members = "REQUEST,acl_users,aq_parent,argparse.Namespace"
+ignored-modules = ["mlflow", "mlflow.sklearn", "shap", "sklearn.pipeline"]
+ignore-none = true
+ignore-on-opaque-inference = true
+ignored-checks-for-mixins = ["no-member", "not-async-context-manager", "not-context-manager", "attribute-defined-outside-init"]
+ignored-classes = ["SQLObject", "optparse.Values", "thread._local", "_thread._local"]
+missing-member-hint = true
+missing-member-hint-distance = 1
+missing-member-max-choices = 1
+mixin-class-rgx = ".*MixIn"
+
+[tool.pylint.variables]
+allow-global-unused-variables = true
+callbacks = ["cb_", "_cb"]
+dummy-variables-rgx = "_+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy|^ignored_|^unused_"
+ignored-argument-names = "_.*|^ignored_|^unused_"
+redefining-builtins-modules = ["six.moves", "past.builtins", "future.builtins", "builtins", "io"]
 

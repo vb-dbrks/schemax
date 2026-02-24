@@ -22,7 +22,7 @@ class TestCatalogSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_catalog("cat_001", "production", op_id="op_001")
+        op = builder.catalog.add_catalog("cat_001", "production", op_id="op_001")
 
         result = generator.generate_sql_for_operation(op)
         assert "CREATE CATALOG IF NOT EXISTS" in result.sql
@@ -37,7 +37,7 @@ class TestCatalogSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_catalog("cat_001", "my-catalog.prod", op_id="op_001")
+        op = builder.catalog.add_catalog("cat_001", "my-catalog.prod", op_id="op_001")
 
         result = generator.generate_sql_for_operation(op)
         # Should properly escape special characters
@@ -48,7 +48,7 @@ class TestCatalogSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.rename_catalog("cat_123", "production", "bronze", op_id="op_002")
+        op = builder.catalog.rename_catalog("cat_123", "production", "bronze", op_id="op_002")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER CATALOG" in result.sql
@@ -83,7 +83,7 @@ class TestSchemaSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_schema("schema_001", "analytics", "cat_123", op_id="op_004")
+        op = builder.schema.add_schema("schema_001", "analytics", "cat_123", op_id="op_004")
 
         result = generator.generate_sql_for_operation(op)
         assert "CREATE SCHEMA IF NOT EXISTS" in result.sql
@@ -95,7 +95,7 @@ class TestSchemaSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.rename_schema("schema_456", "processed", "raw", op_id="op_005")
+        op = builder.schema.rename_schema("schema_456", "processed", "raw", op_id="op_005")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER SCHEMA" in result.sql
@@ -144,7 +144,7 @@ class TestManagedLocationSQL:
             environment_name="dev",
         )
 
-        op = builder.add_catalog("cat_999", "warehouse", op_id="op_managed_001")
+        op = builder.catalog.add_catalog("cat_999", "warehouse", op_id="op_managed_001")
         op.payload["managedLocationName"] = "default"
 
         result = generator.generate_sql_for_operation(op)
@@ -157,7 +157,7 @@ class TestManagedLocationSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_catalog("cat_999", "warehouse", op_id="op_tags_001")
+        op = builder.catalog.add_catalog("cat_999", "warehouse", op_id="op_tags_001")
         op.payload["tags"] = {"domain": "analytics", "env": "dev"}
 
         result = generator.generate_sql_for_operation(op)
@@ -172,7 +172,7 @@ class TestManagedLocationSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_schema("schema_999", "raw", "cat_123", op_id="op_sch_tags_001")
+        op = builder.schema.add_schema("schema_999", "raw", "cat_123", op_id="op_sch_tags_001")
         op.payload["tags"] = {"layer": "bronze"}
 
         result = generator.generate_sql_for_operation(op)
@@ -197,7 +197,7 @@ class TestManagedLocationSQL:
             environment_name="dev",
         )
 
-        op = builder.add_schema("schema_999", "sales", "cat_123", op_id="op_managed_002")
+        op = builder.schema.add_schema("schema_999", "sales", "cat_123", op_id="op_managed_002")
         op.payload["managedLocationName"] = "sales_data"
 
         result = generator.generate_sql_for_operation(op)
@@ -218,7 +218,7 @@ class TestManagedLocationSQL:
             catalog_name_mapping={"my_catalog": "dev_my_catalog"},
             environment_name="dev",
         )
-        op = builder.add_catalog("cat_new", "my_catalog", op_id="op_cat_001")
+        op = builder.catalog.add_catalog("cat_new", "my_catalog", op_id="op_cat_001")
         op.payload["comment"] = "Test catalog"
         op.payload["tags"] = {"env": "dev", "team": "platform"}
 
@@ -247,7 +247,7 @@ class TestManagedLocationSQL:
         from schemax.providers.unity.state_reducer import apply_operation
 
         builder = OperationBuilder()
-        setup_op = builder.add_catalog("cat_1", "main", op_id="op_setup")
+        setup_op = builder.catalog.add_catalog("cat_1", "main", op_id="op_setup")
         state_with_catalog = apply_operation(empty_unity_state, setup_op)
 
         generator = UnitySQLGenerator(
@@ -255,7 +255,7 @@ class TestManagedLocationSQL:
             catalog_name_mapping={"main": "dev_main"},
             environment_name="dev",
         )
-        op = builder.add_schema("schema_new", "analytics", "cat_1", op_id="op_sch_001")
+        op = builder.schema.add_schema("schema_new", "analytics", "cat_1", op_id="op_sch_001")
         op.payload["tags"] = {"layer": "silver"}
 
         result = generator.generate_sql_with_mapping([op])
@@ -279,7 +279,7 @@ class TestManagedLocationSQL:
             environment_name="dev",
         )
 
-        op = builder.add_catalog("cat_999", "warehouse", op_id="op_managed_003")
+        op = builder.catalog.add_catalog("cat_999", "warehouse", op_id="op_managed_003")
         op.payload["managedLocationName"] = "nonexistent"
 
         result = generator.generate_sql_for_operation(op)
@@ -295,7 +295,7 @@ class TestTableSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_table("table_001", "events", "schema_456", "delta", op_id="op_007")
+        op = builder.table.add_table("table_001", "events", "schema_456", "delta", op_id="op_007")
 
         result = generator.generate_sql_for_operation(op)
         assert "CREATE TABLE IF NOT EXISTS" in result.sql
@@ -307,7 +307,7 @@ class TestTableSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_table("table_001", "events", "schema_456", "iceberg", op_id="op_007")
+        op = builder.table.add_table("table_001", "events", "schema_456", "iceberg", op_id="op_007")
 
         result = generator.generate_sql_for_operation(op)
         assert "USING ICEBERG" in result.sql
@@ -317,7 +317,7 @@ class TestTableSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_table(
+        op = builder.table.add_table(
             "table_001",
             "events",
             "schema_456",
@@ -337,7 +337,7 @@ class TestTableSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.rename_table("table_789", "customers", "users", op_id="op_008")
+        op = builder.table.rename_table("table_789", "customers", "users", op_id="op_008")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql
@@ -372,7 +372,7 @@ class TestTableSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.set_table_comment("table_789", "User data table", op_id="op_010")
+        op = builder.table.set_table_comment("table_789", "User data table", op_id="op_010")
 
         result = generator.generate_sql_for_operation(op)
         assert "COMMENT ON TABLE" in result.sql
@@ -384,7 +384,7 @@ class TestTableSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.set_table_property(
+        op = builder.table.set_table_property(
             "table_789", "delta.enableChangeDataFeed", "true", op_id="op_011"
         )
 
@@ -398,7 +398,9 @@ class TestTableSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.unset_table_property("table_789", "delta.enableChangeDataFeed", op_id="op_012")
+        op = builder.table.unset_table_property(
+            "table_789", "delta.enableChangeDataFeed", op_id="op_012"
+        )
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql
@@ -629,7 +631,7 @@ class TestColumnSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_column(
+        op = builder.column.add_column(
             "col_003",
             "table_789",
             "created_at",
@@ -654,7 +656,7 @@ class TestColumnSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_column(
+        op = builder.column.add_column(
             "col_003",
             "table_789",
             "optional_field",
@@ -673,7 +675,7 @@ class TestColumnSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.rename_column("col_001", "table_789", "id", "user_id", op_id="op_014")
+        op = builder.column.rename_column("col_001", "table_789", "id", "user_id", op_id="op_014")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql
@@ -686,7 +688,7 @@ class TestColumnSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.drop_column("col_002", "table_789", op_id="op_015")
+        op = builder.column.drop_column("col_002", "table_789", op_id="op_015")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql
@@ -698,7 +700,9 @@ class TestColumnSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.change_column_type("col_001", "table_789", "DECIMAL(18,0)", op_id="op_016")
+        op = builder.column.change_column_type(
+            "col_001", "table_789", "DECIMAL(18,0)", op_id="op_016"
+        )
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql
@@ -711,7 +715,9 @@ class TestColumnSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.set_column_comment("col_001", "table_789", "Unique identifier", op_id="op_017")
+        op = builder.column.set_column_comment(
+            "col_001", "table_789", "Unique identifier", op_id="op_017"
+        )
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql
@@ -727,7 +733,7 @@ class TestColumnTagSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.set_column_tag("col_002", "table_789", "PII", "true", op_id="op_018")
+        op = builder.column.set_column_tag("col_002", "table_789", "PII", "true", op_id="op_018")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql
@@ -740,7 +746,7 @@ class TestColumnTagSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.unset_column_tag("col_002", "table_789", "PII", op_id="op_019")
+        op = builder.column.unset_column_tag("col_002", "table_789", "PII", op_id="op_019")
 
         result = generator.generate_sql_for_operation(op)
         assert "ALTER TABLE" in result.sql
@@ -754,8 +760,10 @@ class TestColumnTagSQL:
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
         tag_ops = [
-            builder.set_column_tag("col_002", "table_789", "pii", "true", op_id="tag_1"),
-            builder.set_column_tag("col_002", "table_789", "category", "contact", op_id="tag_2"),
+            builder.column.set_column_tag("col_002", "table_789", "pii", "true", op_id="tag_1"),
+            builder.column.set_column_tag(
+                "col_002", "table_789", "category", "contact", op_id="tag_2"
+            ),
         ]
         batched = generator._generate_batched_column_tag_sql(tag_ops)
         assert "SET TAGS" in batched
@@ -770,8 +778,8 @@ class TestColumnTagSQL:
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
         table_tag_ops = [
-            builder.set_table_tag("table_789", "k1", "v1", op_id="tag_1"),
-            builder.set_table_tag("table_789", "k2", "v2", op_id="tag_2"),
+            builder.table.set_table_tag("table_789", "k1", "v1", op_id="tag_1"),
+            builder.table.set_table_tag("table_789", "k2", "v2", op_id="tag_2"),
         ]
         batched = generator._generate_batched_table_tag_sql(table_tag_ops)
         assert "SET TAGS" in batched
@@ -779,6 +787,28 @@ class TestColumnTagSQL:
         assert "k2" in batched and "v2" in batched
         assert batched.count("ALTER TABLE") == 1
         assert batched.count("SET TAGS") == 1
+
+    def test_set_table_tag_on_view_produces_alter_table_sql(self, empty_unity_state):
+        """set_table_tag with view id produces ALTER TABLE ... SET TAGS for view (bulk table tag)."""
+        from schemax.providers.unity.state_reducer import apply_operations
+
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.table.add_table("tbl_1", "t1", "sch_1", "delta", op_id="op_3"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", comment=None, op_id="op_4"),
+        ]
+        state_with_view = apply_operations(empty_unity_state, setup_ops)
+        generator = UnitySQLGenerator(state_with_view.model_dump(by_alias=True))
+
+        tag_op = builder.table.set_table_tag("view_1", "env", "dev", op_id="op_5")
+        result = generator.generate_sql_for_operation(tag_op)
+
+        assert "ALTER TABLE" in result.sql
+        assert "SET TAGS" in result.sql
+        assert "`v1`" in result.sql or "v1" in result.sql
+        assert "env" in result.sql and "dev" in result.sql
 
 
 class TestConstraintSQL:
@@ -789,7 +819,7 @@ class TestConstraintSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_constraint(
+        op = builder.constraint.add_constraint(
             "constraint_001",
             "table_789",
             "primary_key",
@@ -812,7 +842,7 @@ class TestConstraintSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_constraint(
+        op = builder.constraint.add_constraint(
             "constraint_001",
             "table_789",
             "primary_key",
@@ -833,7 +863,7 @@ class TestConstraintSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_constraint(
+        op = builder.constraint.add_constraint(
             "constraint_002",
             "table_789",
             "foreign_key",
@@ -855,7 +885,7 @@ class TestConstraintSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_constraint(
+        op = builder.constraint.add_constraint(
             "constraint_003",
             "table_789",
             "check",
@@ -882,7 +912,7 @@ class TestConstraintSQL:
         builder = OperationBuilder()
 
         # First, add a constraint to the state so it can be looked up
-        add_op = builder.add_constraint(
+        add_op = builder.constraint.add_constraint(
             "constraint_001",
             "table_789",
             "primary_key",
@@ -923,7 +953,7 @@ class TestRowFilterSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_row_filter(
+        op = builder.row_filter.add_row_filter(
             "filter_001",
             "table_789",
             "region_filter",
@@ -942,7 +972,7 @@ class TestRowFilterSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.update_row_filter(
+        op = builder.row_filter.update_row_filter(
             "filter_001",
             "table_789",
             name="region_filter_v2",
@@ -958,7 +988,7 @@ class TestRowFilterSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.remove_row_filter("filter_001", "table_789", op_id="op_026")
+        op = builder.row_filter.remove_row_filter("filter_001", "table_789", op_id="op_026")
 
         result = generator.generate_sql_for_operation(op)
         assert "DROP ROW FILTER" in result.sql
@@ -972,7 +1002,7 @@ class TestColumnMaskSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.add_column_mask(
+        op = builder.column_mask.add_column_mask(
             "mask_001",
             "table_789",
             "col_002",
@@ -990,7 +1020,7 @@ class TestColumnMaskSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.update_column_mask(
+        op = builder.column_mask.update_column_mask(
             "mask_001",
             "table_789",
             columnId="col_002",
@@ -1006,7 +1036,7 @@ class TestColumnMaskSQL:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        op = builder.remove_column_mask(
+        op = builder.column_mask.remove_column_mask(
             "mask_001", "table_789", column_id="col_002", op_id="op_029"
         )
 
@@ -1021,7 +1051,7 @@ class TestGrantSQL:
         """Test GRANT on CATALOG SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.add_grant(
+        op = builder.grant.add_grant(
             "catalog", "cat_123", "data_engineers", ["USE CATALOG", "CREATE SCHEMA"], op_id="op_g1"
         )
         result = generator.generate_sql_for_operation(op)
@@ -1035,7 +1065,7 @@ class TestGrantSQL:
         """Test GRANT on TABLE SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.add_grant(
+        op = builder.grant.add_grant(
             "table", "table_789", "analysts", ["SELECT", "MODIFY"], op_id="op_g2"
         )
         result = generator.generate_sql_for_operation(op)
@@ -1048,7 +1078,9 @@ class TestGrantSQL:
         """Test REVOKE ALL PRIVILEGES SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.revoke_grant("table", "table_789", "analysts", privileges=None, op_id="op_g3")
+        op = builder.grant.revoke_grant(
+            "table", "table_789", "analysts", privileges=None, op_id="op_g3"
+        )
         result = generator.generate_sql_for_operation(op)
         assert "REVOKE" in result.sql
         assert "ALL PRIVILEGES" in result.sql
@@ -1059,7 +1091,7 @@ class TestGrantSQL:
         """Test REVOKE specific privileges SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.revoke_grant(
+        op = builder.grant.revoke_grant(
             "schema", "schema_456", "analysts", privileges=["CREATE TABLE"], op_id="op_g4"
         )
         result = generator.generate_sql_for_operation(op)
@@ -1381,8 +1413,8 @@ class TestViewSQL:
         ]
         generator = UnitySQLGenerator(state)
         builder = OperationBuilder()
-        op_table = builder.add_table("table1", "products", "schema1", "delta", op_id="op_t1")
-        op_mv = builder.add_materialized_view(
+        op_table = builder.table.add_table("table1", "products", "schema1", "delta", op_id="op_t1")
+        op_mv = builder.materialized_view.add_materialized_view(
             "mv_1",
             "summary_mv",
             "schema1",
@@ -1429,7 +1461,7 @@ class TestViewSQL:
         ]
         generator = UnitySQLGenerator(state)
         builder = OperationBuilder()
-        op_table = builder.add_table("table1", "base", "schema1", "delta", op_id="op_t1")
+        op_table = builder.table.add_table("table1", "base", "schema1", "delta", op_id="op_t1")
         op_view = Operation(
             id="op_v1",
             provider="unity",
@@ -1444,7 +1476,7 @@ class TestViewSQL:
             },
             ts="2024-01-01T00:00:01Z",
         )
-        op_mv = builder.add_materialized_view(
+        op_mv = builder.materialized_view.add_materialized_view(
             "mv_1",
             "agg_mv",
             "schema1",
@@ -1475,7 +1507,7 @@ class TestVolumeFunctionMaterializedViewSQL:
         """Test CREATE VOLUME (managed) SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.add_volume(
+        op = builder.volume.add_volume(
             "vol_001", "my_volume", "schema_456", "managed", comment="Data volume", op_id="op_v1"
         )
         result = generator.generate_sql_for_operation(op)
@@ -1488,7 +1520,7 @@ class TestVolumeFunctionMaterializedViewSQL:
         """Test CREATE EXTERNAL VOLUME SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.add_volume(
+        op = builder.volume.add_volume(
             "vol_002",
             "external_vol",
             "schema_456",
@@ -1503,10 +1535,10 @@ class TestVolumeFunctionMaterializedViewSQL:
     def test_drop_volume(self, sample_unity_state, assert_sql):
         """Test DROP VOLUME SQL generation"""
         builder = OperationBuilder()
-        add_op = builder.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
+        add_op = builder.volume.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
         state = apply_operation(sample_unity_state, add_op)
         generator = UnitySQLGenerator(state.model_dump(by_alias=True))
-        drop_op = builder.drop_volume("vol_001", op_id="op_v2")
+        drop_op = builder.volume.drop_volume("vol_001", op_id="op_v2")
         result = generator.generate_sql_for_operation(drop_op)
         assert "DROP VOLUME" in result.sql
         assert_sql(result.sql)
@@ -1515,7 +1547,7 @@ class TestVolumeFunctionMaterializedViewSQL:
         """Test CREATE FUNCTION (SQL) SQL generation. Body is expression only (generator wraps in RETURN)."""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.add_function(
+        op = builder.function.add_function(
             "func_001",
             "my_func",
             "schema_456",
@@ -1533,12 +1565,12 @@ class TestVolumeFunctionMaterializedViewSQL:
     def test_drop_function(self, sample_unity_state, assert_sql):
         """Test DROP FUNCTION SQL generation"""
         builder = OperationBuilder()
-        add_op = builder.add_function(
+        add_op = builder.function.add_function(
             "func_001", "my_fn", "schema_456", "SQL", "INT", "RETURN 1", op_id="op_f1"
         )
         state = apply_operation(sample_unity_state, add_op)
         generator = UnitySQLGenerator(state.model_dump(by_alias=True))
-        drop_op = builder.drop_function("func_001", op_id="op_f2")
+        drop_op = builder.function.drop_function("func_001", op_id="op_f2")
         result = generator.generate_sql_for_operation(drop_op)
         assert "DROP FUNCTION" in result.sql
         assert_sql(result.sql)
@@ -1547,7 +1579,7 @@ class TestVolumeFunctionMaterializedViewSQL:
         """Test CREATE MATERIALIZED VIEW SQL generation"""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.add_materialized_view(
+        op = builder.materialized_view.add_materialized_view(
             "mv_001",
             "my_mv",
             "schema_456",
@@ -1564,7 +1596,7 @@ class TestVolumeFunctionMaterializedViewSQL:
         """COMMENT must appear before AS (Databricks syntax); after SELECT is invalid."""
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
-        op = builder.add_materialized_view(
+        op = builder.materialized_view.add_materialized_view(
             "mv_001",
             "e2e_mv",
             "schema_456",
@@ -1585,12 +1617,12 @@ class TestVolumeFunctionMaterializedViewSQL:
     def test_drop_materialized_view(self, sample_unity_state, assert_sql):
         """Test DROP MATERIALIZED VIEW SQL generation"""
         builder = OperationBuilder()
-        add_op = builder.add_materialized_view(
+        add_op = builder.materialized_view.add_materialized_view(
             "mv_001", "my_mv", "schema_456", "SELECT 1", op_id="op_mv1"
         )
         state = apply_operation(sample_unity_state, add_op)
         generator = UnitySQLGenerator(state.model_dump(by_alias=True))
-        drop_op = builder.drop_materialized_view("mv_001", op_id="op_mv2")
+        drop_op = builder.materialized_view.drop_materialized_view("mv_001", op_id="op_mv2")
         result = generator.generate_sql_for_operation(drop_op)
         assert "DROP MATERIALIZED VIEW" in result.sql, (
             "Databricks requires DROP MATERIALIZED VIEW, not DROP VIEW, for MVs"
@@ -1606,7 +1638,7 @@ class TestSQLGeneration:
         builder = OperationBuilder()
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
-        valid_op = builder.add_catalog("cat_001", "test", op_id="op_001")
+        valid_op = builder.catalog.add_catalog("cat_001", "test", op_id="op_001")
 
         assert generator.can_generate_sql(valid_op)
 
@@ -1647,17 +1679,19 @@ class TestSQLGeneration:
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
         # Catalog
-        catalog_op = builder.add_catalog("cat_001", "test", op_id="op_001")
+        catalog_op = builder.catalog.add_catalog("cat_001", "test", op_id="op_001")
         result = generator.generate_sql_for_operation(catalog_op)
         assert "IF NOT EXISTS" in result.sql
 
         # Schema
-        schema_op = builder.add_schema("schema_001", "test", "cat_123", op_id="op_002")
+        schema_op = builder.schema.add_schema("schema_001", "test", "cat_123", op_id="op_002")
         result = generator.generate_sql_for_operation(schema_op)
         assert "IF NOT EXISTS" in result.sql
 
         # Table
-        table_op = builder.add_table("table_001", "test", "schema_456", "delta", op_id="op_003")
+        table_op = builder.table.add_table(
+            "table_001", "test", "schema_456", "delta", op_id="op_003"
+        )
         result = generator.generate_sql_for_operation(table_op)
         assert "IF NOT EXISTS" in result.sql
 
@@ -1667,7 +1701,7 @@ class TestSQLGeneration:
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
         # Test with special characters
-        op = builder.add_catalog("cat_001", "my-special.catalog", op_id="op_001")
+        op = builder.catalog.add_catalog("cat_001", "my-special.catalog", op_id="op_001")
 
         result = generator.generate_sql_for_operation(op)
         # Should use backticks for escaping
@@ -1679,7 +1713,7 @@ class TestSQLGeneration:
         generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
 
         # Test with single quote in comment
-        op = builder.set_table_comment("table_789", "User's data table", op_id="op_001")
+        op = builder.table.set_table_comment("table_789", "User's data table", op_id="op_001")
 
         result = generator.generate_sql_for_operation(op)
         # Single quotes should be escaped
@@ -1716,15 +1750,15 @@ class TestSQLOptimization:
         from schemax.providers.unity.state_reducer import apply_operations
 
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
-            builder.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.table.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
         ]
         state_with_table = apply_operations(empty_unity_state, setup_ops)
 
         # Multiple column operations on same table
         column_ops = [
-            builder.add_column(
+            builder.column.add_column(
                 "col_001",
                 "table_789",
                 "id",
@@ -1733,7 +1767,7 @@ class TestSQLOptimization:
                 comment="None",
                 op_id="col_001",
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_002",
                 "table_789",
                 "name",
@@ -1758,21 +1792,21 @@ class TestSQLOptimization:
 
         # Create base state with existing table
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
-            builder.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.table.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
         ]
         state_with_table = apply_operations(empty_unity_state, setup_ops)
 
         # Multiple ADD COLUMN operations on existing table
         column_ops = [
-            builder.add_column(
+            builder.column.add_column(
                 "col_001", "table_789", "col1", "STRING", nullable=True, op_id="col_001"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_002", "table_789", "col2", "INT", nullable=False, op_id="col_002"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_003",
                 "table_789",
                 "col3",
@@ -1822,14 +1856,14 @@ class TestSQLOptimization:
 
         # Create base state with catalog and schema
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
         ]
         state_with_schema = apply_operations(empty_unity_state, setup_ops)
 
         # CREATE TABLE with comment + ADD COLUMNS
         table_ops = [
-            builder.add_table(
+            builder.table.add_table(
                 "table_789",
                 "test",
                 "schema_456",
@@ -1837,10 +1871,10 @@ class TestSQLOptimization:
                 comment="Table for test data",
                 op_id="table_001",
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_001", "table_789", "id", "STRING", nullable=False, op_id="col_001"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_002",
                 "table_789",
                 "name",
@@ -1870,16 +1904,16 @@ class TestSQLOptimization:
 
         # Create base state with catalog and schema
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
         ]
         state_with_schema = apply_operations(empty_unity_state, setup_ops)
 
         # CREATE TABLE + table tags
         table_ops = [
-            builder.add_table("table_789", "test", "schema_456", "delta", op_id="table_001"),
-            builder.set_table_tag("table_789", "department", "engineering", op_id="tag_001"),
-            builder.set_table_tag("table_789", "owner", "data-team", op_id="tag_002"),
+            builder.table.add_table("table_789", "test", "schema_456", "delta", op_id="table_001"),
+            builder.table.set_table_tag("table_789", "department", "engineering", op_id="tag_001"),
+            builder.table.set_table_tag("table_789", "owner", "data-team", op_id="tag_002"),
         ]
 
         generator = UnitySQLGenerator(state_with_schema.model_dump(by_alias=True))
@@ -1903,19 +1937,19 @@ class TestSQLOptimization:
 
         # Create base state with catalog and schema
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
         ]
         state_with_schema = apply_operations(empty_unity_state, setup_ops)
 
         # CREATE TABLE + columns with tags
         table_ops = [
-            builder.add_table("table_789", "test", "schema_456", "delta", op_id="table_001"),
-            builder.add_column(
+            builder.table.add_table("table_789", "test", "schema_456", "delta", op_id="table_001"),
+            builder.column.add_column(
                 "col_001", "table_789", "email", "STRING", nullable=False, op_id="col_001"
             ),
-            builder.set_column_tag("col_001", "table_789", "pii", "true", op_id="tag_001"),
-            builder.set_column_tag(
+            builder.column.set_column_tag("col_001", "table_789", "pii", "true", op_id="tag_001"),
+            builder.column.set_column_tag(
                 "col_001", "table_789", "classification", "sensitive", op_id="tag_002"
             ),
         ]
@@ -1946,14 +1980,16 @@ class TestSQLOptimization:
 
         # New state: catalog with table with columns that have tags
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
-            builder.add_table("table_789", "users", "schema_456", "delta", op_id="table_001"),
-            builder.add_column(
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.table.add_table("table_789", "users", "schema_456", "delta", op_id="table_001"),
+            builder.column.add_column(
                 "col_001", "table_789", "email", "STRING", nullable=False, op_id="col_001"
             ),
-            builder.set_column_tag("col_001", "table_789", "pii", "true", op_id="tag_001"),
-            builder.set_column_tag("col_001", "table_789", "category", "contact", op_id="tag_002"),
+            builder.column.set_column_tag("col_001", "table_789", "pii", "true", op_id="tag_001"),
+            builder.column.set_column_tag(
+                "col_001", "table_789", "category", "contact", op_id="tag_002"
+            ),
         ]
         new_state = apply_operations(empty_unity_state, setup_ops)
 
@@ -1992,15 +2028,15 @@ class TestSQLOptimization:
 
         # Create base state with existing table
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
-            builder.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.table.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
         ]
         state_with_table = apply_operations(empty_unity_state, setup_ops)
 
         # Single ADD COLUMN operation
         column_ops = [
-            builder.add_column(
+            builder.column.add_column(
                 "col_001", "table_789", "col1", "STRING", nullable=True, op_id="col_001"
             )
         ]
@@ -2021,19 +2057,23 @@ class TestSQLOptimization:
 
         # Create base state with two tables
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
-            builder.add_table("table_001", "table1", "schema_456", "delta", op_id="setup_003"),
-            builder.add_table("table_002", "table2", "schema_456", "delta", op_id="setup_004"),
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.table.add_table(
+                "table_001", "table1", "schema_456", "delta", op_id="setup_003"
+            ),
+            builder.table.add_table(
+                "table_002", "table2", "schema_456", "delta", op_id="setup_004"
+            ),
         ]
         state_with_tables = apply_operations(empty_unity_state, setup_ops)
 
         # ADD COLUMN operations on different tables
         column_ops = [
-            builder.add_column(
+            builder.column.add_column(
                 "col_001", "table_001", "col1", "STRING", nullable=True, op_id="col_001"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_002", "table_002", "col2", "INT", nullable=False, op_id="col_002"
             ),
         ]
@@ -2063,10 +2103,10 @@ class TestSQLOptimization:
 
         # Create base state with table that has existing columns
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
-            builder.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
-            builder.add_column(
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.table.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
+            builder.column.add_column(
                 "col_old", "table_789", "old_col", "STRING", nullable=True, op_id="setup_004"
             ),
         ]
@@ -2074,10 +2114,10 @@ class TestSQLOptimization:
 
         # Mixed operations: multiple ADD and one DROP
         mixed_ops = [
-            builder.add_column(
+            builder.column.add_column(
                 "col_001", "table_789", "col1", "STRING", nullable=True, op_id="col_001"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_002", "table_789", "col2", "INT", nullable=False, op_id="col_002"
             ),
             Operation(
@@ -2117,16 +2157,18 @@ class TestSQLOptimization:
 
         # Create base state with table and multiple columns (simulating post-snapshot state)
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
-            builder.add_table("table_789", "diamond", "schema_456", "delta", op_id="setup_003"),
-            builder.add_column(
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.table.add_table(
+                "table_789", "diamond", "schema_456", "delta", op_id="setup_003"
+            ),
+            builder.column.add_column(
                 "col_id", "table_789", "id", "INT", nullable=False, op_id="setup_004"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_type", "table_789", "type", "STRING", nullable=True, op_id="setup_005"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_name", "table_789", "name", "STRING", nullable=True, op_id="setup_006"
             ),
         ]
@@ -2171,16 +2213,16 @@ class TestSQLOptimization:
 
         # Create base state with table and multiple columns
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
-            builder.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
-            builder.add_column(
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.table.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
+            builder.column.add_column(
                 "col_id", "table_789", "id", "INT", nullable=False, op_id="setup_004"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_type", "table_789", "type", "STRING", nullable=True, op_id="setup_005"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_name", "table_789", "name", "STRING", nullable=True, op_id="setup_006"
             ),
         ]
@@ -2223,16 +2265,16 @@ class TestSQLOptimization:
 
         # Create base state with table and multiple columns
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
-            builder.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
-            builder.add_column(
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.table.add_table("table_789", "test", "schema_456", "delta", op_id="setup_003"),
+            builder.column.add_column(
                 "col_id", "table_789", "id", "INT", nullable=False, op_id="setup_004"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_type", "table_789", "type", "STRING", nullable=True, op_id="setup_005"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_name", "table_789", "name", "STRING", nullable=True, op_id="setup_006"
             ),
         ]
@@ -2273,18 +2315,18 @@ class TestOperationCancellation:
 
         # Setup: catalog and schema
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
         ]
         state_with_schema = apply_operations(empty_unity_state, setup_ops)
 
         # Create table, add columns, then drop table (all cancelled)
         ops = [
-            builder.add_table("table_789", "temp", "schema_456", "delta", op_id="op_001"),
-            builder.add_column(
+            builder.table.add_table("table_789", "temp", "schema_456", "delta", op_id="op_001"),
+            builder.column.add_column(
                 "col_001", "table_789", "id", "BIGINT", nullable=False, op_id="op_002"
             ),
-            builder.add_column(
+            builder.column.add_column(
                 "col_002", "table_789", "name", "STRING", nullable=True, op_id="op_003"
             ),
             Operation(
@@ -2314,7 +2356,7 @@ class TestOperationCancellation:
         builder = OperationBuilder()
 
         ops = [
-            builder.add_catalog("cat_999", "temp_catalog", op_id="op_001"),
+            builder.catalog.add_catalog("cat_999", "temp_catalog", op_id="op_001"),
             Operation(
                 id="op_002",
                 provider="unity",
@@ -2337,11 +2379,11 @@ class TestOperationCancellation:
         from schemax.providers.unity.state_reducer import apply_operations
 
         # Setup: catalog
-        setup_ops = [builder.add_catalog("cat_123", "test", op_id="setup_001")]
+        setup_ops = [builder.catalog.add_catalog("cat_123", "test", op_id="setup_001")]
         state_with_catalog = apply_operations(empty_unity_state, setup_ops)
 
         ops = [
-            builder.add_schema("schema_999", "temp_schema", "cat_123", op_id="op_001"),
+            builder.schema.add_schema("schema_999", "temp_schema", "cat_123", op_id="op_001"),
             Operation(
                 id="op_002",
                 provider="unity",
@@ -2365,13 +2407,13 @@ class TestOperationCancellation:
 
         # Setup: catalog and schema
         setup_ops = [
-            builder.add_catalog("cat_123", "test", op_id="setup_001"),
-            builder.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
+            builder.catalog.add_catalog("cat_123", "test", op_id="setup_001"),
+            builder.schema.add_schema("schema_456", "test", "cat_123", op_id="setup_002"),
         ]
         state_with_schema = apply_operations(empty_unity_state, setup_ops)
 
         # Create table without drop (should generate SQL)
-        ops = [builder.add_table("table_789", "users", "schema_456", "delta", op_id="op_001")]
+        ops = [builder.table.add_table("table_789", "users", "schema_456", "delta", op_id="op_001")]
 
         generator = UnitySQLGenerator(state_with_schema.model_dump(by_alias=True))
         sql = generator.generate_sql(ops)

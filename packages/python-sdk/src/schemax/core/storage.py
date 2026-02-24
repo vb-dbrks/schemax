@@ -66,16 +66,15 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
 
     if project_path.exists():
         # Project exists - check version
-        with open(project_path) as f:
+        with open(project_path, encoding="utf-8") as f:
             project = cast(dict[str, Any], json.load(f))
 
         if project.get("version") == 4:
             return  # Already v4
-        else:
-            raise ValueError(
-                f"Project version {project.get('version')} not supported. "
-                "Please create a new project or manually migrate to v4."
-            )
+        raise ValueError(
+            f"Project version {project.get('version')} not supported. "
+            "Please create a new project or manually migrate to v4."
+        )
 
     # Create new v4 project
     workspace_name = workspace_path.name
@@ -165,10 +164,10 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
 
     ensure_schemax_dir(workspace_path)
 
-    with open(project_path, "w") as f:
+    with open(project_path, "w", encoding="utf-8") as f:
         json.dump(new_project, f, indent=2)
 
-    with open(changelog_path, "w") as f:
+    with open(changelog_path, "w", encoding="utf-8") as f:
         json.dump(new_changelog, f, indent=2)
 
     provider_name = provider.info.name
@@ -186,6 +185,7 @@ def read_project(workspace_path: Path) -> dict[str, Any]:
         Project data
 
     Raises:
+        FileNotFoundError: If project file does not exist
         ValueError: If project version is not v4
     """
     project_path = get_project_file_path(workspace_path)
@@ -195,7 +195,7 @@ def read_project(workspace_path: Path) -> dict[str, Any]:
             f"Project file not found: {project_path}. Run 'schemax init' to create a new project."
         )
 
-    with open(project_path) as f:
+    with open(project_path, encoding="utf-8") as f:
         project = cast(dict[str, Any], json.load(f))
 
     # Enforce v4
@@ -213,7 +213,7 @@ def write_project(workspace_path: Path, project: dict[str, Any]) -> None:
     """Write project file"""
     project_path = get_project_file_path(workspace_path)
 
-    with open(project_path, "w") as f:
+    with open(project_path, "w", encoding="utf-8") as f:
         json.dump(project, f, indent=2)
 
 
@@ -229,7 +229,7 @@ def read_changelog(workspace_path: Path) -> dict[str, Any]:
     changelog_path = get_changelog_file_path(workspace_path)
 
     try:
-        with open(changelog_path) as f:
+        with open(changelog_path, encoding="utf-8") as f:
             return cast(dict[str, Any], json.load(f))
     except FileNotFoundError:
         # Changelog doesn't exist, create empty one
@@ -240,7 +240,7 @@ def read_changelog(workspace_path: Path) -> dict[str, Any]:
             "lastModified": datetime.now(UTC).isoformat(),
         }
 
-        with open(changelog_path, "w") as f:
+        with open(changelog_path, "w", encoding="utf-8") as f:
             json.dump(changelog, f, indent=2)
 
         return changelog
@@ -251,8 +251,6 @@ def write_changelog(workspace_path: Path, changelog: dict[str, Any]) -> None:
 
     Note: Serializes Operation objects to dicts for JSON storage.
     """
-    from schemax.providers.base.operations import Operation
-
     changelog_path = get_changelog_file_path(workspace_path)
     changelog["lastModified"] = datetime.now(UTC).isoformat()
 
@@ -262,10 +260,10 @@ def write_changelog(workspace_path: Path, changelog: dict[str, Any]) -> None:
         # Check if ops are Operation objects (not dicts)
         if isinstance(serializable_changelog["ops"][0], Operation):
             serializable_changelog["ops"] = [
-                op.model_dump(by_alias=True) for op in serializable_changelog["ops"]
+                operation.model_dump(by_alias=True) for operation in serializable_changelog["ops"]
             ]
 
-    with open(changelog_path, "w") as f:
+    with open(changelog_path, "w", encoding="utf-8") as f:
         json.dump(serializable_changelog, f, indent=2)
 
 
@@ -273,7 +271,7 @@ def read_snapshot(workspace_path: Path, version: str) -> dict[str, Any]:
     """Read a snapshot file"""
     snapshot_path = get_snapshot_file_path(workspace_path, version)
 
-    with open(snapshot_path) as f:
+    with open(snapshot_path, encoding="utf-8") as f:
         return cast(dict[str, Any], json.load(f))
 
 
@@ -282,7 +280,7 @@ def write_snapshot(workspace_path: Path, snapshot: dict[str, Any]) -> None:
     ensure_schemax_dir(workspace_path)
     snapshot_path = get_snapshot_file_path(workspace_path, snapshot["version"])
 
-    with open(snapshot_path, "w") as f:
+    with open(snapshot_path, "w", encoding="utf-8") as f:
         json.dump(snapshot, f, indent=2)
 
 
@@ -350,7 +348,7 @@ def validate_dependencies_internal(
         generator = provider.get_sql_generator(state=state)
 
         # Try to build dependency graph
-        graph = generator._build_dependency_graph(ops)
+        graph = generator.build_dependency_graph(ops)
 
         # Check for circular dependencies
         cycles = graph.detect_cycles()
@@ -398,14 +396,14 @@ def append_ops(workspace_path: Path, ops: list[Operation]) -> None:
         raise ValueError(f"Provider '{project['provider']['type']}' not found")
 
     # Validate operations
-    for op in ops:
-        validation = provider.validate_operation(op)
+    for operation in ops:
+        validation = provider.validate_operation(operation)
         if not validation.valid:
             errors = ", ".join(f"{e.field}: {e.message}" for e in validation.errors)
             raise ValueError(f"Invalid operation: {errors}")
 
     # Append ops
-    changelog["ops"].extend([op.model_dump(by_alias=True) for op in ops])
+    changelog["ops"].extend([operation.model_dump(by_alias=True) for operation in ops])
 
     # Write back
     write_changelog(workspace_path, changelog)
@@ -446,21 +444,19 @@ def create_snapshot(
 
     # Generate IDs for ops that don't have them (backwards compatibility)
     # Note: changelog["ops"] may contain Operation objects or dicts
-    from schemax.providers.base.operations import Operation
-
     ops_with_ids = []
-    for i, op in enumerate(changelog["ops"]):
+    for i, operation_item in enumerate(changelog["ops"]):
         # Handle both Operation objects and dicts
-        if isinstance(op, Operation):
-            op_dict = op.model_dump(by_alias=True)
-            if not op.id:
-                op_dict["id"] = f"op_{i}_{op.ts}_{op.target}"
+        if isinstance(operation_item, Operation):
+            op_dict = operation_item.model_dump(by_alias=True)
+            if not operation_item.id:
+                op_dict["id"] = f"op_{i}_{operation_item.ts}_{operation_item.target}"
             ops_with_ids.append(op_dict)
         else:
             # Dict format (backwards compatibility)
-            if "id" not in op or not op["id"]:
-                op["id"] = f"op_{i}_{op['ts']}_{op['target']}"
-            ops_with_ids.append(op)
+            if "id" not in operation_item or not operation_item["id"]:
+                operation_item["id"] = f"op_{i}_{operation_item['ts']}_{operation_item['target']}"
+            ops_with_ids.append(operation_item)
 
     # Calculate hash (includes full operations)
     state_hash = _calculate_state_hash(state, ops_with_ids)
@@ -546,7 +542,7 @@ def _get_next_version(current_version: str | None, settings: dict[str, Any]) -> 
     if not match:
         return version_prefix + "0.1.0"
 
-    major, minor, patch = match.groups()
+    major, minor, _patch = match.groups()
     next_minor = int(minor) + 1
 
     return f"{version_prefix}{major}.{next_minor}.0"

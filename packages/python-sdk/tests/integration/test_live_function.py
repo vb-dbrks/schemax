@@ -153,7 +153,7 @@ def test_live_e2e_apply_function(tmp_path: Path) -> None:
         append_ops(
             workspace,
             [
-                builder.add_function(
+                builder.function.add_function(
                     func_id,
                     function_name,
                     schema_id,

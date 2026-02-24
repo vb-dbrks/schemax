@@ -25,23 +25,25 @@ class TestSimpleViewDependencies:
         builder = OperationBuilder()
 
         # Add catalog
-        state = apply_operation(state, builder.add_catalog("cat1", "my_catalog", op_id="op1"))
+        state = apply_operation(
+            state, builder.catalog.add_catalog("cat1", "my_catalog", op_id="op1")
+        )
 
         # Add schema
         state = apply_operation(
-            state, builder.add_schema("schema1", "my_schema", "cat1", op_id="op2")
+            state, builder.schema.add_schema("schema1", "my_schema", "cat1", op_id="op2")
         )
 
         # Add table
         state = apply_operation(
-            state, builder.add_table("table1", "users", "schema1", "delta", op_id="op3")
+            state, builder.table.add_table("table1", "users", "schema1", "delta", op_id="op3")
         )
 
         # Add view that depends on table
         view_sql = "SELECT * FROM my_catalog.my_schema.users WHERE active = true"
         state = apply_operation(
             state,
-            builder.add_view("view1", "active_users", "schema1", view_sql, op_id="op4"),
+            builder.view.add_view("view1", "active_users", "schema1", view_sql, op_id="op4"),
         )
 
         # Verify state
@@ -96,17 +98,17 @@ class TestChainedViewDependencies:
 
         # Create catalog and schema
         ops = [
-            builder.add_catalog("cat1", "analytics", op_id="op1"),
-            builder.add_schema("schema1", "bronze", "cat1", op_id="op2"),
-            builder.add_table("table1", "raw_events", "schema1", "delta", op_id="op3"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "analytics", op_id="op1"),
+            builder.schema.add_schema("schema1", "bronze", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "raw_events", "schema1", "delta", op_id="op3"),
+            builder.view.add_view(
                 "view1",
                 "filtered_events",
                 "schema1",
                 "SELECT * FROM analytics.bronze.raw_events WHERE status = 'success'",
                 op_id="op4",
             ),
-            builder.add_view(
+            builder.view.add_view(
                 "view2",
                 "aggregated_events",
                 "schema1",
@@ -165,9 +167,9 @@ class TestCircularDependencies:
         builder = OperationBuilder()
 
         ops = [
-            builder.add_catalog("cat1", "test_catalog", op_id="op1"),
-            builder.add_schema("schema1", "test_schema", "cat1", op_id="op2"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "test_catalog", op_id="op1"),
+            builder.schema.add_schema("schema1", "test_schema", "cat1", op_id="op2"),
+            builder.view.add_view(
                 "viewA",
                 "view_a",
                 "schema1",
@@ -175,7 +177,7 @@ class TestCircularDependencies:
                 dependencies=["viewB"],
                 op_id="op3",
             ),
-            builder.add_view(
+            builder.view.add_view(
                 "viewB",
                 "view_b",
                 "schema1",
@@ -204,10 +206,10 @@ class TestBreakingChanges:
         builder = OperationBuilder()
 
         ops = [
-            builder.add_catalog("cat1", "my_catalog", op_id="op1"),
-            builder.add_schema("schema1", "my_schema", "cat1", op_id="op2"),
-            builder.add_table("table1", "source_data", "schema1", "delta", op_id="op3"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "my_catalog", op_id="op1"),
+            builder.schema.add_schema("schema1", "my_schema", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "source_data", "schema1", "delta", op_id="op3"),
+            builder.view.add_view(
                 "view1",
                 "derived_view",
                 "schema1",
@@ -215,7 +217,7 @@ class TestBreakingChanges:
                 dependencies=["table1"],
                 op_id="op4",
             ),
-            builder.drop_table("table1", op_id="op5"),
+            builder.table.drop_table("table1", op_id="op5"),
         ]
 
         state = apply_operations(state, ops)
@@ -238,11 +240,11 @@ class TestComplexViewScenarios:
         builder = OperationBuilder()
 
         ops = [
-            builder.add_catalog("cat1", "warehouse", op_id="op1"),
-            builder.add_schema("schema1", "sales", "cat1", op_id="op2"),
-            builder.add_table("orders", "orders", "schema1", "delta", op_id="op3"),
-            builder.add_table("customers", "customers", "schema1", "delta", op_id="op4"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "warehouse", op_id="op1"),
+            builder.schema.add_schema("schema1", "sales", "cat1", op_id="op2"),
+            builder.table.add_table("orders", "orders", "schema1", "delta", op_id="op3"),
+            builder.table.add_table("customers", "customers", "schema1", "delta", op_id="op4"),
+            builder.view.add_view(
                 "view1",
                 "customer_orders",
                 "schema1",
@@ -344,17 +346,17 @@ class TestViewUpdateScenarios:
         builder = OperationBuilder()
 
         ops = [
-            builder.add_catalog("cat1", "test", op_id="op1"),
-            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
-            builder.add_table("table1", "data", "schema1", "delta", op_id="op3"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "test", op_id="op1"),
+            builder.schema.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "data", "schema1", "delta", op_id="op3"),
+            builder.view.add_view(
                 "view1",
                 "filtered_data",
                 "schema1",
                 "SELECT * FROM test.main.data WHERE active = true",
                 op_id="op4",
             ),
-            builder.update_view(
+            builder.view.update_view(
                 "view1",
                 definition="SELECT id, name FROM test.main.data WHERE active = true",
                 op_id="op5",
@@ -372,13 +374,13 @@ class TestViewUpdateScenarios:
         builder = OperationBuilder()
 
         ops = [
-            builder.add_catalog("cat1", "test", op_id="op1"),
-            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
-            builder.add_table("table1", "data", "schema1", "delta", op_id="op3"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "test", op_id="op1"),
+            builder.schema.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "data", "schema1", "delta", op_id="op3"),
+            builder.view.add_view(
                 "view1", "old_name", "schema1", "SELECT * FROM test.main.data", op_id="op4"
             ),
-            builder.rename_view("view1", "new_name", "old_name", op_id="op5"),
+            builder.view.rename_view("view1", "new_name", "old_name", op_id="op5"),
         ]
 
         state = apply_operations(state, ops)
@@ -392,13 +394,13 @@ class TestViewUpdateScenarios:
         builder = OperationBuilder()
 
         ops = [
-            builder.add_catalog("cat1", "test", op_id="op1"),
-            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
-            builder.add_table("table1", "data", "schema1", "delta", op_id="op3"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "test", op_id="op1"),
+            builder.schema.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "data", "schema1", "delta", op_id="op3"),
+            builder.view.add_view(
                 "view1", "test_view", "schema1", "SELECT * FROM test.main.data", op_id="op4"
             ),
-            builder.drop_view("view1", op_id="op5"),
+            builder.view.drop_view("view1", op_id="op5"),
         ]
 
         state = apply_operations(state, ops)
@@ -457,12 +459,12 @@ class TestViewUpdateScenarios:
 
         # Create operations
         ops = [
-            builder.add_catalog("cat1", "test", op_id="op1"),
-            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
-            builder.add_table("table1", "table1", "schema1", "delta", op_id="op3"),
-            builder.add_table("table2", "table2", "schema1", "delta", op_id="op4"),
-            builder.add_table("table3", "table3", "schema1", "delta", op_id="op5"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "test", op_id="op1"),
+            builder.schema.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "table1", "schema1", "delta", op_id="op3"),
+            builder.table.add_table("table2", "table2", "schema1", "delta", op_id="op4"),
+            builder.table.add_table("table3", "table3", "schema1", "delta", op_id="op5"),
+            builder.view.add_view(
                 "view1",
                 "my_view",
                 "schema1",
@@ -470,7 +472,7 @@ class TestViewUpdateScenarios:
                 dependencies=["table1"],
                 op_id="op6",
             ),
-            builder.update_view(
+            builder.view.update_view(
                 "view1",
                 definition=updated_sql,
                 extracted_dependencies=updated_deps,
@@ -510,10 +512,10 @@ class TestViewSQLBatching:
 
         # Create operations
         ops = [
-            builder.add_catalog("cat1", "test", op_id="op1"),
-            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
-            builder.add_table("table1", "source", "schema1", "delta", op_id="op3"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "test", op_id="op1"),
+            builder.schema.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "source", "schema1", "delta", op_id="op3"),
+            builder.view.add_view(
                 "view1",
                 "my_view",
                 "schema1",
@@ -521,7 +523,7 @@ class TestViewSQLBatching:
                 dependencies=["table1"],
                 op_id="op4",
             ),
-            builder.update_view(
+            builder.view.update_view(
                 "view1",
                 definition="SELECT id, name FROM table1",
                 extracted_dependencies={"tables": ["table1"], "views": []},
@@ -577,10 +579,10 @@ class TestViewSQLBatching:
         builder = OperationBuilder()
 
         ops = [
-            builder.add_catalog("cat1", "test", op_id="op1"),
-            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
-            builder.add_table("table1", "data", "schema1", "delta", op_id="op3"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "test", op_id="op1"),
+            builder.schema.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "data", "schema1", "delta", op_id="op3"),
+            builder.view.add_view(
                 "view1",
                 "evolving_view",
                 "schema1",
@@ -588,19 +590,19 @@ class TestViewSQLBatching:
                 dependencies=["table1"],
                 op_id="op4",
             ),
-            builder.update_view(
+            builder.view.update_view(
                 "view1",
                 definition="SELECT id FROM table1",
                 extracted_dependencies={"tables": ["table1"], "views": []},
                 op_id="op5",
             ),
-            builder.update_view(
+            builder.view.update_view(
                 "view1",
                 definition="SELECT id, name FROM table1",
                 extracted_dependencies={"tables": ["table1"], "views": []},
                 op_id="op6",
             ),
-            builder.update_view(
+            builder.view.update_view(
                 "view1",
                 definition="SELECT id, name, status FROM table1 WHERE active = true",
                 extracted_dependencies={"tables": ["table1"], "views": []},
@@ -651,10 +653,10 @@ class TestViewFQNQualification:
 
         # Create operations with unqualified SQL
         ops = [
-            builder.add_catalog("cat1", "sales_analytics", op_id="op1"),
-            builder.add_schema("schema1", "customer_analytics", "cat1", op_id="op2"),
-            builder.add_table("table1", "table4", "schema1", "delta", op_id="op3"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "sales_analytics", op_id="op1"),
+            builder.schema.add_schema("schema1", "customer_analytics", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "table4", "schema1", "delta", op_id="op3"),
+            builder.view.add_view(
                 "view1",
                 "test4",
                 "schema1",
@@ -702,11 +704,11 @@ class TestViewFQNQualification:
         builder = OperationBuilder()
 
         ops = [
-            builder.add_catalog("cat1", "analytics", op_id="op1"),
-            builder.add_schema("schema1", "main", "cat1", op_id="op2"),
-            builder.add_table("table1", "orders", "schema1", "delta", op_id="op3"),
-            builder.add_table("table2", "customers", "schema1", "delta", op_id="op4"),
-            builder.add_view(
+            builder.catalog.add_catalog("cat1", "analytics", op_id="op1"),
+            builder.schema.add_schema("schema1", "main", "cat1", op_id="op2"),
+            builder.table.add_table("table1", "orders", "schema1", "delta", op_id="op3"),
+            builder.table.add_table("table2", "customers", "schema1", "delta", op_id="op4"),
+            builder.view.add_view(
                 "view1",
                 "order_details",
                 "schema1",

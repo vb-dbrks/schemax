@@ -428,6 +428,12 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
       const table = findTable(newState, op.payload.tableId);
       if (table) {
         table.tags[op.payload.tagName] = op.payload.tagValue;
+      } else {
+        const view = findView(newState, op.payload.tableId);
+        if (view) {
+          if (!view.tags) view.tags = {};
+          view.tags[op.payload.tagName] = op.payload.tagValue;
+        }
       }
       break;
     }
@@ -435,6 +441,11 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
       const table = findTable(newState, op.payload.tableId);
       if (table && table.tags) {
         delete table.tags[op.payload.tagName];
+      } else {
+        const view = findView(newState, op.payload.tableId);
+        if (view && view.tags) {
+          delete view.tags[op.payload.tagName];
+        }
       }
       break;
     }

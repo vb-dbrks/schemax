@@ -47,7 +47,6 @@ class StateDiffer(ABC):
         Returns:
             List of operations that would transform old_state into new_state
         """
-        pass
 
     def _detect_rename(
         self, old_id: str, new_id: str, old_name: str, new_name: str, op_type: str

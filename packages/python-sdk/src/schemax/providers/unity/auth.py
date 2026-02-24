@@ -13,8 +13,6 @@ from databricks.sdk import WorkspaceClient
 class AuthenticationError(Exception):
     """Raised when authentication fails"""
 
-    pass
-
 
 def create_databricks_client(profile: str | None = None) -> WorkspaceClient:
     """Create authenticated Databricks client
@@ -103,7 +101,7 @@ def check_profile_exists(profile: str) -> bool:
         return False
 
     try:
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             content = f.read()
             return f"[{profile}]" in content
     except Exception:
