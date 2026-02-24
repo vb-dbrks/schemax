@@ -6,7 +6,7 @@ const config: Config = {
   title: 'SchemaX',
   tagline:
     'Modern, low-touch schema migration and management. Git- and CI/CD-friendly. Full or governance-only. Python SDK · VS Code extension.',
-  favicon: 'img/schemax_favicon.svg',
+  favicon: 'img/schemax_logov2.svg',
 
   // CI sets these for GitHub Pages; fallbacks for local build
   url: process.env.GITHUB_PAGES_URL || 'https://vb-dbrks.github.io',
@@ -38,7 +38,7 @@ const config: Config = {
       'classic',
       {
         docs: {
-          routeBasePath: '/',
+          routeBasePath: '/docs/',
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/vb-dbrks/schemax/tree/main/docs/schemax/',
         },
@@ -59,9 +59,14 @@ const config: Config = {
       title: 'SchemaX',
       logo: {
         alt: 'SchemaX',
-        src: 'img/schemax_favicon.svg',
+        src: 'img/schemax_logov2.svg',
       },
       items: [
+        {
+          to: '/docs/intro/',
+          label: 'Docs',
+          position: 'left',
+        },
         {
           type: 'search',
           position: 'right',
@@ -94,7 +99,7 @@ const config: Config = {
           items: [
             {
               label: 'FAQ',
-              to: '/reference/faq/',
+              to: '/docs/reference/faq/',
             },
           ],
         },

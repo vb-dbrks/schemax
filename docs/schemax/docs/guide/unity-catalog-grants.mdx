@@ -111,7 +111,7 @@ Use the same principal names and formats that Unity Catalog expects (see [Databr
 ## CLI and SQL generation
 
 - **Generate SQL:** `schemax sql --target ENV` (or VS Code **Generate SQL Migration** with an environment selected) includes `GRANT` and `REVOKE` statements for grant operations in the changelog or diff.
-- **Apply:** `schemax apply --target ENV` runs those statements against the target. Grant operations are part of **governance**; they are included when the environment’s [deployment scope](/guide/environments-and-scope) includes **Governance** (default: all categories).
+- **Apply:** `schemax apply --target ENV` runs those statements against the target. Grant operations are part of **governance**; they are included when the environment’s [deployment scope](/docs/guide/environments-and-scope) includes **Governance** (default: all categories).
 - **Rollback:** Grant changes are treated as safe; partial and complete rollback can revert grant operations where applicable.
 
 ---
@@ -135,7 +135,7 @@ GRANT SELECT, MODIFY ON TABLE `my_catalog`.`my_schema`.`my_table` TO `bi_users`;
 
 - **Version grants with schema:** Keep grants in SchemaX state and create snapshots so grant changes are reviewed and deployed with the rest of the schema.
 - **Use groups:** Prefer group principals (e.g. `data_engineers`, `analysts`) over individual users so membership is managed in your identity provider.
-- **Governance-only deployments:** If you only want to push grant (and other governance) changes without structural DDL, use [Environments and deployment scope](/guide/environments-and-scope) and set **Governance** as the only managed category for that environment.
-- **Existing catalogs:** When catalogs already exist and you use [existing objects](/guide/environments-and-scope#existing-catalogs), SchemaX still emits grants for those catalogs (and their schemas/tables/views) as long as Governance is in scope.
+- **Governance-only deployments:** If you only want to push grant (and other governance) changes without structural DDL, use [Environments and deployment scope](/docs/guide/environments-and-scope) and set **Governance** as the only managed category for that environment.
+- **Existing catalogs:** When catalogs already exist and you use [existing objects](/docs/guide/environments-and-scope#existing-catalogs), SchemaX still emits grants for those catalogs (and their schemas/tables/views) as long as Governance is in scope.
 
-For rollback and deployment workflows, see [Workflows](/reference/workflows).
+For rollback and deployment workflows, see [Workflows](/docs/reference/workflows).

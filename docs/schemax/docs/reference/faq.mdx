@@ -14,19 +14,19 @@ Many users use both: the extension for design and the CLI for apply and automati
 
 ## What's governance-only mode?
 
-In **full mode**, SchemaX can create and manage catalogs, schemas, tables, and governance (comments, tags, grants, row filters, column masks). In **governance-only mode**, SchemaX only manages **governance** on objects that already exist — it does not run `CREATE CATALOG` / `CREATE SCHEMA` / `CREATE TABLE`. Use governance-only when tables and schemas are created by something else (e.g. Delta Live Tables or Spark jobs) and you want SchemaX to version and deploy only comments, tags, grants, row filters, and column masks. See [Environments and deployment scope](/guide/environments-and-scope/).
+In **full mode**, SchemaX can create and manage catalogs, schemas, tables, and governance (comments, tags, grants, row filters, column masks). In **governance-only mode**, SchemaX only manages **governance** on objects that already exist — it does not run `CREATE CATALOG` / `CREATE SCHEMA` / `CREATE TABLE`. Use governance-only when tables and schemas are created by something else (e.g. Delta Live Tables or Spark jobs) and you want SchemaX to version and deploy only comments, tags, grants, row filters, and column masks. See [Environments and deployment scope](/docs/guide/environments-and-scope/).
 
 ## How do I use SchemaX with Delta Live Tables (or Spark)?
 
-DLT and Spark often create the tables and schemas. SchemaX does not replace that. Use SchemaX in **governance-only mode**: DLT/Spark create the tables; SchemaX manages **governance** (comments, tags, grants, row filters, column masks) on those existing objects. You version and deploy only the governance DDL, not `CREATE TABLE`. Configure the project's deployment scope so that catalogs/schemas/tables are treated as existing. See [Environments and deployment scope](/guide/environments-and-scope/).
+DLT and Spark often create the tables and schemas. SchemaX does not replace that. Use SchemaX in **governance-only mode**: DLT/Spark create the tables; SchemaX manages **governance** (comments, tags, grants, row filters, column masks) on those existing objects. You version and deploy only the governance DDL, not `CREATE TABLE`. Configure the project's deployment scope so that catalogs/schemas/tables are treated as existing. See [Environments and deployment scope](/docs/guide/environments-and-scope/).
 
 ## Where are credentials stored?
 
-The CLI uses the **Databricks SDK** and **Databricks Authentication Profiles**. Credentials are stored where you configure them: typically in `~/.databrickscfg` (profile file) or in environment variables (`DATABRICKS_HOST`, `DATABRICKS_TOKEN`, etc.). SchemaX does not store credentials itself. See [Authentication](/guide/authentication/).
+The CLI uses the **Databricks SDK** and **Databricks Authentication Profiles**. Credentials are stored where you configure them: typically in `~/.databrickscfg` (profile file) or in environment variables (`DATABRICKS_HOST`, `DATABRICKS_TOKEN`, etc.). SchemaX does not store credentials itself. See [Authentication](/docs/guide/authentication/).
 
 ## How do I run apply in CI/CD?
 
-Use the CLI with `--no-interaction` so the pipeline does not prompt. Configure authentication via environment variables or a profile supplied from a pipeline secret. See [Git and CI/CD setup](/guide/git-and-cicd-setup/) for Azure DevOps and GitHub Actions examples. The same Databricks auth (SDK, profiles) works locally and in CI/CD.
+Use the CLI with `--no-interaction` so the pipeline does not prompt. Configure authentication via environment variables or a profile supplied from a pipeline secret. See [Git and CI/CD setup](/docs/guide/git-and-cicd-setup/) for Azure DevOps and GitHub Actions examples. The same Databricks auth (SDK, profiles) works locally and in CI/CD.
 
 ## I'm a data scientist — do I need SchemaX?
 
@@ -34,8 +34,8 @@ Usually **no**. SchemaX is for people who **define and evolve** catalog/schema/t
 
 ## Is there an audit trail for schema changes?
 
-Yes. All changes are stored as **operations** in `.schemax/changelog.json`, and **snapshots** in `.schemax/snapshots/` capture full state at a point in time. This is versioned in Git, so you have an audit trail of what changed and when. Deployments are also recorded (database-backed when you use `schemax apply`). See [Workflows](/reference/workflows/) and the CLI reference for rollback and deployment tracking.
+Yes. All changes are stored as **operations** in `.schemax/changelog.json`, and **snapshots** in `.schemax/snapshots/` capture full state at a point in time. This is versioned in Git, so you have an audit trail of what changed and when. Deployments are also recorded (database-backed when you use `schemax apply`). See [Workflows](/docs/reference/workflows/) and the CLI reference for rollback and deployment tracking.
 
 ## Can I use the CLI from my own scripts or automation?
 
-Yes. The CLI is a standard Python CLI; you can call it from scripts, cron, or other automation. For example: `schemax sql --target dev --output migration.sql` then run the SQL with your own runner, or `schemax apply --target dev --no-interaction` from a pipeline. See [Git and CI/CD setup](/guide/git-and-cicd-setup/).
+Yes. The CLI is a standard Python CLI; you can call it from scripts, cron, or other automation. For example: `schemax sql --target dev --output migration.sql` then run the SQL with your own runner, or `schemax apply --target dev --no-interaction` from a pipeline. See [Git and CI/CD setup](/docs/guide/git-and-cicd-setup/).

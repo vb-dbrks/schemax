@@ -28,3 +28,140 @@
 .header-github-link:hover::before {
   background-color: var(--ifm-navbar-link-hover-color);
 }
+
+/* ----- Landing page (DQX-style) ----- */
+.landing-hero {
+  text-align: center;
+  padding: 3rem 1rem 4rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.landing-hero__logo {
+  width: 120px;
+  height: auto;
+  margin-bottom: 1rem;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.landing-hero__title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.landing-hero__tagline {
+  font-size: 1.15rem;
+  color: var(--ifm-font-color-secondary);
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+.landing-hero__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-bottom: 0;
+}
+
+.landing-hero__link {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: var(--ifm-button-border-radius);
+  font-weight: 500;
+  transition: opacity 0.2s;
+}
+
+.landing-hero__link--primary {
+  background: var(--ifm-color-primary);
+  color: var(--ifm-button-color);
+}
+
+.landing-hero__link--primary:hover {
+  color: var(--ifm-button-color);
+  opacity: 0.9;
+}
+
+.landing-hero__link--secondary {
+  border: 1px solid var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+}
+
+.landing-hero__link--secondary:hover {
+  color: var(--ifm-color-primary);
+  opacity: 0.85;
+}
+
+/* Capabilities grid */
+.landing-capabilities {
+  padding: 2rem 0 3rem;
+  border-top: 1px solid var(--ifm-toc-border-color);
+}
+
+.landing-capabilities__title {
+  text-align: center;
+  font-size: 1.75rem;
+  margin-bottom: 2rem;
+}
+
+.landing-capabilities__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.landing-capability-card {
+  padding: 1.25rem;
+  border-radius: var(--ifm-card-border-radius);
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-toc-border-color);
+}
+
+.landing-capability-card__title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.landing-capability-card__desc {
+  font-size: 0.9rem;
+  color: var(--ifm-font-color-secondary);
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* CTA section */
+.landing-cta {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  border-top: 1px solid var(--ifm-toc-border-color);
+}
+
+.landing-cta__title {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.landing-cta__text {
+  color: var(--ifm-font-color-secondary);
+  margin-bottom: 1.25rem;
+}
+
+.landing-cta__button {
+  display: inline-block;
+  padding: 0.6rem 1.25rem;
+  border-radius: var(--ifm-button-border-radius);
+  background: var(--ifm-color-primary);
+  color: var(--ifm-button-color);
+  font-weight: 500;
+}
+
+.landing-cta__button:hover {
+  color: var(--ifm-button-color);
+  opacity: 0.9;
+}

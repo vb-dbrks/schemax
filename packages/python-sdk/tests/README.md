@@ -11,6 +11,8 @@ Required for live command matrix tests:
 - `DATABRICKS_WAREHOUSE_ID`
 - `DATABRICKS_MANAGED_LOCATION`
 
+You can set these in your environment (e.g. `export DATABRICKS_PROFILE=DEFAULT` or a `.env` file); **if they are set, no prompts are shown**. When you run integration tests with a TTY and any are unset, the test helper will **prompt you interactively** for each missing value. In CI or non-interactive runs, tests are skipped as before.
+
 Optional:
 
 - `SCHEMAX_LIVE_RESOURCE_PREFIX` (default: `schemax_live`)

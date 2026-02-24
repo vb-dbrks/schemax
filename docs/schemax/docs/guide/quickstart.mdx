@@ -4,17 +4,17 @@ title: Quickstart
 ---
 # SchemaX Quickstart Guide
 
-Complete guide to get started with SchemaX — both the VS Code extension and Python SDK/CLI. See [Prerequisites](/guide/prerequisites/) for what you need before starting.
+Complete guide to get started with SchemaX — both the VS Code extension and Python SDK/CLI. See [Prerequisites](/docs/guide/prerequisites/) for what you need before starting.
 
 ## Simple path (5 steps)
 
 1. **Open a project** — Open a folder in VS Code (or Extension Development Host) that will hold your SchemaX project.
 2. **Add a table** — Open the designer (**SchemaX: Open Designer**), add a catalog and schema if needed, then add a table and columns (see [Your first schema](#your-first-schema) below).
 3. **Generate SQL** — Use **SchemaX: Generate SQL Migration** to export DDL to `.schemax/migrations/` (or run `schemax sql` in the project directory).
-4. **Apply (or run in pipeline)** — Run `schemax apply --target <env>` to execute the SQL against Databricks, or run the same in CI/CD (see [Git and CI/CD setup](/guide/git-and-cicd-setup/)).
+4. **Apply (or run in pipeline)** — Run `schemax apply --target <env>` to execute the SQL against Databricks, or run the same in CI/CD (see [Git and CI/CD setup](/docs/guide/git-and-cicd-setup/)).
 5. **Create a snapshot (optional)** — Use **SchemaX: Create Snapshot** or `schemax snapshot create` to version your state.
 
-SchemaX can run in **full mode** (create and manage catalogs, schemas, tables, and governance) or **governance-only mode** (comments, tags, grants, row filters, column masks on existing objects). See [Environments and deployment scope](/guide/environments-and-scope/) for how to configure this.
+SchemaX can run in **full mode** (create and manage catalogs, schemas, tables, and governance) or **governance-only mode** (comments, tags, grants, row filters, column masks on existing objects). See [Environments and deployment scope](/docs/guide/environments-and-scope/) for how to configure this.
 
 ## Table of Contents
 
@@ -186,7 +186,7 @@ ls -la .schemax/snapshots/
 pip install schemaxpy
 ```
 
-The SDK is published on [PyPI](https://pypi.org/project/schemaxpy/). For a development install (contributing to SchemaX itself), see the [Development guide](/guide/development/).
+The SDK is published on [PyPI](https://pypi.org/project/schemaxpy/). For a development install (contributing to SchemaX itself), see the [Development guide](/docs/guide/development/).
 
 ### Verify Installation
 
@@ -244,7 +244,7 @@ schemax apply --target prod --profile my-profile --warehouse-id abc123 --no-inte
 ```
 
 Deployment tracking is built into `schemax apply` — no separate record step needed.  
-See [Git and CI/CD setup](/guide/git-and-cicd-setup/) for pipeline examples.
+See [Git and CI/CD setup](/docs/guide/git-and-cicd-setup/) for pipeline examples.
 
 ### Python API
 
@@ -413,7 +413,7 @@ schemax apply \
   --warehouse-id <warehouse-id>
 ```
 
-See [Git and CI/CD setup](/guide/git-and-cicd-setup/) for pipeline examples, or continue below for a basic GitHub Actions template.
+See [Git and CI/CD setup](/docs/guide/git-and-cicd-setup/) for pipeline examples, or continue below for a basic GitHub Actions template.
 
 ---
 
@@ -421,7 +421,7 @@ See [Git and CI/CD setup](/guide/git-and-cicd-setup/) for pipeline examples, or 
 
 `schemax apply` with `--no-interaction` is the recommended way to run SchemaX in pipelines. It handles SQL generation (or accepts a pre-generated file), executes statements one-by-one against Databricks, and records the deployment — no separate deploy step needed.
 
-For detailed pipeline setup including Azure DevOps, see [Git and CI/CD setup](/guide/git-and-cicd-setup/).
+For detailed pipeline setup including Azure DevOps, see [Git and CI/CD setup](/docs/guide/git-and-cicd-setup/).
 
 ### GitHub Actions (quick example)
 
@@ -576,10 +576,10 @@ ls -la .schemax/
 ## Next Steps
 
 1. **Explore Examples**: Check `examples/basic-schema/`
-2. **Environments & scope**: See [Environments and deployment scope](/guide/environments-and-scope) for governance-only mode and existing catalogs.
-3. **Grants**: See [Unity Catalog grants](/guide/unity-catalog-grants) for managing GRANT/REVOKE on catalogs, schemas, tables, and views.
-4. **Read Architecture**: See [Architecture](/guide/architecture).
-5. **Project Lifecycle & Workflows**: See [Workflows](/reference/workflows) for single/multi-dev, greenfield/brownfield, and rollback timelines.
+2. **Environments & scope**: See [Environments and deployment scope](/docs/guide/environments-and-scope) for governance-only mode and existing catalogs.
+3. **Grants**: See [Unity Catalog grants](/docs/guide/unity-catalog-grants) for managing GRANT/REVOKE on catalogs, schemas, tables, and views.
+4. **Read Architecture**: See [Architecture](/docs/guide/architecture).
+5. **Project Lifecycle & Workflows**: See [Workflows](/docs/reference/workflows) for single/multi-dev, greenfield/brownfield, and rollback timelines.
 6. **Set Up CI/CD**: Use templates in `examples/github-actions/`
 7. **Join Community**: GitHub Discussions
 

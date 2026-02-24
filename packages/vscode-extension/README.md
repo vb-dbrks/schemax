@@ -12,7 +12,7 @@ Design and manage **Databricks Unity Catalog** schemas visually—with version c
    In VS Code: Extensions (Ctrl+Shift+X / Cmd+Shift+X) → search **SchemaX** → Install.
 
 2. **Open the designer**  
-   Command Palette (Ctrl+Shift+P / Cmd+Shift+P) → **SchemaX: Open Designer**.
+   Click the **SchemaX** icon in the left Activity Bar, then **Open SchemaX Designer**, or use the Command Palette (Ctrl+Shift+P / Cmd+Shift+P) → **SchemaX: Open Designer**.
 
 3. **Create your schema**  
    Add a catalog, then schemas and tables. Edit columns and properties in the grid. Create snapshots and generate SQL when you’re ready.

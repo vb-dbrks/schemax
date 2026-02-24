@@ -320,7 +320,7 @@ SchemaX uses a **provider-based architecture** to support multiple catalog types
 - **State Reducer** - Provider-specific state modifications
 - **SQL Generator** - Provider-specific DDL generation
 
-See [Architecture](/guide/architecture) for detailed architecture documentation.
+See [Architecture](/docs/guide/architecture) for detailed architecture documentation.
 
 ### Extension Host
 
@@ -384,7 +384,7 @@ SchemaX V3 adds provider awareness to the snapshot-based architecture:
 - State changes are computed by applying operations
 - Snapshots freeze the state and clear changelog
 
-See [Architecture](/guide/architecture) for detailed design information.
+See [Architecture](/docs/guide/architecture) for detailed design information.
 
 ## Key Concepts
 
@@ -679,7 +679,7 @@ Shows:
 
 Adding a new provider to SchemaX involves implementing the provider interface in both TypeScript and Python. This section guides you through the process.
 
-**See also:** [Provider Contract](/reference/provider-contract) for detailed API documentation.
+**See also:** [Provider Contract](/docs/reference/provider-contract) for detailed API documentation.
 
 ### Quick Start: Adding a New Provider
 
@@ -1075,8 +1075,8 @@ Before submitting a provider:
 
 ### Resources
 
-- **Provider Contract**: [Provider Contract](/reference/provider-contract)
-- **Architecture**: [Architecture](/guide/architecture)
+- **Provider Contract**: [Provider Contract](/docs/reference/provider-contract)
+- **Architecture**: [Architecture](/docs/guide/architecture)
 - **Unity Provider**: Reference implementation in `providers/unity/`
 - **Base Provider**: Abstract base in `providers/base/`
 

@@ -60,6 +60,7 @@ So this test validates **UI components (store) → generated state → CLI → l
 **Running:**
 
 - **Jest E2E (with live apply):** Set `SCHEMAX_RUN_LIVE_COMMAND_TESTS=1`, `SCHEMAX_E2E_PROFILE`, `SCHEMAX_E2E_WAREHOUSE_ID` (or Databricks env), then `npm test -- App.e2e-ui-to-live` from `packages/vscode-extension`.
+- **Interactive prompt:** Run `npm run test:integration` from `packages/vscode-extension`. If the required env vars are already set (e.g. `export SCHEMAX_RUN_LIVE_COMMAND_TESTS=1` or a `.env`), prompts are skipped. When any are missing and stdin is a TTY, the script prompts for each and then runs the E2E test. In CI or non-interactive runs, the test runs without live apply (same as `npm test`).
 - **Python live tests:** See `packages/python-sdk/tests/integration/README_LIVE_TESTS.md` (requires `SCHEMAX_RUN_LIVE_COMMAND_TESTS=1` and Databricks config).
 
 ## Adding New Tests

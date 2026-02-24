@@ -94,6 +94,14 @@ export function activate(context: vscode.ExtensionContext) {
     () => installPythonSdk()
   );
 
+  // Empty tree provider for SchemaX sidebar view so viewsWelcome is shown (Open Designer, etc.)
+  const schemaxTreeProvider: vscode.TreeDataProvider<null> = {
+    getTreeItem: () => new vscode.TreeItem('', vscode.TreeItemCollapsibleState.None),
+    getChildren: () => Promise.resolve([]),
+  };
+  const schemaxTree = vscode.window.registerTreeDataProvider('schemax.welcome', schemaxTreeProvider);
+  context.subscriptions.push(schemaxTree);
+
   context.subscriptions.push(
     openDesignerCommand,
     showLastOpsCommand,

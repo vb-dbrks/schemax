@@ -7,14 +7,14 @@ title: Git and CI/CD setup
 
 Run SchemaX in your pipeline **non-interactively**: validate, generate SQL, or apply schema changes. **Pipelines run the CLI only** — you need Python and the `schemax` CLI on the runner; the VS Code extension is not required.
 
-The same [authentication](/guide/authentication/) that works locally (Databricks SDK, profiles, or env vars) works in CI/CD: use environment variables or a profile supplied from a pipeline secret.
+The same [authentication](/docs/guide/authentication/) that works locally (Databricks SDK, profiles, or env vars) works in CI/CD: use environment variables or a profile supplied from a pipeline secret.
 
 ## Commands for pipelines
 
 - **Validate** — `schemax validate` (no Databricks auth needed; checks project files and snapshot consistency).
 - **Generate SQL** — `schemax sql --target <env> [--output file.sql]` (no auth needed for generation; output is environment-specific).
 - **Apply** — `schemax apply --target <env> --no-interaction [--dry-run]` (requires Databricks auth; executes SQL). Use `--no-interaction` so the pipeline never prompts (e.g. for snapshot selection). Use `--dry-run` to preview without executing.
-- **Rollback** — `schemax rollback` (partial or to a snapshot) with appropriate flags; see [CLI Reference](/reference/cli/).
+- **Rollback** — `schemax rollback` (partial or to a snapshot) with appropriate flags; see [CLI Reference](/docs/reference/cli/).
 
 Optional: `--auto-rollback` with apply to automatically roll back on failure (see CLI docs).
 
@@ -99,6 +99,6 @@ You can run `schemax apply --dry-run` in a first job to show the planned SQL, th
 
 ## Next steps
 
-- [Authentication](/guide/authentication/) — Databricks SDK, profiles, same auth locally and in CI/CD
-- [Setup](/guide/setup/) — Install extension and CLI
-- [Workflows](/reference/workflows/) — Apply, rollback, greenfield, brownfield
+- [Authentication](/docs/guide/authentication/) — Databricks SDK, profiles, same auth locally and in CI/CD
+- [Setup](/docs/guide/setup/) — Install extension and CLI
+- [Workflows](/docs/reference/workflows/) — Apply, rollback, greenfield, brownfield
