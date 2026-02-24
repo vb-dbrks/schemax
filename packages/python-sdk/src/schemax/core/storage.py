@@ -348,7 +348,7 @@ def validate_dependencies_internal(
         generator = provider.get_sql_generator(state=state)
 
         # Try to build dependency graph
-        graph = generator._build_dependency_graph(ops)
+        graph = generator.build_dependency_graph(ops)
 
         # Check for circular dependencies
         cycles = graph.detect_cycles()

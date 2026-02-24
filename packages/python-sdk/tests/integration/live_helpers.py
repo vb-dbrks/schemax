@@ -90,6 +90,27 @@ def write_project_promote_envs(
     return tracking_dev, physical_dev, tracking_test, physical_test, tracking_prod, physical_prod
 
 
+def write_project_promote_managed_locations(workspace: Path, managed_root: str) -> None:
+    """Add managedLocations for promote test so CREATE CATALOG emits MANAGED LOCATION.
+
+    Use when the workspace requires an explicit managed location (e.g. Default Storage).
+    Paths are per-environment subpaths under managed_root so apply to dev/test/prod works.
+    """
+    project_path = workspace / ".schemax" / "project.json"
+    project = json.loads(project_path.read_text())
+    root = managed_root.rstrip("/")
+    project["managedLocations"] = {
+        "catalog_root": {
+            "paths": {
+                "dev": f"{root}/physical_dev",
+                "test": f"{root}/physical_test",
+                "prod": f"{root}/physical_prod",
+            }
+        }
+    }
+    project_path.write_text(json.dumps(project, indent=2))
+
+
 def assert_schema_exists(
     config: LiveDatabricksConfig, physical_catalog: str, schema_name: str
 ) -> None:

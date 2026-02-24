@@ -15,6 +15,7 @@ from tests.integration.live_helpers import (
     write_project_env_overrides,
     write_project_managed_scope,
     write_project_promote_envs,
+    write_project_promote_managed_locations,
 )
 from tests.utils import OperationBuilder
 from tests.utils.cli_helpers import invoke_cli
@@ -257,6 +258,7 @@ def test_live_greenfield_promote_dev_test_prod_then_rollback_prod(tmp_path: Path
         managed_root = (
             f"{config.managed_location.rstrip('/')}/schemax-command-live/promote/{suffix}"
         )
+        write_project_promote_managed_locations(workspace, managed_root)
         preseed_statements = [
             f"CREATE CATALOG IF NOT EXISTS {tracking_dev} MANAGED LOCATION '{managed_root}/tracking_dev'",
             f"CREATE CATALOG IF NOT EXISTS {physical_dev} MANAGED LOCATION '{managed_root}/physical_dev'",
@@ -284,7 +286,12 @@ def test_live_greenfield_promote_dev_test_prod_then_rollback_prod(tmp_path: Path
         append_ops(
             workspace,
             [
-                builder.add_catalog(cat_id, logical_catalog, op_id=f"op_cat_{suffix}"),
+                builder.add_catalog(
+                    cat_id,
+                    logical_catalog,
+                    op_id=f"op_cat_{suffix}",
+                    managed_location_name="catalog_root",
+                ),
                 builder.add_schema(sch_id, schema_name, cat_id, op_id=f"op_sch_{suffix}"),
                 builder.add_table(
                     tbl_users_id, table_users, sch_id, "delta", op_id=f"op_tbl_users_{suffix}"

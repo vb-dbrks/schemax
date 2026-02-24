@@ -134,6 +134,15 @@ class BaseSQLGenerator(SQLGenerator):
     # DEPENDENCY GRAPH
     # ====================
 
+    def build_dependency_graph(self, ops: list[Operation]) -> DependencyGraph:
+        """
+        Build dependency graph from operations (public API for validation and ordering).
+
+        Call this from validation or orchestration code that needs to check cycles
+        or dependency order. Provider-specific logic lives in _build_dependency_graph.
+        """
+        return self._build_dependency_graph(ops)
+
     def _build_dependency_graph(self, ops: list[Operation]) -> DependencyGraph:
         """
         Build dependency graph from operations.
@@ -372,7 +381,7 @@ class BaseSQLGenerator(SQLGenerator):
                         # Create warning message
                         object_name = self._get_object_display_name_from_op(operation)
                         dependent_names = [
-                            graph._get_node_display_name(dep_id) for dep_id in dependents
+                            graph.get_node_display_name(dep_id) for dep_id in dependents
                         ]
 
                         warning = (

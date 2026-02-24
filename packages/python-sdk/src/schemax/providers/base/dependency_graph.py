@@ -191,7 +191,7 @@ class DependencyGraph:
         cycles = self.detect_cycles()
         if cycles:
             cycle_str = "\n".join(
-                " → ".join(self._get_node_display_name(nid) for nid in cycle) for cycle in cycles
+                " → ".join(self.get_node_display_name(nid) for nid in cycle) for cycle in cycles
             )
             raise ValueError(f"Circular dependencies detected:\n{cycle_str}")
 
@@ -314,8 +314,8 @@ class DependencyGraph:
 
         return subgraph
 
-    def _get_node_display_name(self, node_id: str) -> str:
-        """Get a human-readable name for a node"""
+    def get_node_display_name(self, node_id: str) -> str:
+        """Return a human-readable name for a graph node (for messages and errors)."""
         node = self.nodes.get(node_id)
         if not node:
             return node_id
@@ -353,7 +353,7 @@ class DependencyGraph:
                 # Check if dependency exists
                 if edge.to_id not in self.nodes:
                     warnings.append(
-                        f"Missing dependency: {self._get_node_display_name(node_id)} "
+                        f"Missing dependency: {self.get_node_display_name(node_id)} "
                         f"depends on {edge.to_id} (type: {edge.dep_type})"
                     )
 
@@ -364,9 +364,9 @@ class DependencyGraph:
                 dep_node = self.nodes.get(edge.to_id)
                 if dep_node and node.hierarchy_level < dep_node.hierarchy_level:
                     warnings.append(
-                        f"Invalid hierarchy: {self._get_node_display_name(node_id)} "
+                        f"Invalid hierarchy: {self.get_node_display_name(node_id)} "
                         f"(level {node.hierarchy_level}) depends on "
-                        f"{self._get_node_display_name(edge.to_id)} "
+                        f"{self.get_node_display_name(edge.to_id)} "
                         f"(level {dep_node.hierarchy_level})"
                     )
 

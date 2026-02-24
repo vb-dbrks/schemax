@@ -29,7 +29,7 @@ def test_validate_dependencies_reports_cycle() -> None:
     graph.validate_dependencies.return_value = []
 
     generator = Mock()
-    generator._build_dependency_graph.return_value = graph
+    generator.build_dependency_graph.return_value = graph
     generator.id_name_map = {"table_a": "catalog.schema.table_a", "view_b": "catalog.schema.view_b"}
 
     provider = Mock()
@@ -66,7 +66,7 @@ def test_validate_project_json_success(
         lambda _state, _ops, _provider: ([], []),
     )
     monkeypatch.setattr(
-        "schemax.commands.snapshot_rebase.detect_stale_snapshots",
+        "schemax.commands.validate.detect_stale_snapshots",
         lambda _workspace: [],
     )
 
@@ -125,7 +125,7 @@ def test_validate_project_returns_false_when_stale_snapshots(
         lambda _state, _ops, _provider: ([], []),
     )
     monkeypatch.setattr(
-        "schemax.commands.snapshot_rebase.detect_stale_snapshots",
+        "schemax.commands.validate.detect_stale_snapshots",
         lambda _workspace: [
             {
                 "version": "v0.2.0",

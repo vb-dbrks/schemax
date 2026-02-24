@@ -26,13 +26,29 @@ class OperationBuilder:
         self.provider = provider
 
     # Catalog Operations
-    def add_catalog(self, catalog_id: str, name: str, op_id: str | None = None) -> Operation:
-        """Create an add_catalog operation"""
+    def add_catalog(
+        self,
+        catalog_id: str,
+        name: str,
+        op_id: str | None = None,
+        managed_location_name: str | None = None,
+    ) -> Operation:
+        """Create an add_catalog operation.
+
+        Args:
+            catalog_id: Catalog ID (target).
+            name: Logical catalog name.
+            op_id: Optional operation ID.
+            managed_location_name: Optional project-level managed location name for MANAGED LOCATION.
+        """
+        payload: dict[str, Any] = {"catalogId": catalog_id, "name": name}
+        if managed_location_name is not None:
+            payload["managedLocationName"] = managed_location_name
         return create_operation(
             provider=self.provider,
             op_type="add_catalog",
             target=catalog_id,
-            payload={"catalogId": catalog_id, "name": name},
+            payload=payload,
             op_id=op_id,
         )
 
