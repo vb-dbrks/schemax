@@ -10,10 +10,11 @@ import json
 import os
 import threading
 from ast import literal_eval
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from schemax.providers.base.executor import ExecutionConfig, ExecutionResult, SQLExecutor
 from schemax.providers.base.models import ProviderState, ValidationError, ValidationResult
