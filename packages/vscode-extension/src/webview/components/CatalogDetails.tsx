@@ -5,6 +5,7 @@ import { validateUnityCatalogObjectName } from '../utils/unityNames';
 import { parsePrivileges } from '../utils/grants';
 import { RichComment } from './RichComment';
 import { BulkOperationsPanel } from './BulkOperationsPanel';
+import type { NamingStandardsRule, NamingRuleObjectType, NamingRuleTableType } from '../providers/unity/models';
 
 // Codicon icons - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -18,6 +19,31 @@ const IconEdit: React.FC = () => (
 const IconTrash: React.FC = () => (
   <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
 );
+
+const IconPlus: React.FC = () => (
+  <i slot="start" className="codicon codicon-add" aria-hidden="true"></i>
+);
+
+const OBJECT_TYPE_LABELS: Record<NamingRuleObjectType, string> = {
+  schema: 'Schema',
+  table: 'Table',
+  view: 'View',
+  materialized_view: 'Materialized view',
+  column: 'Column',
+  volume: 'Volume',
+  function: 'Function',
+};
+
+const TABLE_TYPE_LABELS: Record<NamingRuleTableType, string> = {
+  dimension: 'Dimension',
+  fact: 'Fact',
+  staging: 'Staging',
+  any: 'Any',
+};
+
+function newRuleId(): string {
+  return `rule_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
 
 interface CatalogDetailsProps {
   catalogId: string;
@@ -48,6 +74,11 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const [revokeGrantDialog, setRevokeGrantDialog] = useState<{ principal: string } | null>(null);
   const [grantForm, setGrantForm] = useState({ principal: '', privileges: '' });
   const [showBulkPanel, setShowBulkPanel] = useState(false);
+  const [addRuleForm, setAddRuleForm] = useState(false);
+  const [newRuleObjectType, setNewRuleObjectType] = useState<NamingRuleObjectType>('schema');
+  const [newRuleTableType, setNewRuleTableType] = useState<NamingRuleTableType>('any');
+  const [newRulePattern, setNewRulePattern] = useState('');
+  const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null);
 
   // Update local state when catalog changes
   useEffect(() => {
@@ -125,6 +156,34 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const handleCancelEditTag = () => {
     setEditingTag(null);
     setEditTagValue('');
+  };
+
+  const rules: NamingStandardsRule[] = catalog?.namingStandards?.rules ?? [];
+
+  const handleAddNamingRule = () => {
+    const newRule: NamingStandardsRule = {
+      id: newRuleId(),
+      objectType: newRuleObjectType,
+      tableType: newRuleObjectType === 'table' ? newRuleTableType : undefined,
+      pattern: newRulePattern.trim() || undefined,
+      enabled: true,
+    };
+    const nextRules = [...rules, newRule];
+    updateCatalog(catalogId, {
+      namingStandards: { ...catalog?.namingStandards, rules: nextRules },
+    });
+    setAddRuleForm(false);
+    setNewRuleObjectType('schema');
+    setNewRuleTableType('any');
+    setNewRulePattern('');
+  };
+
+  const handleRemoveNamingRule = (ruleId: string) => {
+    const nextRules = rules.filter((r) => r.id !== ruleId);
+    updateCatalog(catalogId, {
+      namingStandards: { ...catalog?.namingStandards, rules: nextRules },
+    });
+    setDeleteRuleId(null);
   };
 
   const handleCopyCatalogName = () => {
@@ -246,8 +305,167 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
         </div>
       </div>
 
+      {/* Naming Standards (catalog-level) */}
+      <div className="table-properties-section">
+        <h3>Naming Standards</h3>
+        <p className="section-description" style={{ marginTop: '4px', marginBottom: '8px', fontSize: '12px', color: 'var(--vscode-descriptionForeground)' }}>
+          Define naming rules for object types in this catalog (schema, table, view, column, etc.) and apply them on add or rename.
+        </p>
+        {rules.length === 0 && !addRuleForm ? (
+          <div className="empty-properties">
+            <p>No naming standards configured for this catalog. Click + Rule to add rules.</p>
+            <VSCodeButton
+              appearance="secondary"
+              onClick={() => setAddRuleForm(true)}
+              style={{ marginTop: '8px' }}
+            >
+              <IconPlus />
+              Rule
+            </VSCodeButton>
+          </div>
+        ) : (
+          <>
+            <div className="naming-standards-table-wrapper">
+              <table className="properties-table">
+                <thead>
+                  <tr>
+                    <th>Object</th>
+                    <th>Table type</th>
+                    <th>Pattern (regex)</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rules.map((rule) => (
+                    <tr key={rule.id}>
+                      <td>{OBJECT_TYPE_LABELS[rule.objectType]}</td>
+                      <td>
+                        {rule.objectType === 'table' && rule.tableType
+                          ? TABLE_TYPE_LABELS[rule.tableType]
+                          : '—'}
+                      </td>
+                      <td className="pattern-cell">
+                        <code title={rule.pattern || ''} style={{ fontSize: '11px' }}>
+                          {rule.pattern ?? '—'}
+                        </code>
+                      </td>
+                    <td className="actions-cell">
+                      <VSCodeButton
+                        appearance="icon"
+                        onClick={() => setDeleteRuleId(rule.id)}
+                        title="Delete rule"
+                      >
+                        <IconTrash />
+                      </VSCodeButton>
+                    </td>
+                  </tr>
+                ))}
+                {addRuleForm && (
+                  <tr className="adding-row">
+                    <td>
+                      <VSCodeDropdown
+                        value={newRuleObjectType}
+                        style={{ minWidth: '140px' }}
+                        onInput={(e: Event) => {
+                          const target = e.target as HTMLSelectElement;
+                          setNewRuleObjectType(target.value as NamingRuleObjectType);
+                        }}
+                      >
+                        {(Object.keys(OBJECT_TYPE_LABELS) as NamingRuleObjectType[]).map((key) => (
+                          <VSCodeOption key={key} value={key}>
+                            {OBJECT_TYPE_LABELS[key]}
+                          </VSCodeOption>
+                        ))}
+                      </VSCodeDropdown>
+                    </td>
+                    <td>
+                      {newRuleObjectType === 'table' ? (
+                        <VSCodeDropdown
+                          value={newRuleTableType}
+                          style={{ minWidth: '120px' }}
+                          onInput={(e: Event) => {
+                            const target = e.target as HTMLSelectElement;
+                            setNewRuleTableType(target.value as NamingRuleTableType);
+                          }}
+                        >
+                          {(Object.keys(TABLE_TYPE_LABELS) as NamingRuleTableType[]).map((key) => (
+                            <VSCodeOption key={key} value={key}>
+                              {TABLE_TYPE_LABELS[key]}
+                            </VSCodeOption>
+                          ))}
+                        </VSCodeDropdown>
+                      ) : (
+                        <span style={{ color: 'var(--vscode-descriptionForeground)' }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      <VSCodeTextField
+                        value={newRulePattern}
+                        placeholder="^[a-z][a-z0-9_]*$"
+                        style={{ minWidth: '160px' }}
+                        onInput={(e: Event) => {
+                          const target = e.target as HTMLInputElement;
+                          setNewRulePattern(target.value ?? '');
+                        }}
+                      />
+                    </td>
+                    <td className="actions-cell">
+                      <button
+                        className="action-button-save"
+                        onClick={handleAddNamingRule}
+                        title="Add rule"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        className="action-button-cancel"
+                        onClick={() => {
+                          setAddRuleForm(false);
+                          setNewRulePattern('');
+                        }}
+                        title="Cancel"
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                )}
+                </tbody>
+              </table>
+              {!addRuleForm && (
+                <VSCodeButton
+                  appearance="secondary"
+                  onClick={() => setAddRuleForm(true)}
+                  style={{ marginTop: '8px' }}
+                >
+                  <IconPlus />
+                  Rule
+                </VSCodeButton>
+              )}
+            </div>
+          </>
+        )}
+        {deleteRuleId && (
+          <div className="modal-overlay" style={{ position: 'fixed' }} onClick={() => setDeleteRuleId(null)}>
+            <div className="modal-content" style={{ maxWidth: '360px' }} onClick={(e) => e.stopPropagation()}>
+              <h3>Delete naming rule</h3>
+              <p>Remove this rule from the catalog naming standards?</p>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
+                <VSCodeButton onClick={() => setDeleteRuleId(null)}>Cancel</VSCodeButton>
+                <VSCodeButton
+                  appearance="primary"
+                  onClick={() => handleRemoveNamingRule(deleteRuleId)}
+                >
+                  Delete
+                </VSCodeButton>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Managed Location */}
-      <div className="table-properties">
+      <div className="table-properties" style={{ marginTop: '24px' }}>
         <div className="property-row">
           <label>
             Managed Location

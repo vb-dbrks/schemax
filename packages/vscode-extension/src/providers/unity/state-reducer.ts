@@ -68,6 +68,9 @@ export function applyOperation(state: UnityState, op: Operation): UnityState {
         if ('tags' in op.payload) {
           catalog.tags = op.payload.tags || {};
         }
+        if ('namingStandards' in op.payload) {
+          catalog.namingStandards = op.payload.namingStandards as typeof catalog.namingStandards;
+        }
       }
       break;
     }

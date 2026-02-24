@@ -95,6 +95,9 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
   const [locationNameError, setLocationNameError] = useState<string | null>(null);
   const [mappingTextByEnv, setMappingTextByEnv] = useState<Record<string, string>>({});
   const [mappingErrorByEnv, setMappingErrorByEnv] = useState<Record<string, string>>({});
+  const [addNamingRuleForm, setAddNamingRuleForm] = useState(false);
+  const [newNamingRulePattern, setNewNamingRulePattern] = useState('');
+  const [deleteNamingRuleId, setDeleteNamingRuleId] = useState<string | null>(null);
 
   const activeEnv = project.activeEnvironment || 'dev';
   const environments = editedProject.provider?.environments || {};
@@ -351,6 +354,45 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
     setDeleteConfirmation(null);
   };
 
+  function newProjectRuleId(): string {
+    return `rule_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  }
+
+  const projectNamingRules = editedProject.settings?.namingStandards?.rules ?? [];
+
+  const handleAddProjectNamingRule = () => {
+    const newRule = {
+      id: newProjectRuleId(),
+      objectType: 'catalog' as const,
+      pattern: newNamingRulePattern.trim() || undefined,
+      enabled: true,
+    };
+    const nextRules = [...projectNamingRules, newRule];
+    const updated = { ...editedProject };
+    if (!updated.settings) updated.settings = { autoIncrementVersion: true, versionPrefix: 'v' };
+    updated.settings.namingStandards = {
+      ...updated.settings.namingStandards,
+      rules: nextRules,
+    };
+    setEditedProject(updated);
+    setIsDirty(true);
+    setAddNamingRuleForm(false);
+    setNewNamingRulePattern('');
+  };
+
+  const handleRemoveProjectNamingRule = (ruleId: string) => {
+    const nextRules = projectNamingRules.filter((r) => r.id !== ruleId);
+    const updated = { ...editedProject };
+    if (!updated.settings) updated.settings = { autoIncrementVersion: true, versionPrefix: 'v' };
+    updated.settings.namingStandards = {
+      ...updated.settings.namingStandards,
+      rules: nextRules.length > 0 ? nextRules : undefined,
+    };
+    setEditedProject(updated);
+    setIsDirty(true);
+    setDeleteNamingRuleId(null);
+  };
+
   return (
     <div className="modal-overlay" onClick={handleCancel}>
       <div className="modal-content project-settings-panel" onClick={(e) => e.stopPropagation()}>
@@ -381,6 +423,122 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                 <span className="info-value">{editedProject.snapshots?.length || 0}</span>
               </div>
             </div>
+          </div>
+
+          {/* Project-level Naming Standards (catalog names) */}
+          <div className="settings-section">
+            <h3>Naming Standards (Catalog Names)</h3>
+            <p className="section-description">
+              Define naming rules for <strong>catalog names</strong> at the project level. They apply when adding or renaming catalogs so all catalogs follow the same convention.
+            </p>
+            {projectNamingRules.length === 0 && !addNamingRuleForm ? (
+              <div className="empty-state">
+                <p>No catalog naming standard configured. Click + Rule to add rules.</p>
+                <VSCodeButton
+                  appearance="secondary"
+                  onClick={() => setAddNamingRuleForm(true)}
+                  style={{ marginTop: '8px' }}
+                >
+                  <i slot="start" className="codicon codicon-add" aria-hidden="true"></i>
+                  Rule
+                </VSCodeButton>
+              </div>
+            ) : (
+              <div className="naming-standards-table-wrapper project-level">
+                <table className="properties-table">
+                  <thead>
+                    <tr>
+                      <th>Object</th>
+                      <th>Pattern (regex)</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projectNamingRules.map((rule) => (
+                      <tr key={rule.id}>
+                        <td>Catalog</td>
+                        <td className="pattern-cell">
+                          <code title={rule.pattern || ''} style={{ fontSize: '11px' }}>
+                            {rule.pattern ?? '—'}
+                          </code>
+                        </td>
+                        <td className="actions-cell">
+                          <VSCodeButton
+                            appearance="icon"
+                            onClick={() => setDeleteNamingRuleId(rule.id)}
+                            title="Delete rule"
+                          >
+                            <i slot="start" className="codicon codicon-trash" aria-hidden="true"></i>
+                          </VSCodeButton>
+                        </td>
+                      </tr>
+                    ))}
+                    {addNamingRuleForm && (
+                      <tr className="adding-row">
+                        <td>Catalog</td>
+                        <td>
+                          <VSCodeTextField
+                            value={newNamingRulePattern}
+                            placeholder="^[a-z][a-z0-9_]*$"
+                            style={{ minWidth: '160px' }}
+                            onInput={(e: Event) => {
+                              const target = e.target as HTMLInputElement;
+                              setNewNamingRulePattern(target.value ?? '');
+                            }}
+                          />
+                        </td>
+                        <td className="actions-cell">
+                          <button
+                            className="action-button-save"
+                            onClick={handleAddProjectNamingRule}
+                            title="Add rule"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            className="action-button-cancel"
+                            onClick={() => {
+                              setAddNamingRuleForm(false);
+                              setNewNamingRulePattern('');
+                            }}
+                            title="Cancel"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                {!addNamingRuleForm && (
+                  <VSCodeButton
+                    appearance="secondary"
+                    onClick={() => setAddNamingRuleForm(true)}
+                    style={{ marginTop: '8px' }}
+                  >
+                    <i slot="start" className="codicon codicon-add" aria-hidden="true"></i>
+                    Rule
+                  </VSCodeButton>
+                )}
+              </div>
+            )}
+            {deleteNamingRuleId && (
+              <div className="modal-overlay" style={{ position: 'fixed' }} onClick={() => setDeleteNamingRuleId(null)}>
+                <div className="modal-content" style={{ maxWidth: '360px' }} onClick={(e) => e.stopPropagation()}>
+                  <h3>Delete naming rule</h3>
+                  <p>Remove this rule from the project catalog naming standards?</p>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
+                    <VSCodeButton onClick={() => setDeleteNamingRuleId(null)}>Cancel</VSCodeButton>
+                    <VSCodeButton
+                      appearance="primary"
+                      onClick={() => handleRemoveProjectNamingRule(deleteNamingRuleId)}
+                    >
+                      Delete
+                    </VSCodeButton>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Project-level Managed Locations */}

@@ -152,11 +152,45 @@ export interface UnitySchema extends BaseObject {
   grants: UnityGrant[];
 }
 
+// Object types for naming rules (catalog-level)
+export type NamingRuleObjectType =
+  | 'schema'
+  | 'table'
+  | 'view'
+  | 'materialized_view'
+  | 'column'
+  | 'volume'
+  | 'function';
+
+// Table type for table naming rules (dimension, fact, staging, etc.)
+export type NamingRuleTableType = 'dimension' | 'fact' | 'staging' | 'any';
+
+// Single naming rule (object type + optional table type for tables)
+export interface NamingStandardsRule {
+  id: string;
+  objectType: NamingRuleObjectType;
+  tableType?: NamingRuleTableType; // only when objectType === 'table'
+  pattern?: string;
+  enabled?: boolean;
+}
+
+// Naming standards (per-catalog): rules for schema/table/view/column names in this catalog
+export interface NamingStandardsConfig {
+  applyToRenames?: boolean;
+  rules?: NamingStandardsRule[];
+  // Legacy / optional keyed config (kept for backward compatibility)
+  schema?: Record<string, unknown>;
+  table?: Record<string, unknown>;
+  view?: Record<string, unknown>;
+  column?: Record<string, unknown>;
+}
+
 // Catalog definition
 export interface UnityCatalog extends BaseObject {
   managedLocationName?: string; // Reference to env managedLocations
   comment?: string; // Catalog comment
   tags?: Record<string, string>; // Catalog tags (Unity Catalog governance)
+  namingStandards?: NamingStandardsConfig; // Naming rules for objects in this catalog
   schemas: UnitySchema[];
   grants: UnityGrant[];
 }
@@ -186,6 +220,19 @@ export interface ProjectFile {
   settings: {
     autoIncrementVersion: boolean;
     versionPrefix: string;
+    /** Project-level naming standards: apply to catalog names (add/rename) across the project */
+    namingStandards?: {
+      applyToRenames?: boolean;
+      /** @deprecated Prefer rules array. Single catalog rule for backward compatibility. */
+      catalog?: Record<string, unknown>;
+      /** Project-level catalog naming rules (objectType is always 'catalog'). */
+      rules?: Array<{
+        id: string;
+        objectType: 'catalog';
+        pattern?: string;
+        enabled?: boolean;
+      }>;
+    };
   };
   latestSnapshot: string | null;
 }

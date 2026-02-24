@@ -3,6 +3,13 @@ import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vs
 import { useDesignerStore } from '../state/useDesignerStore';
 import { extractDependenciesFromView } from '../../providers/base/sql-parser';
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
+import {
+  validateCatalogName,
+  validateNameInCatalog,
+  findCatalogBySchemaId,
+  findCatalogForRename,
+} from '../utils/namingStandards';
+import type { NamingRuleObjectType } from '../providers/unity/models';
 
 // Environment config type for tooltip
 interface EnvironmentConfig {
@@ -246,6 +253,13 @@ export const Sidebar: React.FC = () => {
     id: string;
     name: string;
   } | null>(null);
+  const [renameNamingWarning, setRenameNamingWarning] = useState<{
+    type: 'catalog'|'schema'|'table'|'view'|'volume'|'function'|'materialized_view';
+    id: string;
+    newName: string;
+    error: string;
+    suggestion?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (renameDialog) {
@@ -372,25 +386,58 @@ export const Sidebar: React.FC = () => {
       closeRenameDialog();
       return;
     }
-    
-    // Handle rename based on type
-    if (renameDialog.type === 'catalog') {
-      renameCatalog(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === 'schema') {
-      renameSchema(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === 'table') {
-      renameTable(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === 'view') {
-      renameView(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === 'volume') {
-      renameVolume(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === 'function') {
-      renameFunction(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === 'materialized_view') {
-      renameMaterializedView(renameDialog.id, trimmedName);
+
+    const applyToRenamesCatalog =
+      renameDialog.type === 'catalog'
+        ? (project?.settings as { namingStandards?: { applyToRenames?: boolean } })?.namingStandards
+            ?.applyToRenames
+        : undefined;
+    const catalogs = (project?.state as any)?.catalogs ?? [];
+    const catalogForRename =
+      renameDialog.type === 'catalog'
+        ? null
+        : findCatalogForRename(catalogs, renameDialog.type, renameDialog.id);
+    const applyToRenames =
+      renameDialog.type === 'catalog'
+        ? !!applyToRenamesCatalog
+        : !!catalogForRename?.namingStandards?.applyToRenames;
+
+    if (applyToRenames) {
+      const objectTypeForNaming: NamingRuleObjectType = renameDialog.type;
+      const nr =
+        renameDialog.type === 'catalog'
+          ? validateCatalogName(trimmedName, project ?? null)
+          : validateNameInCatalog(trimmedName, objectTypeForNaming, catalogForRename);
+      if (!nr.valid) {
+        setRenameNamingWarning({
+          type: renameDialog.type,
+          id: renameDialog.id,
+          newName: trimmedName,
+          error: nr.error ?? 'Name does not match naming pattern.',
+          suggestion: nr.suggestion,
+        });
+        closeRenameDialog();
+        return;
+      }
     }
+
+    doPerformRename(renameDialog.type, renameDialog.id, trimmedName);
     setRenameError(null);
     closeRenameDialog();
+  };
+
+  const doPerformRename = (
+    type: 'catalog'|'schema'|'table'|'view'|'volume'|'function'|'materialized_view',
+    id: string,
+    newName: string
+  ) => {
+    if (type === 'catalog') renameCatalog(id, newName);
+    else if (type === 'schema') renameSchema(id, newName);
+    else if (type === 'table') renameTable(id, newName);
+    else if (type === 'view') renameView(id, newName);
+    else if (type === 'volume') renameVolume(id, newName);
+    else if (type === 'function') renameFunction(id, newName);
+    else if (type === 'materialized_view') renameMaterializedView(id, newName);
   };
 
   const handleDropConfirm = () => {
@@ -427,6 +474,11 @@ export const Sidebar: React.FC = () => {
     }
 
     if (addDialog.type === 'catalog') {
+      const nr = validateCatalogName(trimmedName, project ?? null);
+      if (!nr.valid) {
+        setAddError(nr.error + (nr.suggestion ? ` Did you mean: ${nr.suggestion}?` : ''));
+        return;
+      }
       // Check for duplicate catalog name
       const catalogExists = (project?.state as any)?.catalogs?.some((c: any) => c.name.toLowerCase() === trimmedName.toLowerCase());
       if (catalogExists) {
@@ -440,10 +492,14 @@ export const Sidebar: React.FC = () => {
       if (Object.keys(addTags).length > 0) options.tags = addTags;
       addCatalog(trimmedName, Object.keys(options).length > 0 ? options : undefined);
     } else if (addDialog.type === 'schema' && addDialog.catalogId) {
-      // Check for duplicate schema name within the same catalog
-      const catalog = (project?.state as any)?.catalogs?.find((c: any) => c.id === addDialog.catalogId);
-      if (catalog) {
-        const schemaExists = catalog.schemas?.some((s: any) => s.name.toLowerCase() === trimmedName.toLowerCase());
+      const catalogForSchema = (project?.state as any)?.catalogs?.find((c: any) => c.id === addDialog.catalogId);
+      if (catalogForSchema) {
+        const nr = validateNameInCatalog(trimmedName, 'schema', catalogForSchema);
+        if (!nr.valid) {
+          setAddError(nr.error + (nr.suggestion ? ` Did you mean: ${nr.suggestion}?` : ''));
+          return;
+        }
+        const schemaExists = catalogForSchema.schemas?.some((s: any) => s.name.toLowerCase() === trimmedName.toLowerCase());
         if (schemaExists) {
           setAddError(`Schema "${trimmedName}" already exists in this catalog.`);
           return;
@@ -457,9 +513,29 @@ export const Sidebar: React.FC = () => {
       addSchema(addDialog.catalogId, trimmedName, Object.keys(options).length > 0 ? options : undefined);
       setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
     } else if (addDialog.type === 'table' && addDialog.schemaId) {
+      const catalogs = (project?.state as any)?.catalogs ?? [];
+      const catalogForTable = findCatalogBySchemaId(catalogs, addDialog.schemaId);
+      const objectTypeForNaming: NamingRuleObjectType =
+        addDialog.objectType === 'view'
+          ? 'view'
+          : addDialog.objectType === 'volume'
+            ? 'volume'
+            : addDialog.objectType === 'function'
+              ? 'function'
+              : addDialog.objectType === 'materialized_view'
+                ? 'materialized_view'
+                : 'table';
+      if (catalogForTable) {
+        const nr = validateNameInCatalog(trimmedName, objectTypeForNaming, catalogForTable);
+        if (!nr.valid) {
+          setAddError(nr.error + (nr.suggestion ? ` Did you mean: ${nr.suggestion}?` : ''));
+          return;
+        }
+      }
+
       // Find the schema to check for duplicate table/view names
       let schema: any = null;
-      for (const catalog of ((project?.state as any)?.catalogs || [])) {
+      for (const catalog of catalogs) {
         schema = catalog.schemas?.find((s: any) => s.id === addDialog.schemaId);
         if (schema) break;
       }
@@ -977,6 +1053,34 @@ export const Sidebar: React.FC = () => {
               </VSCodeButton>
             </div>
           </form>
+        </div>
+      )}
+
+      {renameNamingWarning && (
+        <div className="modal" role="dialog" aria-modal="true" onClick={() => setRenameNamingWarning(null)}>
+          <div className="modal-content modal-surface" onClick={(e) => e.stopPropagation()}>
+            <h3>Naming standard</h3>
+            <p>{renameNamingWarning.error}</p>
+            {renameNamingWarning.suggestion && (
+              <p style={{ fontSize: '12px', color: 'var(--vscode-descriptionForeground)' }}>
+                Suggested name: <code>{renameNamingWarning.suggestion}</code>
+              </p>
+            )}
+            <div className="modal-buttons" style={{ marginTop: '12px' }}>
+              <VSCodeButton
+                appearance="primary"
+                onClick={() => {
+                  doPerformRename(renameNamingWarning.type, renameNamingWarning.id, renameNamingWarning.newName);
+                  setRenameNamingWarning(null);
+                }}
+              >
+                Rename Anyway
+              </VSCodeButton>
+              <VSCodeButton type="button" appearance="secondary" onClick={() => setRenameNamingWarning(null)}>
+                Cancel
+              </VSCodeButton>
+            </div>
+          </div>
         </div>
       )}
 

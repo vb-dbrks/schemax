@@ -4,7 +4,7 @@ Unity Catalog Models
 Migrated from TypeScript Unity provider with Unity-specific types
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -230,6 +230,9 @@ class UnityCatalog(BaseModel):
     )  # Reference to env managedLocations
     comment: str | None = None  # Catalog comment
     tags: dict[str, str] = {}  # Catalog tags (Unity Catalog governance)
+    naming_standards: dict[str, Any] | None = Field(
+        None, alias="namingStandards"
+    )  # Naming rules for objects in this catalog (schema, table, view, column)
     schemas: list[UnitySchema] = []
     grants: list[UnityGrant] = []
 

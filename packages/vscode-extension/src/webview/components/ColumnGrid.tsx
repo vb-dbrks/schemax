@@ -8,6 +8,7 @@ import {
 import { Column } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
+import { validateNameInCatalog, findCatalogForRename } from '../utils/namingStandards';
 
 interface ColumnGridProps {
   tableId: string;
@@ -37,6 +38,7 @@ const IconClose: React.FC = () => (
 
 export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
   const {
+    project,
     addColumn,
     renameColumn,
     dropColumn,
@@ -118,6 +120,15 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
         setColumnEditError(nameErr);
         return;
       }
+      const catalogs = (project?.state as { catalogs?: unknown[] })?.catalogs ?? [];
+      const catalogForTable = findCatalogForRename(catalogs as any, 'table', tableId);
+      if (catalogForTable?.namingStandards?.applyToRenames) {
+        const nr = validateNameInCatalog(trimmedName, 'column', catalogForTable);
+        if (!nr.valid) {
+          setColumnEditError(nr.error + (nr.suggestion ? ` Did you mean: ${nr.suggestion}?` : ''));
+          return;
+        }
+      }
       const isDuplicate = columns.some(
         c => c.id !== colId && c.name === trimmedName
       );
@@ -157,6 +168,15 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     if (nameErr) {
       setAddColError(nameErr);
       return;
+    }
+    const catalogs = (project?.state as { catalogs?: unknown[] })?.catalogs ?? [];
+    const catalogForTable = findCatalogForRename(catalogs as any, 'table', tableId);
+    if (catalogForTable) {
+      const nr = validateNameInCatalog(trimmedName, 'column', catalogForTable);
+      if (!nr.valid) {
+        setAddColError(nr.error + (nr.suggestion ? ` Did you mean: ${nr.suggestion}?` : ''));
+        return;
+      }
     }
     const isDuplicate = columns.some(c => c.name === trimmedName);
     if (isDuplicate) {

@@ -34,7 +34,7 @@ interface DesignerState {
   // Mutations (all emit ops)
   addCatalog: (name: string, options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;
   renameCatalog: (catalogId: string, newName: string) => void;
-  updateCatalog: (catalogId: string, updates: { managedLocationName?: string | null; comment?: string; tags?: Record<string, string> }) => void;
+  updateCatalog: (catalogId: string, updates: { managedLocationName?: string | null; comment?: string; tags?: Record<string, string>; namingStandards?: import('../../providers/unity/models').NamingStandardsConfig }) => void;
   dropCatalog: (catalogId: string) => void;
   
   addSchema: (catalogId: string, name: string, options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;

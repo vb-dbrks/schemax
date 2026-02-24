@@ -1693,6 +1693,62 @@ body {
   background-color: var(--vscode-button-hoverBackground);
 }
 
+/* Naming Standards table: 4-column layout, Pattern ellipsis, Actions right-aligned */
+.naming-standards-table-wrapper .properties-table {
+  table-layout: fixed;
+}
+
+.naming-standards-table-wrapper .properties-table th:nth-child(1),
+.naming-standards-table-wrapper .properties-table td:nth-child(1) {
+  width: 18%;
+}
+
+.naming-standards-table-wrapper .properties-table th:nth-child(2),
+.naming-standards-table-wrapper .properties-table td:nth-child(2) {
+  width: 14%;
+}
+
+.naming-standards-table-wrapper .properties-table th:nth-child(3),
+.naming-standards-table-wrapper .properties-table td:nth-child(3) {
+  width: 50%;
+}
+
+.naming-standards-table-wrapper .properties-table th:nth-child(4),
+.naming-standards-table-wrapper .properties-table td:nth-child(4) {
+  width: 80px;
+  text-align: right;
+}
+
+.naming-standards-table-wrapper .properties-table td.pattern-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.naming-standards-table-wrapper .properties-table td.pattern-cell code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Project-level naming standards: 3 columns (Object, Pattern, Actions) */
+.naming-standards-table-wrapper.project-level .properties-table th:nth-child(1),
+.naming-standards-table-wrapper.project-level .properties-table td:nth-child(1) {
+  width: 20%;
+}
+
+.naming-standards-table-wrapper.project-level .properties-table th:nth-child(2),
+.naming-standards-table-wrapper.project-level .properties-table td:nth-child(2) {
+  width: 60%;
+}
+
+.naming-standards-table-wrapper.project-level .properties-table th:nth-child(3),
+.naming-standards-table-wrapper.project-level .properties-table td:nth-child(3) {
+  width: 80px;
+  text-align: right;
+}
+
 /* Action button variants for inline editing */
 .action-button-save {
   padding: 4px 8px;
