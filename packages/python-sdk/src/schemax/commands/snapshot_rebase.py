@@ -259,6 +259,9 @@ def _run_rebase_steps(
     old_base = context.old_base
     new_base_version = context.new_base_version
     feature_ops = context.feature_ops
+    assert snapshot is not None
+    assert old_base is not None
+    assert new_base_version is not None
 
     console.print(f"  Old base: [yellow]{old_base}[/yellow]")
     console.print(f"  New base: [green]{new_base_version}[/green]")

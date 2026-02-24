@@ -13,7 +13,7 @@ from ast import literal_eval
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from schemax.providers.base.executor import ExecutionConfig, ExecutionResult, SQLExecutor
 from schemax.providers.base.models import ProviderState, ValidationError, ValidationResult
@@ -1907,7 +1907,8 @@ class UnityProvider(BaseProvider):
         if not text:
             return []
 
-        for parser in (json.loads, literal_eval):
+        parsers: tuple[Callable[[str], Any], ...] = (json.loads, literal_eval)
+        for parser in parsers:
             try:
                 parsed = parser(text)
                 if isinstance(parsed, (list, tuple)):

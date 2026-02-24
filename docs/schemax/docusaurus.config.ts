@@ -101,6 +101,10 @@ const config: Config = {
               label: 'FAQ',
               to: '/docs/reference/faq/',
             },
+            {
+              label: 'Contributing',
+              to: '/docs/contributing/',
+            },
           ],
         },
         {

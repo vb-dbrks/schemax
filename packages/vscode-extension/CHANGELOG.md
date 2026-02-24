@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.5] - 2026-02-24
+
+### Added
+
+- **Bulk operations** — New "Bulk operations" panel in the Designer. From a catalog or schema detail view, click "Bulk operations" to apply **grants** (principal + privileges to all objects in scope) or **tags** (table tag, schema tag, or catalog tag) to the selected catalog or schema and all objects under it. Scope is resolved from project state (catalog + schemas + tables + views + volumes + functions + materialized views for grants; tables/schemas/catalog for tags). Operations are emitted like other designer changes and appear in the changelog and generated SQL.
+
+### Changed
+
+- **README** — New SchemaX text logo (PNG); old SVG removed.
+
 ## [0.2.1] - 2026-02-21
 
 ### Added

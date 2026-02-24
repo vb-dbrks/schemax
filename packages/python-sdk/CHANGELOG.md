@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.5] - 2026-02-24
+
+### Changed
+
+- **Library refactoring and improvements** — Internal refactoring of validate, snapshot rebase, and test utilities (operation builders). No functional changes for users.
+
+### Breaking
+
+- **Test API (operation_builders)** — `builder.add_catalog(...)` is now `builder.catalog.add_catalog(...)`; same for all domains. Use `builder.<domain>.<method>(...)` in tests.
+
 ## [0.2.1] - 2026-02-21
 
 ### Added
