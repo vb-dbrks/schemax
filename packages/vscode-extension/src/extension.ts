@@ -1714,7 +1714,7 @@ function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Web
     vscode.Uri.joinPath(context.extensionUri, 'media', 'assets', 'index.css')
   );
   const logoUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(context.extensionUri, 'images', 'schemax_logo.svg')
+    vscode.Uri.joinPath(context.extensionUri, 'images', 'schemax_logov2.svg')
   );
 
   // Use a nonce to only allow specific scripts to be run

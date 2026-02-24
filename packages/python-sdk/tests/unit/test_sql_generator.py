@@ -788,6 +788,28 @@ class TestColumnTagSQL:
         assert batched.count("ALTER TABLE") == 1
         assert batched.count("SET TAGS") == 1
 
+    def test_set_table_tag_on_view_produces_alter_table_sql(self, empty_unity_state):
+        """set_table_tag with view id produces ALTER TABLE ... SET TAGS for view (bulk table tag)."""
+        from schemax.providers.unity.state_reducer import apply_operations
+
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.table.add_table("tbl_1", "t1", "sch_1", "delta", op_id="op_3"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", comment=None, op_id="op_4"),
+        ]
+        state_with_view = apply_operations(empty_unity_state, setup_ops)
+        generator = UnitySQLGenerator(state_with_view.model_dump(by_alias=True))
+
+        tag_op = builder.table.set_table_tag("view_1", "env", "dev", op_id="op_5")
+        result = generator.generate_sql_for_operation(tag_op)
+
+        assert "ALTER TABLE" in result.sql
+        assert "SET TAGS" in result.sql
+        assert "`v1`" in result.sql or "v1" in result.sql
+        assert "env" in result.sql and "dev" in result.sql
+
 
 class TestConstraintSQL:
     """Test SQL generation for constraint operations"""

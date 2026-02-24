@@ -3,9 +3,40 @@ import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vs
 import type { Operation } from '../../providers/base/operations';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { formatScopePreview } from '../utils/bulkUtils';
+import type { GrantTargetType } from '../utils/bulkUtils';
 import { parsePrivileges } from '../utils/grants';
 
-export type BulkOperationType = 'add_grant' | 'add_table_tag' | 'add_schema_tag' | 'add_catalog_tag';
+const GRANT_OP_TYPES = [
+  'add_catalog_grant',
+  'add_schema_grants',
+  'add_table_grants',
+  'add_view_grants',
+  'add_volume_grants',
+  'add_function_grants',
+  'add_materialized_view_grants',
+] as const;
+const TAG_OP_TYPES = ['add_table_tag', 'add_view_tag', 'add_schema_tag', 'add_catalog_tag'] as const;
+
+export type BulkOperationType =
+  | (typeof GRANT_OP_TYPES)[number]
+  | (typeof TAG_OP_TYPES)[number];
+
+const GRANT_OP_TO_TARGET: Record<(typeof GRANT_OP_TYPES)[number], GrantTargetType> = {
+  add_catalog_grant: 'catalog',
+  add_schema_grants: 'schema',
+  add_table_grants: 'table',
+  add_view_grants: 'view',
+  add_volume_grants: 'volume',
+  add_function_grants: 'function',
+  add_materialized_view_grants: 'materialized_view',
+};
+
+function isGrantOp(op: BulkOperationType): op is (typeof GRANT_OP_TYPES)[number] {
+  return GRANT_OP_TYPES.includes(op as (typeof GRANT_OP_TYPES)[number]);
+}
+function isTagOp(op: BulkOperationType): op is (typeof TAG_OP_TYPES)[number] {
+  return TAG_OP_TYPES.includes(op as (typeof TAG_OP_TYPES)[number]);
+}
 
 interface BulkOperationsPanelProps {
   scope: 'catalog' | 'schema';
@@ -25,6 +56,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
     getObjectsInScope,
     buildBulkGrantOps,
     buildBulkTableTagOps,
+    buildBulkViewTagOps,
     buildBulkSchemaTagOps,
     buildBulkCatalogTagOps,
     applyBulkOps,
@@ -35,7 +67,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
     [getObjectsInScope, scope, catalogId, schemaId]
   );
 
-  const [operationType, setOperationType] = useState<BulkOperationType>('add_grant');
+  const [operationType, setOperationType] = useState<BulkOperationType>('add_table_grants');
   const [principal, setPrincipal] = useState('');
   const [privilegesStr, setPrivilegesStr] = useState('');
   const [tagName, setTagName] = useState('');
@@ -44,11 +76,15 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
   const previewText = formatScopePreview(scopeResult);
 
   const opCount = useMemo(() => {
+    if (isGrantOp(operationType)) {
+      const targetType = GRANT_OP_TO_TARGET[operationType];
+      return scopeResult.grantTargets.filter((g) => g.targetType === targetType).length;
+    }
     switch (operationType) {
-      case 'add_grant':
-        return scopeResult.grantTargets.length;
       case 'add_table_tag':
         return scopeResult.tables.length;
+      case 'add_view_tag':
+        return scopeResult.views.length;
       case 'add_schema_tag':
         return scopeResult.schemas.length;
       case 'add_catalog_tag':
@@ -60,44 +96,41 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
 
   const canApply = useMemo(() => {
     if (opCount === 0) return false;
-    switch (operationType) {
-      case 'add_grant':
-        return principal.trim() !== '' && parsePrivileges(privilegesStr).length > 0;
-      case 'add_table_tag':
-      case 'add_schema_tag':
-      case 'add_catalog_tag':
-        return tagName.trim() !== '' && tagValue.trim() !== '';
-      default:
-        return false;
+    if (isGrantOp(operationType)) {
+      return principal.trim() !== '' && parsePrivileges(privilegesStr).length > 0;
     }
+    if (isTagOp(operationType)) {
+      return tagName.trim() !== '' && tagValue.trim() !== '';
+    }
+    return false;
   }, [operationType, opCount, principal, privilegesStr, tagName, tagValue]);
 
   const handleApply = () => {
     if (!canApply) return;
     let ops: Operation[] = [];
-    switch (operationType) {
-      case 'add_grant': {
-        const privileges = parsePrivileges(privilegesStr);
-        if (principal.trim() && privileges.length > 0) {
-          ops = buildBulkGrantOps(scopeResult, principal.trim(), privileges);
-        }
-        break;
+    if (isGrantOp(operationType)) {
+      const privileges = parsePrivileges(privilegesStr);
+      if (principal.trim() && privileges.length > 0) {
+        ops = buildBulkGrantOps(
+          scopeResult,
+          principal.trim(),
+          privileges,
+          GRANT_OP_TO_TARGET[operationType]
+        );
       }
-      case 'add_table_tag':
-        if (tagName.trim() && tagValue.trim()) {
-          ops = buildBulkTableTagOps(scopeResult, tagName.trim(), tagValue.trim());
-        }
-        break;
-      case 'add_schema_tag':
-        if (tagName.trim() && tagValue.trim()) {
-          ops = buildBulkSchemaTagOps(scopeResult, tagName.trim(), tagValue.trim());
-        }
-        break;
-      case 'add_catalog_tag':
-        if (tagName.trim() && tagValue.trim() && scopeResult.catalog) {
-          ops = buildBulkCatalogTagOps(scopeResult, tagName.trim(), tagValue.trim());
-        }
-        break;
+    } else if (operationType === 'add_table_tag' && tagName.trim() && tagValue.trim()) {
+      ops = buildBulkTableTagOps(scopeResult, tagName.trim(), tagValue.trim());
+    } else if (operationType === 'add_view_tag' && tagName.trim() && tagValue.trim()) {
+      ops = buildBulkViewTagOps(scopeResult, tagName.trim(), tagValue.trim());
+    } else if (operationType === 'add_schema_tag' && tagName.trim() && tagValue.trim()) {
+      ops = buildBulkSchemaTagOps(scopeResult, tagName.trim(), tagValue.trim());
+    } else if (
+      operationType === 'add_catalog_tag' &&
+      tagName.trim() &&
+      tagValue.trim() &&
+      scopeResult.catalog
+    ) {
+      ops = buildBulkCatalogTagOps(scopeResult, tagName.trim(), tagValue.trim());
     }
     if (ops.length > 0) {
       applyBulkOps(ops);
@@ -137,12 +170,19 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
               value={operationType}
               onInput={(e: React.FormEvent<HTMLSelectElement>) => {
                 const value = (e.target as HTMLSelectElement).value as BulkOperationType;
-                setOperationType(value || 'add_grant');
+                setOperationType(value || 'add_table_grants');
               }}
               aria-label="Operation type"
             >
-              <VSCodeOption value="add_grant">Add grant</VSCodeOption>
+              <VSCodeOption value="add_catalog_grant">Add catalog grant</VSCodeOption>
+              <VSCodeOption value="add_schema_grants">Add schema grants</VSCodeOption>
+              <VSCodeOption value="add_table_grants">Add table grants</VSCodeOption>
+              <VSCodeOption value="add_view_grants">Add view grants</VSCodeOption>
+              <VSCodeOption value="add_volume_grants">Add volume grants</VSCodeOption>
+              <VSCodeOption value="add_function_grants">Add function grants</VSCodeOption>
+              <VSCodeOption value="add_materialized_view_grants">Add materialized view grants</VSCodeOption>
               <VSCodeOption value="add_table_tag">Add table tag</VSCodeOption>
+              <VSCodeOption value="add_view_tag">Add view tag</VSCodeOption>
               <VSCodeOption value="add_schema_tag">Add schema tag</VSCodeOption>
               {showCatalogTagOption && (
                 <VSCodeOption value="add_catalog_tag">Add catalog tag</VSCodeOption>
@@ -150,7 +190,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
             </VSCodeDropdown>
           </div>
 
-          {operationType === 'add_grant' && (
+          {isGrantOp(operationType) && (
             <>
               <div className="modal-field-group">
                 <label htmlFor="bulk-grant-principal">Principal (user, group, or service principal)</label>
@@ -184,9 +224,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
             </>
           )}
 
-          {(operationType === 'add_table_tag' ||
-            operationType === 'add_schema_tag' ||
-            operationType === 'add_catalog_tag') && (
+          {isTagOp(operationType) && (
             <>
               <div className="modal-field-group">
                 <label htmlFor="bulk-tag-name">Tag name</label>

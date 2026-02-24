@@ -3,13 +3,14 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import { BulkOperationsPanel } from '../../../src/webview/components/BulkOperationsPanel';
 
 const mockGetObjectsInScope = jest.fn();
 const mockBuildBulkGrantOps = jest.fn();
 const mockBuildBulkTableTagOps = jest.fn();
+const mockBuildBulkViewTagOps = jest.fn();
 const mockBuildBulkSchemaTagOps = jest.fn();
 const mockBuildBulkCatalogTagOps = jest.fn();
 const mockApplyBulkOps = jest.fn();
@@ -47,6 +48,7 @@ const defaultStoreReturn = {
   getObjectsInScope: mockGetObjectsInScope,
   buildBulkGrantOps: mockBuildBulkGrantOps,
   buildBulkTableTagOps: mockBuildBulkTableTagOps,
+  buildBulkViewTagOps: mockBuildBulkViewTagOps,
   buildBulkSchemaTagOps: mockBuildBulkSchemaTagOps,
   buildBulkCatalogTagOps: mockBuildBulkCatalogTagOps,
   applyBulkOps: mockApplyBulkOps,
@@ -76,12 +78,13 @@ describe('BulkOperationsPanel', () => {
     expect(screen.getByText(/2 table/)).toBeInTheDocument();
   });
 
-  test('renders operation dropdown with Add grant selected by default', () => {
+  test('renders operation dropdown with Add table grants selected by default', () => {
     render(
       <BulkOperationsPanel scope="catalog" catalogId="cat_1" onClose={onClose} />
     );
     const dropdown = screen.getByLabelText(/Operation type/i);
     expect(dropdown).toBeInTheDocument();
+    expect((dropdown as HTMLSelectElement).value).toBe('add_table_grants');
     expect(screen.getByLabelText(/Principal/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Privileges/)).toBeInTheDocument();
   });
@@ -113,7 +116,7 @@ describe('BulkOperationsPanel', () => {
     expect(catalogTagOption).toBeUndefined();
   });
 
-  test('Apply is disabled when principal or privileges empty for add_grant', () => {
+  test('Apply is disabled when principal or privileges empty for add_table_grants', () => {
     render(
       <BulkOperationsPanel scope="catalog" catalogId="cat_1" onClose={onClose} />
     );
@@ -127,8 +130,8 @@ describe('BulkOperationsPanel', () => {
     expect(applyButton).not.toBeDisabled();
   });
 
-  test('Apply calls applyBulkOps and onClose when grant form is valid', () => {
-    const mockOps = [{ id: 'op_1', ts: '', provider: 'unity', op: 'unity.add_grant', target: 'cat_1', payload: {} }];
+  test('Apply calls applyBulkOps and onClose when grant form is valid (add_table_grants)', () => {
+    const mockOps = [{ id: 'op_1', ts: '', provider: 'unity', op: 'unity.add_grant', target: 't1', payload: {} }];
     mockBuildBulkGrantOps.mockReturnValue(mockOps);
 
     render(
@@ -144,7 +147,8 @@ describe('BulkOperationsPanel', () => {
     expect(mockBuildBulkGrantOps).toHaveBeenCalledWith(
       defaultScopeResult,
       'data_engineers',
-      ['SELECT', 'MODIFY']
+      ['SELECT', 'MODIFY'],
+      'table'
     );
     expect(mockApplyBulkOps).toHaveBeenCalledWith(mockOps);
     expect(onClose).toHaveBeenCalled();
@@ -160,11 +164,12 @@ describe('BulkOperationsPanel', () => {
     expect(mockApplyBulkOps).not.toHaveBeenCalled();
   });
 
-  test('shows operation count message when scope has targets', () => {
+  test('shows operation count message when scope has table grant targets', () => {
     render(
       <BulkOperationsPanel scope="catalog" catalogId="cat_1" onClose={onClose} />
     );
-    expect(screen.getByText(/4 operation/)).toBeInTheDocument();
+    // Default op is add_table_grants; scope has 2 tables
+    expect(screen.getByText(/2 operation/)).toBeInTheDocument();
   });
 
   test('shows empty scope message when grant targets is empty', () => {
@@ -192,5 +197,91 @@ describe('BulkOperationsPanel', () => {
       <BulkOperationsPanel scope="catalog" catalogId="cat_1" onClose={onClose} />
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  test('Add table tag applies to tables only', async () => {
+    const scopeWithView = {
+      ...defaultScopeResult,
+      tables: [{ id: 't1', name: 'table1' }],
+      views: [{ id: 'v1', name: 'view1' }],
+      grantTargets: [
+        { targetType: 'catalog' as const, targetId: 'cat_1' },
+        { targetType: 'schema' as const, targetId: 'sch_1' },
+        { targetType: 'table' as const, targetId: 't1' },
+        { targetType: 'view' as const, targetId: 'v1' },
+      ],
+    };
+    mockGetObjectsInScope.mockReturnValue(scopeWithView);
+
+    const mockTableTagOps = [
+      { id: 'op_t', provider: 'unity', op: 'unity.set_table_tag', target: 't1', payload: { tableId: 't1', tagName: 'env', tagValue: 'dev' } },
+    ];
+    mockBuildBulkTableTagOps.mockReturnValue(mockTableTagOps);
+
+    render(
+      <BulkOperationsPanel scope="catalog" catalogId="cat_1" onClose={onClose} />
+    );
+
+    const operationDropdown = screen.getByLabelText(/Operation type/i);
+    fireEvent.input(operationDropdown, { target: { value: 'add_table_tag' } });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Tag name/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/1 operation/)).toBeInTheDocument();
+    const tagNameInput = screen.getByLabelText(/Tag name/i);
+    const tagValueInput = screen.getByLabelText(/Tag value/i);
+    fireEvent.input(tagNameInput, { target: { value: 'env' } });
+    fireEvent.input(tagValueInput, { target: { value: 'dev' } });
+
+    const applyButton = screen.getByRole('button', { name: /Apply/i });
+    fireEvent.click(applyButton);
+
+    expect(mockBuildBulkTableTagOps).toHaveBeenCalledWith(scopeWithView, 'env', 'dev');
+    expect(mockApplyBulkOps).toHaveBeenCalledWith(mockTableTagOps);
+    expect(mockApplyBulkOps).toHaveBeenCalledTimes(1);
+    expect(mockBuildBulkTableTagOps).toHaveBeenCalledTimes(1);
+  });
+
+  test('Add view tag applies to views only', async () => {
+    const scopeWithView = {
+      ...defaultScopeResult,
+      tables: [{ id: 't1', name: 'table1' }],
+      views: [{ id: 'v1', name: 'view1' }],
+      grantTargets: [
+        { targetType: 'table' as const, targetId: 't1' },
+        { targetType: 'view' as const, targetId: 'v1' },
+      ],
+    };
+    mockGetObjectsInScope.mockReturnValue(scopeWithView);
+
+    const mockViewTagOps = [
+      { id: 'op_v', provider: 'unity', op: 'unity.set_table_tag', target: 'v1', payload: { tableId: 'v1', tagName: 'env', tagValue: 'dev' } },
+    ];
+    mockBuildBulkViewTagOps.mockReturnValue(mockViewTagOps);
+
+    render(
+      <BulkOperationsPanel scope="catalog" catalogId="cat_1" onClose={onClose} />
+    );
+
+    const operationDropdown = screen.getByLabelText(/Operation type/i);
+    fireEvent.input(operationDropdown, { target: { value: 'add_view_tag' } });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Tag name/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/1 operation/)).toBeInTheDocument();
+    const tagNameInput = screen.getByLabelText(/Tag name/i);
+    const tagValueInput = screen.getByLabelText(/Tag value/i);
+    fireEvent.input(tagNameInput, { target: { value: 'env' } });
+    fireEvent.input(tagValueInput, { target: { value: 'dev' } });
+
+    const applyButton = screen.getByRole('button', { name: /Apply/i });
+    fireEvent.click(applyButton);
+
+    expect(mockBuildBulkViewTagOps).toHaveBeenCalledWith(scopeWithView, 'env', 'dev');
+    expect(mockApplyBulkOps).toHaveBeenCalledWith(mockViewTagOps);
+    expect(mockApplyBulkOps).toHaveBeenCalledTimes(1);
+    expect(mockBuildBulkViewTagOps).toHaveBeenCalledTimes(1);
   });
 });

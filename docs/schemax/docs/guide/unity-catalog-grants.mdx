@@ -116,10 +116,17 @@ You can add the same **grant** or **tag** to many objects at once from the desig
 2. In the detail panel, click **Bulk operations**.
 3. The panel shows the scope: for a catalog, that catalog and all its schemas and tables (and views, volumes, etc.); for a schema, that schema and all its tables (and views, etc.).
 4. Choose the operation:
-   - **Add grant** — Enter principal (user, group, or service principal) and privileges (comma-separated). The same grant is applied to all securables in scope (catalog, schemas, tables, views, volumes, functions, materialized views as applicable).
+   - **Add catalog grant** — Grant on the catalog in scope (principal + privileges).
+   - **Add schema grants** — Grant on each schema in scope.
+   - **Add table grants** — Grant on each table in scope.
+   - **Add view grants** — Grant on each view in scope.
+   - **Add volume grants** — Grant on each volume in scope.
+   - **Add function grants** — Grant on each function in scope.
+   - **Add materialized view grants** — Grant on each materialized view in scope.
    - **Add catalog tag** — (Catalog scope only.) Set a tag name and value on the catalog.
    - **Add schema tag** — Set a tag name and value on each schema in scope.
-   - **Add table tag** — Set a tag name and value on each table in scope (views are not currently included).
+   - **Add table tag** — Set a tag name and value on each table in scope.
+   - **Add view tag** — Set a tag name and value on each view in scope.
 5. Review the preview (number of objects affected), then click **Apply**.
 
 The operations are appended to the changelog exactly as if you had added each grant or tag individually. Generate SQL or run `schemax apply` as usual to deploy them.

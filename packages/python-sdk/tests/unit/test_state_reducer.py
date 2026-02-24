@@ -184,6 +184,64 @@ class TestTableOperations:
         table = new_state.catalogs[0].schemas[0].tables[0]
         assert "testKey" not in table.properties
 
+    def test_set_table_tag(self, sample_unity_state):
+        """Test setting table tag"""
+        builder = OperationBuilder()
+        op = builder.table.set_table_tag("table_789", "env", "dev", op_id="op_tag_1")
+
+        new_state = apply_operation(sample_unity_state, op)
+
+        table = new_state.catalogs[0].schemas[0].tables[0]
+        assert table.tags["env"] == "dev"
+
+    def test_unset_table_tag(self, sample_unity_state):
+        """Test unsetting table tag"""
+        builder = OperationBuilder()
+        set_op = builder.table.set_table_tag("table_789", "env", "dev", op_id="op_tag_1")
+        state = apply_operation(sample_unity_state, set_op)
+
+        unset_op = builder.table.unset_table_tag("table_789", "env", op_id="op_tag_2")
+        new_state = apply_operation(state, unset_op)
+
+        table = new_state.catalogs[0].schemas[0].tables[0]
+        assert "env" not in table.tags
+
+    def test_set_table_tag_on_view(self, empty_unity_state):
+        """Test set_table_tag applies to view when target is view id (bulk table tag)."""
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.table.add_table("tbl_1", "t1", "sch_1", "delta", op_id="op_3"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", comment=None, op_id="op_4"),
+        ]
+        state_with_view = apply_operations(empty_unity_state, setup_ops)
+
+        tag_op = builder.table.set_table_tag("view_1", "department", "eng", op_id="op_5")
+        new_state = apply_operation(state_with_view, tag_op)
+
+        view = new_state.catalogs[0].schemas[0].views[0]
+        assert view.tags["department"] == "eng"
+
+    def test_unset_table_tag_on_view(self, empty_unity_state):
+        """Test unset_table_tag applies to view when target is view id."""
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.table.add_table("tbl_1", "t1", "sch_1", "delta", op_id="op_3"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", comment=None, op_id="op_4"),
+        ]
+        state_with_view = apply_operations(empty_unity_state, setup_ops)
+        set_op = builder.table.set_table_tag("view_1", "department", "eng", op_id="op_5")
+        state_tagged = apply_operation(state_with_view, set_op)
+
+        unset_op = builder.table.unset_table_tag("view_1", "department", op_id="op_6")
+        new_state = apply_operation(state_tagged, unset_op)
+
+        view = new_state.catalogs[0].schemas[0].views[0]
+        assert "department" not in view.tags
+
 
 class TestColumnOperations:
     """Test column operations"""

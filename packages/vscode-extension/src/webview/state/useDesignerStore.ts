@@ -4,7 +4,7 @@ import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, Col
 import { Operation } from '../../providers/base/operations';
 import { ProviderInfo, ProviderCapabilities } from '../../providers/base/provider';
 import { getVsCodeApi } from '../vscode-api';
-import type { ScopeResult } from '../utils/bulkUtils';
+import type { ScopeResult, GrantTargetType } from '../utils/bulkUtils';
 import { getObjectsInScope as computeScope } from '../utils/bulkUtils';
 
 const vscode = getVsCodeApi();
@@ -147,8 +147,14 @@ interface DesignerState {
   // Bulk operations (scope from catalog or schema selection)
   getObjectsInScope: (scope: 'catalog' | 'schema', catalogId?: string | null, schemaId?: string | null) => ScopeResult;
   applyBulkOps: (ops: Operation[]) => void;
-  buildBulkGrantOps: (scopeResult: ScopeResult, principal: string, privileges: string[]) => Operation[];
+  buildBulkGrantOps: (
+    scopeResult: ScopeResult,
+    principal: string,
+    privileges: string[],
+    targetTypeFilter?: GrantTargetType
+  ) => Operation[];
   buildBulkTableTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
+  buildBulkViewTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
   buildBulkSchemaTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
   buildBulkCatalogTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
 }
@@ -788,10 +794,13 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     if (ops.length > 0) emitOps(ops);
   },
 
-  buildBulkGrantOps: (scopeResult, principal, privileges) => {
+  buildBulkGrantOps: (scopeResult, principal, privileges, targetTypeFilter?) => {
     const state = get();
     const ops: Operation[] = [];
-    for (const { targetType, targetId } of scopeResult.grantTargets) {
+    const targets = targetTypeFilter
+      ? scopeResult.grantTargets.filter((t) => t.targetType === targetTypeFilter)
+      : scopeResult.grantTargets;
+    for (const { targetType, targetId } of targets) {
       ops.push(
         createOperation(state, 'add_grant', targetId, {
           targetType,
@@ -808,6 +817,21 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     const state = get();
     const ops: Operation[] = [];
     for (const { id } of scopeResult.tables) {
+      ops.push(
+        createOperation(state, 'set_table_tag', id, {
+          tableId: id,
+          tagName,
+          tagValue,
+        })
+      );
+    }
+    return ops;
+  },
+
+  buildBulkViewTagOps: (scopeResult, tagName, tagValue) => {
+    const state = get();
+    const ops: Operation[] = [];
+    for (const { id } of scopeResult.views) {
       ops.push(
         createOperation(state, 'set_table_tag', id, {
           tableId: id,
