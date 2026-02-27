@@ -426,6 +426,11 @@ export const Sidebar: React.FC = () => {
       return;
     }
 
+    // Flush any tag that was typed but not yet confirmed via "+"
+    const pendingTags = (addTagInput.tagName.trim() && addTagInput.tagValue.trim())
+      ? { ...addTags, [addTagInput.tagName.trim()]: addTagInput.tagValue.trim() }
+      : addTags;
+
     if (addDialog.type === 'catalog') {
       // Check for duplicate catalog name
       const catalogExists = (project?.state as any)?.catalogs?.some((c: any) => c.name.toLowerCase() === trimmedName.toLowerCase());
@@ -437,7 +442,7 @@ export const Sidebar: React.FC = () => {
       const options: any = {};
       if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
       if (addComment) options.comment = addComment;
-      if (Object.keys(addTags).length > 0) options.tags = addTags;
+      if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
       addCatalog(trimmedName, Object.keys(options).length > 0 ? options : undefined);
     } else if (addDialog.type === 'schema' && addDialog.catalogId) {
       // Check for duplicate schema name within the same catalog
@@ -453,7 +458,7 @@ export const Sidebar: React.FC = () => {
       const options: any = {};
       if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
       if (addComment) options.comment = addComment;
-      if (Object.keys(addTags).length > 0) options.tags = addTags;
+      if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
       addSchema(addDialog.catalogId, trimmedName, Object.keys(options).length > 0 ? options : undefined);
       setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
     } else if (addDialog.type === 'table' && addDialog.schemaId) {
@@ -1377,7 +1382,9 @@ export const Sidebar: React.FC = () => {
                     }}
                   />
                   <VSCodeButton
+                    type="button"
                     appearance="secondary"
+                    data-testid="add-tag-btn"
                     onClick={() => {
                       if (addTagInput.tagName && addTagInput.tagValue) {
                         setAddTags({...addTags, [addTagInput.tagName]: addTagInput.tagValue});
