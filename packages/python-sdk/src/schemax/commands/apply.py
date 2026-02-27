@@ -101,7 +101,7 @@ def _record_statement_operations(
         if operation:
             tracker.record_operation(
                 deployment_id=deployment_id,
-                op=operation,
+                operation=operation,
                 sql_stmt=stmt_result.sql,
                 result=stmt_result,
                 execution_order=index + 1,

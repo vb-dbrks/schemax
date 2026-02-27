@@ -1,9 +1,8 @@
 """Load provider modules so they register with ProviderRegistry (side effect)."""
 
-import schemax.providers  # noqa: F401
+import schemax.providers as _providers
 
 
 def ensure_providers_loaded() -> None:
     """Ensure provider modules are loaded; idempotent."""
-    # Side effect: schemax.providers is imported at module load
-    pass
+    _ = _providers

@@ -322,7 +322,7 @@ def bundle(target: str, version: str, output: str) -> None:
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 @click.pass_context
-def import_command(ctx: click.Context, **kwargs: Any) -> None:
+def import_command(ctx: click.Context, **_kwargs: Any) -> None:
     """Import existing provider assets into SchemaX changelog.
 
     Two sources:
@@ -595,7 +595,7 @@ def _print_rollback_deployment_not_found_help(
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 @click.pass_context
-def rollback(ctx: click.Context, **kwargs: Any) -> None:
+def rollback(ctx: click.Context, **_kwargs: Any) -> None:
     """Rollback deployments (partial or complete)
 
     Two rollback modes:

@@ -5,9 +5,10 @@ Defines safety levels and reporting structures for validating rollback operation
 Used by SafetyValidator to classify data impact of rollback operations.
 """
 
-from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class SafetyLevel(StrEnum):
@@ -18,11 +19,12 @@ class SafetyLevel(StrEnum):
     DESTRUCTIVE = "DESTRUCTIVE"  # Significant data loss
 
 
-@dataclass
-class SafetyReport:
-    """Report on the safety of a rollback operation"""
+class SafetyReport(BaseModel):
+    """Report on the safety of a rollback operation."""
 
     level: SafetyLevel
     reason: str
-    data_at_risk: int = 0  # Number of rows/values at risk
-    sample_data: list[dict[str, Any]] | None = None  # Sample data that would be lost
+    data_at_risk: int = Field(default=0, description="Number of rows/values at risk")
+    sample_data: list[dict[str, Any]] | None = Field(
+        default=None, description="Sample data that would be lost"
+    )

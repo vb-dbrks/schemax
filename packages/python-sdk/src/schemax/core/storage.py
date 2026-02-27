@@ -7,6 +7,8 @@ Breaking change from v3: environments are now rich objects instead of simple arr
 
 import hashlib
 import json
+import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -336,43 +338,40 @@ def load_current_state(
     return state, changelog, provider, validation_result
 
 
+def _format_cycle_errors(generator: Any, cycles: list[list[str]]) -> list[dict[str, Any]]:
+    """Build list of circular_dependency error dicts from cycle node IDs."""
+    errors: list[dict[str, Any]] = []
+    for cycle in cycles:
+        cycle_names = [generator.id_name_map.get(node_id, node_id) for node_id in cycle]
+        cycle_str = " → ".join(cycle_names)
+        errors.append(
+            {
+                "type": "circular_dependency",
+                "message": f"Circular dependency: {cycle_str}",
+                "cycle": cycle_names,
+            }
+        )
+    return errors
+
+
+def _collect_graph_hierarchy_warnings(graph: Any) -> list[dict[str, Any]]:
+    """Collect hierarchy warning dicts from graph.validate_dependencies()."""
+    return [{"type": "hierarchy_warning", "message": w} for w in graph.validate_dependencies()]
+
+
 def validate_dependencies_internal(
     state: Any, ops: list[Operation], provider: Any
 ) -> dict[str, Any]:
     """Internal helper to validate dependencies and return structured result"""
-    errors = []
-    warnings = []
+    errors: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
 
     try:
-        # Get SQL generator to build dependency graph
         generator = provider.get_sql_generator(state=state)
-
-        # Try to build dependency graph
         graph = generator.build_dependency_graph(ops)
-
-        # Check for circular dependencies
         cycles = graph.detect_cycles()
-        if cycles:
-            for cycle in cycles:
-                # Get names from generator's id_name_map
-                cycle_names = []
-                for node_id in cycle:
-                    name = generator.id_name_map.get(node_id, node_id)
-                    cycle_names.append(name)
-                cycle_str = " → ".join(cycle_names)
-                errors.append(
-                    {
-                        "type": "circular_dependency",
-                        "message": f"Circular dependency: {cycle_str}",
-                        "cycle": cycle_names,
-                    }
-                )
-
-        # Check for invalid hierarchy
-        hierarchy_warnings = graph.validate_dependencies()
-        for warning in hierarchy_warnings:
-            warnings.append({"type": "hierarchy_warning", "message": warning})
-
+        errors.extend(_format_cycle_errors(generator, cycles))
+        warnings.extend(_collect_graph_hierarchy_warnings(graph))
     except Exception as e:
         warnings.append(
             {"type": "validation_error", "message": f"Could not validate dependencies: {e}"}
@@ -461,8 +460,6 @@ def create_snapshot(
     # Calculate hash (includes full operations)
     state_hash = _calculate_state_hash(state, ops_with_ids)
 
-    import os
-
     # Create snapshot file
     snapshot_file = {
         "id": f"snap_{uuid4()}",
@@ -536,8 +533,6 @@ def _get_next_version(current_version: str | None, settings: dict[str, Any]) -> 
         return version_prefix + "0.1.0"
 
     # Parse version (e.g., "v0.1.0" or "0.1.0")
-    import re
-
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", current_version)
     if not match:
         return version_prefix + "0.1.0"

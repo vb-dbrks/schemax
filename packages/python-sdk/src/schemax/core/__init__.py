@@ -10,7 +10,7 @@ Foundational, provider-agnostic infrastructure for SchemaX:
 
 # Storage exports
 # Deployment exports
-from .deployment import DeploymentTracker
+from .deployment import DeploymentRecord, DeploymentOpDetail, DeploymentTracker
 
 # SQL utils exports
 from .sql_utils import split_sql_statements
@@ -66,6 +66,8 @@ __all__ = [
     # SQL utils
     "split_sql_statements",
     # Deployment
+    "DeploymentRecord",
+    "DeploymentOpDetail",
     "DeploymentTracker",
     # Version
     "SemanticVersion",

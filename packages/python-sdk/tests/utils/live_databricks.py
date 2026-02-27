@@ -16,6 +16,9 @@ from schemax.providers.base.executor import ExecutionConfig
 from schemax.providers.unity.auth import create_databricks_client
 from schemax.providers.unity.executor import UnitySQLExecutor
 
+# One-time log of resolved live config so you can confirm profile/warehouse in use
+_live_config_logged: set[str] = set()
+
 
 def _prompt_env_if_tty(var_name: str, prompt: str | None = None) -> str | None:
     """If stdin is a TTY and var is unset, prompt and return the value (caller should set os.environ)."""
@@ -79,6 +82,17 @@ def require_live_command_tests() -> LiveDatabricksConfig:
         timeout_seconds = int(timeout_raw)
     except ValueError:
         timeout_seconds = 300
+
+    # Log once per process so you can confirm which workspace/warehouse is used
+    key = f"{profile}:{warehouse_id}"
+    if key not in _live_config_logged:
+        _live_config_logged.add(key)
+        msg = (
+            f"[schemax live] Using profile={profile!r} warehouse_id={warehouse_id!r} "
+            f"(from DATABRICKS_PROFILE / DATABRICKS_WAREHOUSE_ID)\n"
+        )
+        sys.stderr.write(msg)
+        sys.stderr.flush()
 
     return LiveDatabricksConfig(
         profile=profile,

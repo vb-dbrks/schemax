@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.prompt import Confirm
 
 from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
-from schemax.core.deployment import DeploymentTracker
+from schemax.core.deployment import DeploymentRecord, DeploymentTracker
 from schemax.core.storage import (
     get_environment_config,
     load_current_state,
@@ -438,7 +438,7 @@ def rollback_partial(
             ):
                 tracker.record_operation(
                     deployment_id=rollback_deployment_id,
-                    op=rollback_op,
+                    operation=rollback_op,
                     sql_stmt=stmt_result.sql,
                     result=stmt_result,
                     execution_order=i + 1,
@@ -503,7 +503,7 @@ def rollback_partial(
 
 def _resolve_successful_ops_from_snapshots(
     workspace_path: Path,
-    target_deployment: dict,
+    target_deployment: DeploymentRecord,
     successful_op_ids: list[str],
 ) -> list[Operation]:
     """Regenerate diff ops from snapshots and match by opsDetails."""
@@ -962,7 +962,7 @@ def rollback_complete(
             ):
                 tracker.record_operation(
                     deployment_id=rollback_deployment_id,
-                    op=rollback_op,
+                    operation=rollback_op,
                     sql_stmt=stmt_result.sql,
                     result=stmt_result,
                     execution_order=i + 1,

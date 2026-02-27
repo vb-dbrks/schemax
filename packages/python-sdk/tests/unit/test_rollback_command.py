@@ -3,14 +3,18 @@ Tests for rollback command implementation
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
 from schemax.commands.rollback import RollbackError, rollback_complete, rollback_partial
+from schemax.core.storage import append_ops, create_snapshot, ensure_project_file
 from schemax.providers.base.executor import ExecutionResult
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.reverse_generator import SafetyLevel, SafetyReport
+from tests.utils import OperationBuilder
+from tests.utils.cli_helpers import invoke_cli
 
 
 class TestRollbackPartial:
@@ -662,3 +666,79 @@ class TestRollbackCompleteBaselineGuard:
         mock_read_snapshot.assert_called()
         assert result.success is True
         assert result.operations_rolled_back == 0
+
+
+class TestPartialRollbackCli:
+    """Unit tests for partial rollback CLI path (run_partial_rollback_cli via invoke_cli).
+
+    These use mocks for DB and rollback_partial so we test CLI dispatch and
+    run_partial_rollback_cli logic without a live Databricks connection.
+    Integration tests must not patch; partial rollback against a real backend
+    is covered by live/integration tests when configured.
+    """
+
+    def test_partial_rollback_cli_exits_zero_when_tracker_returns_deployment(
+        self, tmp_path: Path
+    ) -> None:
+        """Partial rollback CLI with stubbed tracker and rollback_partial exits 0."""
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        ensure_project_file(workspace, provider_id="unity")
+        # One add_catalog op so snapshot contains it; _resolve_successful_ops_from_snapshots can match
+        builder = OperationBuilder()
+        op = builder.catalog.add_catalog(
+            "cat_implicit", "__implicit__", op_id="op_init_catalog"
+        )
+        append_ops(workspace, [op])
+        create_snapshot(workspace, "v1", version="v0.1.0")
+
+        fake_deployment = {
+            "id": "deploy_abc",
+            "status": "failed",
+            "version": "v0.1.0",
+            "fromVersion": None,
+            "opsApplied": ["op_init_catalog"],
+            "failedStatementIndex": 1,
+            "opsDetails": [
+                {
+                    "id": "op_init_catalog",
+                    "type": "unity.add_catalog",
+                    "target": "cat_implicit",
+                    "payload": {"catalogId": "cat_implicit", "name": "__implicit__"},
+                },
+            ],
+        }
+        mock_tracker = Mock()
+        mock_tracker.get_deployment_by_id.return_value = fake_deployment
+
+        with patch(
+            "schemax.providers.unity.auth.create_databricks_client",
+            return_value=Mock(),
+        ):
+            with patch(
+                "schemax.commands.rollback.DeploymentTracker",
+                return_value=mock_tracker,
+            ):
+                with patch("schemax.commands.rollback.rollback_partial") as mock_partial:
+                    mock_partial.return_value = SimpleNamespace(
+                        success=True,
+                        operations_rolled_back=2,
+                        error_message=None,
+                    )
+                    result = invoke_cli(
+                        "rollback",
+                        "--deployment",
+                        "deploy_abc",
+                        "--partial",
+                        "--target",
+                        "dev",
+                        "--profile",
+                        "dev",
+                        "--warehouse-id",
+                        "wh_123",
+                        "--dry-run",
+                        "--no-interaction",
+                        str(workspace),
+                    )
+        assert result.exit_code == 0
+        mock_partial.assert_called_once()

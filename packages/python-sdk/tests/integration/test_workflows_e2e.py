@@ -393,61 +393,6 @@ class TestWorkflowS4ApplyFailureAndRollback:
         assert r2.exit_code == 0
         mock_rollback.assert_called_once()
 
-    def test_partial_rollback_cli_stub(self, temp_workspace: Path) -> None:
-        """Partial rollback CLI (stubbed DB and rollback_partial) exits 0."""
-        ensure_project_file(temp_workspace, provider_id="unity")
-        # Snapshot with only implicit catalog so catalogMappings (__implicit__ only) suffice
-        create_snapshot(temp_workspace, "v1", version="v0.1.0")
-
-        fake_deployment = {
-            "id": "deploy_abc",
-            "status": "failed",
-            "version": "v0.1.0",
-            "fromVersion": None,
-            "opsApplied": ["op_init_catalog"],
-            "failedStatementIndex": 1,
-            "opsDetails": [
-                {
-                    "id": "op_init_catalog",
-                    "type": "unity.add_catalog",
-                    "target": "cat_implicit",
-                    "payload": {"catalogId": "cat_implicit", "name": "__implicit__"},
-                },
-            ],
-        }
-        mock_tracker = Mock()
-        mock_tracker.get_deployment_by_id.return_value = fake_deployment
-
-        with patch(
-            "schemax.providers.unity.auth.create_databricks_client",
-            return_value=Mock(),
-        ):
-            with patch(
-                "schemax.core.deployment.DeploymentTracker",
-                return_value=mock_tracker,
-            ):
-                with patch("schemax.commands.rollback.rollback_partial") as mock_partial:
-                    mock_partial.return_value = SimpleNamespace(
-                        success=True, operations_rolled_back=2, error_message=None
-                    )
-                    result = invoke_cli(
-                        "rollback",
-                        "--deployment",
-                        "deploy_abc",
-                        "--partial",
-                        "--target",
-                        "dev",
-                        "--profile",
-                        "dev",
-                        "--warehouse-id",
-                        "wh_123",
-                        "--dry-run",
-                        "--no-interaction",
-                        str(temp_workspace),
-                    )
-        assert result.exit_code == 0
-        mock_partial.assert_called_once()
-
 
 # -----------------------------------------------------------------------------
 # Situation 5: Diff, Validate, SQL-Only (No Live DB)
@@ -668,64 +613,6 @@ class TestWorkflowE2EMultiEnvApplyAndRollback:
         assert rollback_kwargs.get("to_snapshot") == "v0.1.0"
         assert rollback_kwargs.get("target_env") == "dev"
 
-    def test_e2e_failed_apply_then_partial_rollback(self, temp_workspace: Path) -> None:
-        """Simulate failed deployment → partial rollback via CLI (stubbed)."""
-        ensure_project_file(temp_workspace, provider_id="unity")
-        builder = OperationBuilder()
-        append_ops(
-            temp_workspace,
-            [
-                builder.catalog.add_catalog("cat_1", "bronze", op_id="op_1"),
-                builder.schema.add_schema("sch_1", "raw", "cat_1", op_id="op_2"),
-                builder.table.add_table("tbl_1", "users", "sch_1", "delta", op_id="op_3"),
-            ],
-        )
-        create_snapshot(temp_workspace, "v1", version="v0.1.0")
-        _ensure_catalog_mappings_for_logical_catalog(temp_workspace, "bronze")
-
-        # Match opsDetails payload to what state differ produces for add_catalog (so CLI matching succeeds)
-        fake_deployment = {
-            "id": "deploy_fail_001",
-            "status": "failed",
-            "version": "v0.1.0",
-            "fromVersion": None,
-            "opsApplied": ["op_1"],
-            "failedStatementIndex": 1,
-            "opsDetails": [
-                {
-                    "id": "op_1",
-                    "type": "unity.add_catalog",
-                    "target": "cat_1",
-                    "payload": {"catalogId": "cat_1", "name": "bronze"},
-                },
-            ],
-        }
-        mock_tracker = Mock()
-        mock_tracker.get_deployment_by_id.return_value = fake_deployment
-
-        with patch("schemax.providers.unity.auth.create_databricks_client", return_value=Mock()):
-            with patch(
-                "schemax.core.deployment.DeploymentTracker",
-                return_value=mock_tracker,
-            ):
-                with patch("schemax.commands.rollback.rollback_partial") as mock_partial:
-                    mock_partial.return_value = SimpleNamespace(
-                        success=True, operations_rolled_back=1, error_message=None
-                    )
-                    result = invoke_cli(
-                        "rollback",
-                        "--deployment",
-                        "deploy_fail_001",
-                        "--partial",
-                        "--target",
-                        "dev",
-                        "--profile",
-                        "dev",
-                        "--warehouse-id",
-                        "wh_123",
-                        "--dry-run",
-                        "--no-interaction",
-                        str(temp_workspace),
-                    )
-                    assert result.exit_code == 0, result.output
-                    mock_partial.assert_called_once()
+    # test_e2e_failed_apply_then_partial_rollback: moved to test_live_rollback.py as a real
+    # live integration test (test_live_failed_apply_then_partial_rollback). Integration tests
+    # must not patch; run with SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 and DATABRICKS_* env set.

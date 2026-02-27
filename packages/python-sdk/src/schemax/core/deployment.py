@@ -5,12 +5,130 @@ Tracks deployments in the target catalog's tracking schema (named schemax).
 Provides database-backed deployment history and audit trail.
 """
 
-from typing import Any
+import json
+import time
+from typing import Any, TypedDict, cast
+
+
+class DeploymentOpDetail(TypedDict):
+    """Shape of one row from deployment_ops used in deployment records."""
+
+    id: str
+    type: str
+    target: str
+    payload: dict[str, Any]
+    status: str
+    executionOrder: int
+
+
+class DeploymentRecord(TypedDict, total=False):
+    """Shape of a deployment record (from DB row + merged ops)."""
+
+    id: str
+    environment: str
+    version: str
+    fromVersion: str | None
+    previousDeploymentId: str | None
+    deployedAt: Any
+    deployedBy: str | None
+    status: str
+    statementCount: int | None
+    errorMessage: str | None
+    executionTimeMs: int | None
+    opsApplied: list[str]
+    opsDetails: list[DeploymentOpDetail]
+    successfulStatements: int
+    failedStatementIndex: int | None
 
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.sql import StatementState
 
 from schemax.providers.base.executor import ExecutionResult, StatementResult
 from schemax.providers.base.operations import Operation
+
+_EXPECTED_NOT_FOUND_PATTERNS = (
+    "catalog",
+    "schema",
+    "not found",
+    "does not exist",
+    "table_or_view_not_found",
+    "cannot be found",
+)
+
+
+def _is_expected_not_found_error(message: str) -> bool:
+    """Return True if the error message indicates catalog/schema/table not found."""
+    lower = message.lower()
+    return any(p in lower for p in _EXPECTED_NOT_FOUND_PATTERNS)
+
+
+def _row_to_deployment_record(row: list) -> DeploymentRecord:
+    """Convert a deployments table row to a deployment record dict."""
+    return {
+        "id": row[0],
+        "environment": row[1],
+        "version": row[2],
+        "fromVersion": row[3],
+        "previousDeploymentId": row[4],
+        "deployedAt": row[5],
+        "deployedBy": row[6],
+        "status": row[7],
+        "statementCount": row[8],
+        "errorMessage": row[9],
+        "executionTimeMs": row[10],
+    }
+
+
+def _parse_ops_response(
+    ops_response: Any,
+) -> tuple[list[str], list[DeploymentOpDetail], int | None]:
+    """Parse deployment_ops query result into ops_applied, ops_details, failed_index."""
+    ops_applied: list[str] = []
+    ops_details: list[DeploymentOpDetail] = []
+    failed_statement_index: int | None = None
+    if not ops_response.result or not ops_response.result.data_array:
+        return (ops_applied, ops_details, failed_statement_index)
+    for i, row in enumerate(ops_response.result.data_array):
+        op_id = row[0]
+        op_type = row[1]
+        op_target = row[2]
+        op_payload_json = row[3]
+        op_status = row[4]
+        execution_order = row[5]
+        try:
+            op_payload = json.loads(op_payload_json) if op_payload_json else {}
+        except json.JSONDecodeError:
+            op_payload = {}
+        ops_applied.append(op_id)
+        ops_details.append(
+            {
+                "id": op_id,
+                "type": op_type,
+                "target": op_target,
+                "payload": op_payload,
+                "status": op_status,
+                "executionOrder": execution_order,
+            }
+        )
+        if op_status == "failed" and failed_statement_index is None:
+            failed_statement_index = i
+    return (ops_applied, ops_details, failed_statement_index)
+
+
+def _normalize_deployed_at(deployed_at: Any) -> str | None:
+    """Normalize deployed_at to Spark/Databricks-friendly timestamp string."""
+    if deployed_at is None:
+        return None
+    if hasattr(deployed_at, "isoformat"):
+        out = deployed_at.isoformat()
+    else:
+        out = str(deployed_at)
+    out = out.replace("T", " ").split("+")[0].split("Z")[0].strip()
+    if "." in out:
+        base, frac = out.split(".", 1)
+        frac = (frac + "000000")[:6]
+        out = f"{base}.{frac}"
+    return cast(str, out.replace("'", "''"))
 
 
 class DeploymentTracker:
@@ -39,6 +157,49 @@ class DeploymentTracker:
         self.catalog = catalog
         self.schema = f"`{catalog}`.`schemax`"
         self.warehouse_id = warehouse_id
+
+    def _execute_statement_sync(self, sql: str, wait_timeout: str = "10s") -> Any | None:
+        """Execute a read-only statement; return response or None on expected not-found errors."""
+        try:
+            response = self.client.statement_execution.execute_statement(
+                warehouse_id=self.warehouse_id,
+                statement=sql,
+                wait_timeout=wait_timeout,
+            )
+        except Exception as e:
+            if _is_expected_not_found_error(str(e)):
+                return None
+            raise
+        if not response.status or response.status.state != StatementState.SUCCEEDED:
+            error_msg = ""
+            if response.status and response.status.error:
+                error_msg = str(getattr(response.status.error, "message", None) or "").strip()
+            state_obj = getattr(response.status, "state", None) if response.status else None
+            state_str = (
+                getattr(state_obj, "name", None) or str(state_obj)
+                if state_obj is not None
+                else "unknown"
+            )
+            if _is_expected_not_found_error(error_msg):
+                return None
+            raise RuntimeError(
+                f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
+            )
+        return response
+
+    def _execute_statement_raise(self, sql: str, wait_timeout: str = "10s") -> Any:
+        """Execute a statement; raise on any failure."""
+        response = self.client.statement_execution.execute_statement(
+            warehouse_id=self.warehouse_id,
+            statement=sql,
+            wait_timeout=wait_timeout,
+        )
+        if not response.status or response.status.state != StatementState.SUCCEEDED:
+            error_msg = "No error message"
+            if response.status and response.status.error:
+                error_msg = str(getattr(response.status.error, "message", error_msg) or error_msg)
+            raise RuntimeError(f"Database query failed: {error_msg}")
+        return response
 
     def ensure_tracking_schema(self, auto_create: bool = True) -> None:
         """Create tracking schema and tables if needed
@@ -118,7 +279,7 @@ class DeploymentTracker:
     def record_operation(
         self,
         deployment_id: str,
-        op: Operation,
+        operation: Operation,
         sql_stmt: str,
         result: StatementResult,
         execution_order: int,
@@ -127,20 +288,18 @@ class DeploymentTracker:
 
         Args:
             deployment_id: Parent deployment ID
-            op: Operation that was executed
+            operation: Operation that was executed
             sql_stmt: Generated SQL statement
             result: Statement execution result
             execution_order: Order of execution (1-indexed)
         """
-        import json
-
         # Escape single quotes in strings
-        op_id = op.id.replace("'", "''")
-        op_type = op.op.replace("'", "''")
-        op_target = op.target.replace("'", "''") if op.target else ""
+        op_id = operation.id.replace("'", "''")
+        op_type = operation.op.replace("'", "''")
+        op_target = operation.target.replace("'", "''") if operation.target else ""
 
         # Serialize payload as JSON for exact matching
-        payload_json = json.dumps(op.payload, sort_keys=True)
+        payload_json = json.dumps(operation.payload, sort_keys=True)
         payload_escaped = payload_json.replace("'", "''")
 
         sql_escaped = sql_stmt.replace("'", "''")
@@ -214,8 +373,6 @@ class DeploymentTracker:
         Raises:
             Exception: For database connection or query errors (not catalog-not-found)
         """
-        from databricks.sdk.service.sql import StatementState
-
         sql = f"""
         SELECT snapshot_version, id, deployed_at
         FROM {self.schema}.deployments
@@ -224,74 +381,13 @@ class DeploymentTracker:
         ORDER BY deployed_at DESC
         LIMIT 1
         """
-
-        try:
-            response = self.client.statement_execution.execute_statement(
-                warehouse_id=self.warehouse_id,
-                statement=sql,
-                wait_timeout="10s",
-            )
-
-            # Check if query succeeded
-            if not response.status or response.status.state != StatementState.SUCCEEDED:
-                # Check error message to distinguish catalog-not-found from real errors
-                error_msg = ""
-                if response.status and response.status.error:
-                    error_msg = str(getattr(response.status.error, "message", None) or "").strip()
-                state_obj = getattr(response.status, "state", None) if response.status else None
-                state_str = (
-                    getattr(state_obj, "name", None) or str(state_obj)
-                    if state_obj is not None
-                    else "unknown"
-                )
-
-                # Expected errors on first deployment (catalog/schema/table doesn't exist)
-                if any(
-                    pattern in error_msg.lower()
-                    for pattern in (
-                        "catalog",
-                        "schema",
-                        "not found",
-                        "does not exist",
-                        "table_or_view_not_found",
-                        "cannot be found",
-                    )
-                ):
-                    return None
-
-                # Real error - raise with state and message (avoid empty message)
-                raise RuntimeError(
-                    f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
-                )
-
-            # Parse results
-            if response.result and response.result.data_array:
-                # Result format: [['v0.3.0', 'deploy_xyz', '2025-11-06T...']]
-                if len(response.result.data_array) > 0:
-                    row = response.result.data_array[0]
-                    return {"version": row[0], "id": row[1]}
-
-            # No rows returned - first deployment
+        response = self._execute_statement_sync(sql)
+        if response is None:
             return None
-
-        except Exception as e:
-            # Check if it's a catalog/schema/table not found error (expected on first deployment)
-            error_str = str(e).lower()
-            if any(
-                pattern in error_str
-                for pattern in (
-                    "catalog",
-                    "schema",
-                    "not found",
-                    "does not exist",
-                    "table_or_view_not_found",
-                    "cannot be found",
-                )
-            ):
-                return None
-
-            # Real error (connection, auth, timeout, etc.) - re-raise
-            raise
+        if response.result and response.result.data_array:
+            row = response.result.data_array[0]
+            return {"version": row[0], "id": row[1]}
+        return None
 
     def get_most_recent_deployment_id(self, environment: str) -> str | None:
         """Get the ID of the most recent deployment for an environment (any status)
@@ -306,8 +402,6 @@ class DeploymentTracker:
         Returns:
             Deployment ID string, or None
         """
-        from databricks.sdk.service.sql import StatementState
-
         env_esc = environment.replace("'", "''")
         sql = f"""
         SELECT id
@@ -316,65 +410,14 @@ class DeploymentTracker:
         ORDER BY deployed_at DESC
         LIMIT 1
         """
-
-        try:
-            response = self.client.statement_execution.execute_statement(
-                warehouse_id=self.warehouse_id,
-                statement=sql,
-                wait_timeout="10s",
-            )
-
-            if not response.status or response.status.state != StatementState.SUCCEEDED:
-                error_msg = ""
-                if response.status and response.status.error:
-                    error_msg = str(getattr(response.status.error, "message", None) or "").strip()
-                state_obj = getattr(response.status, "state", None) if response.status else None
-                state_str = (
-                    getattr(state_obj, "name", None) or str(state_obj)
-                    if state_obj is not None
-                    else "unknown"
-                )
-                if any(
-                    pattern in error_msg.lower()
-                    for pattern in (
-                        "catalog",
-                        "schema",
-                        "not found",
-                        "does not exist",
-                        "table_or_view_not_found",
-                        "cannot be found",
-                    )
-                ):
-                    return None
-                raise RuntimeError(
-                    f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
-                )
-
-            if (
-                response.result
-                and response.result.data_array
-                and len(response.result.data_array) > 0
-            ):
-                return response.result.data_array[0][0]
+        response = self._execute_statement_sync(sql)
+        if response is None:
             return None
+        if response.result and response.result.data_array and len(response.result.data_array) > 0:
+            return cast(str, response.result.data_array[0][0])
+        return None
 
-        except Exception as e:
-            error_str = str(e).lower()
-            if any(
-                pattern in error_str
-                for pattern in (
-                    "catalog",
-                    "schema",
-                    "not found",
-                    "does not exist",
-                    "table_or_view_not_found",
-                    "cannot be found",
-                )
-            ):
-                return None
-            raise
-
-    def get_deployment_by_id(self, deployment_id: str) -> dict[str, Any] | None:
+    def get_deployment_by_id(self, deployment_id: str) -> DeploymentRecord | None:
         """Get a specific deployment by ID from the database
 
         Queries the database (source of truth) to find a deployment by its ID.
@@ -396,9 +439,6 @@ class DeploymentTracker:
         Raises:
             Exception: For database connection or query errors (not catalog-not-found)
         """
-        from databricks.sdk.service.sql import StatementState
-
-        # Query deployments table for basic info
         sql = f"""
         SELECT
             id,
@@ -416,159 +456,65 @@ class DeploymentTracker:
         WHERE id = '{deployment_id}'
         LIMIT 1
         """
-
         try:
-            response = self.client.statement_execution.execute_statement(
-                warehouse_id=self.warehouse_id,
-                statement=sql,
-                wait_timeout="10s",
-            )
-
-            # Check if query succeeded
-            if not response.status or response.status.state != StatementState.SUCCEEDED:
-                # Check error message to distinguish catalog-not-found from real errors
-                error_msg = ""
-                if response.status and response.status.error:
-                    error_msg = str(getattr(response.status.error, "message", None) or "").strip()
-                state_obj = getattr(response.status, "state", None) if response.status else None
-                state_str = (
-                    getattr(state_obj, "name", None) or str(state_obj)
-                    if state_obj is not None
-                    else "unknown"
-                )
-
-                # Expected errors (catalog/schema/table doesn't exist)
-                if any(
-                    pattern in error_msg.lower()
-                    for pattern in (
-                        "catalog",
-                        "schema",
-                        "not found",
-                        "does not exist",
-                        "table_or_view_not_found",
-                        "cannot be found",
-                    )
-                ):
-                    return None
-
-                # Real error - raise with state and message (avoid empty message)
-                raise RuntimeError(
-                    f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
-                )
-
-            # Parse deployment record
-            deployment: dict[str, Any] | None = None
-            if response.result and response.result.data_array:
-                if len(response.result.data_array) > 0:
-                    row = response.result.data_array[0]
-                    deployment = {
-                        "id": row[0],
-                        "environment": row[1],
-                        "version": row[2],
-                        "fromVersion": row[3],
-                        "previousDeploymentId": row[4],
-                        "deployedAt": row[5],
-                        "deployedBy": row[6],
-                        "status": row[7],
-                        "statementCount": row[8],
-                        "errorMessage": row[9],
-                        "executionTimeMs": row[10],
-                    }
-
-            if not deployment:
+            response = self._execute_statement_sync(sql)
+            if response is None or not response.result or not response.result.data_array:
                 return None
-
-            # Query deployment_ops to get operation details
-            ops_sql = f"""
-            SELECT
-                op_id,
-                op_type,
-                op_target,
-                op_payload,
-                status,
-                execution_order,
-                error_message
-            FROM {self.schema}.deployment_ops
-            WHERE deployment_id = '{deployment_id}'
-            ORDER BY execution_order
-            """
-
-            ops_response = self.client.statement_execution.execute_statement(
-                warehouse_id=self.warehouse_id,
-                statement=ops_sql,
-                wait_timeout="10s",
-            )
-
-            # Parse operations with full details
-            import json
-
-            ops_applied = []
-            ops_details = []
-            successful_ops = []
-            failed_statement_index = None
-
-            if ops_response.result and ops_response.result.data_array:
-                for i, row in enumerate(ops_response.result.data_array):
-                    op_id = row[0]
-                    op_type = row[1]
-                    op_target = row[2]
-                    op_payload_json = row[3]  # JSON string
-                    op_status = row[4]
-                    execution_order = row[5]
-
-                    # Parse payload from JSON
-                    try:
-                        op_payload = json.loads(op_payload_json) if op_payload_json else {}
-                    except json.JSONDecodeError:
-                        op_payload = {}
-
-                    ops_applied.append(op_id)
-                    ops_details.append(
-                        {
-                            "id": op_id,
-                            "type": op_type,
-                            "target": op_target,
-                            "payload": op_payload,  # Include parsed payload
-                            "status": op_status,
-                            "executionOrder": execution_order,
-                        }
-                    )
-
-                    if op_status == "success":
-                        successful_ops.append(op_id)
-                    elif op_status == "failed" and failed_statement_index is None:
-                        failed_statement_index = i
-
-            # Add operation details to deployment record
-            deployment["opsApplied"] = ops_applied
-            deployment["opsDetails"] = ops_details  # Full operation details for matching
-            deployment["successfulStatements"] = len(successful_ops)
-            deployment["failedStatementIndex"] = failed_statement_index
-
-            return deployment
-
+            deployment = _row_to_deployment_record(response.result.data_array[0])
+            return self._merge_ops_into_deployment(deployment, deployment_id)
         except Exception as e:
-            # Check if it's a catalog/schema/table not found error (expected)
-            error_str = str(e).lower()
-            if any(
-                pattern in error_str
-                for pattern in (
-                    "catalog",
-                    "schema",
-                    "not found",
-                    "does not exist",
-                    "table_or_view_not_found",
-                    "cannot be found",
-                )
-            ):
+            if _is_expected_not_found_error(str(e)):
                 return None
-
-            # Real error (connection, auth, timeout, etc.) - re-raise
             raise
+
+    def _merge_ops_into_deployment(
+        self, deployment: DeploymentRecord, deployment_id: str
+    ) -> DeploymentRecord:
+        """Query deployment_ops and merge ops_applied, opsDetails, failedStatementIndex."""
+        ops_sql = f"""
+        SELECT
+            op_id,
+            op_type,
+            op_target,
+            op_payload,
+            status,
+            execution_order,
+            error_message
+        FROM {self.schema}.deployment_ops
+        WHERE deployment_id = '{deployment_id}'
+        ORDER BY execution_order
+        """
+        ops_response = self._execute_statement_raise(ops_sql)
+        ops_applied, ops_details, failed_idx = _parse_ops_response(ops_response)
+        deployment["opsApplied"] = ops_applied
+        deployment["opsDetails"] = ops_details
+        deployment["successfulStatements"] = sum(
+            1 for d in ops_details if d.get("status") == "success"
+        )
+        deployment["failedStatementIndex"] = failed_idx
+        return deployment
+
+    def _query_previous_deployment_id(self, environment: str, deployed_at_str: str) -> str | None:
+        """Return the deployment ID immediately before the given timestamp, or None."""
+        env_esc = environment.replace("'", "''")
+        sql = f"""
+        SELECT id
+        FROM {self.schema}.deployments
+        WHERE environment = '{env_esc}'
+          AND deployed_at < CAST('{deployed_at_str}' AS TIMESTAMP)
+        ORDER BY deployed_at DESC
+        LIMIT 1
+        """
+        response = self._execute_statement_sync(sql)
+        if response is None:
+            return None
+        if response.result and response.result.data_array and len(response.result.data_array) > 0:
+            return cast(str, response.result.data_array[0][0])
+        return None
 
     def get_previous_deployment(
         self, environment: str, current_deployment_id: str
-    ) -> dict[str, Any] | None:
+    ) -> DeploymentRecord | None:
         """Get the deployment that ran immediately before the given deployment (same environment).
 
         Used for partial rollback to compute "state before this deployment" when a prior
@@ -577,82 +523,31 @@ class DeploymentTracker:
         Returns:
             Full deployment record with opsDetails, or None if no previous deployment exists.
         """
-        from databricks.sdk.service.sql import StatementState
-
         try:
             current = self.get_deployment_by_id(current_deployment_id)
-            if not current:
+            deployed_at_str = _normalize_deployed_at(current.get("deployedAt")) if current else None
+            if not current or not deployed_at_str:
                 return None
-            deployed_at = current.get("deployedAt")
-            if deployed_at is None:
-                return None
-            if hasattr(deployed_at, "isoformat"):
-                deployed_at_str = deployed_at.isoformat()
-            else:
-                deployed_at_str = str(deployed_at)
-            # Normalize to Spark/Databricks-friendly format: 'yyyy-MM-dd HH:mm:ss.SSS' (no T, no TZ)
-            deployed_at_str = deployed_at_str.replace("T", " ").split("+")[0].split("Z")[0].strip()
-            if "." in deployed_at_str:
-                # Keep fractional seconds; ensure at most 6 digits
-                base, frac = deployed_at_str.split(".", 1)
-                frac = (frac + "000000")[:6]
-                deployed_at_str = f"{base}.{frac}"
-            deployed_at_str = deployed_at_str.replace("'", "''")
-            env_esc = environment.replace("'", "''")
+            prev_id = self._query_previous_deployment_id(environment, deployed_at_str)
+            return self.get_deployment_by_id(prev_id) if prev_id else None
+        except Exception:
+            return None
 
-            sql = f"""
-            SELECT id
-            FROM {self.schema}.deployments
-            WHERE environment = '{env_esc}'
-              AND deployed_at < CAST('{deployed_at_str}' AS TIMESTAMP)
-            ORDER BY deployed_at DESC
-            LIMIT 1
-            """
-            response = self.client.statement_execution.execute_statement(
-                warehouse_id=self.warehouse_id,
-                statement=sql,
-                wait_timeout="10s",
-            )
-            if not response.status or response.status.state != StatementState.SUCCEEDED:
-                if response.status and response.status.error:
-                    msg = str(getattr(response.status.error, "message", None) or "").lower()
-                    if any(
-                        p in msg
-                        for p in (
-                            "catalog",
-                            "schema",
-                            "not found",
-                            "table_or_view_not_found",
-                            "cannot be found",
-                        )
-                    ):
-                        return None
-                # Don't raise: fall back so partial rollback can proceed without previous
-                return None
-            if (
-                response.result
-                and response.result.data_array
-                and len(response.result.data_array) > 0
-            ):
-                prev_id = response.result.data_array[0][0]
-                return self.get_deployment_by_id(prev_id)
-            return None
-        except Exception as e:
-            err = str(e).lower()
-            if any(
-                p in err
-                for p in (
-                    "catalog",
-                    "schema",
-                    "not found",
-                    "does not exist",
-                    "table_or_view",
-                    "cannot be found",
-                )
-            ):
-                return None
-            # Don't re-raise: allow rollback to proceed with from_version/empty pre-state
-            return None
+    def _wait_for_statement(self, statement_id: str, max_wait_seconds: int = 60) -> None:
+        """Poll until statement reaches a terminal state; raise on failure or timeout."""
+        elapsed = 0
+        while elapsed < max_wait_seconds:
+            status = self.client.statement_execution.get_statement(statement_id)
+            if not status or not status.status:
+                raise RuntimeError("Failed to get statement status")
+            if status.status.state == StatementState.SUCCEEDED:
+                return
+            if status.status.state in (StatementState.FAILED, StatementState.CANCELED):
+                error_msg = status.status.error.message if status.status.error else "Unknown error"
+                raise RuntimeError(f"DDL execution failed: {error_msg}")
+            time.sleep(1)
+            elapsed += 1
+        raise TimeoutError(f"DDL execution timed out after {max_wait_seconds} seconds")
 
     def _execute_ddl(self, sql: str) -> None:
         """Execute DDL statement and wait for completion
@@ -660,40 +555,13 @@ class DeploymentTracker:
         Args:
             sql: SQL DDL statement to execute
         """
-        from databricks.sdk.service.sql import StatementState
-
-        # Execute statement
         response = self.client.statement_execution.execute_statement(
             warehouse_id=self.warehouse_id,
             statement=sql,
-            wait_timeout="30s",  # Wait up to 30 seconds for DDL
+            wait_timeout="30s",
         )
-
-        # Wait for completion if not already done
         if response.status and response.status.state != StatementState.SUCCEEDED:
-            # Poll for completion
-            import time
-
-            max_wait = 60  # Maximum 60 seconds
-            elapsed = 0
-            while elapsed < max_wait:
-                status = self.client.statement_execution.get_statement(response.statement_id or "")
-
-                if not status or not status.status:
-                    raise RuntimeError("Failed to get statement status")
-
-                if status.status.state == StatementState.SUCCEEDED:
-                    return
-                if status.status.state in (StatementState.FAILED, StatementState.CANCELED):
-                    error_msg = (
-                        status.status.error.message if status.status.error else "Unknown error"
-                    )
-                    raise RuntimeError(f"DDL execution failed: {error_msg}")
-
-                time.sleep(1)
-                elapsed += 1
-
-            raise TimeoutError(f"DDL execution timed out after {max_wait} seconds")
+            self._wait_for_statement(response.statement_id or "")
 
     def _get_deployments_table_ddl(self) -> str:
         """Get DDL for deployments table
