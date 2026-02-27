@@ -686,9 +686,7 @@ class TestPartialRollbackCli:
         ensure_project_file(workspace, provider_id="unity")
         # One add_catalog op so snapshot contains it; _resolve_successful_ops_from_snapshots can match
         builder = OperationBuilder()
-        op = builder.catalog.add_catalog(
-            "cat_implicit", "__implicit__", op_id="op_init_catalog"
-        )
+        op = builder.catalog.add_catalog("cat_implicit", "__implicit__", op_id="op_init_catalog")
         append_ops(workspace, [op])
         create_snapshot(workspace, "v1", version="v0.1.0")
 

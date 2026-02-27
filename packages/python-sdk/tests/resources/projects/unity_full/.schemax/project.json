@@ -1,0 +1,68 @@
+{
+  "version": 4,
+  "name": "unity_full",
+  "provider": {
+    "type": "unity",
+    "version": "1.0.0",
+    "environments": {
+      "dev": {
+        "topLevelName": "dev_unity_full",
+        "description": "Development environment",
+        "allowDrift": true,
+        "requireSnapshot": false,
+        "autoCreateTopLevel": true,
+        "autoCreateSchemaxSchema": true,
+        "catalogMappings": {
+          "__implicit__": "dev_unity_full"
+        }
+      },
+      "test": {
+        "topLevelName": "test_unity_full",
+        "description": "Test environment",
+        "allowDrift": false,
+        "requireSnapshot": true,
+        "autoCreateTopLevel": true,
+        "autoCreateSchemaxSchema": true,
+        "catalogMappings": {
+          "__implicit__": "test_unity_full"
+        }
+      },
+      "prod": {
+        "topLevelName": "prod_unity_full",
+        "description": "Production environment",
+        "allowDrift": false,
+        "requireSnapshot": true,
+        "requireApproval": false,
+        "autoCreateTopLevel": false,
+        "autoCreateSchemaxSchema": true,
+        "catalogMappings": {
+          "__implicit__": "prod_unity_full"
+        }
+      }
+    }
+  },
+  "snapshots": [
+    {
+      "id": "snap_d30bd850-99d5-480e-b74a-3fd72090c76a",
+      "version": "v0.1.0",
+      "name": "Rich fixture snapshot",
+      "ts": "2026-02-27T19:57:45.767290+00:00",
+      "createdBy": "generate_unity_full_project",
+      "file": ".schemax/snapshots/v0.1.0.json",
+      "previousSnapshot": null,
+      "opsCount": 38,
+      "hash": "34f03c106c0a4663faee9cfd24a3dab3bdcca89f2fd15a7100be675a88c7d77c",
+      "tags": [
+        "fixture",
+        "rich"
+      ],
+      "comment": "Snapshot built from make_rich_sample_operations(): all data types, Delta/Iceberg, partitioning, views, functions, volumes, MVs."
+    }
+  ],
+  "deployments": [],
+  "settings": {
+    "autoIncrementVersion": true,
+    "versionPrefix": "v"
+  },
+  "latestSnapshot": "v0.1.0"
+}

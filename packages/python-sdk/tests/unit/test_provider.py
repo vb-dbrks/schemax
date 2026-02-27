@@ -160,11 +160,12 @@ class TestUnityProvider:
         state_dict = empty_unity_state.model_dump(by_alias=True)
         new_state = unity_provider.apply_operations(state_dict, sample_operations)
 
-        # Verify all operations were applied
+        # Rich fixture: 1 catalog, 1 schema, 3 tables; first table has 22 columns (all data types)
         assert len(new_state["catalogs"]) == 1
         assert len(new_state["catalogs"][0]["schemas"]) == 1
-        assert len(new_state["catalogs"][0]["schemas"][0]["tables"]) == 1
-        assert len(new_state["catalogs"][0]["schemas"][0]["tables"][0]["columns"]) == 1
+        tables = new_state["catalogs"][0]["schemas"][0]["tables"]
+        assert len(tables) == 3
+        assert len(tables[0]["columns"]) == 22
 
     def test_validate_valid_state(self, unity_provider, sample_unity_state):
         """Test validating a valid state"""

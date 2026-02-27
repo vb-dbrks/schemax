@@ -3,6 +3,32 @@
 ## Scope
 This folder contains deterministic unit/integration tests and opt-in live Databricks tests.
 
+## Parallel execution (pytest-xdist)
+
+With dev dependencies installed (`pip install -e ".[dev]"` or `uv pip install -e ".[dev]"`), use **pytest-xdist** for parallel runs:
+
+```bash
+pytest tests/ -n auto
+```
+
+For serial runs (e.g. live integration tests that share a workspace), omit xdist or use:
+
+```bash
+pytest tests/ -n 0
+```
+
+## Fixtures and sample data
+
+**In-memory (unit/integration, no DB):**
+
+- **`tests/utils/fixture_data.py`** – Rich Unity Catalog sample data: 22 column types (BIGINT, STRING, DECIMAL, ARRAY, MAP, STRUCT, GEOGRAPHY, GEOMETRY, VARIANT, OBJECT, etc.), Delta and Iceberg tables, partitioned/clustered table, view, SQL and Python functions, managed and external volumes, materialized views with PARTITIONED BY/CLUSTER BY and refresh schedule. Used by `sample_operations` and `sample_unity_state` in `conftest.py`. Regenerate **`tests/resources/projects/unity_full`** with `uv run python tests/scripts/generate_unity_full_project.py` after changing the rich ops.
+- **`tests/utils/operation_builders.py`** – `OperationBuilder` for building ops (catalog, schema, table, column, view, volume, function, materialized view) with optional args (e.g. `partition_columns`, `cluster_columns`, `external`, `external_location_name`). Use for tests that need specific op shapes without hand-writing payloads.
+
+**SQL seed files (live tests):**
+
+- **`tests/resources/projects/unity_full/`** – Resource project with a single snapshot built from the rich ops (all data types, tables, views, functions, volumes, MVs). Use `resource_workspace("unity_full")` or the `unity_full_workspace` fixture for tests that need a full catalog without building ops in conftest.
+- **`tests/resources/sql/`** – See `tests/resources/sql/README.md`. `unity_uc_objects_fixture.sql` seeds catalog, schema, base table, partitioned table, view, volume, SQL/Python functions, and MVs for import and apply/rollback E2E.
+
 ## CLI integration test coverage
 
 **Deterministic (no Databricks):**

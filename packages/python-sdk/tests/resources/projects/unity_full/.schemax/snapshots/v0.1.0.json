@@ -1,0 +1,1019 @@
+{
+  "id": "snap_d30bd850-99d5-480e-b74a-3fd72090c76a",
+  "version": "v0.1.0",
+  "name": "Rich fixture snapshot",
+  "ts": "2026-02-27T19:57:45.767290+00:00",
+  "createdBy": "generate_unity_full_project",
+  "state": {
+    "catalogs": [
+      {
+        "id": "cat_123",
+        "name": "bronze",
+        "managedLocationName": null,
+        "comment": null,
+        "tags": {},
+        "schemas": [
+          {
+            "id": "schema_456",
+            "name": "raw",
+            "managedLocationName": null,
+            "comment": null,
+            "tags": {},
+            "tables": [
+              {
+                "id": "table_789",
+                "name": "users",
+                "format": "delta",
+                "external": null,
+                "externalLocationName": null,
+                "path": null,
+                "partitionColumns": null,
+                "clusterColumns": null,
+                "columnMapping": null,
+                "columns": [
+                  {
+                    "id": "col_001",
+                    "name": "user_id",
+                    "type": "BIGINT",
+                    "nullable": false,
+                    "comment": "User ID",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_002",
+                    "name": "email",
+                    "type": "STRING",
+                    "nullable": true,
+                    "comment": "Email address",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_003",
+                    "name": "c_tinyint",
+                    "type": "TINYINT",
+                    "nullable": true,
+                    "comment": "Tiny int",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_004",
+                    "name": "c_smallint",
+                    "type": "SMALLINT",
+                    "nullable": true,
+                    "comment": "Small int",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_005",
+                    "name": "c_int",
+                    "type": "INT",
+                    "nullable": true,
+                    "comment": "Int",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_006",
+                    "name": "c_float",
+                    "type": "FLOAT",
+                    "nullable": true,
+                    "comment": "Float",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_007",
+                    "name": "c_double",
+                    "type": "DOUBLE",
+                    "nullable": true,
+                    "comment": "Double",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_008",
+                    "name": "c_decimal",
+                    "type": "DECIMAL(10,2)",
+                    "nullable": true,
+                    "comment": "Decimal",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_009",
+                    "name": "c_string",
+                    "type": "STRING",
+                    "nullable": true,
+                    "comment": "String",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_010",
+                    "name": "c_binary",
+                    "type": "BINARY",
+                    "nullable": true,
+                    "comment": "Binary",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_011",
+                    "name": "c_boolean",
+                    "type": "BOOLEAN",
+                    "nullable": true,
+                    "comment": "Boolean",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_012",
+                    "name": "c_date",
+                    "type": "DATE",
+                    "nullable": true,
+                    "comment": "Date",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_013",
+                    "name": "c_timestamp",
+                    "type": "TIMESTAMP",
+                    "nullable": true,
+                    "comment": "Timestamp",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_014",
+                    "name": "c_timestamp_ntz",
+                    "type": "TIMESTAMP_NTZ",
+                    "nullable": true,
+                    "comment": "Timestamp NTZ",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_015",
+                    "name": "c_interval",
+                    "type": "INTERVAL DAY TO SECOND",
+                    "nullable": true,
+                    "comment": "Interval",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_016",
+                    "name": "c_array",
+                    "type": "ARRAY<STRING>",
+                    "nullable": true,
+                    "comment": "Array",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_017",
+                    "name": "c_map",
+                    "type": "MAP<STRING, INT>",
+                    "nullable": true,
+                    "comment": "Map",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_018",
+                    "name": "c_struct",
+                    "type": "STRUCT<id: BIGINT, name: STRING>",
+                    "nullable": true,
+                    "comment": "Struct",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_019",
+                    "name": "c_geography",
+                    "type": "GEOGRAPHY(4326)",
+                    "nullable": true,
+                    "comment": "Geography",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_020",
+                    "name": "c_geometry",
+                    "type": "GEOMETRY(0)",
+                    "nullable": true,
+                    "comment": "Geometry",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_021",
+                    "name": "c_variant",
+                    "type": "VARIANT",
+                    "nullable": true,
+                    "comment": "Variant",
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_022",
+                    "name": "c_object",
+                    "type": "OBJECT",
+                    "nullable": true,
+                    "comment": "Object (semi-structured)",
+                    "tags": {},
+                    "maskId": null
+                  }
+                ],
+                "properties": {},
+                "tags": {},
+                "constraints": [],
+                "grants": [],
+                "comment": null,
+                "rowFilters": [],
+                "columnMasks": []
+              },
+              {
+                "id": "table_ice",
+                "name": "events_iceberg",
+                "format": "iceberg",
+                "external": null,
+                "externalLocationName": null,
+                "path": null,
+                "partitionColumns": null,
+                "clusterColumns": null,
+                "columnMapping": null,
+                "columns": [
+                  {
+                    "id": "col_ice_id",
+                    "name": "id",
+                    "type": "BIGINT",
+                    "nullable": false,
+                    "comment": null,
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_ice_ts",
+                    "name": "event_ts",
+                    "type": "TIMESTAMP_NTZ",
+                    "nullable": true,
+                    "comment": null,
+                    "tags": {},
+                    "maskId": null
+                  }
+                ],
+                "properties": {},
+                "tags": {},
+                "constraints": [],
+                "grants": [],
+                "comment": "Iceberg table",
+                "rowFilters": [],
+                "columnMasks": []
+              },
+              {
+                "id": "table_pc",
+                "name": "events_partitioned",
+                "format": "delta",
+                "external": null,
+                "externalLocationName": null,
+                "path": null,
+                "partitionColumns": [
+                  "dt"
+                ],
+                "clusterColumns": [
+                  "id"
+                ],
+                "columnMapping": null,
+                "columns": [
+                  {
+                    "id": "col_pc_id",
+                    "name": "id",
+                    "type": "BIGINT",
+                    "nullable": false,
+                    "comment": null,
+                    "tags": {},
+                    "maskId": null
+                  },
+                  {
+                    "id": "col_pc_dt",
+                    "name": "dt",
+                    "type": "DATE",
+                    "nullable": true,
+                    "comment": null,
+                    "tags": {},
+                    "maskId": null
+                  }
+                ],
+                "properties": {},
+                "tags": {},
+                "constraints": [],
+                "grants": [],
+                "comment": null,
+                "rowFilters": [],
+                "columnMasks": []
+              }
+            ],
+            "views": [
+              {
+                "id": "view_001",
+                "name": "users_view",
+                "definition": "SELECT user_id, email FROM users",
+                "comment": "Users view",
+                "dependencies": null,
+                "extractedDependencies": null,
+                "tags": {},
+                "properties": {},
+                "grants": []
+              }
+            ],
+            "volumes": [
+              {
+                "id": "vol_001",
+                "name": "managed_vol",
+                "volumeType": "managed",
+                "comment": "Managed",
+                "location": null,
+                "grants": []
+              },
+              {
+                "id": "vol_002",
+                "name": "external_vol",
+                "volumeType": "external",
+                "comment": null,
+                "location": "abfss://container@storage.dfs.core.windows.net/path",
+                "grants": []
+              }
+            ],
+            "functions": [
+              {
+                "id": "func_sql_001",
+                "name": "add_one",
+                "language": "SQL",
+                "returnType": "INT",
+                "returnsTable": null,
+                "body": "RETURN (x + 1)",
+                "comment": "SQL scalar",
+                "parameters": [
+                  {
+                    "name": "x",
+                    "dataType": "INT",
+                    "defaultExpression": null,
+                    "comment": null
+                  }
+                ],
+                "grants": []
+              },
+              {
+                "id": "func_py_001",
+                "name": "bmi",
+                "language": "PYTHON",
+                "returnType": "DOUBLE",
+                "returnsTable": null,
+                "body": "return weight_kg / (height_m ** 2)",
+                "comment": "Python UDF",
+                "parameters": [
+                  {
+                    "name": "weight_kg",
+                    "dataType": "DOUBLE",
+                    "defaultExpression": null,
+                    "comment": null
+                  },
+                  {
+                    "name": "height_m",
+                    "dataType": "DOUBLE",
+                    "defaultExpression": null,
+                    "comment": null
+                  }
+                ],
+                "grants": []
+              }
+            ],
+            "materializedViews": [
+              {
+                "id": "mv_001",
+                "name": "daily_summary",
+                "definition": "SELECT id, dt, count(1) AS cnt FROM events_partitioned GROUP BY id, dt",
+                "comment": "Daily summary MV",
+                "refreshSchedule": "EVERY 1 DAY",
+                "partitionColumns": null,
+                "clusterColumns": null,
+                "properties": {},
+                "dependencies": null,
+                "extractedDependencies": null,
+                "grants": []
+              },
+              {
+                "id": "mv_002",
+                "name": "clustered_mv",
+                "definition": "SELECT id, user_id FROM users",
+                "comment": null,
+                "refreshSchedule": null,
+                "partitionColumns": null,
+                "clusterColumns": [
+                  "id"
+                ],
+                "properties": {},
+                "dependencies": null,
+                "extractedDependencies": null,
+                "grants": []
+              }
+            ],
+            "grants": []
+          }
+        ],
+        "grants": []
+      }
+    ]
+  },
+  "operations": [
+    {
+      "id": "op_001",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_catalog",
+      "target": "cat_123",
+      "payload": {
+        "catalogId": "cat_123",
+        "name": "bronze"
+      }
+    },
+    {
+      "id": "op_002",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_schema",
+      "target": "schema_456",
+      "payload": {
+        "schemaId": "schema_456",
+        "name": "raw",
+        "catalogId": "cat_123"
+      }
+    },
+    {
+      "id": "op_003",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_table",
+      "target": "table_789",
+      "payload": {
+        "tableId": "table_789",
+        "name": "users",
+        "schemaId": "schema_456",
+        "format": "delta"
+      }
+    },
+    {
+      "id": "op_col_001",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_001",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_001",
+        "name": "user_id",
+        "type": "BIGINT",
+        "nullable": false,
+        "comment": "User ID"
+      }
+    },
+    {
+      "id": "op_col_002",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_002",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_002",
+        "name": "email",
+        "type": "STRING",
+        "nullable": true,
+        "comment": "Email address"
+      }
+    },
+    {
+      "id": "op_col_003",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_003",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_003",
+        "name": "c_tinyint",
+        "type": "TINYINT",
+        "nullable": true,
+        "comment": "Tiny int"
+      }
+    },
+    {
+      "id": "op_col_004",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_004",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_004",
+        "name": "c_smallint",
+        "type": "SMALLINT",
+        "nullable": true,
+        "comment": "Small int"
+      }
+    },
+    {
+      "id": "op_col_005",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_005",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_005",
+        "name": "c_int",
+        "type": "INT",
+        "nullable": true,
+        "comment": "Int"
+      }
+    },
+    {
+      "id": "op_col_006",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_006",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_006",
+        "name": "c_float",
+        "type": "FLOAT",
+        "nullable": true,
+        "comment": "Float"
+      }
+    },
+    {
+      "id": "op_col_007",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_007",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_007",
+        "name": "c_double",
+        "type": "DOUBLE",
+        "nullable": true,
+        "comment": "Double"
+      }
+    },
+    {
+      "id": "op_col_008",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_008",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_008",
+        "name": "c_decimal",
+        "type": "DECIMAL(10,2)",
+        "nullable": true,
+        "comment": "Decimal"
+      }
+    },
+    {
+      "id": "op_col_009",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_009",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_009",
+        "name": "c_string",
+        "type": "STRING",
+        "nullable": true,
+        "comment": "String"
+      }
+    },
+    {
+      "id": "op_col_010",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_010",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_010",
+        "name": "c_binary",
+        "type": "BINARY",
+        "nullable": true,
+        "comment": "Binary"
+      }
+    },
+    {
+      "id": "op_col_011",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_011",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_011",
+        "name": "c_boolean",
+        "type": "BOOLEAN",
+        "nullable": true,
+        "comment": "Boolean"
+      }
+    },
+    {
+      "id": "op_col_012",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_012",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_012",
+        "name": "c_date",
+        "type": "DATE",
+        "nullable": true,
+        "comment": "Date"
+      }
+    },
+    {
+      "id": "op_col_013",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_013",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_013",
+        "name": "c_timestamp",
+        "type": "TIMESTAMP",
+        "nullable": true,
+        "comment": "Timestamp"
+      }
+    },
+    {
+      "id": "op_col_014",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_014",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_014",
+        "name": "c_timestamp_ntz",
+        "type": "TIMESTAMP_NTZ",
+        "nullable": true,
+        "comment": "Timestamp NTZ"
+      }
+    },
+    {
+      "id": "op_col_015",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_015",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_015",
+        "name": "c_interval",
+        "type": "INTERVAL DAY TO SECOND",
+        "nullable": true,
+        "comment": "Interval"
+      }
+    },
+    {
+      "id": "op_col_016",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_016",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_016",
+        "name": "c_array",
+        "type": "ARRAY<STRING>",
+        "nullable": true,
+        "comment": "Array"
+      }
+    },
+    {
+      "id": "op_col_017",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_017",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_017",
+        "name": "c_map",
+        "type": "MAP<STRING, INT>",
+        "nullable": true,
+        "comment": "Map"
+      }
+    },
+    {
+      "id": "op_col_018",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_018",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_018",
+        "name": "c_struct",
+        "type": "STRUCT<id: BIGINT, name: STRING>",
+        "nullable": true,
+        "comment": "Struct"
+      }
+    },
+    {
+      "id": "op_col_019",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_019",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_019",
+        "name": "c_geography",
+        "type": "GEOGRAPHY(4326)",
+        "nullable": true,
+        "comment": "Geography"
+      }
+    },
+    {
+      "id": "op_col_020",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_020",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_020",
+        "name": "c_geometry",
+        "type": "GEOMETRY(0)",
+        "nullable": true,
+        "comment": "Geometry"
+      }
+    },
+    {
+      "id": "op_col_021",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_021",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_021",
+        "name": "c_variant",
+        "type": "VARIANT",
+        "nullable": true,
+        "comment": "Variant"
+      }
+    },
+    {
+      "id": "op_col_022",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_022",
+      "payload": {
+        "tableId": "table_789",
+        "colId": "col_022",
+        "name": "c_object",
+        "type": "OBJECT",
+        "nullable": true,
+        "comment": "Object (semi-structured)"
+      }
+    },
+    {
+      "id": "op_tice",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_table",
+      "target": "table_ice",
+      "payload": {
+        "tableId": "table_ice",
+        "name": "events_iceberg",
+        "schemaId": "schema_456",
+        "format": "iceberg",
+        "comment": "Iceberg table"
+      }
+    },
+    {
+      "id": "op_cice1",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_ice_id",
+      "payload": {
+        "tableId": "table_ice",
+        "colId": "col_ice_id",
+        "name": "id",
+        "type": "BIGINT",
+        "nullable": false
+      }
+    },
+    {
+      "id": "op_cice2",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_ice_ts",
+      "payload": {
+        "tableId": "table_ice",
+        "colId": "col_ice_ts",
+        "name": "event_ts",
+        "type": "TIMESTAMP_NTZ",
+        "nullable": true
+      }
+    },
+    {
+      "id": "op_tpc",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_table",
+      "target": "table_pc",
+      "payload": {
+        "tableId": "table_pc",
+        "name": "events_partitioned",
+        "schemaId": "schema_456",
+        "format": "delta",
+        "partitionColumns": [
+          "dt"
+        ],
+        "clusterColumns": [
+          "id"
+        ]
+      }
+    },
+    {
+      "id": "op_cpc1",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_pc_id",
+      "payload": {
+        "tableId": "table_pc",
+        "colId": "col_pc_id",
+        "name": "id",
+        "type": "BIGINT",
+        "nullable": false
+      }
+    },
+    {
+      "id": "op_cpc2",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_column",
+      "target": "col_pc_dt",
+      "payload": {
+        "tableId": "table_pc",
+        "colId": "col_pc_dt",
+        "name": "dt",
+        "type": "DATE",
+        "nullable": true
+      }
+    },
+    {
+      "id": "op_v1",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_view",
+      "target": "view_001",
+      "payload": {
+        "viewId": "view_001",
+        "name": "users_view",
+        "schemaId": "schema_456",
+        "definition": "SELECT user_id, email FROM users",
+        "comment": "Users view"
+      }
+    },
+    {
+      "id": "op_f1",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_function",
+      "target": "func_sql_001",
+      "payload": {
+        "functionId": "func_sql_001",
+        "name": "add_one",
+        "schemaId": "schema_456",
+        "language": "SQL",
+        "returnType": "INT",
+        "body": "RETURN (x + 1)",
+        "comment": "SQL scalar",
+        "parameters": [
+          {
+            "name": "x",
+            "dataType": "INT"
+          }
+        ]
+      }
+    },
+    {
+      "id": "op_f2",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_function",
+      "target": "func_py_001",
+      "payload": {
+        "functionId": "func_py_001",
+        "name": "bmi",
+        "schemaId": "schema_456",
+        "language": "PYTHON",
+        "returnType": "DOUBLE",
+        "body": "return weight_kg / (height_m ** 2)",
+        "comment": "Python UDF",
+        "parameters": [
+          {
+            "name": "weight_kg",
+            "dataType": "DOUBLE"
+          },
+          {
+            "name": "height_m",
+            "dataType": "DOUBLE"
+          }
+        ]
+      }
+    },
+    {
+      "id": "op_vol1",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_volume",
+      "target": "vol_001",
+      "payload": {
+        "volumeId": "vol_001",
+        "name": "managed_vol",
+        "schemaId": "schema_456",
+        "volumeType": "managed",
+        "comment": "Managed"
+      }
+    },
+    {
+      "id": "op_vol2",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_volume",
+      "target": "vol_002",
+      "payload": {
+        "volumeId": "vol_002",
+        "name": "external_vol",
+        "schemaId": "schema_456",
+        "volumeType": "external",
+        "location": "abfss://container@storage.dfs.core.windows.net/path"
+      }
+    },
+    {
+      "id": "op_mv1",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_materialized_view",
+      "target": "mv_001",
+      "payload": {
+        "materializedViewId": "mv_001",
+        "name": "daily_summary",
+        "schemaId": "schema_456",
+        "definition": "SELECT id, dt, count(1) AS cnt FROM events_partitioned GROUP BY id, dt",
+        "comment": "Daily summary MV",
+        "refreshSchedule": "EVERY 1 DAY"
+      }
+    },
+    {
+      "id": "op_mv2",
+      "ts": "2026-02-27T19:57:45.000Z",
+      "provider": "unity",
+      "op": "unity.add_materialized_view",
+      "target": "mv_002",
+      "payload": {
+        "materializedViewId": "mv_002",
+        "name": "clustered_mv",
+        "schemaId": "schema_456",
+        "definition": "SELECT id, user_id FROM users",
+        "clusterColumns": [
+          "id"
+        ]
+      }
+    }
+  ],
+  "previousSnapshot": null,
+  "hash": "34f03c106c0a4663faee9cfd24a3dab3bdcca89f2fd15a7100be675a88c7d77c",
+  "tags": [
+    "fixture",
+    "rich"
+  ],
+  "comment": "Snapshot built from make_rich_sample_operations(): all data types, Delta/Iceberg, partitioning, views, functions, volumes, MVs."
+}

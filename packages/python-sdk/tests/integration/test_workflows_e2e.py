@@ -62,28 +62,28 @@ class TestWorkflowS1GreenfieldSingleDev:
         assert validate_project(temp_workspace, json_output=False) is True
 
         # SQL-only: generate migration from changelog (empty after snapshot)
-        # So add more ops and generate SQL
+        # So add more ops and generate SQL (use a new column not already in rich fixture)
         append_ops(
             temp_workspace,
             [
                 builder.column.add_column(
-                    "col_002",
+                    "col_023",
                     "table_789",
-                    "email",
+                    "extra_email",
                     "STRING",
                     nullable=True,
-                    comment="Email",
+                    comment="Extra email",
                     op_id="op_005",
                 )
             ],
         )
         sql_path = temp_workspace / "migration.sql"
         sql_str = generate_sql_migration(temp_workspace, output=sql_path)
-        assert "ADD COLUMN" in sql_str or "email" in sql_str
+        assert "ADD COLUMN" in sql_str or "extra_email" in sql_str
         assert sql_path.exists()
 
         # Second snapshot
-        create_snapshot(temp_workspace, name="Add email", version="v0.2.0")
+        create_snapshot(temp_workspace, name="Add column", version="v0.2.0")
 
         # Diff between versions (no DB)
         diff_ops = generate_diff(temp_workspace, from_version="v0.1.0", to_version="v0.2.0")

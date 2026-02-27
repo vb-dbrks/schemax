@@ -106,6 +106,11 @@ class TableOpBuilder:
         schema_id: str,
         table_format: Literal["delta", "iceberg"] = "delta",
         comment: str | None = None,
+        external: bool = False,
+        external_location_name: str | None = None,
+        path: str | None = None,
+        partition_columns: list[str] | None = None,
+        cluster_columns: list[str] | None = None,
         op_id: str | None = None,
     ) -> Operation:
         payload: dict[str, Any] = {
@@ -116,6 +121,16 @@ class TableOpBuilder:
         }
         if comment is not None:
             payload["comment"] = comment
+        if external:
+            payload["external"] = True
+        if external_location_name is not None:
+            payload["externalLocationName"] = external_location_name
+        if path is not None:
+            payload["path"] = path
+        if partition_columns is not None:
+            payload["partitionColumns"] = partition_columns
+        if cluster_columns is not None:
+            payload["clusterColumns"] = cluster_columns
         return create_operation(
             provider=self.provider,
             op_type="add_table",
@@ -812,6 +827,8 @@ class MaterializedViewOpBuilder:
         definition: str,
         comment: str | None = None,
         refresh_schedule: str | None = None,
+        partition_columns: list[str] | None = None,
+        cluster_columns: list[str] | None = None,
         extracted_dependencies: dict[str, list[str]] | None = None,
         op_id: str | None = None,
     ) -> Operation:
@@ -825,6 +842,10 @@ class MaterializedViewOpBuilder:
             payload["comment"] = comment
         if refresh_schedule is not None:
             payload["refreshSchedule"] = refresh_schedule
+        if partition_columns is not None:
+            payload["partitionColumns"] = partition_columns
+        if cluster_columns is not None:
+            payload["clusterColumns"] = cluster_columns
         if extracted_dependencies is not None:
             payload["extractedDependencies"] = extracted_dependencies
         return create_operation(

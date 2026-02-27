@@ -2166,7 +2166,16 @@ class UnitySQLGenerator(BaseSQLGenerator):
         comment_clause = ""
         if operation.payload.get("comment"):
             comment_clause = f" COMMENT '{self.escape_string(operation.payload['comment'])}'"
-        sql = f"CREATE MATERIALIZED VIEW IF NOT EXISTS {mv_esc}{comment_clause} AS\n{definition}"
+        partition_cols = operation.payload.get("partitionColumns", [])
+        cluster_cols = operation.payload.get("clusterColumns", [])
+        # Databricks: liquid clustering cannot be combined with PARTITIONED BY; prefer CLUSTER BY
+        if cluster_cols:
+            mv_clause = f" CLUSTER BY ({', '.join(cluster_cols)})"
+        elif partition_cols:
+            mv_clause = f" PARTITIONED BY ({', '.join(partition_cols)})"
+        else:
+            mv_clause = ""
+        sql = f"CREATE MATERIALIZED VIEW IF NOT EXISTS {mv_esc}{comment_clause}{mv_clause} AS\n{definition}"
         schedule = operation.payload.get("refreshSchedule")
         if schedule:
             sql += f"\nSCHEDULE {schedule}"
@@ -2198,7 +2207,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
             comment_clause = ""
             if operation.payload.get("comment"):
                 comment_clause = f" COMMENT '{self.escape_string(operation.payload['comment'])}'"
-            sql = f"CREATE OR REPLACE MATERIALIZED VIEW {mv_esc}{comment_clause} AS\n{definition}"
+            partition_cols = operation.payload.get("partitionColumns", [])
+            cluster_cols = operation.payload.get("clusterColumns", [])
+            if cluster_cols:
+                mv_clause = f" CLUSTER BY ({', '.join(cluster_cols)})"
+            elif partition_cols:
+                mv_clause = f" PARTITIONED BY ({', '.join(partition_cols)})"
+            else:
+                mv_clause = ""
+            sql = f"CREATE OR REPLACE MATERIALIZED VIEW {mv_esc}{comment_clause}{mv_clause} AS\n{definition}"
             if operation.payload.get("refreshSchedule"):
                 sql += f"\nSCHEDULE {operation.payload['refreshSchedule']}"
             return sql

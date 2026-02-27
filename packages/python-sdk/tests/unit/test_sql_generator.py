@@ -1614,6 +1614,34 @@ class TestVolumeFunctionMaterializedViewSQL:
             "got COMMENT after AS (Databricks parse error)."
         )
 
+    def test_add_materialized_view_partitioned_and_cluster_by(self, sample_unity_state, assert_sql):
+        """MV with PARTITIONED BY or CLUSTER BY is emitted (Databricks supports both)."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op_part = builder.materialized_view.add_materialized_view(
+            "mv_p",
+            "mv_partitioned",
+            "schema_456",
+            "SELECT id, dt FROM events",
+            partition_columns=["dt"],
+            op_id="op_mvp",
+        )
+        result_p = generator.generate_sql_for_operation(op_part)
+        assert "PARTITIONED BY (dt)" in result_p.sql
+        assert_sql(result_p.sql)
+
+        op_cluster = builder.materialized_view.add_materialized_view(
+            "mv_c",
+            "mv_clustered",
+            "schema_456",
+            "SELECT id, name FROM users",
+            cluster_columns=["id"],
+            op_id="op_mvc",
+        )
+        result_c = generator.generate_sql_for_operation(op_cluster)
+        assert "CLUSTER BY (id)" in result_c.sql
+        assert_sql(result_c.sql)
+
     def test_drop_materialized_view(self, sample_unity_state, assert_sql):
         """Test DROP MATERIALIZED VIEW SQL generation"""
         builder = OperationBuilder()

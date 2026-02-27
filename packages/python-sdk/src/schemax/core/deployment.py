@@ -9,6 +9,12 @@ import json
 import time
 from typing import Any, TypedDict, cast
 
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.sql import StatementState
+
+from schemax.providers.base.executor import ExecutionResult, StatementResult
+from schemax.providers.base.operations import Operation
+
 
 class DeploymentOpDetail(TypedDict):
     """Shape of one row from deployment_ops used in deployment records."""
@@ -40,11 +46,6 @@ class DeploymentRecord(TypedDict, total=False):
     successfulStatements: int
     failedStatementIndex: int | None
 
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.sql import StatementState
-
-from schemax.providers.base.executor import ExecutionResult, StatementResult
-from schemax.providers.base.operations import Operation
 
 _EXPECTED_NOT_FOUND_PATTERNS = (
     "catalog",

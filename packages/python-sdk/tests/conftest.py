@@ -5,13 +5,11 @@ from shutil import copytree
 import pytest
 
 from schemax.providers.unity.models import (
-    UnityCatalog,
-    UnityColumn,
-    UnitySchema,
     UnityState,
-    UnityTable,
 )
+from schemax.providers.unity.state_reducer import apply_operations
 from tests.utils import OperationBuilder
+from tests.utils.fixture_data import make_rich_sample_operations
 
 # SQLGlot for SQL validation
 try:
@@ -50,6 +48,12 @@ def resource_workspace(tmp_path):
 def schemax_demo_workspace(resource_workspace):
     """Workspace loaded from tests/resources/projects/schemax_demo."""
     return resource_workspace("schemax_demo")
+
+
+@pytest.fixture
+def unity_full_workspace(resource_workspace):
+    """Workspace loaded from tests/resources/projects/unity_full (rich fixture snapshot)."""
+    return resource_workspace("unity_full")
 
 
 @pytest.fixture
@@ -128,69 +132,14 @@ def sample_catalog_op():
 
 @pytest.fixture
 def sample_operations():
-    """Sample operations for testing workflows"""
-    builder = OperationBuilder()
-    return [
-        builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001"),
-        builder.schema.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
-        builder.table.add_table("table_789", "users", "schema_456", "delta", op_id="op_003"),
-        builder.column.add_column(
-            "col_001",
-            "table_789",
-            "user_id",
-            "BIGINT",
-            nullable=False,
-            comment="User ID",
-            op_id="op_004",
-        ),
-    ]
+    """Rich sample operations: all data types, tables (Delta/Iceberg/partitioned), views, functions, volumes, MVs."""
+    return make_rich_sample_operations()
 
 
 @pytest.fixture
-def sample_unity_state():
-    """Sample Unity Catalog state with data"""
-    return UnityState(
-        catalogs=[
-            UnityCatalog(
-                id="cat_123",
-                name="bronze",
-                schemas=[
-                    UnitySchema(
-                        id="schema_456",
-                        name="raw",
-                        tables=[
-                            UnityTable(
-                                id="table_789",
-                                name="users",
-                                format="delta",
-                                columns=[
-                                    UnityColumn(
-                                        id="col_001",
-                                        name="user_id",
-                                        type="BIGINT",
-                                        nullable=False,
-                                        comment="User ID",
-                                    ),
-                                    UnityColumn(
-                                        id="col_002",
-                                        name="email",
-                                        type="STRING",
-                                        nullable=True,
-                                        comment="Email address",
-                                    ),
-                                ],
-                                properties={},
-                                constraints=[],
-                                grants=[],
-                            )
-                        ],
-                        grants=[],
-                    )
-                ],
-                grants=[],
-            )
-        ]
-    )
+def sample_unity_state(empty_unity_state, sample_operations):
+    """Unity Catalog state built by applying sample_operations to empty state."""
+    return apply_operations(empty_unity_state, sample_operations)
 
 
 @pytest.fixture
