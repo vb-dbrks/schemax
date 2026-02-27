@@ -156,9 +156,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
             for attr in ("volumes", "functions", "materialized_views"):
                 items = (
-                    schema.get(attr, [])
-                    if isinstance(schema, dict)
-                    else getattr(schema, attr, [])
+                    schema.get(attr, []) if isinstance(schema, dict) else getattr(schema, attr, [])
                 )
                 for item in items:
                     item_name = item.name if hasattr(item, "name") else item["name"]
@@ -795,9 +793,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return self._extract_fk_dependencies(operation)
         return []
 
-    def _add_constraint_ordering_edges(
-        self, graph: DependencyGraph, ops: list[Operation]
-    ) -> None:
+    def _add_constraint_ordering_edges(self, graph: DependencyGraph, ops: list[Operation]) -> None:
         """Add per-constraint-op nodes and edges so DROP executes before ADD on same table."""
         ops_by_target = graph.metadata.get("ops_by_target", {})
         table_ops: dict[str, list[Operation]] = {}
@@ -817,7 +813,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 drop_set = set(drop_ops)
                 add_set = set(add_ops)
                 remaining = [
-                    o for o in ops_by_target[table_node_id]
+                    o
+                    for o in ops_by_target[table_node_id]
                     if o not in drop_set and o not in add_set
                 ]
                 ops_by_target[table_node_id] = remaining
@@ -957,9 +954,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         parts = [p.strip() for p in sql.split(";\n") if p.strip()]
         return parts if parts else [sql.strip()]
 
-    def _sort_ops_with_fallback(
-        self, ops: list[Operation]
-    ) -> tuple[list[Operation], list[str]]:
+    def _sort_ops_with_fallback(self, ops: list[Operation]) -> tuple[list[Operation], list[str]]:
         """Sort ops with topological sort; on CircularDependencyError, fallback to level sort."""
         try:
             return self._topological_sort_with_fallback(ops)
@@ -1044,9 +1039,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 view_result = self._generate_view_sql_with_mapping(object_id, batch_info)
                 view_stmts.extend(view_result)
             elif object_type == "materialized_view":
-                mv_result = self._generate_materialized_view_sql_with_mapping(
-                    object_id, batch_info
-                )
+                mv_result = self._generate_materialized_view_sql_with_mapping(object_id, batch_info)
                 materialized_view_stmts.extend(mv_result)
             elif object_type == "volume":
                 vol_result = self._generate_volume_sql_with_mapping(object_id, batch_info)
@@ -1408,9 +1401,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         self, batch_info: BatchInfo, update_op_type: str
     ) -> str | None:
         """Return comment from create_op or first matching modify_op."""
-        value = (
-            batch_info.create_op.payload.get("comment") if batch_info.create_op else None
-        )
+        value = batch_info.create_op.payload.get("comment") if batch_info.create_op else None
         for operation in batch_info.modify_ops:
             if operation.op == update_op_type and "comment" in operation.payload:
                 return operation.payload.get("comment")
@@ -1420,17 +1411,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
         self, batch_info: BatchInfo, update_op_type: str
     ) -> dict[str, str] | None:
         """Return tags from create_op or first matching modify_op."""
-        value = (
-            batch_info.create_op.payload.get("tags") if batch_info.create_op else None
-        )
+        value = batch_info.create_op.payload.get("tags") if batch_info.create_op else None
         for operation in batch_info.modify_ops:
             if operation.op == update_op_type and "tags" in operation.payload:
                 return operation.payload.get("tags")
         return value
 
-    def _generate_create_catalog_batched(
-        self, _object_id: str, batch_info: BatchInfo
-    ) -> str:
+    def _generate_create_catalog_batched(self, _object_id: str, batch_info: BatchInfo) -> str:
         """
         Generate CREATE CATALOG with batched updates (e.g., managed location from update_catalog).
 
@@ -1443,12 +1430,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
         managed_location_name = self._squash_managed_location_from_modify_ops(
             batch_info, "unity.update_catalog"
         )
-        comment = self._squash_comment_from_modify_ops(
-            batch_info, "unity.update_catalog"
-        )
-        tags = self._squash_tags_from_modify_ops(
-            batch_info, "unity.update_catalog"
-        )
+        comment = self._squash_comment_from_modify_ops(batch_info, "unity.update_catalog")
+        tags = self._squash_tags_from_modify_ops(batch_info, "unity.update_catalog")
 
         sql = f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
         if managed_location_name:
@@ -1465,9 +1448,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             result += f";\nALTER CATALOG {self.escape_identifier(name)} SET TAGS ({tag_entries})"
         return result
 
-    def _generate_create_schema_batched(
-        self, _object_id: str, batch_info: BatchInfo
-    ) -> str:
+    def _generate_create_schema_batched(self, _object_id: str, batch_info: BatchInfo) -> str:
         """
         Generate CREATE SCHEMA with batched updates (e.g., managed location from update_schema).
 
@@ -1481,12 +1462,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
         managed_location_name = self._squash_managed_location_from_modify_ops(
             batch_info, "unity.update_schema"
         )
-        comment = self._squash_comment_from_modify_ops(
-            batch_info, "unity.update_schema"
-        )
-        tags = self._squash_tags_from_modify_ops(
-            batch_info, "unity.update_schema"
-        )
+        comment = self._squash_comment_from_modify_ops(batch_info, "unity.update_schema")
+        tags = self._squash_tags_from_modify_ops(batch_info, "unity.update_schema")
 
         catalog_esc = self.escape_identifier(catalog_name)
         schema_esc = self.escape_identifier(schema_name)
@@ -1723,14 +1700,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
             table_fqn = self.id_name_map.get(tid, "unknown")
             table_esc = self._build_fqn(*table_fqn.split("."))
             if tid in unset_by_table and unset_by_table[tid]:
-                tag_list = ", ".join(
-                    f"'{self.escape_string(t)}'" for t in unset_by_table[tid]
-                )
+                tag_list = ", ".join(f"'{self.escape_string(t)}'" for t in unset_by_table[tid])
                 parts.append(f"ALTER TABLE {table_esc} UNSET TAGS ({tag_list})")
             if tid in set_by_table and set_by_table[tid]:
                 tag_list = ", ".join(
-                    f"'{self.escape_string(k)}' = '{v}'"
-                    for k, v in set_by_table[tid].items()
+                    f"'{self.escape_string(k)}' = '{v}'" for k, v in set_by_table[tid].items()
                 )
                 parts.append(f"ALTER TABLE {table_esc} SET TAGS ({tag_list})")
         return parts
@@ -1743,9 +1717,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Escape tag values when emitting (aggregate stores raw)
         set_escaped: dict[str, dict[str, str]] = {}
         for tid, tags in set_by_table.items():
-            set_escaped[tid] = {
-                k: self.escape_string(v) for k, v in tags.items()
-            }
+            set_escaped[tid] = {k: self.escape_string(v) for k, v in tags.items()}
         parts = self._emit_table_tag_alter_sql(set_escaped, unset_by_table)
         return ";\n".join(parts) if parts else ""
 
@@ -1776,9 +1748,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 name_to_fqn[f"{schema}.{name}"] = fqn
         return name_to_fqn
 
-    def _apply_fqn_to_parsed(
-        self, parsed: Any, name_to_fqn: dict[str, str]
-    ) -> None:
+    def _apply_fqn_to_parsed(self, parsed: Any, name_to_fqn: dict[str, str]) -> None:
         """Mutate parsed SQL tree: qualify each Table node using name_to_fqn or catalog mapping."""
         for table_node in parsed.find_all(exp.Table):
             current_ref_parts = []
@@ -1803,15 +1773,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     physical = self.catalog_name_mapping[logical_catalog]
                     table_node.set("catalog", exp.to_identifier(physical, quoted=True))
                 else:
-                    table_node.set(
-                        "catalog", exp.to_identifier(logical_catalog, quoted=True)
-                    )
+                    table_node.set("catalog", exp.to_identifier(logical_catalog, quoted=True))
                 if table_node.db:
                     table_node.set("db", exp.to_identifier(table_node.db, quoted=True))
                 if table_node.name:
-                    table_node.set(
-                        "this", exp.to_identifier(table_node.name, quoted=True)
-                    )
+                    table_node.set("this", exp.to_identifier(table_node.name, quoted=True))
 
     def _qualify_view_definition(
         self, definition: str, _extracted_deps: dict[str, list[str]]
@@ -2245,9 +2211,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         if "refreshSchedule" in operation.payload:
             refresh_schedule = operation.payload.get("refreshSchedule")
             if refresh_schedule:
-                stmts.append(
-                    f"ALTER MATERIALIZED VIEW {mv_esc} SET SCHEDULE {refresh_schedule}"
-                )
+                stmts.append(f"ALTER MATERIALIZED VIEW {mv_esc} SET SCHEDULE {refresh_schedule}")
             else:
                 stmts.append(f"ALTER MATERIALIZED VIEW {mv_esc} UNSET SCHEDULE")
         if "comment" in operation.payload:
@@ -2805,7 +2769,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 self.id_name_map[col_id] = col_name
 
         tag_ops = batch_info.get("tag_ops") or [
-            o for o in column_ops
+            o
+            for o in column_ops
             if o.op.endswith("set_column_tag") or o.op.endswith("unset_column_tag")
         ]
         batched_tag_sql = self._generate_batched_column_tag_sql(tag_ops)
@@ -2815,7 +2780,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     statements.append(stmt.strip())
 
         table_tag_ops = batch_info.get("table_tag_ops") or [
-            o for o in batch_info.get("other_ops", [])
+            o
+            for o in batch_info.get("other_ops", [])
             if o.op.endswith("set_table_tag") or o.op.endswith("unset_table_tag")
         ]
         batched_table_tag_sql = self._generate_batched_table_tag_sql(table_tag_ops)
@@ -3019,14 +2985,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         statements = [create_sql]
         self._append_post_create_alter_statements(
-            batch_info, table_fqn, add_column_ops, column_ops, other_column_ops,
-            constraint_ops, other_ops, statements
+            batch_info,
+            table_fqn,
+            add_column_ops,
+            column_ops,
+            other_column_ops,
+            constraint_ops,
+            other_ops,
+            statements,
         )
         return ";\n".join(statements)
 
-    def _alter_reorder_block(
-        self, batch_info: dict[str, Any], actual_table_id: str
-    ) -> list[str]:
+    def _alter_reorder_block(self, batch_info: dict[str, Any], actual_table_id: str) -> list[str]:
         """Return ALTER statements for column reordering."""
         out: list[str] = []
         if not batch_info["reorder_ops"]:
@@ -3046,9 +3016,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             out.append(reorder_sql)
         return out
 
-    def _alter_add_columns_block(
-        self, batch_info: dict[str, Any]
-    ) -> list[str]:
+    def _alter_add_columns_block(self, batch_info: dict[str, Any]) -> list[str]:
         """Return ALTER statements for batched or single ADD COLUMN."""
         out: list[str] = []
         add_column_ops = [o for o in batch_info["column_ops"] if o.op.endswith("add_column")]
@@ -3084,9 +3052,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 out.append(f"-- Error generating SQL for {add_column_ops[0].id}: {e}")
         return out
 
-    def _alter_drop_columns_block(
-        self, batch_info: dict[str, Any]
-    ) -> list[str]:
+    def _alter_drop_columns_block(self, batch_info: dict[str, Any]) -> list[str]:
         """Return ALTER statements for batched or single DROP COLUMN."""
         out: list[str] = []
         drop_column_ops = [o for o in batch_info["column_ops"] if o.op.endswith("drop_column")]
@@ -3113,7 +3079,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """Return ALTER statements for column tags, table tags, and other ops (property, constraint, governance)."""
         out: list[str] = []
         tag_ops = batch_info.get("tag_ops") or [
-            o for o in batch_info["column_ops"]
+            o
+            for o in batch_info["column_ops"]
             if o.op.endswith("set_column_tag") or o.op.endswith("unset_column_tag")
         ]
         for stmt in (self._generate_batched_column_tag_sql(tag_ops) or "").split(";\n"):
@@ -3125,7 +3092,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if stmt.strip():
                 out.append(stmt.strip())
         other_column_ops = [
-            o for o in batch_info["column_ops"]
+            o
+            for o in batch_info["column_ops"]
             if not o.op.endswith("add_column")
             and not o.op.endswith("drop_column")
             and not o.op.endswith("set_column_tag")
@@ -3232,9 +3200,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             col_name = self.id_name_map.get(col_id, col_id)
             col_esc = self.escape_identifier(col_name)
             if key in unset_by_col and unset_by_col[key]:
-                tag_list = ", ".join(
-                    f"'{self.escape_string(t)}'" for t in unset_by_col[key]
-                )
+                tag_list = ", ".join(f"'{self.escape_string(t)}'" for t in unset_by_col[key])
                 parts.append(
                     f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} UNSET TAGS ({tag_list})"
                 )
@@ -3253,8 +3219,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return ""
         set_by_col, unset_by_col = self._aggregate_column_tag_ops(tag_ops)
         set_escaped: dict[str, dict[str, str]] = {
-            k: {tk: self.escape_string(tv) for tk, tv in v.items()}
-            for k, v in set_by_col.items()
+            k: {tk: self.escape_string(tv) for tk, tv in v.items()} for k, v in set_by_col.items()
         }
         parts = self._emit_column_tag_alter_sql(set_escaped, unset_by_col)
         return ";\n".join(parts) if parts else ""
@@ -3538,7 +3503,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
             catalog_name = self.catalog_name_mapping.get(cat_name, cat_name)
             if target_type == "catalog" and cat_id == target_id:
                 return self._build_fqn(catalog_name)
-            for schema in catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", []):
+            for schema in (
+                catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
+            ):
                 schema_name = schema.name if hasattr(schema, "name") else schema["name"]
                 schema_id = schema.id if hasattr(schema, "id") else schema["id"]
                 if target_type == "schema" and schema_id == target_id:
