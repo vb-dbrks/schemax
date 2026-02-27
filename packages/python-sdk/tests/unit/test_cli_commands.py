@@ -11,6 +11,17 @@ from schemax.commands import SQLGenerationError
 from schemax.providers.registry import ProviderRegistry
 
 
+def test_cli_help_smoke() -> None:
+    """CLI and all subcommands respond to --help (cross-platform smoke)."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+    assert result.exit_code == 0
+    assert "SchemaX" in result.output
+    for sub in ["init", "sql", "validate", "diff", "import", "apply", "rollback", "snapshot"]:
+        result_sub = runner.invoke(cli, [sub, "--help"])
+        assert result_sub.exit_code == 0, f"{sub} --help failed: {result_sub.output}"
+
+
 def test_init_fails_for_unknown_provider(temp_workspace: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["init", "--provider", "missing", str(temp_workspace)])
@@ -234,7 +245,7 @@ def test_rollback_complete_routes_to_command(monkeypatch, temp_workspace: Path) 
 def test_snapshot_create_no_ops_is_graceful(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
 
-    monkeypatch.setattr("schemax.core.storage.read_changelog", lambda _workspace: {"ops": []})
+    monkeypatch.setattr("schemax.cli.read_changelog", lambda _workspace: {"ops": []})
 
     result = runner.invoke(
         cli,
@@ -248,7 +259,7 @@ def test_snapshot_create_no_ops_is_graceful(monkeypatch, temp_workspace: Path) -
 def test_snapshot_rebase_routes_to_command(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     monkeypatch.setattr(
-        "schemax.commands.snapshot_rebase.rebase_snapshot",
+        "schemax.cli.rebase_snapshot",
         lambda **kwargs: SimpleNamespace(success=True, applied_count=0, conflict_count=0),
     )
 
@@ -264,7 +275,7 @@ def test_snapshot_rebase_routes_to_command(monkeypatch, temp_workspace: Path) ->
 def test_snapshot_validate_json_output(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     monkeypatch.setattr(
-        "schemax.commands.snapshot_rebase.detect_stale_snapshots",
+        "schemax.cli.detect_stale_snapshots",
         lambda _workspace, _json_output=False: [],
     )
 

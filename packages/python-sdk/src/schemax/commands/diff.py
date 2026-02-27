@@ -15,6 +15,7 @@ from rich.table import Table
 from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
 from schemax.core.storage import get_environment_config, read_project, read_snapshot
 from schemax.providers.base.operations import Operation
+from schemax.providers.base.provider import Provider
 from schemax.providers.registry import ProviderRegistry
 
 console = Console()
@@ -171,7 +172,7 @@ def _build_catalog_mapping(state: dict, env_config: dict) -> dict[str, str]:
 
 
 def _render_diff_sql(
-    provider: object,
+    provider: Provider,
     state: dict,
     operations: list[Operation],
     catalog_mapping: dict[str, str] | None,

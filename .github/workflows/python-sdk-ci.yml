@@ -13,9 +13,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.11', '3.12']
     
     steps:
@@ -44,6 +46,10 @@ jobs:
       - name: Type check with mypy
         working-directory: packages/python-sdk
         run: mypy src/
+
+      - name: Pylint (min score 9.5)
+        working-directory: packages/python-sdk
+        run: pylint -j 0 src/ tests/
       
       - name: Run tests
         working-directory: packages/python-sdk

@@ -261,6 +261,8 @@ never-returning-functions = ["sys.exit", "argparse.parse_error"]
 
 [tool.pylint.reports]
 evaluation = "max(0, 0 if fatal else 10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10))"
+# Minimum score required; pylint exits with error if rating is below this (e.g. make pylint, make check).
+fail-under = 9.5
 score = true
 
 [tool.pylint.similarities]

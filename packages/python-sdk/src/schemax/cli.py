@@ -2,16 +2,16 @@
 Click-based CLI for SchemaX.
 """
 
+import json
 import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
 import click
 from rich.console import Console
 
-# Import for side effect: register providers (Unity, etc.)
-import schemax.providers  # noqa: F401
-
+from ._provider_registration import ensure_providers_loaded
 from .commands import (
     ApplyError,
     DiffError,
@@ -28,7 +28,19 @@ from .commands import (
 from .commands import (
     ValidationError as CommandValidationError,
 )
-from .core.storage import ensure_project_file
+from .commands.rollback import RollbackError, run_partial_rollback_cli
+from .commands.snapshot_rebase import (
+    RebaseError,
+    detect_stale_snapshots,
+    rebase_snapshot,
+)
+from .core.storage import (
+    create_snapshot,
+    ensure_project_file,
+    get_environment_config,
+    read_changelog,
+    read_project,
+)
 from .providers import ProviderRegistry
 
 console = Console()
@@ -38,6 +50,29 @@ console = Console()
 @click.version_option(version="0.2.0", prog_name="schemax")
 def cli() -> None:
     """SchemaX CLI for catalog schema management (Multi-Provider)"""
+    ensure_providers_loaded()
+
+
+def _run_init(provider: str, workspace_path: Path) -> None:
+    """Initialize a new SchemaX project: validate provider, ensure project file, print next steps."""
+    if not ProviderRegistry.has(provider):
+        available = ", ".join(ProviderRegistry.get_all_ids())
+        console.print(
+            f"[red]✗[/red] Provider '{provider}' not found. Available providers: {available}"
+        )
+        sys.exit(1)
+    provider_obj = ProviderRegistry.get(provider)
+    if not provider_obj:
+        console.print(f"[red]✗[/red] Provider '{provider}' not found")
+        sys.exit(1)
+    ensure_project_file(workspace_path, provider_id=provider)
+    console.print(f"[green]✓[/green] Initialized SchemaX project in {workspace_path}")
+    console.print(f"[blue]Provider:[/blue] {provider_obj.info.name}")
+    console.print(f"[blue]Version:[/blue] {provider_obj.info.version}")
+    console.print("\nNext steps:")
+    console.print("  1. Run 'schemax sql' to generate SQL")
+    console.print("  2. Use SchemaX VSCode extension to design schemas")
+    console.print("  3. Check provider docs: " + (provider_obj.info.docs_url or "N/A"))
 
 
 @cli.command()
@@ -52,32 +87,7 @@ def init(provider: str, workspace: str) -> None:
     """Initialize a new SchemaX project"""
     try:
         workspace_path = Path(workspace).resolve()
-
-        # Check if provider exists
-        if not ProviderRegistry.has(provider):
-            available = ", ".join(ProviderRegistry.get_all_ids())
-            console.print(
-                f"[red]✗[/red] Provider '{provider}' not found. Available providers: {available}"
-            )
-            sys.exit(1)
-
-        provider_obj = ProviderRegistry.get(provider)
-
-        if not provider_obj:
-            console.print(f"[red]✗[/red] Provider '{provider}' not found")
-            sys.exit(1)
-
-        # Initialize project
-        ensure_project_file(workspace_path, provider_id=provider)
-
-        console.print(f"[green]✓[/green] Initialized SchemaX project in {workspace_path}")
-        console.print(f"[blue]Provider:[/blue] {provider_obj.info.name}")
-        console.print(f"[blue]Version:[/blue] {provider_obj.info.version}")
-        console.print("\nNext steps:")
-        console.print("  1. Run 'schemax sql' to generate SQL")
-        console.print("  2. Use SchemaX VSCode extension to design schemas")
-        console.print("  3. Check provider docs: " + (provider_obj.info.docs_url or "N/A"))
-
+        _run_init(provider, workspace_path)
     except Exception as e:
         console.print(f"[red]✗[/red] Error initializing project: {e}")
         sys.exit(1)
@@ -93,6 +103,7 @@ def init(provider: str, workspace: str) -> None:
 @click.option(
     "--snapshot",
     "-s",
+    "snapshot_version",
     help="Generate SQL from a specific snapshot (version or 'latest')",
 )
 @click.option(
@@ -111,7 +122,7 @@ def init(provider: str, workspace: str) -> None:
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def sql(
     output: str | None,
-    snapshot: str | None,
+    snapshot_version: str | None,
     from_version: str | None,
     to_version: str | None,
     target: str | None,
@@ -132,7 +143,7 @@ def sql(
         generate_sql_migration(
             workspace=workspace_path,
             output=output_path,
-            snapshot=snapshot,
+            snapshot=snapshot_version,
             _from_version=from_version,
             _to_version=to_version,
             target_env=target,
@@ -310,20 +321,8 @@ def bundle(target: str, version: str, output: str) -> None:
     help="Mark imported snapshot as deployment baseline (planned, scaffold only)",
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
-def import_command(
-    from_sql_path: Path | None,
-    mode: str,
-    target: str | None,
-    profile: str | None,
-    warehouse_id: str | None,
-    catalog: str | None,
-    schema: str | None,
-    table: str | None,
-    catalog_map: tuple[str, ...],
-    dry_run: bool,
-    adopt_baseline: bool,
-    workspace: str,
-) -> None:
+@click.pass_context
+def import_command(ctx: click.Context, **kwargs: Any) -> None:
     """Import existing provider assets into SchemaX changelog.
 
     Two sources:
@@ -333,52 +332,61 @@ def import_command(
     • SQL DDL file: use --from-sql path [--mode diff|replace] [--dry-run] [--target ENV].
     """
     try:
-        workspace_path = Path(workspace).resolve()
-
-        if from_sql_path is not None:
-            summary = import_from_sql_file(
-                workspace=workspace_path,
-                sql_path=from_sql_path,
-                mode=mode,
-                dry_run=dry_run,
-                target_env=target,
-            )
-            _print_import_summary(summary)
-            return
-        # Live import: require target, profile, warehouse_id
-        if not target or not profile or not warehouse_id:
-            console.print(
-                "[red]✗[/red] Live import requires --target, --profile, and --warehouse-id. "
-                "Use --from-sql for SQL file import."
-            )
-            sys.exit(1)
-        if schema and not catalog:
-            console.print("[red]✗[/red] --schema requires --catalog")
-            sys.exit(1)
-        if table and (not catalog or not schema):
-            console.print("[red]✗[/red] --table requires --catalog and --schema")
-            sys.exit(1)
-        binding_overrides = _parse_catalog_mappings(catalog_map)
-
-        summary = import_from_provider(
-            workspace=workspace_path,
-            target_env=target,
-            profile=profile,
-            warehouse_id=warehouse_id,
-            catalog=catalog,
-            schema=schema,
-            table=table,
-            dry_run=dry_run,
-            adopt_baseline=adopt_baseline,
-            catalog_mappings_override=binding_overrides,
-        )
-        _print_import_summary(summary)
+        workspace_path = Path(ctx.params["workspace"]).resolve()
+        _run_import_command(workspace_path, ctx.params)
     except (ImportCommandError, ImportError) as e:
         console.print(f"[red]✗ Import failed:[/red] {e}")
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
+
+
+def _run_import_command(workspace_path: Path, params: dict[str, Any]) -> None:
+    """Execute import from SQL file or live provider based on params."""
+    from_sql_path = params.get("from_sql_path")
+    if from_sql_path is not None:
+        summary = import_from_sql_file(
+            workspace=workspace_path,
+            sql_path=from_sql_path,
+            mode=params.get("mode", "diff"),
+            dry_run=params.get("dry_run", False),
+            target_env=params.get("target"),
+        )
+        _print_import_summary(summary)
+        return
+    target = params.get("target")
+    profile = params.get("profile")
+    warehouse_id = params.get("warehouse_id")
+    if not target or not profile or not warehouse_id:
+        console.print(
+            "[red]✗[/red] Live import requires --target, --profile, and --warehouse-id. "
+            "Use --from-sql for SQL file import."
+        )
+        sys.exit(1)
+    schema = params.get("schema")
+    catalog = params.get("catalog")
+    table = params.get("table")
+    if schema and not catalog:
+        console.print("[red]✗[/red] --schema requires --catalog")
+        sys.exit(1)
+    if table and (not catalog or not schema):
+        console.print("[red]✗[/red] --table requires --catalog and --schema")
+        sys.exit(1)
+    binding_overrides = _parse_catalog_mappings(params.get("catalog_map", ()))
+    summary = import_from_provider(
+        workspace=workspace_path,
+        target_env=target,
+        profile=profile,
+        warehouse_id=warehouse_id,
+        catalog=catalog,
+        schema=schema,
+        table=table,
+        dry_run=params.get("dry_run", False),
+        adopt_baseline=params.get("adopt_baseline", False),
+        catalog_mappings_override=binding_overrides,
+    )
+    _print_import_summary(summary)
 
 
 def _parse_catalog_mappings(catalog_map: tuple[str, ...]) -> dict[str, str]:
@@ -490,6 +498,85 @@ def apply(
         sys.exit(1)
 
 
+def _print_rollback_usage_and_exit() -> None:
+    """Print rollback usage and exit with code 1."""
+    console.print("[red]✗[/red] Must specify either --partial or --to-snapshot")
+    console.print("\nExamples:")
+    console.print("  Partial:  schemax rollback --deployment deploy_abc123 --partial")
+    console.print("  Complete: schemax rollback --target prod --to-snapshot v0.5.0")
+    sys.exit(1)
+
+
+def _handle_rollback_dispatch(workspace_path: Path, params: dict[str, Any]) -> None:
+    """Run partial or complete rollback from params; prints and exits."""
+    if params["partial"]:
+        result = run_partial_rollback_cli(
+            workspace_path=workspace_path,
+            deployment_id=params["deployment"] or "",
+            target=params["target"] or "",
+            profile=params["profile"] or "",
+            warehouse_id=params["warehouse_id"] or "",
+            no_interaction=params["no_interaction"],
+            dry_run=params["dry_run"],
+        )
+        if result.success:
+            console.print(
+                f"[green]✓[/green] Rolled back {result.operations_rolled_back} operations"
+            )
+            sys.exit(0)
+        console.print(f"[red]✗[/red] Rollback failed: {result.error_message}")
+        sys.exit(1)
+    if params["to_snapshot"]:
+        if not params["target"]:
+            console.print("[red]✗[/red] --target required for complete rollback")
+            sys.exit(1)
+        if not params["profile"] or not params["warehouse_id"]:
+            console.print("[red]✗[/red] --profile and --warehouse-id required")
+            sys.exit(1)
+        result = rollback_complete(
+            workspace=workspace_path,
+            target_env=params["target"],
+            to_snapshot=params["to_snapshot"],
+            profile=params["profile"],
+            warehouse_id=params["warehouse_id"],
+            _create_clone=params["create_clone"],
+            safe_only=params["safe_only"],
+            dry_run=params["dry_run"],
+            no_interaction=params["no_interaction"],
+            force=params["force"],
+        )
+        if result.success:
+            console.print(
+                f"[green]✓[/green] Rolled back {result.operations_rolled_back} operations"
+            )
+            sys.exit(0)
+        console.print(f"[red]✗[/red] Rollback failed: {result.error_message}")
+        sys.exit(1)
+    _print_rollback_usage_and_exit()
+
+
+def _print_rollback_deployment_not_found_help(
+    deployment_id: str, deployment_catalog: str, target: str
+) -> None:
+    """Print troubleshooting steps when deployment is not found."""
+    console.print("\n[yellow]Troubleshooting steps:[/yellow]")
+    console.print(
+        f"  1. Verify catalog exists:\n"
+        f"     [dim]SELECT * FROM {deployment_catalog}.information_schema.schemata[/dim]\n"
+    )
+    console.print(
+        f"  2. Check if deployment was recorded:\n"
+        f"     [dim]SELECT * FROM {deployment_catalog}.schemax.deployments WHERE id = '{deployment_id}'[/dim]\n"
+    )
+    console.print(
+        f"  3. List recent deployments:\n"
+        f"     [dim]SELECT id, environment, snapshot_version, status, deployed_at\n"
+        f"     FROM {deployment_catalog}.schemax.deployments\n"
+        f"     WHERE environment = '{target}'\n"
+        f"     ORDER BY deployed_at DESC LIMIT 5[/dim]"
+    )
+
+
 @cli.command()
 @click.option("--deployment", "-d", help="Deployment ID to rollback (for partial rollback)")
 @click.option("--partial", is_flag=True, help="Partial rollback of failed deployment")
@@ -507,20 +594,8 @@ def apply(
     help="Override baseline guard for complete rollback (use with caution)",
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
-def rollback(
-    deployment: str | None,
-    partial: bool,
-    target: str | None,
-    to_snapshot: str | None,
-    profile: str | None,
-    warehouse_id: str | None,
-    create_clone: str | None,
-    safe_only: bool,
-    dry_run: bool,
-    no_interaction: bool,
-    force: bool,
-    workspace: str,
-) -> None:
+@click.pass_context
+def rollback(ctx: click.Context, **kwargs: Any) -> None:
     """Rollback deployments (partial or complete)
 
     Two rollback modes:
@@ -552,258 +627,20 @@ def rollback(
         schemax rollback --partial --deployment deploy_abc123 -p PROD -w abc123 -t prod --no-interaction
     """
     try:
-        workspace_path = Path(workspace).resolve()
-
-        if partial:
-            # Partial rollback mode - manual rollback of a recorded deployment
-            if not deployment:
-                console.print("[red]✗[/red] --deployment required for partial rollback")
-                sys.exit(1)
-            if not profile or not warehouse_id:
-                console.print(
-                    "[red]✗[/red] --profile and --warehouse-id required for partial rollback"
-                )
-                sys.exit(1)
-            if not target:
-                console.print("[red]✗[/red] --target required for partial rollback")
-                sys.exit(1)
-
-            # Load deployment record from database (source of truth)
-            from schemax.core.deployment import DeploymentTracker
-            from schemax.core.storage import get_environment_config, read_project
-            from schemax.providers.unity.auth import create_databricks_client
-
+        params = ctx.params
+        workspace_path = Path(params["workspace"]).resolve()
+        _handle_rollback_dispatch(workspace_path, params)
+    except RollbackError as e:
+        console.print(f"[red]✗[/red] {e}")
+        if "not found" in str(e).lower():
             project = read_project(workspace_path)
-            env_config = get_environment_config(project, target)
-            deployment_catalog = env_config["topLevelName"]
-
-            # Query database for deployment
-            client = create_databricks_client(profile)
-            tracker = DeploymentTracker(client, deployment_catalog, warehouse_id)
-            target_deployment = tracker.get_deployment_by_id(deployment)
-
-            if not target_deployment:
-                console.print(
-                    f"[red]✗[/red] Deployment '{deployment}' not found in {deployment_catalog}.schemax"
-                )
-                console.print("\n[yellow]Troubleshooting steps:[/yellow]")
-                console.print(
-                    f"  1. Verify catalog exists:\n"
-                    f"     [dim]SELECT * FROM {deployment_catalog}.information_schema.schemata[/dim]\n"
-                )
-                console.print(
-                    f"  2. Check if deployment was recorded:\n"
-                    f"     [dim]SELECT * FROM {deployment_catalog}.schemax.deployments WHERE id = '{deployment}'[/dim]\n"
-                )
-                console.print(
-                    f"  3. List recent deployments:\n"
-                    f"     [dim]SELECT id, environment, snapshot_version, status, deployed_at\n"
-                    f"     FROM {deployment_catalog}.schemax.deployments\n"
-                    f"     WHERE environment = '{target}'\n"
-                    f"     ORDER BY deployed_at DESC LIMIT 5[/dim]"
-                )
-                sys.exit(1)
-
-            # Check if it's a failed deployment
-            if target_deployment.get("status") != "failed":
-                console.print(
-                    f"[yellow]⚠️  Deployment '{deployment}' has status: "
-                    f"{target_deployment.get('status')}[/yellow]"
-                )
-                console.print("Partial rollback is typically used for failed deployments.")
-                if not no_interaction:
-                    from rich.prompt import Confirm
-
-                    if not Confirm.ask("Continue anyway?", default=False):
-                        sys.exit(1)
-
-            # Get operations that were applied (successful before failure)
-            ops_applied = target_deployment.get("opsApplied", [])
-            failed_idx = target_deployment.get("failedStatementIndex", len(ops_applied))
-
-            # Successful ops are those before the failure point
-            successful_op_ids = ops_applied[:failed_idx]
-
-            if not successful_op_ids:
-                console.print(
-                    "[yellow]No operations to rollback (deployment had no successful operations)[/yellow]"
-                )
-                sys.exit(0)
-
-            # Load operations - try changelog first, then regenerate from snapshots
-            from schemax.providers.base.operations import Operation
-
-            from .core.storage import read_changelog
-
-            changelog = read_changelog(workspace_path)
-            all_ops = [Operation(**op) for op in changelog.get("ops", [])]
-
-            # Filter to get the successful operations
-            successful_ops = [op for op in all_ops if op.id in successful_op_ids]
-
-            # If operations not found in changelog, they might be diff operations from snapshot deployment
-            if not successful_ops and target_deployment.get("version"):
-                console.print(
-                    "[cyan]Operations not in changelog - regenerating from snapshots...[/cyan]"
-                )
-                from .core.storage import load_current_state, read_snapshot
-
-                from_version = target_deployment.get("fromVersion")
-                to_version = target_deployment.get("version")
-
-                if not to_version:
-                    console.print("[red]✗ Deployment missing version information[/red]")
-                    sys.exit(1)
-
-                # Load states
-                _, _, provider, _ = load_current_state(workspace_path, validate=False)
-
-                if from_version:
-                    from_snap = read_snapshot(workspace_path, from_version)
-                    from_state = from_snap["state"]
-                    from_ops = from_snap.get("operations", [])
-                else:
-                    # First deployment - diff from empty state
-                    from_state = provider.create_initial_state()
-                    from_ops = []
-
-                to_snap = read_snapshot(workspace_path, to_version)
-                to_state = to_snap["state"]
-                to_ops = to_snap.get("operations", [])
-
-                # Regenerate diff operations using provider's state differ
-                differ = provider.get_state_differ(from_state, to_state, from_ops, to_ops)
-                all_diff_ops = differ.generate_diff_operations()
-
-                # Match by operation type + target + payload (exact semantic match)
-                # Use opsDetails from database to find matching operations
-                ops_details = target_deployment.get("opsDetails", [])
-                successful_ops_details = [
-                    op_detail for op_detail in ops_details if op_detail["id"] in successful_op_ids
-                ]
-
-                # Match regenerated operations to successful operations by type+target+payload
-                successful_ops = []
-                for op_detail in successful_ops_details:
-                    # Find matching operation in regenerated diff
-                    # Match by type, target, AND payload for 100% accuracy
-                    matching_op = next(
-                        (
-                            op
-                            for op in all_diff_ops
-                            if op.op == op_detail["type"]
-                            and op.target == op_detail["target"]
-                            and op.payload == op_detail["payload"]  # Exact payload match
-                        ),
-                        None,
-                    )
-                    if matching_op:
-                        successful_ops.append(matching_op)
-
-                if len(successful_ops) != len(successful_ops_details):
-                    console.print(
-                        f"[yellow]⚠️  Warning: Matched {len(successful_ops)}/{len(successful_ops_details)} operations[/yellow]"
-                    )
-                else:
-                    console.print(
-                        f"[dim]Matched {len(successful_ops)} operations by type+target+payload[/dim]"
-                    )
-
-            if not successful_ops:
-                console.print("[red]✗[/red] Could not find operation details")
-                console.print("This may indicate the deployment is too old or data is corrupted")
-                sys.exit(1)
-
-            console.print(f"[cyan]Found {len(successful_ops)} operations to rollback[/cyan]")
-
-            # Get environment config and catalog mapping
-            env_config = get_environment_config(project, target)
-
-            # Build catalog mapping
-            from .commands.sql import SQLGenerationError, build_catalog_mapping
-            from .core.storage import load_current_state
-
-            state, _, provider, _ = load_current_state(workspace_path, validate=False)
-
-            try:
-                catalog_mapping = build_catalog_mapping(state, env_config)
-            except SQLGenerationError as e:
-                console.print(f"[red]✗[/red] {e}")
-                sys.exit(1)
-
-            # Initialize executor
-            from schemax.providers.unity.auth import create_databricks_client
-            from schemax.providers.unity.executor import UnitySQLExecutor
-
-            client = create_databricks_client(profile)
-            executor = UnitySQLExecutor(client)
-
-            # Execute partial rollback
-            from .commands.rollback import rollback_partial
-
-            # Get the fromVersion from the deployment record
-            from_version = target_deployment.get("fromVersion")
-
-            result = rollback_partial(
-                workspace=workspace_path,
-                deployment_id=deployment,
-                successful_ops=successful_ops,
-                target_env=target,
-                profile=profile,
-                warehouse_id=warehouse_id,
-                executor=executor,
-                catalog_mapping=catalog_mapping,
-                auto_triggered=False,  # Manual rollback: allow risky ops; --no-interaction only skips prompts
-                from_version=from_version,
-                dry_run=dry_run,
+            env_config = get_environment_config(project, params["target"] or "")
+            _print_rollback_deployment_not_found_help(
+                params["deployment"] or "",
+                env_config.get("topLevelName", ""),
+                params["target"] or "",
             )
-
-            if result.success:
-                console.print(
-                    f"[green]✓[/green] Rolled back {result.operations_rolled_back} operations"
-                )
-                sys.exit(0)
-            else:
-                console.print(f"[red]✗[/red] Rollback failed: {result.error_message}")
-                sys.exit(1)
-
-        elif to_snapshot:
-            # Complete rollback mode
-            if not target:
-                console.print("[red]✗[/red] --target required for complete rollback")
-                sys.exit(1)
-            if not profile or not warehouse_id:
-                console.print("[red]✗[/red] --profile and --warehouse-id required")
-                sys.exit(1)
-
-            result = rollback_complete(
-                workspace=workspace_path,
-                target_env=target,
-                to_snapshot=to_snapshot,
-                profile=profile,
-                warehouse_id=warehouse_id,
-                _create_clone=create_clone,
-                safe_only=safe_only,
-                dry_run=dry_run,
-                no_interaction=no_interaction,
-                force=force,
-            )
-
-            if result.success:
-                console.print(
-                    f"[green]✓[/green] Rolled back {result.operations_rolled_back} operations"
-                )
-                sys.exit(0)
-            else:
-                console.print(f"[red]✗[/red] Rollback failed: {result.error_message}")
-                sys.exit(1)
-        else:
-            console.print("[red]✗[/red] Must specify either --partial or --to-snapshot")
-            console.print("\nExamples:")
-            console.print("  Partial:  schemax rollback --deployment deploy_abc123 --partial")
-            console.print("  Complete: schemax rollback --target prod --to-snapshot v0.5.0")
-            sys.exit(1)
-
+        sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Rollback error:[/red] {e}")
         sys.exit(1)
@@ -812,6 +649,45 @@ def rollback(
 @cli.group()
 def snapshot() -> None:
     """Snapshot management commands"""
+
+
+def _run_snapshot_create(
+    workspace_path: Path,
+    name: str,
+    version: str | None,
+    comment: str | None,
+    tags: tuple[str, ...] | None,
+) -> None:
+    """Create snapshot from changelog and print success message."""
+    changelog = read_changelog(workspace_path)
+    if not changelog["ops"]:
+        console.print("[yellow]⚠️  No uncommitted operations in changelog[/yellow]")
+        console.print("Create operations in the SchemaX Designer before creating a snapshot.")
+        return
+    console.print(f"📸 Creating snapshot: [bold]{name}[/bold]")
+    console.print(f"   Operations to snapshot: {len(changelog['ops'])}")
+    project, snap_meta = create_snapshot(
+        workspace_path,
+        name=name,
+        version=version,
+        comment=comment,
+        tags=list(tags) if tags else None,
+    )
+    console.print()
+    console.print("[green]✓ Snapshot created successfully![/green]")
+    console.print(f"   Version: [bold]{snap_meta['version']}[/bold]")
+    console.print(f"   Name: {snap_meta['name']}")
+    if snap_meta.get("comment"):
+        console.print(f"   Comment: {snap_meta['comment']}")
+    if snap_meta.get("tags"):
+        console.print(f"   Tags: {', '.join(snap_meta['tags'])}")
+    console.print(f"   Operations: {len(snap_meta['operations'])}")
+    console.print(f"   File: [dim].schemax/snapshots/{snap_meta['version']}.json[/dim]")
+    console.print()
+    console.print(
+        f"[green]✓ Changelog cleared ({len(changelog['ops'])} ops moved to snapshot)[/green]"
+    )
+    console.print(f"[green]✓ Total snapshots: {len(project['snapshots'])}[/green]")
 
 
 @snapshot.command(name="create")
@@ -836,57 +712,35 @@ def snapshot_create_cmd(
         schemax snapshot create --name "Add users table" --version v0.2.0
         schemax snapshot create --name "Production release" --comment "First prod deployment" --tags prod
     """
-    from schemax.core.storage import create_snapshot, read_changelog
-
-    workspace_path = Path(workspace).resolve()
-
     try:
-        # Check if there are uncommitted operations
-        changelog = read_changelog(workspace_path)
-        if not changelog["ops"]:
-            console.print("[yellow]⚠️  No uncommitted operations in changelog[/yellow]")
-            console.print("Create operations in the SchemaX Designer before creating a snapshot.")
-            return
-
-        console.print(f"📸 Creating snapshot: [bold]{name}[/bold]")
-        console.print(f"   Operations to snapshot: {len(changelog['ops'])}")
-
-        # Create snapshot
-        project, snapshot = create_snapshot(
-            workspace_path,
-            name=name,
-            version=version,
-            comment=comment,
-            tags=list(tags) if tags else None,
-        )
-
-        # Success message
-        console.print()
-        console.print("[green]✓ Snapshot created successfully![/green]")
-        console.print(f"   Version: [bold]{snapshot['version']}[/bold]")
-        console.print(f"   Name: {snapshot['name']}")
-        if snapshot.get("comment"):
-            console.print(f"   Comment: {snapshot['comment']}")
-        if snapshot.get("tags"):
-            console.print(f"   Tags: {', '.join(snapshot['tags'])}")
-        console.print(f"   Operations: {len(snapshot['operations'])}")
-        console.print(f"   File: [dim].schemax/snapshots/{snapshot['version']}.json[/dim]")
-        console.print()
-        console.print(
-            f"[green]✓ Changelog cleared ({len(changelog['ops'])} ops moved to snapshot)[/green]"
-        )
-        console.print(f"[green]✓ Total snapshots: {len(project['snapshots'])}[/green]")
-
+        workspace_path = Path(workspace).resolve()
+        _run_snapshot_create(workspace_path, name, version, comment, tags)
     except FileNotFoundError as e:
         console.print(f"[red]✗ Error: {e}[/red]")
         console.print("Make sure you're in a SchemaX project directory.")
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Snapshot creation failed: {e}[/red]")
-        import traceback
-
         console.print(f"[dim]{traceback.format_exc()}[/dim]")
         sys.exit(1)
+
+
+def _run_snapshot_rebase(workspace_path: Path, snapshot_version: str, base: str | None) -> None:
+    """Run snapshot rebase and exit with appropriate code."""
+    result = rebase_snapshot(
+        workspace=workspace_path,
+        snapshot_version=snapshot_version,
+        new_base_version=base,
+    )
+    if result.success:
+        console.print()
+        console.print(f"[green]✓ Successfully rebased {snapshot_version}[/green]")
+        sys.exit(0)
+    console.print()
+    console.print("[red]✗ Rebase stopped due to conflicts[/red]")
+    console.print(f"[yellow]Resolved {result.applied_count} operations[/yellow]")
+    console.print(f"[yellow]{result.conflict_count} operations need manual resolution[/yellow]")
+    sys.exit(1)
 
 
 @snapshot.command(name="rebase")
@@ -910,34 +764,37 @@ def snapshot_rebase_cmd(snapshot_version: str, base: str | None, workspace: str)
     """
     try:
         workspace_path = Path(workspace).resolve()
-
-        from .commands.snapshot_rebase import RebaseError, rebase_snapshot
-
-        result = rebase_snapshot(
-            workspace=workspace_path,
-            snapshot_version=snapshot_version,
-            new_base_version=base,
-        )
-
-        if result.success:
-            console.print()
-            console.print(f"[green]✓ Successfully rebased {snapshot_version}[/green]")
-            sys.exit(0)
-        else:
-            console.print()
-            console.print("[red]✗ Rebase stopped due to conflicts[/red]")
-            console.print(f"[yellow]Resolved {result.applied_count} operations[/yellow]")
-            console.print(
-                f"[yellow]{result.conflict_count} operations need manual resolution[/yellow]"
-            )
-            sys.exit(1)
-
+        _run_snapshot_rebase(workspace_path, snapshot_version, base)
     except RebaseError as e:
         console.print(f"[red]✗ Rebase failed:[/red] {e}")
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
+
+
+def _run_snapshot_validate(workspace_path: Path, json_output: bool) -> None:
+    """Run snapshot validate and exit with appropriate code."""
+    stale = detect_stale_snapshots(workspace_path, _json_output=json_output)
+    if json_output:
+        output = {"stale": stale, "count": len(stale)}
+        print(json.dumps(output))
+        sys.exit(1 if stale else 0)
+    if not stale:
+        console.print("[green]✓ All snapshots are up to date[/green]")
+        sys.exit(0)
+    console.print(f"[yellow]⚠️  Found {len(stale)} stale snapshot(s):[/yellow]")
+    console.print()
+    for snap_item in stale:
+        console.print(f"  [yellow]{snap_item['version']}[/yellow]")
+        console.print(f"    Current base: {snap_item['currentBase']}")
+        console.print(f"    Should be: {snap_item['shouldBeBase']}")
+        console.print(f"    Missing: {', '.join(snap_item['missing'])}")
+        console.print()
+    console.print("[cyan]Run the following commands to fix:[/cyan]")
+    for snap_item in stale:
+        console.print(f"  schemax snapshot rebase {snap_item['version']}")
+    sys.exit(1)
 
 
 @snapshot.command(name="validate")
@@ -955,43 +812,9 @@ def snapshot_validate_cmd(workspace: str, json_output: bool) -> None:
     """
     try:
         workspace_path = Path(workspace).resolve()
-
-        from .commands.snapshot_rebase import detect_stale_snapshots
-
-        stale = detect_stale_snapshots(workspace_path, _json_output=json_output)
-
-        if json_output:
-            # Output JSON for programmatic use (e.g., VS Code extension)
-            import json
-
-            output = {"stale": stale, "count": len(stale)}
-            print(json.dumps(output))
-            sys.exit(1 if stale else 0)
-
-        if not stale:
-            console.print("[green]✓ All snapshots are up to date[/green]")
-            sys.exit(0)
-
-        console.print(f"[yellow]⚠️  Found {len(stale)} stale snapshot(s):[/yellow]")
-        console.print()
-
-        for snap in stale:
-            console.print(f"  [yellow]{snap['version']}[/yellow]")
-            console.print(f"    Current base: {snap['currentBase']}")
-            console.print(f"    Should be: {snap['shouldBeBase']}")
-            console.print(f"    Missing: {', '.join(snap['missing'])}")
-            console.print()
-
-        console.print("[cyan]Run the following commands to fix:[/cyan]")
-        for snap in stale:
-            console.print(f"  schemax snapshot rebase {snap['version']}")
-
-        sys.exit(1)
-
+        _run_snapshot_validate(workspace_path, json_output)
     except Exception as e:
         if json_output:
-            import json
-
             print(json.dumps({"error": str(e)}))
         else:
             console.print(f"[red]✗ Validation failed:[/red] {e}")

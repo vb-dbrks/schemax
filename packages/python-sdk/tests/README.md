@@ -3,6 +3,40 @@
 ## Scope
 This folder contains deterministic unit/integration tests and opt-in live Databricks tests.
 
+## CLI integration test coverage
+
+**Deterministic (no Databricks):**
+
+- **Unit:** `tests/unit/test_cli_commands.py` – init, sql, validate, diff, apply (stubbed), rollback (partial/complete), snapshot create/validate/rebase; argument routing and error messages.
+- **Unit:** `tests/unit/test_import_command.py` – import from SQL file and live (stubbed), catalog mapping, validation.
+- **Unit:** `tests/unit/test_rollback_command.py` – rollback command and idempotency.
+- **Integration:** `tests/integration/test_command_workflows.py` – end-to-end local workflow (validate → sql → snapshot create → diff), apply + rollback CLI sequence with stubbed execution.
+- **Integration:** `tests/integration/test_workflows_e2e.py` – e2e init/ops/snapshot/validate/sql/diff, apply dry-run via CLI, apply + rollback (stubbed), snapshot validate/rebase via CLI.
+- **Integration:** `tests/integration/test_workflows.py` – init → sql, complete schema workflow (some tests skipped per Issue #19).
+- **CI:** `.github/workflows/integration-tests.yml` runs `schemax validate` and `schemax sql` in `examples/basic-schema` on every push/PR.
+
+**Live (opt-in, requires Databricks):**
+
+- Set `SCHEMAX_RUN_LIVE_COMMAND_TESTS=1` and profile/warehouse/managed-location (see below). Live tests cover: full CLI command matrix, catalog/schema/table/volume/function/materialized view/grants/scope/multi-env promote and rollback, import from live, E2E UI-equivalent → CLI → live apply/rollback.
+
+**Gaps / improvements:**
+
+- No dedicated “CLI smoke” test that runs every command with `--help` on all entrypoints.
+- Live tests are manual/CI-optional; consider a scheduled run or a smaller “smoke” live job if needed.
+
+## Cross-platform (Windows, Linux, macOS)
+
+The CLI and SDK use **pathlib.Path** and **Click’s path types** (`click.Path(..., path_type=Path)` where used) so that paths are correct on Windows, Linux, and macOS. Avoid hardcoded `/` or `\\`; use `path / "subdir"` or `Path(...)`.
+
+**How we ensure it:**
+
+1. **CI:** Python SDK CI runs the same test suite on **Ubuntu, Windows, and macOS** (see `.github/workflows/python-sdk-ci.yml`). Any path or platform-specific bug in the CLI or storage layer should be caught there.
+2. **Local:** On Windows or macOS, run the same commands:
+   ```bash
+   pytest tests/unit/test_cli_commands.py tests/unit/test_import_command.py tests/unit/test_rollback_command.py tests/integration/test_command_workflows.py -v
+   ```
+3. **Manual smoke:** From a project root, run: `schemax validate`, `schemax sql --output out.sql`, `schemax init --provider unity`, and (with env set) `schemax apply --target dev --dry-run` to confirm behavior on your OS.
+
 ## Live Test Env
 Required for live command matrix tests:
 

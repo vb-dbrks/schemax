@@ -5,7 +5,7 @@ Generates Databricks SQL DDL statements from operations.
 Migrated from TypeScript sql-generator.ts
 """
 
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 import sqlglot
 from sqlglot import expressions as exp
@@ -1250,7 +1250,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         handler_name = self._OP_HANDLERS.get(op_type)
         if handler_name is None:
             raise ValueError(f"Unsupported operation type: {op_type}")
-        return getattr(self, handler_name)(operation)
+        return cast(str, getattr(self, handler_name)(operation))
 
     # Catalog operations
     def _add_catalog(self, operation: Operation) -> str:

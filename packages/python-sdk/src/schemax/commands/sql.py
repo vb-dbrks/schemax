@@ -6,7 +6,7 @@ Generates SQL migration scripts from schema changes in the changelog.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from rich.console import Console
 from rich.syntax import Syntax
@@ -154,7 +154,7 @@ def _generate_sql_impl(
     )
     sql_output = generator.generate_sql(operations)
     _output_sql(sql_output, output)
-    return sql_output
+    return cast(str, sql_output)
 
 
 def _resolve_ops_source(workspace: Path, project: dict, snapshot: str | None) -> _OpsSource:

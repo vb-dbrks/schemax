@@ -399,9 +399,9 @@ def _parse_sql_and_collect_warnings(
     parse_errors = report.get("parse_errors", [])
     if skipped:
         import_warnings.append(f"Skipped {skipped} statement(s) (unsupported or non-DDL).")
-    for err in parse_errors[:5]:
+    for parse_err in parse_errors[:5]:
         import_warnings.append(
-            f"Parse error at statement {err.get('index', '?')}: {err.get('message', '')[:80]}"
+            f"Parse error at statement {parse_err.get('index', '?')}: {parse_err.get('message', '')[:80]}"
         )
     if len(parse_errors) > 5:
         import_warnings.append(f"... and {len(parse_errors) - 5} more parse error(s).")

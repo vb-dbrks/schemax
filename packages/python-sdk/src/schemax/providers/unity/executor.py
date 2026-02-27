@@ -165,7 +165,11 @@ class UnitySQLExecutor:
 
         try:
             response = self._submit_statement(sql, config)
-            statement_id = response.statement_id or ""
+            statement_id = getattr(response, "statement_id", None)
+            if not statement_id or not str(statement_id).strip():
+                raise ExecutionError(
+                    "Statement submission did not return a statement ID; cannot poll for result"
+                )
             terminal = self._poll_until_terminal(statement_id, config.timeout_seconds)
 
             if terminal is None:

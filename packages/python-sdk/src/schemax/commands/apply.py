@@ -454,7 +454,7 @@ class _ApplyCommand:
         console.print("[green]✓[/green] Authenticated successfully")
         self.deployment_id = f"deploy_{uuid4().hex[:8]}"
         console.print("\n[cyan]Executing SQL statements...[/cyan]")
-        return self.executor.execute_statements(statements, config)
+        return cast(ExecutionResult, self.executor.execute_statements(statements, config))
 
     def _track_deployment(
         self,
