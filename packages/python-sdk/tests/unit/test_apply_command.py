@@ -104,7 +104,7 @@ class TestApplyCommand:
             with patch("builtins.input") as mock_input:
                 with patch("schemax.commands.apply.load_current_state") as mock_load:
                     with patch("schemax.commands.apply.create_snapshot") as mock_snapshot:
-                        with patch("schemax.providers.unity.auth.create_databricks_client"):
+                        with patch("schemax.commands.apply.create_databricks_client"):
                             with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                                 # Mock database query to return None (first deployment)
                                 mock_tracker.return_value.get_latest_deployment.return_value = None
@@ -173,7 +173,7 @@ class TestApplyCommand:
         with patch("schemax.commands.apply.Prompt.ask") as mock_prompt:
             with patch("schemax.commands.apply.load_current_state") as mock_load:
                 with patch("schemax.commands.apply.create_snapshot"):
-                    with patch("schemax.providers.unity.auth.create_databricks_client"):
+                    with patch("schemax.commands.apply.create_databricks_client"):
                         with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                             # Mock database query
                             mock_tracker.return_value.get_latest_deployment.return_value = None
@@ -222,7 +222,7 @@ class TestApplyCommand:
         with patch("schemax.commands.apply.Prompt.ask") as mock_prompt:
             with patch("schemax.commands.apply.load_current_state") as mock_load:
                 with patch("schemax.commands.apply.create_snapshot") as mock_snapshot:
-                    with patch("schemax.providers.unity.auth.create_databricks_client"):
+                    with patch("schemax.commands.apply.create_databricks_client"):
                         with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                             # Mock database query
                             mock_tracker.return_value.get_latest_deployment.return_value = None
@@ -344,7 +344,7 @@ class TestApplyCommand:
 
         with patch("schemax.commands.apply.Prompt.ask") as mock_prompt:
             with patch("schemax.commands.apply.load_current_state") as mock_load:
-                with patch("schemax.providers.unity.auth.create_databricks_client"):
+                with patch("schemax.commands.apply.create_databricks_client"):
                     with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                         # Mock database query
                         mock_tracker.return_value.get_latest_deployment.return_value = None
@@ -490,7 +490,7 @@ class TestApplyCommand:
                 is_idempotent=True,
             )
 
-        with patch("schemax.providers.unity.auth.create_databricks_client"):
+        with patch("schemax.commands.apply.create_databricks_client"):
             with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                 mock_tracker.return_value.get_latest_deployment.return_value = {
                     "version": "v0.2.0",
@@ -585,7 +585,7 @@ class TestApplyCommand:
         }
         (schemax_dir / "changelog.json").write_text(json.dumps(changelog, indent=2))
 
-        with patch("schemax.providers.unity.auth.create_databricks_client"):
+        with patch("schemax.commands.apply.create_databricks_client"):
             with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
                 mock_tracker.return_value.get_latest_deployment.return_value = {
                     "version": "v0.2.0",

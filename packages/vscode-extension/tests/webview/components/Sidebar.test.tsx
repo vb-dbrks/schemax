@@ -247,6 +247,28 @@ describe('Sidebar Component', () => {
       );
     });
 
+    test('trims whitespace from tag key and value when pressing "+"', () => {
+      const { container } = render(<Sidebar />);
+
+      openAddCatalogDialog(container);
+
+      const nameInput = screen.getByPlaceholderText('Enter catalog name') as HTMLInputElement;
+      typeInto(nameInput, 'my_catalog');
+
+      const [keyInput, valueInput] = screen.getAllByPlaceholderText(/Key|Value/i) as HTMLInputElement[];
+      typeInto(keyInput, '  env  ');
+      typeInto(valueInput, '  production  ');
+
+      clickTagPlusButton(container);
+      fireEvent.submit(container.querySelector('form.modal-content') as HTMLFormElement);
+
+      // Key and value must be stored trimmed — no leading/trailing whitespace.
+      expect(mockAddCatalog).toHaveBeenCalledWith(
+        'my_catalog',
+        expect.objectContaining({ tags: { env: 'production' } })
+      );
+    });
+
     test('does not include partial tag when only key is filled', () => {
       const { container } = render(<Sidebar />);
 

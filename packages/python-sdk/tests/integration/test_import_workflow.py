@@ -81,6 +81,7 @@ def test_import_adopt_baseline_then_apply_is_zero_diff(monkeypatch, schemax_demo
     monkeypatch.setattr(
         "schemax.providers.unity.auth.create_databricks_client", lambda _: fake_client
     )
+    monkeypatch.setattr("schemax.commands.apply.create_databricks_client", lambda _: fake_client)
     monkeypatch.setattr("schemax.core.deployment.DeploymentTracker", _FakeDeploymentTracker)
     monkeypatch.setattr("schemax.commands.apply.DeploymentTracker", _FakeDeploymentTracker)
 

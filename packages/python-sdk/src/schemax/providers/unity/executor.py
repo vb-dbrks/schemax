@@ -6,6 +6,7 @@ the Databricks SQL Statement Execution API.
 """
 
 import time
+from typing import Any
 from uuid import uuid4
 
 from databricks.sdk import WorkspaceClient
@@ -31,7 +32,7 @@ class UnitySQLExecutor:
         client: Authenticated Databricks WorkspaceClient
     """
 
-    def __init__(self, client: WorkspaceClient):
+    def __init__(self, client: WorkspaceClient) -> None:
         """Initialize executor with authenticated client
 
         Args:
@@ -163,101 +164,101 @@ class UnitySQLExecutor:
         exec_start = time.time()
 
         try:
-            # Submit statement (non-blocking)
-            response = self.client.statement_execution.execute_statement(
-                warehouse_id=config.warehouse_id,
-                statement=sql,
-                wait_timeout="0s",  # Don't wait, we'll poll manually
-            )
+            response = self._submit_statement(sql, config)
+            statement_id = response.statement_id or ""
+            terminal = self._poll_until_terminal(statement_id, config.timeout_seconds)
 
-            statement_id = response.statement_id
-
-            # Poll for completion
-            elapsed = 0.0
-            while elapsed < config.timeout_seconds:
-                status_response = self.client.statement_execution.get_statement(statement_id or "")
-
-                if not status_response or not status_response.status:
-                    raise ExecutionError("Failed to get statement status")
-
-                state = status_response.status.state
-
-                # Check if completed
-                if state == StatementState.SUCCEEDED:
-                    exec_time_ms = int((time.time() - exec_start) * 1000)
-
-                    # Extract result data if available (for SELECT queries)
-                    result_data = None
-                    if (
-                        status_response.result
-                        and status_response.result.data_array
-                        and status_response.manifest
-                        and status_response.manifest.schema
-                        and status_response.manifest.schema.columns
-                    ):
-                        columns = [col.name for col in status_response.manifest.schema.columns]
-                        result_data = []
-                        for row in status_response.result.data_array:
-                            row_dict = {}
-                            for i, value in enumerate(row):
-                                if i < len(columns):
-                                    row_dict[columns[i]] = value
-                            result_data.append(row_dict)
-
-                    return StatementResult(
-                        statement_id=statement_id or "",
-                        sql=sql,
-                        status="success",
-                        execution_time_ms=exec_time_ms,
-                        rows_affected=None,  # Could extract from result if needed
-                        error_message=None,
-                        result_data=result_data,
-                    )
-
-                if state == StatementState.FAILED:
-                    error = status_response.status.error
-                    error_msg = error.message if error else "Unknown error"
-
-                    return StatementResult(
-                        statement_id=statement_id or "",
-                        sql=sql,
-                        status="failed",
-                        execution_time_ms=int((time.time() - exec_start) * 1000),
-                        error_message=error_msg,
-                        rows_affected=None,
-                    )
-
-                if state == StatementState.CANCELED:
-                    return StatementResult(
-                        statement_id=statement_id or "",
-                        sql=sql,
-                        status="failed",
-                        execution_time_ms=int((time.time() - exec_start) * 1000),
-                        error_message="Statement was canceled",
-                        rows_affected=None,
-                    )
-
-                # Still running, wait and poll again
-                time.sleep(2)
-                elapsed = float(time.time() - exec_start)
-
-            # Timeout reached
-            return StatementResult(
-                statement_id=statement_id or "",
-                sql=sql,
-                status="failed",
-                execution_time_ms=int((time.time() - exec_start) * 1000),
-                error_message=f"Statement execution timed out after {config.timeout_seconds}s",
-                rows_affected=None,
-            )
-
+            if terminal is None:
+                return self._make_failure_result(
+                    statement_id,
+                    sql,
+                    exec_start,
+                    f"Statement execution timed out after {config.timeout_seconds}s",
+                )
+            return self._handle_terminal_state(terminal, statement_id, sql, exec_start)
+        except ExecutionError:
+            raise
         except Exception as e:
-            # Catch any API errors
-            return StatementResult(
-                statement_id=f"stmt_error_{statement_num}",
-                sql=sql,
-                status="failed",
-                execution_time_ms=int((time.time() - exec_start) * 1000),
-                error_message=f"API error: {e}",
-                rows_affected=None,
+            return self._make_failure_result(
+                f"stmt_error_{statement_num}", sql, exec_start, f"API error: {e}"
             )
+
+    def _submit_statement(self, sql: str, config: ExecutionConfig) -> Any:
+        """Submit a SQL statement for async execution via the Databricks API."""
+        return self.client.statement_execution.execute_statement(
+            warehouse_id=config.warehouse_id,
+            statement=sql,
+            wait_timeout="0s",
+        )
+
+    def _poll_until_terminal(self, statement_id: str, timeout_seconds: int) -> Any | None:
+        """Poll until the statement reaches a terminal state or times out.
+
+        Returns the final status response, or None on timeout.
+        """
+        start = time.time()
+        while (time.time() - start) < timeout_seconds:
+            resp = self.client.statement_execution.get_statement(statement_id)
+            if not resp or not resp.status:
+                raise ExecutionError("Failed to get statement status")
+            state = resp.status.state
+            if state in (StatementState.SUCCEEDED, StatementState.FAILED, StatementState.CANCELED):
+                return resp
+            time.sleep(2)
+        return None
+
+    def _handle_terminal_state(
+        self, response: Any, statement_id: str, sql: str, exec_start: float
+    ) -> StatementResult:
+        """Dispatch on a terminal statement state to build the appropriate result."""
+        state = response.status.state
+
+        if state == StatementState.SUCCEEDED:
+            return StatementResult(
+                statement_id=statement_id,
+                sql=sql,
+                status="success",
+                execution_time_ms=int((time.time() - exec_start) * 1000),
+                rows_affected=None,
+                error_message=None,
+                result_data=self._parse_result_data(response),
+            )
+
+        if state == StatementState.FAILED:
+            error = response.status.error
+            error_msg = error.message if error else "Unknown error"
+            return self._make_failure_result(statement_id, sql, exec_start, error_msg)
+
+        # CANCELED
+        return self._make_failure_result(statement_id, sql, exec_start, "Statement was canceled")
+
+    @staticmethod
+    def _parse_result_data(response: Any) -> list[dict[str, object]] | None:
+        """Extract tabular result data from a SUCCEEDED response."""
+        if not (
+            response.result
+            and response.result.data_array
+            and response.manifest
+            and response.manifest.schema
+            and response.manifest.schema.columns
+        ):
+            return None
+        columns = [col.name for col in response.manifest.schema.columns]
+        return [
+            {columns[i]: v for i, v in enumerate(row) if i < len(columns)}
+            for row in response.result.data_array
+        ]
+
+    @staticmethod
+    def _make_failure_result(
+        statement_id: str, sql: str, exec_start: float, error_message: str
+    ) -> StatementResult:
+        """Build a failed StatementResult."""
+        return StatementResult(
+            statement_id=statement_id,
+            sql=sql,
+            status="failed",
+            execution_time_ms=int((time.time() - exec_start) * 1000),
+            error_message=error_message,
+            rows_affected=None,
+        )

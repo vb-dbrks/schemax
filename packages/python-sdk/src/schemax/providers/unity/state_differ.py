@@ -938,7 +938,7 @@ class UnityStateDiffer(StateDiffer):
             provider="unity",
             op="unity.drop_catalog",
             target=catalog["id"],
-            payload={},
+            payload={"name": catalog.get("name", "")},
         )
 
     def _create_add_schema_op(self, schema: dict[str, Any], catalog_id: str) -> Operation:

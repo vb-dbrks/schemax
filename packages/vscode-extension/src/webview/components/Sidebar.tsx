@@ -1386,8 +1386,10 @@ export const Sidebar: React.FC = () => {
                     appearance="secondary"
                     data-testid="add-tag-btn"
                     onClick={() => {
-                      if (addTagInput.tagName && addTagInput.tagValue) {
-                        setAddTags({...addTags, [addTagInput.tagName]: addTagInput.tagValue});
+                      const trimmedName = addTagInput.tagName.trim();
+                      const trimmedValue = addTagInput.tagValue.trim();
+                      if (trimmedName && trimmedValue) {
+                        setAddTags({...addTags, [trimmedName]: trimmedValue});
                         setAddTagInput({tagName: '', tagValue: ''});
                       }
                     }}
