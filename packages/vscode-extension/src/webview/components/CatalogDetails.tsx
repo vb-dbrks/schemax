@@ -5,7 +5,7 @@ import { validateUnityCatalogObjectName } from '../utils/unityNames';
 import { parsePrivileges } from '../utils/grants';
 import { RichComment } from './RichComment';
 import { BulkOperationsPanel } from './BulkOperationsPanel';
-import type { NamingStandardsRule, NamingRuleObjectType, NamingRuleTableType } from '../providers/unity/models';
+import type { NamingStandardsRule, NamingRuleObjectType } from '../providers/unity/models';
 
 // Codicon icons - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -32,13 +32,6 @@ const OBJECT_TYPE_LABELS: Record<NamingRuleObjectType, string> = {
   column: 'Column',
   volume: 'Volume',
   function: 'Function',
-};
-
-const TABLE_TYPE_LABELS: Record<NamingRuleTableType, string> = {
-  dimension: 'Dimension',
-  fact: 'Fact',
-  staging: 'Staging',
-  any: 'Any',
 };
 
 function newRuleId(): string {
@@ -76,9 +69,11 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const [showBulkPanel, setShowBulkPanel] = useState(false);
   const [addRuleForm, setAddRuleForm] = useState(false);
   const [newRuleObjectType, setNewRuleObjectType] = useState<NamingRuleObjectType>('schema');
-  const [newRuleTableType, setNewRuleTableType] = useState<NamingRuleTableType>('any');
   const [newRulePattern, setNewRulePattern] = useState('');
   const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editRuleObjectType, setEditRuleObjectType] = useState<NamingRuleObjectType>('schema');
+  const [editRulePattern, setEditRulePattern] = useState('');
 
   // Update local state when catalog changes
   useEffect(() => {
@@ -164,7 +159,6 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
     const newRule: NamingStandardsRule = {
       id: newRuleId(),
       objectType: newRuleObjectType,
-      tableType: newRuleObjectType === 'table' ? newRuleTableType : undefined,
       pattern: newRulePattern.trim() || undefined,
       enabled: true,
     };
@@ -174,8 +168,33 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
     });
     setAddRuleForm(false);
     setNewRuleObjectType('schema');
-    setNewRuleTableType('any');
     setNewRulePattern('');
+  };
+
+  const handleStartEditRule = (rule: NamingStandardsRule) => {
+    setEditingRuleId(rule.id);
+    setEditRuleObjectType(rule.objectType);
+    setEditRulePattern(rule.pattern ?? '');
+  };
+
+  const handleSaveEditRule = (ruleId: string) => {
+    const nextRules = rules.map((r) =>
+      r.id === ruleId
+        ? { ...r, objectType: editRuleObjectType, pattern: editRulePattern.trim() || undefined }
+        : r
+    );
+    updateCatalog(catalogId, {
+      namingStandards: { ...catalog?.namingStandards, rules: nextRules },
+    });
+    setEditingRuleId(null);
+    setEditRuleObjectType('schema');
+    setEditRulePattern('');
+  };
+
+  const handleCancelEditRule = () => {
+    setEditingRuleId(null);
+    setEditRuleObjectType('schema');
+    setEditRulePattern('');
   };
 
   const handleRemoveNamingRule = (ruleId: string) => {
@@ -303,165 +322,6 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
             </VSCodeButton>
           </div>
         </div>
-      </div>
-
-      {/* Naming Standards (catalog-level) */}
-      <div className="table-properties-section">
-        <h3>Naming Standards</h3>
-        <p className="section-description" style={{ marginTop: '4px', marginBottom: '8px', fontSize: '12px', color: 'var(--vscode-descriptionForeground)' }}>
-          Define naming rules for object types in this catalog (schema, table, view, column, etc.) and apply them on add or rename.
-        </p>
-        {rules.length === 0 && !addRuleForm ? (
-          <div className="empty-properties">
-            <p>No naming standards configured for this catalog. Click + Rule to add rules.</p>
-            <VSCodeButton
-              appearance="secondary"
-              onClick={() => setAddRuleForm(true)}
-              style={{ marginTop: '8px' }}
-            >
-              <IconPlus />
-              Rule
-            </VSCodeButton>
-          </div>
-        ) : (
-          <>
-            <div className="naming-standards-table-wrapper">
-              <table className="properties-table">
-                <thead>
-                  <tr>
-                    <th>Object</th>
-                    <th>Table type</th>
-                    <th>Pattern (regex)</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rules.map((rule) => (
-                    <tr key={rule.id}>
-                      <td>{OBJECT_TYPE_LABELS[rule.objectType]}</td>
-                      <td>
-                        {rule.objectType === 'table' && rule.tableType
-                          ? TABLE_TYPE_LABELS[rule.tableType]
-                          : '—'}
-                      </td>
-                      <td className="pattern-cell">
-                        <code title={rule.pattern || ''} style={{ fontSize: '11px' }}>
-                          {rule.pattern ?? '—'}
-                        </code>
-                      </td>
-                    <td className="actions-cell">
-                      <VSCodeButton
-                        appearance="icon"
-                        onClick={() => setDeleteRuleId(rule.id)}
-                        title="Delete rule"
-                      >
-                        <IconTrash />
-                      </VSCodeButton>
-                    </td>
-                  </tr>
-                ))}
-                {addRuleForm && (
-                  <tr className="adding-row">
-                    <td>
-                      <VSCodeDropdown
-                        value={newRuleObjectType}
-                        style={{ minWidth: '140px' }}
-                        onInput={(e: Event) => {
-                          const target = e.target as HTMLSelectElement;
-                          setNewRuleObjectType(target.value as NamingRuleObjectType);
-                        }}
-                      >
-                        {(Object.keys(OBJECT_TYPE_LABELS) as NamingRuleObjectType[]).map((key) => (
-                          <VSCodeOption key={key} value={key}>
-                            {OBJECT_TYPE_LABELS[key]}
-                          </VSCodeOption>
-                        ))}
-                      </VSCodeDropdown>
-                    </td>
-                    <td>
-                      {newRuleObjectType === 'table' ? (
-                        <VSCodeDropdown
-                          value={newRuleTableType}
-                          style={{ minWidth: '120px' }}
-                          onInput={(e: Event) => {
-                            const target = e.target as HTMLSelectElement;
-                            setNewRuleTableType(target.value as NamingRuleTableType);
-                          }}
-                        >
-                          {(Object.keys(TABLE_TYPE_LABELS) as NamingRuleTableType[]).map((key) => (
-                            <VSCodeOption key={key} value={key}>
-                              {TABLE_TYPE_LABELS[key]}
-                            </VSCodeOption>
-                          ))}
-                        </VSCodeDropdown>
-                      ) : (
-                        <span style={{ color: 'var(--vscode-descriptionForeground)' }}>—</span>
-                      )}
-                    </td>
-                    <td>
-                      <VSCodeTextField
-                        value={newRulePattern}
-                        placeholder="^[a-z][a-z0-9_]*$"
-                        style={{ minWidth: '160px' }}
-                        onInput={(e: Event) => {
-                          const target = e.target as HTMLInputElement;
-                          setNewRulePattern(target.value ?? '');
-                        }}
-                      />
-                    </td>
-                    <td className="actions-cell">
-                      <button
-                        className="action-button-save"
-                        onClick={handleAddNamingRule}
-                        title="Add rule"
-                      >
-                        ✓
-                      </button>
-                      <button
-                        className="action-button-cancel"
-                        onClick={() => {
-                          setAddRuleForm(false);
-                          setNewRulePattern('');
-                        }}
-                        title="Cancel"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                )}
-                </tbody>
-              </table>
-              {!addRuleForm && (
-                <VSCodeButton
-                  appearance="secondary"
-                  onClick={() => setAddRuleForm(true)}
-                  style={{ marginTop: '8px' }}
-                >
-                  <IconPlus />
-                  Rule
-                </VSCodeButton>
-              )}
-            </div>
-          </>
-        )}
-        {deleteRuleId && (
-          <div className="modal-overlay" style={{ position: 'fixed' }} onClick={() => setDeleteRuleId(null)}>
-            <div className="modal-content" style={{ maxWidth: '360px' }} onClick={(e) => e.stopPropagation()}>
-              <h3>Delete naming rule</h3>
-              <p>Remove this rule from the catalog naming standards?</p>
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
-                <VSCodeButton onClick={() => setDeleteRuleId(null)}>Cancel</VSCodeButton>
-                <VSCodeButton
-                  appearance="primary"
-                  onClick={() => handleRemoveNamingRule(deleteRuleId)}
-                >
-                  Delete
-                </VSCodeButton>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Managed Location */}
@@ -667,6 +527,170 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
         <button className="add-property-btn" onClick={() => { setEditingGrant(null); setGrantForm({ principal: '', privileges: '' }); setAddGrantDialog(true); }}>
           + Add Grant
         </button>
+      </div>
+
+      {/* Naming Standards (catalog-level) */}
+      <div className="table-properties-section">
+        <h3>Naming Standards</h3>
+
+        {rules.length === 0 && !addRuleForm ? (
+          <div className="empty-properties">
+            <p>No naming standards configured for this catalog.</p>
+          </div>
+        ) : (
+          <table className="properties-table">
+            <thead>
+              <tr>
+                <th>Object</th>
+                <th>Pattern (regex)</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map((rule) => (
+                <tr key={rule.id}>
+                  {editingRuleId === rule.id ? (
+                    <>
+                      <td>
+                        <VSCodeDropdown
+                          value={editRuleObjectType}
+                          style={{ minWidth: '140px' }}
+                          onInput={(e: Event) => {
+                            const target = e.target as HTMLSelectElement;
+                            setEditRuleObjectType(target.value as NamingRuleObjectType);
+                          }}
+                        >
+                          {(Object.keys(OBJECT_TYPE_LABELS) as NamingRuleObjectType[]).map((key) => (
+                            <VSCodeOption key={key} value={key}>
+                              {OBJECT_TYPE_LABELS[key]}
+                            </VSCodeOption>
+                          ))}
+                        </VSCodeDropdown>
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={editRulePattern}
+                          placeholder="^[a-z][a-z0-9_]*$"
+                          onChange={(e) => setEditRulePattern(e.target.value)}
+                        />
+                      </td>
+                      <td className="actions-cell">
+                        <button
+                          className="action-button-save"
+                          onClick={() => handleSaveEditRule(rule.id)}
+                          title="Save"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          className="action-button-cancel"
+                          onClick={handleCancelEditRule}
+                          title="Cancel"
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td><code>{OBJECT_TYPE_LABELS[rule.objectType]}</code></td>
+                      <td>
+                        <code title={rule.pattern || ''}>{rule.pattern ?? '—'}</code>
+                      </td>
+                      <td className="actions-cell">
+                        <VSCodeButton
+                          appearance="icon"
+                          onClick={() => handleStartEditRule(rule)}
+                          title="Edit rule"
+                        >
+                          <IconEdit />
+                        </VSCodeButton>
+                        <VSCodeButton
+                          appearance="icon"
+                          onClick={() => setDeleteRuleId(rule.id)}
+                          title="Delete rule"
+                        >
+                          <IconTrash />
+                        </VSCodeButton>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+              {addRuleForm && (
+                <tr className="adding-row">
+                  <td>
+                    <VSCodeDropdown
+                      value={newRuleObjectType}
+                      style={{ minWidth: '140px' }}
+                      onInput={(e: Event) => {
+                        const target = e.target as HTMLSelectElement;
+                        setNewRuleObjectType(target.value as NamingRuleObjectType);
+                      }}
+                    >
+                      {(Object.keys(OBJECT_TYPE_LABELS) as NamingRuleObjectType[]).map((key) => (
+                        <VSCodeOption key={key} value={key}>
+                          {OBJECT_TYPE_LABELS[key]}
+                        </VSCodeOption>
+                      ))}
+                    </VSCodeDropdown>
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      value={newRulePattern}
+                      placeholder="^[a-z][a-z0-9_]*$"
+                      onChange={(e) => setNewRulePattern(e.target.value)}
+                    />
+                  </td>
+                  <td className="actions-cell">
+                    <button
+                      className="action-button-save"
+                      onClick={handleAddNamingRule}
+                      title="Add rule"
+                    >
+                      ✓
+                    </button>
+                    <button
+                      className="action-button-cancel"
+                      onClick={() => {
+                        setAddRuleForm(false);
+                        setNewRulePattern('');
+                      }}
+                      title="Cancel"
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+
+        {!addRuleForm && !editingRuleId && (
+          <button
+            className="add-property-btn"
+            onClick={() => setAddRuleForm(true)}
+          >
+            + Add Rule
+          </button>
+        )}
+        {deleteRuleId && (
+          <div className="modal-overlay" onClick={() => setDeleteRuleId(null)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>Delete naming rule</h3>
+              <p>Remove this rule from the catalog naming standards?</p>
+              <div className="modal-buttons">
+                <button onClick={() => handleRemoveNamingRule(deleteRuleId)} style={{ backgroundColor: 'var(--vscode-errorForeground)' }}>
+                  Delete
+                </button>
+                <button onClick={() => setDeleteRuleId(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {deleteDialog && (
