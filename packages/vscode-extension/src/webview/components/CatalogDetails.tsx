@@ -544,11 +544,6 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
       {/* Naming Standards (catalog-level) */}
       <div className="table-properties-section">
         <h3>Naming Standards</h3>
-        {namingPatternError && (
-          <p className="form-error" style={{ marginTop: '4px', marginBottom: '8px' }}>
-            {namingPatternError}
-          </p>
-        )}
 
         {rules.length === 0 && !addRuleForm ? (
           <div className="empty-properties">
@@ -600,7 +595,6 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                           className="action-button-save"
                           onClick={() => handleSaveEditRule(rule.id)}
                           title="Save"
-                          disabled={!editRulePattern.trim()}
                         >
                           ✓
                         </button>
@@ -673,7 +667,6 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                       className="action-button-save"
                       onClick={handleAddNamingRule}
                       title="Add rule"
-                      disabled={!newRulePattern.trim()}
                     >
                       ✓
                     </button>
@@ -718,6 +711,18 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
           </div>
         )}
       </div>
+
+      {namingPatternError && (
+        <div className="modal-overlay" onClick={() => setNamingPatternError(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Invalid naming rule</h3>
+            <p>{namingPatternError}</p>
+            <div className="modal-buttons">
+              <button onClick={() => setNamingPatternError(null)}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteDialog && (
         <div className="modal-overlay" onClick={() => setDeleteDialog(null)}>
