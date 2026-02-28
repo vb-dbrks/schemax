@@ -53,41 +53,30 @@ class UnityStateDiffer(StateDiffer):
         old_cats = self._build_id_map(old_state_dict.get("catalogs", []))
         new_cats = self._build_id_map(new_state_dict.get("catalogs", []))
 
-        # Detect added catalogs
         for cat_id, cat in new_cats.items():
             if cat_id not in old_cats:
                 ops.append(self._create_add_catalog_op(cat))
-                # Add all schemas in this new catalog
                 ops.extend(self._add_all_schemas_in_catalog(cat_id, cat))
-                # Add catalog grants
                 ops.extend(self._diff_grants("catalog", cat_id, [], cat.get("grants", [])))
-            else:
-                # Catalog exists in both - check for changes
-                old_cat = old_cats[cat_id]
+                continue
 
-                # Check for rename
-                if old_cat["name"] != cat["name"]:
-                    if self._detect_rename(
-                        cat_id, cat_id, old_cat["name"], cat["name"], "rename_catalog"
-                    ):
-                        ops.append(
-                            self._create_rename_catalog_op(cat_id, old_cat["name"], cat["name"])
-                        )
-
-                # Compare schemas within catalog
-                ops.extend(self._diff_schemas(cat_id, old_cat, cat))
-
-                # Compare catalog grants
-                ops.extend(
-                    self._diff_grants(
-                        "catalog",
-                        cat_id,
-                        old_cat.get("grants", []),
-                        cat.get("grants", []),
-                    )
+            old_cat = old_cats[cat_id]
+            old_name = old_cat["name"]
+            new_name = cat["name"]
+            if old_name != new_name and self._detect_rename(
+                cat_id, cat_id, old_name, new_name, "rename_catalog"
+            ):
+                ops.append(self._create_rename_catalog_op(cat_id, old_name, new_name))
+            ops.extend(self._diff_schemas(cat_id, old_cat, cat))
+            ops.extend(
+                self._diff_grants(
+                    "catalog",
+                    cat_id,
+                    old_cat.get("grants", []),
+                    cat.get("grants", []),
                 )
+            )
 
-        # Detect removed catalogs
         for cat_id, cat in old_cats.items():
             if cat_id not in new_cats:
                 ops.append(self._create_drop_catalog_op(cat))
@@ -103,54 +92,38 @@ class UnityStateDiffer(StateDiffer):
         old_schemas = self._build_id_map(old_catalog.get("schemas", []))
         new_schemas = self._build_id_map(new_catalog.get("schemas", []))
 
-        # Detect added schemas
         for sch_id, sch in new_schemas.items():
             if sch_id not in old_schemas:
                 ops.append(self._create_add_schema_op(sch, catalog_id))
-                # Add all tables in this new schema
                 ops.extend(self._add_all_tables_in_schema(sch_id, sch))
-                # Add all views, volumes, functions, materialized views in this new schema
                 ops.extend(self._add_all_views_in_schema(sch_id, sch))
                 ops.extend(self._add_all_volumes_in_schema(sch_id, sch))
                 ops.extend(self._add_all_functions_in_schema(sch_id, sch))
                 ops.extend(self._add_all_materialized_views_in_schema(sch_id, sch))
-                # Add schema grants
                 ops.extend(self._diff_grants("schema", sch_id, [], sch.get("grants", [])))
-            else:
-                # Schema exists in both - check for changes
-                old_sch = old_schemas[sch_id]
+                continue
 
-                # Check for rename
-                if old_sch["name"] != sch["name"]:
-                    if self._detect_rename(
-                        sch_id, sch_id, old_sch["name"], sch["name"], "rename_schema"
-                    ):
-                        ops.append(
-                            self._create_rename_schema_op(sch_id, old_sch["name"], sch["name"])
-                        )
-
-                # Compare tables within schema
-                ops.extend(self._diff_tables(catalog_id, sch_id, old_sch, sch))
-
-                # Compare views within schema
-                ops.extend(self._diff_views(catalog_id, sch_id, old_sch, sch))
-
-                # Compare volumes, functions, materialized views within schema
-                ops.extend(self._diff_volumes(catalog_id, sch_id, old_sch, sch))
-                ops.extend(self._diff_functions(catalog_id, sch_id, old_sch, sch))
-                ops.extend(self._diff_materialized_views(catalog_id, sch_id, old_sch, sch))
-
-                # Compare schema grants
-                ops.extend(
-                    self._diff_grants(
-                        "schema",
-                        sch_id,
-                        old_sch.get("grants", []),
-                        sch.get("grants", []),
-                    )
+            old_sch = old_schemas[sch_id]
+            old_name = old_sch["name"]
+            new_name = sch["name"]
+            if old_name != new_name and self._detect_rename(
+                sch_id, sch_id, old_name, new_name, "rename_schema"
+            ):
+                ops.append(self._create_rename_schema_op(sch_id, old_name, new_name))
+            ops.extend(self._diff_tables(catalog_id, sch_id, old_sch, sch))
+            ops.extend(self._diff_views(catalog_id, sch_id, old_sch, sch))
+            ops.extend(self._diff_volumes(catalog_id, sch_id, old_sch, sch))
+            ops.extend(self._diff_functions(catalog_id, sch_id, old_sch, sch))
+            ops.extend(self._diff_materialized_views(catalog_id, sch_id, old_sch, sch))
+            ops.extend(
+                self._diff_grants(
+                    "schema",
+                    sch_id,
+                    old_sch.get("grants", []),
+                    sch.get("grants", []),
                 )
+            )
 
-        # Detect removed schemas
         for sch_id, sch in old_schemas.items():
             if sch_id not in new_schemas:
                 ops.append(self._create_drop_schema_op(sch))
@@ -170,68 +143,45 @@ class UnityStateDiffer(StateDiffer):
         old_tables = self._build_id_map(old_schema.get("tables", []))
         new_tables = self._build_id_map(new_schema.get("tables", []))
 
-        # Detect added tables
         for tbl_id, tbl in new_tables.items():
             if tbl_id not in old_tables:
                 ops.append(self._create_add_table_op(tbl, schema_id))
-                # Add all columns in this new table
                 ops.extend(self._add_all_columns_in_table(tbl_id, tbl))
-                # Add all tags for this table
                 ops.extend(self._add_all_tags_for_table(tbl_id, tbl))
-                # Add all constraints for this table
                 ops.extend(self._add_all_constraints_for_table(tbl_id, tbl))
-                # Add table grants
                 ops.extend(self._diff_grants("table", tbl_id, [], tbl.get("grants", [])))
-            else:
-                # Table exists in both - check for changes
-                old_tbl = old_tables[tbl_id]
+                continue
 
-                # Check for rename
-                if old_tbl["name"] != tbl["name"]:
-                    if self._detect_rename(
-                        tbl_id, tbl_id, old_tbl["name"], tbl["name"], "rename_table"
-                    ):
-                        ops.append(
-                            self._create_rename_table_op(tbl_id, old_tbl["name"], tbl["name"])
-                        )
-
-                # Check for table comment change
-                if old_tbl.get("comment") != tbl.get("comment"):
-                    ops.append(self._create_set_table_comment_op(tbl_id, tbl.get("comment")))
-
-                # Check for table property changes (TBLPROPERTIES / tags)
-                ops.extend(
-                    self._diff_table_properties(
-                        tbl_id, old_tbl.get("properties", {}), tbl.get("properties", {})
-                    )
+            old_tbl = old_tables[tbl_id]
+            old_name = old_tbl["name"]
+            new_name = tbl["name"]
+            if old_name != new_name and self._detect_rename(
+                tbl_id, tbl_id, old_name, new_name, "rename_table"
+            ):
+                ops.append(self._create_rename_table_op(tbl_id, old_name, new_name))
+            if old_tbl.get("comment") != tbl.get("comment"):
+                ops.append(self._create_set_table_comment_op(tbl_id, tbl.get("comment")))
+            ops.extend(
+                self._diff_table_properties(
+                    tbl_id, old_tbl.get("properties", {}), tbl.get("properties", {})
                 )
-
-                # Check for table tag changes
-                ops.extend(
-                    self._diff_table_tags(tbl_id, old_tbl.get("tags", {}), tbl.get("tags", {}))
+            )
+            ops.extend(self._diff_table_tags(tbl_id, old_tbl.get("tags", {}), tbl.get("tags", {})))
+            ops.extend(self._diff_columns(tbl_id, old_tbl, tbl))
+            ops.extend(
+                self._diff_constraints(
+                    tbl_id, old_tbl.get("constraints", []), tbl.get("constraints", [])
                 )
-
-                # Compare columns within table
-                ops.extend(self._diff_columns(tbl_id, old_tbl, tbl))
-
-                # Compare constraints within table
-                ops.extend(
-                    self._diff_constraints(
-                        tbl_id, old_tbl.get("constraints", []), tbl.get("constraints", [])
-                    )
+            )
+            ops.extend(
+                self._diff_grants(
+                    "table",
+                    tbl_id,
+                    old_tbl.get("grants", []),
+                    tbl.get("grants", []),
                 )
+            )
 
-                # Compare table grants
-                ops.extend(
-                    self._diff_grants(
-                        "table",
-                        tbl_id,
-                        old_tbl.get("grants", []),
-                        tbl.get("grants", []),
-                    )
-                )
-
-        # Detect removed tables
         for tbl_id, tbl in old_tables.items():
             if tbl_id not in new_tables:
                 ops.append(self._create_drop_table_op(tbl, catalog_id, schema_id))
@@ -251,44 +201,32 @@ class UnityStateDiffer(StateDiffer):
         old_views = self._build_id_map(old_schema.get("views", []))
         new_views = self._build_id_map(new_schema.get("views", []))
 
-        # Detect added views
         for view_id, view in new_views.items():
             if view_id not in old_views:
                 ops.append(self._create_add_view_op(view, schema_id))
-                # Add view grants
                 ops.extend(self._diff_grants("view", view_id, [], view.get("grants", [])))
-            else:
-                # View exists in both - check for changes
-                old_view = old_views[view_id]
+                continue
 
-                # Check for rename
-                if old_view["name"] != view["name"]:
-                    if self._detect_rename(
-                        view_id, view_id, old_view["name"], view["name"], "rename_view"
-                    ):
-                        ops.append(
-                            self._create_rename_view_op(view_id, old_view["name"], view["name"])
-                        )
-
-                # Check for definition change
-                if old_view.get("definition") != view.get("definition"):
-                    ops.append(self._create_update_view_op(view_id, view))
-
-                # Check for comment change
-                if old_view.get("comment") != view.get("comment"):
-                    ops.append(self._create_set_view_comment_op(view_id, view.get("comment")))
-
-                # Compare view grants
-                ops.extend(
-                    self._diff_grants(
-                        "view",
-                        view_id,
-                        old_view.get("grants", []),
-                        view.get("grants", []),
-                    )
+            old_view = old_views[view_id]
+            old_name = old_view["name"]
+            new_name = view["name"]
+            if old_name != new_name and self._detect_rename(
+                view_id, view_id, old_name, new_name, "rename_view"
+            ):
+                ops.append(self._create_rename_view_op(view_id, old_name, new_name))
+            if old_view.get("definition") != view.get("definition"):
+                ops.append(self._create_update_view_op(view_id, view))
+            if old_view.get("comment") != view.get("comment"):
+                ops.append(self._create_set_view_comment_op(view_id, view.get("comment")))
+            ops.extend(
+                self._diff_grants(
+                    "view",
+                    view_id,
+                    old_view.get("grants", []),
+                    view.get("grants", []),
                 )
+            )
 
-        # Detect removed views
         for view_id, view in old_views.items():
             if view_id not in new_views:
                 ops.append(self._create_drop_view_op(view, catalog_id, schema_id))
@@ -307,40 +245,35 @@ class UnityStateDiffer(StateDiffer):
         old_volumes = self._build_id_map(old_schema.get("volumes", []))
         new_volumes = self._build_id_map(new_schema.get("volumes", []))
 
-        for vol_id, vol in new_volumes.items():
-            if vol_id not in old_volumes:
-                ops.append(self._create_add_volume_op(vol, schema_id))
-                ops.extend(self._diff_grants("volume", vol_id, [], vol.get("grants", [])))
-            else:
-                old_vol = old_volumes[vol_id]
-                if old_vol.get("name") != vol.get("name"):
-                    if self._detect_rename(
-                        vol_id,
-                        vol_id,
-                        old_vol.get("name", ""),
-                        vol.get("name", ""),
-                        "rename_volume",
-                    ):
-                        ops.append(
-                            self._create_rename_volume_op(
-                                vol_id, old_vol.get("name", ""), vol.get("name", "")
-                            )
-                        )
-                if old_vol.get("comment") != vol.get("comment") or old_vol.get(
-                    "location"
-                ) != vol.get("location"):
-                    ops.append(self._create_update_volume_op(vol_id, vol))
-                ops.extend(
-                    self._diff_grants(
-                        "volume",
-                        vol_id,
-                        old_vol.get("grants", []),
-                        vol.get("grants", []),
-                    )
+        for volume_id, volume in new_volumes.items():
+            if volume_id not in old_volumes:
+                ops.append(self._create_add_volume_op(volume, schema_id))
+                ops.extend(self._diff_grants("volume", volume_id, [], volume.get("grants", [])))
+                continue
+
+            old_volume = old_volumes[volume_id]
+            old_name = old_volume.get("name", "")
+            new_name = volume.get("name", "")
+            if old_name != new_name and self._detect_rename(
+                volume_id, volume_id, old_name, new_name, "rename_volume"
+            ):
+                ops.append(self._create_rename_volume_op(volume_id, old_name, new_name))
+            if old_volume.get("comment") != volume.get("comment") or old_volume.get(
+                "location"
+            ) != volume.get("location"):
+                ops.append(self._create_update_volume_op(volume_id, volume))
+            ops.extend(
+                self._diff_grants(
+                    "volume",
+                    volume_id,
+                    old_volume.get("grants", []),
+                    volume.get("grants", []),
                 )
-        for vol_id, vol in old_volumes.items():
-            if vol_id not in new_volumes:
-                ops.append(self._create_drop_volume_op(vol, catalog_id, schema_id))
+            )
+
+        for volume_id, volume in old_volumes.items():
+            if volume_id not in new_volumes:
+                ops.append(self._create_drop_volume_op(volume, catalog_id, schema_id))
         return ops
 
     def _diff_functions(
@@ -355,42 +288,41 @@ class UnityStateDiffer(StateDiffer):
         old_functions = self._build_id_map(old_schema.get("functions", []))
         new_functions = self._build_id_map(new_schema.get("functions", []))
 
-        for func_id, func in new_functions.items():
-            if func_id not in old_functions:
-                ops.append(self._create_add_function_op(func, schema_id))
-                ops.extend(self._diff_grants("function", func_id, [], func.get("grants", [])))
-            else:
-                old_func = old_functions[func_id]
-                if old_func.get("name") != func.get("name"):
-                    if self._detect_rename(
-                        func_id,
-                        func_id,
-                        old_func.get("name", ""),
-                        func.get("name", ""),
-                        "rename_function",
-                    ):
-                        ops.append(
-                            self._create_rename_function_op(
-                                func_id, old_func.get("name", ""), func.get("name", "")
-                            )
-                        )
-                if old_func.get("body") != func.get("body") or old_func.get(
-                    "returnType"
-                ) != func.get("returnType"):
-                    ops.append(self._create_update_function_op(func_id, func))
-                if old_func.get("comment") != func.get("comment"):
-                    ops.append(self._create_set_function_comment_op(func_id, func.get("comment")))
+        for function_id, function in new_functions.items():
+            if function_id not in old_functions:
+                ops.append(self._create_add_function_op(function, schema_id))
                 ops.extend(
-                    self._diff_grants(
-                        "function",
-                        func_id,
-                        old_func.get("grants", []),
-                        func.get("grants", []),
-                    )
+                    self._diff_grants("function", function_id, [], function.get("grants", []))
                 )
-        for func_id, func in old_functions.items():
-            if func_id not in new_functions:
-                ops.append(self._create_drop_function_op(func, catalog_id, schema_id))
+                continue
+
+            old_function = old_functions[function_id]
+            old_name = old_function.get("name", "")
+            new_name = function.get("name", "")
+            if old_name != new_name and self._detect_rename(
+                function_id, function_id, old_name, new_name, "rename_function"
+            ):
+                ops.append(self._create_rename_function_op(function_id, old_name, new_name))
+            if old_function.get("body") != function.get("body") or old_function.get(
+                "returnType"
+            ) != function.get("returnType"):
+                ops.append(self._create_update_function_op(function_id, function))
+            if old_function.get("comment") != function.get("comment"):
+                ops.append(
+                    self._create_set_function_comment_op(function_id, function.get("comment"))
+                )
+            ops.extend(
+                self._diff_grants(
+                    "function",
+                    function_id,
+                    old_function.get("grants", []),
+                    function.get("grants", []),
+                )
+            )
+
+        for function_id, function in old_functions.items():
+            if function_id not in new_functions:
+                ops.append(self._create_drop_function_op(function, catalog_id, schema_id))
         return ops
 
     def _diff_materialized_views(
@@ -402,51 +334,71 @@ class UnityStateDiffer(StateDiffer):
     ) -> list[Operation]:
         """Compare materialized views within a schema"""
         ops: list[Operation] = []
-        old_mvs = self._build_id_map(
+        old_materialized_views = self._build_id_map(
             old_schema.get("materialized_views", old_schema.get("materializedViews", []))
         )
-        new_mvs = self._build_id_map(
+        new_materialized_views = self._build_id_map(
             new_schema.get("materialized_views", new_schema.get("materializedViews", []))
         )
 
-        for mv_id, mv in new_mvs.items():
-            if mv_id not in old_mvs:
-                ops.append(self._create_add_materialized_view_op(mv, schema_id))
-                ops.extend(self._diff_grants("materialized_view", mv_id, [], mv.get("grants", [])))
-            else:
-                old_mv = old_mvs[mv_id]
-                if old_mv.get("name") != mv.get("name"):
-                    if self._detect_rename(
-                        mv_id,
-                        mv_id,
-                        old_mv.get("name", ""),
-                        mv.get("name", ""),
-                        "rename_materialized_view",
-                    ):
-                        ops.append(
-                            self._create_rename_materialized_view_op(
-                                mv_id, old_mv.get("name", ""), mv.get("name", "")
-                            )
-                        )
-                if old_mv.get("definition") != mv.get("definition") or old_mv.get(
-                    "refreshSchedule"
-                ) != mv.get("refreshSchedule"):
-                    ops.append(self._create_update_materialized_view_op(mv_id, mv))
-                if old_mv.get("comment") != mv.get("comment"):
-                    ops.append(
-                        self._create_set_materialized_view_comment_op(mv_id, mv.get("comment"))
-                    )
+        for materialized_view_id, materialized_view in new_materialized_views.items():
+            if materialized_view_id not in old_materialized_views:
+                ops.append(self._create_add_materialized_view_op(materialized_view, schema_id))
                 ops.extend(
                     self._diff_grants(
                         "materialized_view",
-                        mv_id,
-                        old_mv.get("grants", []),
-                        mv.get("grants", []),
+                        materialized_view_id,
+                        [],
+                        materialized_view.get("grants", []),
                     )
                 )
-        for mv_id, mv in old_mvs.items():
-            if mv_id not in new_mvs:
-                ops.append(self._create_drop_materialized_view_op(mv, catalog_id, schema_id))
+                continue
+
+            old_materialized_view = old_materialized_views[materialized_view_id]
+            old_name = old_materialized_view.get("name", "")
+            new_name = materialized_view.get("name", "")
+            if old_name != new_name and self._detect_rename(
+                materialized_view_id,
+                materialized_view_id,
+                old_name,
+                new_name,
+                "rename_materialized_view",
+            ):
+                ops.append(
+                    self._create_rename_materialized_view_op(
+                        materialized_view_id, old_name, new_name
+                    )
+                )
+            if old_materialized_view.get("definition") != materialized_view.get(
+                "definition"
+            ) or old_materialized_view.get("refreshSchedule") != materialized_view.get(
+                "refreshSchedule"
+            ):
+                ops.append(
+                    self._create_update_materialized_view_op(
+                        materialized_view_id, materialized_view
+                    )
+                )
+            if old_materialized_view.get("comment") != materialized_view.get("comment"):
+                ops.append(
+                    self._create_set_materialized_view_comment_op(
+                        materialized_view_id, materialized_view.get("comment")
+                    )
+                )
+            ops.extend(
+                self._diff_grants(
+                    "materialized_view",
+                    materialized_view_id,
+                    old_materialized_view.get("grants", []),
+                    materialized_view.get("grants", []),
+                )
+            )
+
+        for materialized_view_id, materialized_view in old_materialized_views.items():
+            if materialized_view_id not in new_materialized_views:
+                ops.append(
+                    self._create_drop_materialized_view_op(materialized_view, catalog_id, schema_id)
+                )
         return ops
 
     def _diff_grants(
@@ -462,10 +414,10 @@ class UnityStateDiffer(StateDiffer):
         """
         ops: list[Operation] = []
 
-        def norm(g: Any) -> tuple[str, list[str]]:
-            if isinstance(g, dict):
-                principal = (g.get("principal") or "").strip()
-                privs = g.get("privileges") or []
+        def normalize_grant(grant: Any) -> tuple[str, list[str]]:
+            if isinstance(grant, dict):
+                principal = (grant.get("principal") or "").strip()
+                privs = grant.get("privileges") or []
                 return (principal, list(privs) if isinstance(privs, list) else [])
             return ("", [])
 
@@ -473,37 +425,70 @@ class UnityStateDiffer(StateDiffer):
             """Explicitly reject empty principal (invalid for SQL; skip in diff)."""
             return bool(principal and principal.strip())
 
-        old_map = {
-            norm(g)[0]: norm(g)[1] for g in (old_grants or []) if valid_principal(norm(g)[0])
-        }
-        new_map = {
-            norm(g)[0]: norm(g)[1] for g in (new_grants or []) if valid_principal(norm(g)[0])
-        }
+        def build_grant_map(grants: list[Any]) -> dict[str, list[str]]:
+            grant_map: dict[str, list[str]] = {}
+            for grant in grants:
+                principal, privileges = normalize_grant(grant)
+                if valid_principal(principal):
+                    grant_map[principal] = privileges
+            return grant_map
+
+        old_map = build_grant_map(old_grants or [])
+        new_map = build_grant_map(new_grants or [])
 
         all_principals = set(old_map) | set(new_map)
         for principal in all_principals:
-            old_privs = set(old_map.get(principal, []))
-            new_privs = set(new_map.get(principal, []))
-            removed = old_privs - new_privs
-            added = new_privs - old_privs
-            if principal not in old_map and new_privs:
-                ops.append(
-                    self._create_add_grant_op(target_type, target_id, principal, list(new_privs))
+            ops.extend(
+                self._grant_delta_operations(
+                    target_type=target_type,
+                    target_id=target_id,
+                    principal=principal,
+                    old_map=old_map,
+                    new_map=new_map,
                 )
-            elif principal not in new_map and old_privs:
-                ops.append(self._create_revoke_grant_op(target_type, target_id, principal, None))
-            else:
-                if removed:
-                    ops.append(
-                        self._create_revoke_grant_op(
-                            target_type, target_id, principal, list(removed)
-                        )
-                    )
-                if added:
-                    ops.append(
-                        self._create_add_grant_op(target_type, target_id, principal, list(added))
-                    )
+            )
 
+        return ops
+
+    def _grant_delta_operations(
+        self,
+        target_type: str,
+        target_id: str,
+        principal: str,
+        old_map: dict[str, list[str]],
+        new_map: dict[str, list[str]],
+    ) -> list[Operation]:
+        """Generate grant delta operations for one principal."""
+        old_privs = set(old_map.get(principal, []))
+        new_privs = set(new_map.get(principal, []))
+        if principal not in old_map and new_privs:
+            return [self._create_add_grant_op(target_type, target_id, principal, list(new_privs))]
+        if principal not in new_map and old_privs:
+            return [self._create_revoke_grant_op(target_type, target_id, principal, None)]
+        return self._changed_privilege_operations(
+            target_type=target_type,
+            target_id=target_id,
+            principal=principal,
+            removed=old_privs - new_privs,
+            added=new_privs - old_privs,
+        )
+
+    def _changed_privilege_operations(
+        self,
+        target_type: str,
+        target_id: str,
+        principal: str,
+        removed: set[str],
+        added: set[str],
+    ) -> list[Operation]:
+        """Generate revoke/add operations when principal remains but privileges changed."""
+        ops: list[Operation] = []
+        if removed:
+            ops.append(
+                self._create_revoke_grant_op(target_type, target_id, principal, list(removed))
+            )
+        if added:
+            ops.append(self._create_add_grant_op(target_type, target_id, principal, list(added)))
         return ops
 
     def _diff_columns(
@@ -515,69 +500,17 @@ class UnityStateDiffer(StateDiffer):
         old_columns = self._build_id_map(old_table.get("columns", []))
         new_columns = self._build_id_map(new_table.get("columns", []))
 
-        # Detect added columns
         for col_id, col in new_columns.items():
             if col_id not in old_columns:
-                # Safety check - skip columns missing required fields
                 if all(key in col for key in ("id", "name", "type")):
                     ops.append(self._create_add_column_op(col, table_id))
-            else:
-                # Column exists in both - check for changes
-                old_col = old_columns[col_id]
+                continue
+            ops.extend(self._diff_existing_column(col_id, table_id, old_columns[col_id], col))
 
-                try:
-                    # Check for rename (only if both have name)
-                    if "name" in old_col and "name" in col and old_col["name"] != col["name"]:
-                        if self._detect_rename(
-                            col_id, col_id, old_col["name"], col["name"], "rename_column"
-                        ):
-                            ops.append(
-                                self._create_rename_column_op(
-                                    col_id, table_id, old_col["name"], col["name"]
-                                )
-                            )
-
-                    # Check for type change
-                    if old_col.get("type") != col.get("type") and "type" in col:
-                        ops.append(
-                            self._create_change_column_type_op(col_id, table_id, col["type"])
-                        )
-
-                    # Check for nullable change
-                    if old_col.get("nullable") != col.get("nullable"):
-                        ops.append(self._create_set_nullable_op(col_id, table_id, col["nullable"]))
-
-                    # Check for comment change
-                    if old_col.get("comment") != col.get("comment"):
-                        ops.append(
-                            self._create_set_column_comment_op(col_id, table_id, col.get("comment"))
-                        )
-
-                    # Check for column tag changes (only if column has name)
-                    if "name" in col:
-                        ops.extend(
-                            self._diff_column_tags(
-                                col_id,
-                                table_id,
-                                col["name"],  # Pass column name for SQL generation
-                                old_col.get("tags", {}),
-                                col.get("tags", {}),
-                            )
-                        )
-                except Exception:
-                    # Re-raise to maintain error handling behavior
-                    raise
-
-        # Detect removed columns
         for col_id, col in old_columns.items():
             if col_id not in new_columns:
                 ops.append(self._create_drop_column_op(col, table_id))
 
-        # Check for column order changes
-        # Only generate reorder operation if:
-        # 1. Both states have columns
-        # 2. Same columns exist in both (no adds/removes in this diff cycle)
-        # 3. Order is different
         old_column_order = [col["id"] for col in old_table.get("columns", [])]
         new_column_order = [col["id"] for col in new_table.get("columns", [])]
 
@@ -591,6 +524,42 @@ class UnityStateDiffer(StateDiffer):
                 self._create_reorder_columns_op(table_id, new_column_order, old_column_order)
             )
 
+        return ops
+
+    def _diff_existing_column(
+        self,
+        col_id: str,
+        table_id: str,
+        old_col: dict[str, Any],
+        new_col: dict[str, Any],
+    ) -> list[Operation]:
+        """Compare an existing column and return update operations."""
+        ops: list[Operation] = []
+        old_name = old_col.get("name")
+        new_name = new_col.get("name")
+        if (
+            old_name
+            and new_name
+            and old_name != new_name
+            and self._detect_rename(col_id, col_id, old_name, new_name, "rename_column")
+        ):
+            ops.append(self._create_rename_column_op(col_id, table_id, old_name, new_name))
+        if old_col.get("type") != new_col.get("type") and "type" in new_col:
+            ops.append(self._create_change_column_type_op(col_id, table_id, new_col["type"]))
+        if old_col.get("nullable") != new_col.get("nullable"):
+            ops.append(self._create_set_nullable_op(col_id, table_id, new_col["nullable"]))
+        if old_col.get("comment") != new_col.get("comment"):
+            ops.append(self._create_set_column_comment_op(col_id, table_id, new_col.get("comment")))
+        if "name" in new_col:
+            ops.extend(
+                self._diff_column_tags(
+                    col_id,
+                    table_id,
+                    new_col["name"],
+                    old_col.get("tags", {}),
+                    new_col.get("tags", {}),
+                )
+            )
         return ops
 
     def _diff_table_properties(
@@ -691,37 +660,24 @@ class UnityStateDiffer(StateDiffer):
         - parentTable, parentColumns (for FOREIGN KEY)
         - expression (for CHECK)
         """
-        # Check core fields
         if old_constraint.get("type") != new_constraint.get("type"):
             return True
         if old_constraint.get("name") != new_constraint.get("name"):
             return True
-
-        # Check columns (order matters for PRIMARY KEY)
-        old_cols = old_constraint.get("columns", [])
-        new_cols = new_constraint.get("columns", [])
-        if old_cols != new_cols:
+        if old_constraint.get("columns", []) != new_constraint.get("columns", []):
             return True
 
-        # Type-specific checks
         constraint_type = old_constraint.get("type")
-
         if constraint_type == "primary_key":
-            if old_constraint.get("timeseries") != new_constraint.get("timeseries"):
-                return True
-
-        elif constraint_type == "foreign_key":
+            return old_constraint.get("timeseries") != new_constraint.get("timeseries")
+        if constraint_type == "foreign_key":
             if old_constraint.get("parentTable") != new_constraint.get("parentTable"):
                 return True
-            old_parent_cols = old_constraint.get("parentColumns", [])
-            new_parent_cols = new_constraint.get("parentColumns", [])
-            if old_parent_cols != new_parent_cols:
-                return True
-
-        elif constraint_type == "check":
-            if old_constraint.get("expression") != new_constraint.get("expression"):
-                return True
-
+            old_parent_cols = cast(list[Any], old_constraint.get("parentColumns", []))
+            new_parent_cols = cast(list[Any], new_constraint.get("parentColumns", []))
+            return old_parent_cols != new_parent_cols
+        if constraint_type == "check":
+            return old_constraint.get("expression") != new_constraint.get("expression")
         return False
 
     def _diff_column_tags(
@@ -844,10 +800,17 @@ class UnityStateDiffer(StateDiffer):
         """Add all materialized views in a newly created schema"""
         ops: list[Operation] = []
         mvs = schema.get("materialized_views", schema.get("materializedViews", []))
-        for mv in mvs:
-            mv_id = mv["id"]
-            ops.append(self._create_add_materialized_view_op(mv, schema_id))
-            ops.extend(self._diff_grants("materialized_view", mv_id, [], mv.get("grants", [])))
+        for materialized_view in mvs:
+            materialized_view_id = materialized_view["id"]
+            ops.append(self._create_add_materialized_view_op(materialized_view, schema_id))
+            ops.extend(
+                self._diff_grants(
+                    "materialized_view",
+                    materialized_view_id,
+                    [],
+                    materialized_view.get("grants", []),
+                )
+            )
         return ops
 
     def _add_all_columns_in_table(self, table_id: str, table: dict[str, Any]) -> list[Operation]:
@@ -855,24 +818,26 @@ class UnityStateDiffer(StateDiffer):
         ops: list[Operation] = []
 
         for column in table.get("columns", []):
-            # Safety check - skip columns missing required fields
             if not all(key in column for key in ("id", "name", "type")):
                 continue
-
             ops.append(self._create_add_column_op(column, table_id))
+            ops.extend(self._create_column_tag_ops(column, table_id))
 
-            # Add column tags if present
-            column_tags = column.get("tags")
-            if column_tags and isinstance(column_tags, dict):
-                column_name = column.get("name")
-                if column_name:  # Safety check - column must have name
-                    for tag_name, tag_value in column_tags.items():
-                        ops.append(
-                            self._create_set_column_tag_op(
-                                column["id"], table_id, column_name, tag_name, str(tag_value)
-                            )
-                        )
+        return ops
 
+    def _create_column_tag_ops(self, column: dict[str, Any], table_id: str) -> list[Operation]:
+        """Create tag operations for one column."""
+        column_tags = column.get("tags")
+        column_name = column.get("name")
+        if not column_tags or not isinstance(column_tags, dict) or not column_name:
+            return []
+        ops: list[Operation] = []
+        for tag_name, tag_value in column_tags.items():
+            ops.append(
+                self._create_set_column_tag_op(
+                    column["id"], table_id, column_name, tag_name, str(tag_value)
+                )
+            )
         return ops
 
     def _add_all_tags_for_table(self, table_id: str, table: dict[str, Any]) -> list[Operation]:
@@ -1274,77 +1239,83 @@ class UnityStateDiffer(StateDiffer):
         )
 
     # Materialized view operation creators
-    def _create_add_materialized_view_op(self, mv: dict[str, Any], schema_id: str) -> Operation:
-        mv_id = mv.get("id", "")
+    def _create_add_materialized_view_op(
+        self, materialized_view: dict[str, Any], schema_id: str
+    ) -> Operation:
+        materialized_view_id = materialized_view.get("id", "")
         payload: dict[str, Any] = {
-            "materializedViewId": mv_id,
-            "name": mv.get("name", ""),
+            "materializedViewId": materialized_view_id,
+            "name": materialized_view.get("name", ""),
             "schemaId": schema_id,
-            "definition": mv.get("definition", "SELECT 1"),
+            "definition": materialized_view.get("definition", "SELECT 1"),
         }
-        if mv.get("comment") is not None:
-            payload["comment"] = mv["comment"]
-        if mv.get("refreshSchedule") is not None:
-            payload["refreshSchedule"] = mv["refreshSchedule"]
-        if mv.get("refresh_schedule") is not None:
-            payload["refreshSchedule"] = mv["refresh_schedule"]
-        if mv.get("dependencies") is not None:
-            payload["dependencies"] = mv["dependencies"]
-        if mv.get("extractedDependencies") is not None:
-            payload["extractedDependencies"] = mv["extractedDependencies"]
+        if materialized_view.get("comment") is not None:
+            payload["comment"] = materialized_view["comment"]
+        if materialized_view.get("refreshSchedule") is not None:
+            payload["refreshSchedule"] = materialized_view["refreshSchedule"]
+        if materialized_view.get("refresh_schedule") is not None:
+            payload["refreshSchedule"] = materialized_view["refresh_schedule"]
+        if materialized_view.get("dependencies") is not None:
+            payload["dependencies"] = materialized_view["dependencies"]
+        if materialized_view.get("extractedDependencies") is not None:
+            payload["extractedDependencies"] = materialized_view["extractedDependencies"]
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.add_materialized_view",
-            target=mv_id,
+            target=materialized_view_id,
             payload=payload,
         )
 
     def _create_rename_materialized_view_op(
-        self, mv_id: str, old_name: str, new_name: str
+        self, materialized_view_id: str, old_name: str, new_name: str
     ) -> Operation:
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.rename_materialized_view",
-            target=mv_id,
+            target=materialized_view_id,
             payload={"oldName": old_name, "newName": new_name},
         )
 
-    def _create_update_materialized_view_op(self, mv_id: str, mv: dict[str, Any]) -> Operation:
+    def _create_update_materialized_view_op(
+        self, materialized_view_id: str, materialized_view: dict[str, Any]
+    ) -> Operation:
         payload: dict[str, Any] = {
-            "definition": mv.get("definition"),
-            "refreshSchedule": mv.get("refreshSchedule", mv.get("refresh_schedule")),
-            "extractedDependencies": mv.get("extractedDependencies"),
+            "definition": materialized_view.get("definition"),
+            "refreshSchedule": materialized_view.get(
+                "refreshSchedule", materialized_view.get("refresh_schedule")
+            ),
+            "extractedDependencies": materialized_view.get("extractedDependencies"),
         }
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.update_materialized_view",
-            target=mv_id,
+            target=materialized_view_id,
             payload=payload,
         )
 
     def _create_set_materialized_view_comment_op(
-        self, mv_id: str, comment: str | None
+        self, materialized_view_id: str, comment: str | None
     ) -> Operation:
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.set_materialized_view_comment",
-            target=mv_id,
-            payload={"materializedViewId": mv_id, "comment": comment},
+            target=materialized_view_id,
+            payload={"materializedViewId": materialized_view_id, "comment": comment},
         )
 
     def _create_drop_materialized_view_op(
-        self, mv: dict[str, Any], catalog_id: str, schema_id: str
+        self, materialized_view: dict[str, Any], catalog_id: str, schema_id: str
     ) -> Operation:
         payload: dict[str, Any] = {
-            "name": mv.get("name", ""),
+            "name": materialized_view.get("name", ""),
             "catalogId": catalog_id,
             "schemaId": schema_id,
         }
@@ -1353,7 +1324,7 @@ class UnityStateDiffer(StateDiffer):
             ts=datetime.now(UTC).isoformat(),
             provider="unity",
             op="unity.drop_materialized_view",
-            target=mv["id"],
+            target=materialized_view["id"],
             payload=payload,
         )
 

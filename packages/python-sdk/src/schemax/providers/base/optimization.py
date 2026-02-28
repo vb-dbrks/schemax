@@ -98,22 +98,25 @@ class ColumnReorderOptimizer:
         if original_order == final_order:
             return 0
 
+        original_index = {column_id: index for index, column_id in enumerate(original_order)}
+
         # Count inversions (pairs that are out of order)
         distance = 0
-        n = len(final_order)
+        order_size = len(final_order)
 
-        for i in range(n):
-            for j in range(i + 1, n):
+        for i in range(order_size):
+            for j in range(i + 1, order_size):
                 col_i = final_order[i]
                 col_j = final_order[j]
 
-                if col_i in original_order and col_j in original_order:
-                    orig_i = original_order.index(col_i)
-                    orig_j = original_order.index(col_j)
+                orig_i = original_index.get(col_i)
+                orig_j = original_index.get(col_j)
+                if orig_i is None or orig_j is None:
+                    continue
 
-                    # Check if this pair is inverted (relative order changed)
-                    if (orig_i < orig_j) != (i < j):
-                        distance += 1
+                # Check if this pair is inverted (relative order changed)
+                if (orig_i < orig_j) != (i < j):
+                    distance += 1
 
         return distance
 

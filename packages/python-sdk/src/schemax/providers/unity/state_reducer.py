@@ -1,10 +1,12 @@
 """
-Unity Catalog State Reducer
+Unity Catalog state reducer.
 
 Applies operations to Unity Catalog state immutably.
-Migrated from TypeScript state-reducer.ts
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator
 from copy import deepcopy
 from typing import Any
 
@@ -27,35 +29,137 @@ from .models import (
     UnityVolume,
 )
 
+OperationDict = dict[str, Any]
+OperationHandler = Callable[[UnityState, OperationDict], None]
+GrantTarget = (
+    UnityCatalog
+    | UnitySchema
+    | UnityTable
+    | UnityView
+    | UnityVolume
+    | UnityFunction
+    | UnityMaterializedView
+)
 
-def apply_operation(state: UnityState, op: Operation) -> UnityState:
-    """
-    Apply a single operation to Unity Catalog state
 
-    Args:
-        state: Current state
-        op: Operation to apply (can be Operation object or dict)
-
-    Returns:
-        New state with operation applied (immutable)
-    """
-    # Deep clone state for immutability
+def apply_operation(state: UnityState, operation: Operation) -> UnityState:
+    """Apply a single operation to Unity Catalog state."""
     new_state = deepcopy(state)
+    _apply_operation_mutating(new_state, operation)
+    return new_state
 
-    # Convert Operation object to dict if necessary
-    op_dict: dict[str, Any]
-    if not isinstance(op, dict):
-        op_dict = op.model_dump()
-    else:
-        op_dict = op
 
-    # Strip provider prefix from operation type
-    op_type = op_dict.get("op", "").replace("unity.", "")
+def apply_operations(state: UnityState, operations: list[Operation]) -> UnityState:
+    """Apply multiple operations to Unity Catalog state."""
+    if not operations:
+        return state
+    current_state = deepcopy(state)
+    for operation in operations:
+        _apply_operation_mutating(current_state, operation)
+    return current_state
 
-    # Catalog operations
-    if op_type == "add_catalog":
-        payload = op_dict.get("payload", {})
-        catalog = UnityCatalog(
+
+def _normalize_operation(operation: Operation | OperationDict) -> OperationDict:
+    if isinstance(operation, dict):
+        return operation
+    return operation.model_dump()
+
+
+def _payload(operation_dict: OperationDict) -> OperationDict:
+    payload = operation_dict.get("payload", {})
+    return payload if isinstance(payload, dict) else {}
+
+
+def _apply_operation_mutating(state: UnityState, operation: Operation | OperationDict) -> None:
+    """Apply one operation in-place to an existing mutable state object."""
+    operation_dict = _normalize_operation(operation)
+    operation_type = str(operation_dict.get("op", "")).replace("unity.", "")
+    handler = _HANDLERS.get(operation_type)
+    if handler:
+        handler(state, operation_dict)
+
+
+def _iter_schemas(state: UnityState) -> Iterator[UnitySchema]:
+    for catalog in state.catalogs:
+        yield from catalog.schemas
+
+
+def _find_catalog(state: UnityState, catalog_id: str) -> UnityCatalog | None:
+    for catalog in state.catalogs:
+        if catalog.id == catalog_id:
+            return catalog
+    return None
+
+
+def _find_schema(state: UnityState, schema_id: str) -> UnitySchema | None:
+    for schema in _iter_schemas(state):
+        if schema.id == schema_id:
+            return schema
+    return None
+
+
+def _find_table(state: UnityState, table_id: str) -> UnityTable | None:
+    for schema in _iter_schemas(state):
+        for table in schema.tables:
+            if table.id == table_id:
+                return table
+    return None
+
+
+def _find_view(state: UnityState, view_id: str) -> UnityView | None:
+    for schema in _iter_schemas(state):
+        for view in schema.views:
+            if view.id == view_id:
+                return view
+    return None
+
+
+def _find_volume(state: UnityState, volume_id: str) -> UnityVolume | None:
+    for schema in _iter_schemas(state):
+        for volume in schema.volumes:
+            if volume.id == volume_id:
+                return volume
+    return None
+
+
+def _find_function(state: UnityState, function_id: str) -> UnityFunction | None:
+    for schema in _iter_schemas(state):
+        for function in schema.functions:
+            if function.id == function_id:
+                return function
+    return None
+
+
+def _find_materialized_view(
+    state: UnityState, materialized_view_id: str
+) -> UnityMaterializedView | None:
+    for schema in _iter_schemas(state):
+        for materialized_view in schema.materialized_views:
+            if materialized_view.id == materialized_view_id:
+                return materialized_view
+    return None
+
+
+def _find_grant_target(state: UnityState, target_type: str, target_id: str) -> GrantTarget | None:
+    finders: dict[str, Callable[[UnityState, str], GrantTarget | None]] = {
+        "catalog": _find_catalog,
+        "schema": _find_schema,
+        "table": _find_table,
+        "view": _find_view,
+        "volume": _find_volume,
+        "function": _find_function,
+        "materialized_view": _find_materialized_view,
+    }
+    finder = finders.get(target_type)
+    if finder is None:
+        return None
+    return finder(state, target_id)
+
+
+def _add_catalog(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    state.catalogs.append(
+        UnityCatalog(
             id=payload["catalogId"],
             name=payload["name"],
             managed_location_name=payload.get("managedLocationName"),
@@ -64,716 +168,759 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
             schemas=[],
             grants=[],
         )
-        new_state.catalogs.append(catalog)
+    )
 
-    elif op_type == "rename_catalog":
-        target = op_dict.get("target")
-        payload = op_dict.get("payload", {})
-        for catalog in new_state.catalogs:
-            if catalog.id == target:
-                catalog.name = payload["newName"]
-                break
 
-    elif op_type == "update_catalog":
-        target = op_dict.get("target")
-        payload = op_dict.get("payload", {})
-        for catalog in new_state.catalogs:
-            if catalog.id == target:
-                if "managedLocationName" in payload:
-                    catalog.managed_location_name = payload.get("managedLocationName")
-                if "comment" in payload:
-                    catalog.comment = payload.get("comment")
-                if "tags" in payload:
-                    catalog.tags = payload.get("tags", {})
-                break
+def _rename_catalog(state: UnityState, operation_dict: OperationDict) -> None:
+    target_id = operation_dict.get("target")
+    payload = _payload(operation_dict)
+    for catalog in state.catalogs:
+        if catalog.id == target_id:
+            catalog.name = payload["newName"]
+            return
 
-    elif op_type == "drop_catalog":
-        target = op_dict.get("target")
-        new_state.catalogs = [c for c in new_state.catalogs if c.id != target]
 
-    # Schema operations
-    elif op_type == "add_schema":
-        for catalog in new_state.catalogs:
-            if catalog.id == op_dict["payload"]["catalogId"]:
-                schema = UnitySchema(
-                    id=op_dict["payload"]["schemaId"],
-                    name=op_dict["payload"]["name"],
-                    managed_location_name=op_dict["payload"].get("managedLocationName"),
-                    comment=op_dict["payload"].get("comment"),
-                    tags=op_dict["payload"].get("tags", {}),
-                    tables=[],
-                    views=[],
-                    volumes=[],
-                    functions=[],
-                    materialized_views=[],
-                    grants=[],
-                )
-                catalog.schemas.append(schema)
-                break
+def _update_catalog(state: UnityState, operation_dict: OperationDict) -> None:
+    target_id = operation_dict.get("target")
+    payload = _payload(operation_dict)
+    for catalog in state.catalogs:
+        if catalog.id != target_id:
+            continue
+        if "managedLocationName" in payload:
+            catalog.managed_location_name = payload.get("managedLocationName")
+        if "comment" in payload:
+            catalog.comment = payload.get("comment")
+        if "tags" in payload:
+            catalog.tags = payload.get("tags", {})
+        return
 
-    elif op_type == "rename_schema":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                if schema.id == op_dict["target"]:
-                    schema.name = op_dict["payload"]["newName"]
-                    return new_state
 
-    elif op_type == "update_schema":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                if schema.id == op_dict["target"]:
-                    if "managedLocationName" in op_dict["payload"]:
-                        schema.managed_location_name = op_dict["payload"].get("managedLocationName")
-                    if "comment" in op_dict["payload"]:
-                        schema.comment = op_dict["payload"].get("comment")
-                    if "tags" in op_dict["payload"]:
-                        schema.tags = op_dict["payload"].get("tags", {})
-                    return new_state
+def _drop_catalog(state: UnityState, operation_dict: OperationDict) -> None:
+    target_id = operation_dict.get("target")
+    state.catalogs = [catalog for catalog in state.catalogs if catalog.id != target_id]
 
-    elif op_type == "drop_schema":
-        for catalog in new_state.catalogs:
-            catalog.schemas = [s for s in catalog.schemas if s.id != op_dict["target"]]
 
-    # Table operations
-    elif op_type == "add_table":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                if schema.id == op_dict["payload"]["schemaId"]:
-                    table = UnityTable(
-                        id=op_dict["payload"]["tableId"],
-                        name=op_dict["payload"]["name"],
-                        format=op_dict["payload"]["format"],
-                        external=op_dict["payload"].get("external"),
-                        external_location_name=op_dict["payload"].get("externalLocationName"),
-                        path=op_dict["payload"].get("path"),
-                        partition_columns=op_dict["payload"].get("partitionColumns"),
-                        cluster_columns=op_dict["payload"].get("clusterColumns"),
-                        comment=op_dict["payload"].get("comment"),
-                        columns=[],
-                        properties={},
-                        tags={},
-                        constraints=[],
-                        grants=[],
-                        column_mapping=None,
-                        row_filters=[],
-                        column_masks=[],
-                    )
-                    schema.tables.append(table)
-                    return new_state
+def _add_schema(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    catalog = _find_catalog(state, payload["catalogId"])
+    if not catalog:
+        return
+    catalog.schemas.append(
+        UnitySchema(
+            id=payload["schemaId"],
+            name=payload["name"],
+            managed_location_name=payload.get("managedLocationName"),
+            comment=payload.get("comment"),
+            tags=payload.get("tags", {}),
+            tables=[],
+            views=[],
+            volumes=[],
+            functions=[],
+            materialized_views=[],
+            grants=[],
+        )
+    )
 
-    elif op_type == "rename_table":
-        table_opt = _find_table(new_state, op_dict["target"])
-        if table_opt:
-            table_opt.name = op_dict["payload"]["newName"]
 
-    elif op_type == "drop_table":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                schema.tables = [t for t in schema.tables if t.id != op_dict["target"]]
+def _rename_schema(state: UnityState, operation_dict: OperationDict) -> None:
+    schema = _find_schema(state, str(operation_dict.get("target", "")))
+    if schema:
+        schema.name = _payload(operation_dict)["newName"]
 
-    elif op_type == "set_table_comment":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            table_opt.comment = op_dict["payload"]["comment"]
 
-    elif op_type == "set_table_property":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            table_opt.properties[op_dict["payload"]["key"]] = op_dict["payload"]["value"]
+def _update_schema(state: UnityState, operation_dict: OperationDict) -> None:
+    schema = _find_schema(state, str(operation_dict.get("target", "")))
+    if not schema:
+        return
+    payload = _payload(operation_dict)
+    if "managedLocationName" in payload:
+        schema.managed_location_name = payload.get("managedLocationName")
+    if "comment" in payload:
+        schema.comment = payload.get("comment")
+    if "tags" in payload:
+        schema.tags = payload.get("tags", {})
 
-    elif op_type == "unset_table_property":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt and op_dict["payload"]["key"] in table_opt.properties:
-            del table_opt.properties[op_dict["payload"]["key"]]
 
-    elif op_type == "set_table_tag":
-        table_id = op_dict["payload"]["tableId"]
-        table_opt = _find_table(new_state, table_id)
-        if table_opt:
-            table_opt.tags[op_dict["payload"]["tagName"]] = op_dict["payload"]["tagValue"]
-        else:
-            view_opt = _find_view(new_state, table_id)
-            if view_opt:
-                view_opt.tags[op_dict["payload"]["tagName"]] = op_dict["payload"]["tagValue"]
+def _drop_schema(state: UnityState, operation_dict: OperationDict) -> None:
+    target_id = operation_dict.get("target")
+    for catalog in state.catalogs:
+        catalog.schemas = [schema for schema in catalog.schemas if schema.id != target_id]
 
-    elif op_type == "unset_table_tag":
-        table_id = op_dict["payload"]["tableId"]
-        table_opt = _find_table(new_state, table_id)
-        if table_opt and op_dict["payload"]["tagName"] in table_opt.tags:
-            del table_opt.tags[op_dict["payload"]["tagName"]]
-        else:
-            view_opt = _find_view(new_state, table_id)
-            if view_opt and op_dict["payload"]["tagName"] in view_opt.tags:
-                del view_opt.tags[op_dict["payload"]["tagName"]]
 
-    # View operations
-    elif op_type == "add_view":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                if schema.id == op_dict["payload"]["schemaId"]:
-                    view = UnityView(
-                        id=op_dict["payload"]["viewId"],
-                        name=op_dict["payload"]["name"],
-                        definition=op_dict["payload"]["definition"],
-                        comment=op_dict["payload"].get("comment"),
-                        dependencies=op_dict["payload"].get("dependencies"),
-                        extracted_dependencies=op_dict["payload"].get("extractedDependencies"),
-                        tags={},
-                        properties={},
-                        grants=[],
-                    )
-                    schema.views.append(view)
-                    return new_state
+def _add_table(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    schema = _find_schema(state, payload["schemaId"])
+    if not schema:
+        return
+    schema.tables.append(
+        UnityTable(
+            id=payload["tableId"],
+            name=payload["name"],
+            format=payload["format"],
+            external=payload.get("external"),
+            external_location_name=payload.get("externalLocationName"),
+            path=payload.get("path"),
+            partition_columns=payload.get("partitionColumns"),
+            cluster_columns=payload.get("clusterColumns"),
+            comment=payload.get("comment"),
+            columns=[],
+            properties={},
+            tags={},
+            constraints=[],
+            grants=[],
+            column_mapping=None,
+            row_filters=[],
+            column_masks=[],
+        )
+    )
 
-    elif op_type == "rename_view":
-        view_opt = _find_view(new_state, op_dict["target"])
-        if view_opt:
-            view_opt.name = op_dict["payload"]["newName"]
 
-    elif op_type == "drop_view":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                schema.views = [v for v in schema.views if v.id != op_dict["target"]]
+def _rename_table(state: UnityState, operation_dict: OperationDict) -> None:
+    table = _find_table(state, str(operation_dict.get("target", "")))
+    if table:
+        table.name = _payload(operation_dict)["newName"]
 
-    elif op_type == "update_view":
-        view_opt = _find_view(new_state, op_dict["target"])
-        if view_opt:
-            if "definition" in op_dict["payload"]:
-                view_opt.definition = op_dict["payload"]["definition"]
-            if "dependencies" in op_dict["payload"]:
-                view_opt.dependencies = op_dict["payload"].get("dependencies")
-            if "extractedDependencies" in op_dict["payload"]:
-                view_opt.extracted_dependencies = op_dict["payload"].get("extractedDependencies")
 
-    elif op_type == "set_view_comment":
-        view_opt = _find_view(new_state, op_dict["payload"]["viewId"])
-        if view_opt:
-            view_opt.comment = op_dict["payload"]["comment"]
+def _drop_table(state: UnityState, operation_dict: OperationDict) -> None:
+    target_id = operation_dict.get("target")
+    for schema in _iter_schemas(state):
+        schema.tables = [table for table in schema.tables if table.id != target_id]
 
-    elif op_type == "set_view_property":
-        view_opt = _find_view(new_state, op_dict["payload"]["viewId"])
-        if view_opt:
-            view_opt.properties[op_dict["payload"]["key"]] = op_dict["payload"]["value"]
 
-    elif op_type == "unset_view_property":
-        view_opt = _find_view(new_state, op_dict["payload"]["viewId"])
-        if view_opt and op_dict["payload"]["key"] in view_opt.properties:
-            del view_opt.properties[op_dict["payload"]["key"]]
+def _set_table_comment(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if table:
+        table.comment = payload["comment"]
 
-    # Volume operations
-    elif op_type == "add_volume":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                if schema.id == op_dict["payload"]["schemaId"]:
-                    volume = UnityVolume(
-                        id=op_dict["payload"]["volumeId"],
-                        name=op_dict["payload"]["name"],
-                        volume_type=op_dict["payload"].get("volumeType", "managed"),
-                        comment=op_dict["payload"].get("comment"),
-                        location=op_dict["payload"].get("location"),
-                        grants=[],
-                    )
-                    schema.volumes.append(volume)
-                    return new_state
 
-    elif op_type == "rename_volume":
-        volume_opt = _find_volume(new_state, op_dict["target"])
-        if volume_opt:
-            volume_opt.name = op_dict["payload"]["newName"]
+def _set_table_property(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if table:
+        table.properties[payload["key"]] = payload["value"]
 
-    elif op_type == "update_volume":
-        volume_opt = _find_volume(new_state, op_dict["target"])
-        if volume_opt:
-            if "comment" in op_dict["payload"]:
-                volume_opt.comment = op_dict["payload"].get("comment")
-            if "location" in op_dict["payload"]:
-                volume_opt.location = op_dict["payload"].get("location")
 
-    elif op_type == "drop_volume":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                schema.volumes = [v for v in schema.volumes if v.id != op_dict["target"]]
+def _unset_table_property(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if table and payload["key"] in table.properties:
+        del table.properties[payload["key"]]
 
-    # Function operations
-    elif op_type == "add_function":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                if schema.id == op_dict["payload"]["schemaId"]:
-                    params = op_dict["payload"].get("parameters") or []
-                    if isinstance(params, list):
-                        param_models = [
-                            UnityFunctionParameter(
-                                name=p.get("name", ""),
-                                data_type=p.get("dataType", "STRING"),
-                                default_expression=p.get("defaultExpression"),
-                                comment=p.get("comment"),
-                            )
-                            for p in params
-                            if isinstance(p, dict)
-                        ]
-                    else:
-                        param_models = []
-                    func = UnityFunction(
-                        id=op_dict["payload"]["functionId"],
-                        name=op_dict["payload"]["name"],
-                        language=op_dict["payload"].get("language", "SQL"),
-                        return_type=op_dict["payload"].get("returnType"),
-                        returns_table=op_dict["payload"].get("returnsTable"),
-                        body=op_dict["payload"]["body"],
-                        comment=op_dict["payload"].get("comment"),
-                        parameters=param_models,
-                        grants=[],
-                    )
-                    schema.functions.append(func)
-                    return new_state
 
-    elif op_type == "rename_function":
-        func_opt = _find_function(new_state, op_dict["target"])
-        if func_opt:
-            func_opt.name = op_dict["payload"]["newName"]
+def _set_table_tag(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    target_object_id = payload["tableId"]
+    table = _find_table(state, target_object_id)
+    if table:
+        table.tags[payload["tagName"]] = payload["tagValue"]
+        return
+    view = _find_view(state, target_object_id)
+    if view:
+        view.tags[payload["tagName"]] = payload["tagValue"]
 
-    elif op_type == "update_function":
-        func_opt = _find_function(new_state, op_dict["target"])
-        if func_opt:
-            if "body" in op_dict["payload"]:
-                func_opt.body = op_dict["payload"]["body"]
-            if "returnType" in op_dict["payload"]:
-                func_opt.return_type = op_dict["payload"].get("returnType")
-            if "parameters" in op_dict["payload"]:
-                params = op_dict["payload"]["parameters"] or []
-                func_opt.parameters = [
-                    UnityFunctionParameter(
-                        name=p.get("name", ""),
-                        data_type=p.get("dataType", "STRING"),
-                        default_expression=p.get("defaultExpression"),
-                        comment=p.get("comment"),
-                    )
-                    for p in params
-                    if isinstance(p, dict)
-                ]
-            if "comment" in op_dict["payload"]:
-                func_opt.comment = op_dict["payload"].get("comment")
 
-    elif op_type == "drop_function":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                schema.functions = [f for f in schema.functions if f.id != op_dict["target"]]
+def _unset_table_tag(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    target_object_id = payload["tableId"]
+    table = _find_table(state, target_object_id)
+    if table and payload["tagName"] in table.tags:
+        del table.tags[payload["tagName"]]
+        return
+    view = _find_view(state, target_object_id)
+    if view and payload["tagName"] in view.tags:
+        del view.tags[payload["tagName"]]
 
-    elif op_type == "set_function_comment":
-        func_opt = _find_function(new_state, op_dict["payload"]["functionId"])
-        if func_opt:
-            func_opt.comment = op_dict["payload"]["comment"]
 
-    # Materialized view operations
-    elif op_type == "add_materialized_view":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                if schema.id == op_dict["payload"]["schemaId"]:
-                    mv = UnityMaterializedView(
-                        id=op_dict["payload"]["materializedViewId"],
-                        name=op_dict["payload"]["name"],
-                        definition=op_dict["payload"]["definition"],
-                        comment=op_dict["payload"].get("comment"),
-                        refresh_schedule=op_dict["payload"].get("refreshSchedule"),
-                        partition_columns=op_dict["payload"].get("partitionColumns"),
-                        cluster_columns=op_dict["payload"].get("clusterColumns"),
-                        properties=op_dict["payload"].get("properties", {}),
-                        dependencies=op_dict["payload"].get("dependencies"),
-                        extracted_dependencies=op_dict["payload"].get("extractedDependencies"),
-                        grants=[],
-                    )
-                    schema.materialized_views.append(mv)
-                    return new_state
+def _add_view(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    schema = _find_schema(state, payload["schemaId"])
+    if not schema:
+        return
+    schema.views.append(
+        UnityView(
+            id=payload["viewId"],
+            name=payload["name"],
+            definition=payload["definition"],
+            comment=payload.get("comment"),
+            dependencies=payload.get("dependencies"),
+            extracted_dependencies=payload.get("extractedDependencies"),
+            tags={},
+            properties={},
+            grants=[],
+        )
+    )
 
-    elif op_type == "rename_materialized_view":
-        mv_opt = _find_materialized_view(new_state, op_dict["target"])
-        if mv_opt:
-            mv_opt.name = op_dict["payload"]["newName"]
 
-    elif op_type == "update_materialized_view":
-        mv_opt = _find_materialized_view(new_state, op_dict["target"])
-        if mv_opt:
-            if "definition" in op_dict["payload"]:
-                mv_opt.definition = op_dict["payload"]["definition"]
-            if "refreshSchedule" in op_dict["payload"]:
-                mv_opt.refresh_schedule = op_dict["payload"].get("refreshSchedule")
-            if "extractedDependencies" in op_dict["payload"]:
-                mv_opt.extracted_dependencies = op_dict["payload"].get("extractedDependencies")
+def _rename_view(state: UnityState, operation_dict: OperationDict) -> None:
+    view = _find_view(state, str(operation_dict.get("target", "")))
+    if view:
+        view.name = _payload(operation_dict)["newName"]
 
-    elif op_type == "drop_materialized_view":
-        for catalog in new_state.catalogs:
-            for schema in catalog.schemas:
-                schema.materialized_views = [
-                    m for m in schema.materialized_views if m.id != op_dict["target"]
-                ]
 
-    elif op_type == "set_materialized_view_comment":
-        mv_opt = _find_materialized_view(new_state, op_dict["payload"]["materializedViewId"])
-        if mv_opt:
-            mv_opt.comment = op_dict["payload"]["comment"]
+def _drop_view(state: UnityState, operation_dict: OperationDict) -> None:
+    target_id = operation_dict.get("target")
+    for schema in _iter_schemas(state):
+        schema.views = [view for view in schema.views if view.id != target_id]
 
-    # Column operations
-    elif op_type == "add_column":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            column = UnityColumn(
-                id=op_dict["payload"]["colId"],
-                name=op_dict["payload"]["name"],
-                type=op_dict["payload"]["type"],
-                nullable=op_dict["payload"]["nullable"],
-                comment=op_dict["payload"].get("comment"),
-                tags={},
-                mask_id=None,
+
+def _update_view(state: UnityState, operation_dict: OperationDict) -> None:
+    view = _find_view(state, str(operation_dict.get("target", "")))
+    if not view:
+        return
+    payload = _payload(operation_dict)
+    if "definition" in payload:
+        view.definition = payload["definition"]
+    if "dependencies" in payload:
+        view.dependencies = payload.get("dependencies")
+    if "extractedDependencies" in payload:
+        view.extracted_dependencies = payload.get("extractedDependencies")
+
+
+def _set_view_comment(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    view = _find_view(state, payload["viewId"])
+    if view:
+        view.comment = payload["comment"]
+
+
+def _set_view_property(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    view = _find_view(state, payload["viewId"])
+    if view:
+        view.properties[payload["key"]] = payload["value"]
+
+
+def _unset_view_property(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    view = _find_view(state, payload["viewId"])
+    if view and payload["key"] in view.properties:
+        del view.properties[payload["key"]]
+
+
+def _add_volume(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    schema = _find_schema(state, payload["schemaId"])
+    if not schema:
+        return
+    schema.volumes.append(
+        UnityVolume(
+            id=payload["volumeId"],
+            name=payload["name"],
+            volume_type=payload.get("volumeType", "managed"),
+            comment=payload.get("comment"),
+            location=payload.get("location"),
+            grants=[],
+        )
+    )
+
+
+def _rename_volume(state: UnityState, operation_dict: OperationDict) -> None:
+    volume = _find_volume(state, str(operation_dict.get("target", "")))
+    if volume:
+        volume.name = _payload(operation_dict)["newName"]
+
+
+def _update_volume(state: UnityState, operation_dict: OperationDict) -> None:
+    volume = _find_volume(state, str(operation_dict.get("target", "")))
+    if not volume:
+        return
+    payload = _payload(operation_dict)
+    if "comment" in payload:
+        volume.comment = payload.get("comment")
+    if "location" in payload:
+        volume.location = payload.get("location")
+
+
+def _drop_volume(state: UnityState, operation_dict: OperationDict) -> None:
+    target_id = operation_dict.get("target")
+    for schema in _iter_schemas(state):
+        schema.volumes = [volume for volume in schema.volumes if volume.id != target_id]
+
+
+def _parse_function_parameters(raw_parameters: Any) -> list[UnityFunctionParameter]:
+    parameters = raw_parameters or []
+    if not isinstance(parameters, list):
+        return []
+    return [
+        UnityFunctionParameter(
+            name=parameter.get("name", ""),
+            data_type=parameter.get("dataType", "STRING"),
+            default_expression=parameter.get("defaultExpression"),
+            comment=parameter.get("comment"),
+        )
+        for parameter in parameters
+        if isinstance(parameter, dict)
+    ]
+
+
+def _add_function(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    schema = _find_schema(state, payload["schemaId"])
+    if not schema:
+        return
+    schema.functions.append(
+        UnityFunction(
+            id=payload["functionId"],
+            name=payload["name"],
+            language=payload.get("language", "SQL"),
+            return_type=payload.get("returnType"),
+            returns_table=payload.get("returnsTable"),
+            body=payload["body"],
+            comment=payload.get("comment"),
+            parameters=_parse_function_parameters(payload.get("parameters")),
+            grants=[],
+        )
+    )
+
+
+def _rename_function(state: UnityState, operation_dict: OperationDict) -> None:
+    function = _find_function(state, str(operation_dict.get("target", "")))
+    if function:
+        function.name = _payload(operation_dict)["newName"]
+
+
+def _update_function(state: UnityState, operation_dict: OperationDict) -> None:
+    function = _find_function(state, str(operation_dict.get("target", "")))
+    if not function:
+        return
+    payload = _payload(operation_dict)
+    if "body" in payload:
+        function.body = payload["body"]
+    if "returnType" in payload:
+        function.return_type = payload.get("returnType")
+    if "parameters" in payload:
+        function.parameters = _parse_function_parameters(payload.get("parameters"))
+    if "comment" in payload:
+        function.comment = payload.get("comment")
+
+
+def _drop_function(state: UnityState, operation_dict: OperationDict) -> None:
+    target_id = operation_dict.get("target")
+    for schema in _iter_schemas(state):
+        schema.functions = [function for function in schema.functions if function.id != target_id]
+
+
+def _set_function_comment(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    function = _find_function(state, payload["functionId"])
+    if function:
+        function.comment = payload["comment"]
+
+
+def _add_materialized_view(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    schema = _find_schema(state, payload["schemaId"])
+    if not schema:
+        return
+    schema.materialized_views.append(
+        UnityMaterializedView(
+            id=payload["materializedViewId"],
+            name=payload["name"],
+            definition=payload["definition"],
+            comment=payload.get("comment"),
+            refresh_schedule=payload.get("refreshSchedule"),
+            partition_columns=payload.get("partitionColumns"),
+            cluster_columns=payload.get("clusterColumns"),
+            properties=payload.get("properties", {}),
+            dependencies=payload.get("dependencies"),
+            extracted_dependencies=payload.get("extractedDependencies"),
+            grants=[],
+        )
+    )
+
+
+def _rename_materialized_view(state: UnityState, operation_dict: OperationDict) -> None:
+    materialized_view = _find_materialized_view(state, str(operation_dict.get("target", "")))
+    if materialized_view:
+        materialized_view.name = _payload(operation_dict)["newName"]
+
+
+def _update_materialized_view(state: UnityState, operation_dict: OperationDict) -> None:
+    materialized_view = _find_materialized_view(state, str(operation_dict.get("target", "")))
+    if not materialized_view:
+        return
+    payload = _payload(operation_dict)
+    if "definition" in payload:
+        materialized_view.definition = payload["definition"]
+    if "refreshSchedule" in payload:
+        materialized_view.refresh_schedule = payload.get("refreshSchedule")
+    if "extractedDependencies" in payload:
+        materialized_view.extracted_dependencies = payload.get("extractedDependencies")
+
+
+def _drop_materialized_view(state: UnityState, operation_dict: OperationDict) -> None:
+    target_id = operation_dict.get("target")
+    for schema in _iter_schemas(state):
+        schema.materialized_views = [
+            materialized_view
+            for materialized_view in schema.materialized_views
+            if materialized_view.id != target_id
+        ]
+
+
+def _set_materialized_view_comment(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    materialized_view = _find_materialized_view(state, payload["materializedViewId"])
+    if materialized_view:
+        materialized_view.comment = payload["comment"]
+
+
+def _add_column(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    table.columns.append(
+        UnityColumn(
+            id=payload["colId"],
+            name=payload["name"],
+            type=payload["type"],
+            nullable=payload["nullable"],
+            comment=payload.get("comment"),
+            tags={},
+            mask_id=None,
+        )
+    )
+
+
+def _rename_column(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    target_id = operation_dict.get("target")
+    for column in table.columns:
+        if column.id == target_id:
+            column.name = payload["newName"]
+            return
+
+
+def _drop_column(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if table:
+        target_id = operation_dict.get("target")
+        table.columns = [column for column in table.columns if column.id != target_id]
+
+
+def _reorder_columns(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    order = payload["order"]
+    table.columns.sort(
+        key=lambda column: order.index(column.id) if column.id in order else len(order)
+    )
+
+
+def _change_column_type(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    target_id = operation_dict.get("target")
+    for column in table.columns:
+        if column.id == target_id:
+            column.type = payload["newType"]
+            return
+
+
+def _set_nullable(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    target_id = operation_dict.get("target")
+    for column in table.columns:
+        if column.id == target_id:
+            column.nullable = payload["nullable"]
+            return
+
+
+def _set_column_comment(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    target_id = operation_dict.get("target")
+    for column in table.columns:
+        if column.id == target_id:
+            column.comment = payload["comment"]
+            return
+
+
+def _set_column_tag(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    target_id = operation_dict.get("target")
+    for column in table.columns:
+        if column.id != target_id:
+            continue
+        if column.tags is None:
+            column.tags = {}
+        column.tags[payload["tagName"]] = payload["tagValue"]
+        return
+
+
+def _unset_column_tag(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    target_id = operation_dict.get("target")
+    for column in table.columns:
+        if column.id == target_id and column.tags and payload["tagName"] in column.tags:
+            del column.tags[payload["tagName"]]
+            return
+
+
+def _add_constraint(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    constraint = UnityConstraint(
+        id=payload["constraintId"],
+        type=payload["type"],
+        name=payload.get("name"),
+        columns=payload["columns"],
+        timeseries=payload.get("timeseries"),
+        parent_table=payload.get("parentTable"),
+        parent_columns=payload.get("parentColumns"),
+        expression=payload.get("expression"),
+    )
+    insert_at = payload.get("insertAt")
+    if insert_at is not None and insert_at >= 0:
+        table.constraints.insert(insert_at, constraint)
+        return
+    table.constraints.append(constraint)
+
+
+def _drop_constraint(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if table:
+        target_id = operation_dict.get("target")
+        table.constraints = [
+            constraint for constraint in table.constraints if constraint.id != target_id
+        ]
+
+
+def _add_row_filter(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    if table.row_filters is None:
+        table.row_filters = []
+    table.row_filters.append(
+        UnityRowFilter(
+            id=payload["filterId"],
+            name=payload["name"],
+            enabled=payload.get("enabled", True),
+            udf_expression=payload["udfExpression"],
+            description=payload.get("description"),
+        )
+    )
+
+
+def _update_row_filter(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table or not table.row_filters:
+        return
+    target_id = operation_dict.get("target")
+    for row_filter in table.row_filters:
+        if row_filter.id != target_id:
+            continue
+        if "name" in payload:
+            row_filter.name = payload["name"]
+        if "enabled" in payload:
+            row_filter.enabled = payload["enabled"]
+        if "udfExpression" in payload:
+            row_filter.udf_expression = payload["udfExpression"]
+        if "description" in payload:
+            row_filter.description = payload["description"]
+        return
+
+
+def _remove_row_filter(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if table and table.row_filters:
+        target_id = operation_dict.get("target")
+        table.row_filters = [
+            row_filter for row_filter in table.row_filters if row_filter.id != target_id
+        ]
+
+
+def _add_column_mask(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table:
+        return
+    if table.column_masks is None:
+        table.column_masks = []
+    table.column_masks.append(
+        UnityColumnMask(
+            id=payload["maskId"],
+            column_id=payload["columnId"],
+            name=payload["name"],
+            enabled=payload.get("enabled", True),
+            mask_function=payload["maskFunction"],
+            description=payload.get("description"),
+        )
+    )
+    for column in table.columns:
+        if column.id == payload["columnId"]:
+            column.mask_id = payload["maskId"]
+            return
+
+
+def _update_column_mask(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table or not table.column_masks:
+        return
+    target_id = operation_dict.get("target")
+    for column_mask in table.column_masks:
+        if column_mask.id != target_id:
+            continue
+        if "name" in payload:
+            column_mask.name = payload["name"]
+        if "enabled" in payload:
+            column_mask.enabled = payload["enabled"]
+        if "maskFunction" in payload:
+            column_mask.mask_function = payload["maskFunction"]
+        if "description" in payload:
+            column_mask.description = payload["description"]
+        return
+
+
+def _remove_column_mask(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    table = _find_table(state, payload["tableId"])
+    if not table or not table.column_masks:
+        return
+    target_id = operation_dict.get("target")
+    mask = next((entry for entry in table.column_masks if entry.id == target_id), None)
+    if not mask:
+        return
+    for column in table.columns:
+        if column.id == mask.column_id:
+            column.mask_id = None
+            break
+    table.column_masks = [entry for entry in table.column_masks if entry.id != target_id]
+
+
+def _add_grant(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    target_type = payload.get("targetType")
+    target_id = payload.get("targetId")
+    principal = payload.get("principal")
+    privileges = payload.get("privileges") or []
+    if not target_type or not target_id or principal is None:
+        return
+    grant_target = _find_grant_target(state, target_type, target_id)
+    if grant_target is None:
+        return
+    existing_grants = [grant for grant in grant_target.grants if grant.principal != principal]
+    existing_grants.append(UnityGrant(principal=principal, privileges=list(privileges)))
+    grant_target.grants = existing_grants
+
+
+def _revoke_grant(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    target_type = payload.get("targetType")
+    target_id = payload.get("targetId")
+    principal = payload.get("principal")
+    privileges_to_remove = payload.get("privileges")
+    if not target_type or not target_id or principal is None:
+        return
+    grant_target = _find_grant_target(state, target_type, target_id)
+    if grant_target is None:
+        return
+    if not privileges_to_remove:
+        grant_target.grants = [
+            grant for grant in grant_target.grants if grant.principal != principal
+        ]
+        return
+
+    privileges_to_remove_set = set(privileges_to_remove)
+    updated_grants: list[UnityGrant] = []
+    for grant in grant_target.grants:
+        if grant.principal != principal:
+            updated_grants.append(grant)
+            continue
+        remaining_privileges = [
+            privilege for privilege in grant.privileges if privilege not in privileges_to_remove_set
+        ]
+        if remaining_privileges:
+            updated_grants.append(
+                UnityGrant(principal=grant.principal, privileges=remaining_privileges)
             )
-            table_opt.columns.append(column)
-
-    elif op_type == "rename_column":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            for column in table_opt.columns:
-                if column.id == op_dict["target"]:
-                    column.name = op_dict["payload"]["newName"]
-                    break
-
-    elif op_type == "drop_column":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            table_opt.columns = [c for c in table_opt.columns if c.id != op_dict["target"]]
-
-    elif op_type == "reorder_columns":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            order = op_dict["payload"]["order"]
-            # Sort columns by their position in the order list
-            table_opt.columns.sort(key=lambda c: order.index(c.id) if c.id in order else len(order))
-
-    elif op_type == "change_column_type":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            for column in table_opt.columns:
-                if column.id == op_dict["target"]:
-                    column.type = op_dict["payload"]["newType"]
-                    break
-
-    elif op_type == "set_nullable":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            for column in table_opt.columns:
-                if column.id == op_dict["target"]:
-                    column.nullable = op_dict["payload"]["nullable"]
-                    break
-
-    elif op_type == "set_column_comment":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            for column in table_opt.columns:
-                if column.id == op_dict["target"]:
-                    column.comment = op_dict["payload"]["comment"]
-                    break
-
-    # Column tag operations
-    elif op_type == "set_column_tag":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            for column in table_opt.columns:
-                if column.id == op_dict["target"]:
-                    if column.tags is None:
-                        column.tags = {}
-                    column.tags[op_dict["payload"]["tagName"]] = op_dict["payload"]["tagValue"]
-                    break
-
-    elif op_type == "unset_column_tag":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            for column in table_opt.columns:
-                if column.id == op_dict["target"] and column.tags:
-                    if op_dict["payload"]["tagName"] in column.tags:
-                        del column.tags[op_dict["payload"]["tagName"]]
-                    break
-
-    # Constraint operations
-    elif op_type == "add_constraint":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            constraint = UnityConstraint(
-                id=op_dict["payload"]["constraintId"],
-                type=op_dict["payload"]["type"],
-                name=op_dict["payload"].get("name"),
-                columns=op_dict["payload"]["columns"],
-                timeseries=op_dict["payload"].get("timeseries"),
-                parent_table=op_dict["payload"].get("parentTable"),
-                parent_columns=op_dict["payload"].get("parentColumns"),
-                expression=op_dict["payload"].get("expression"),
-            )
-            # Insert at specific position if provided (for updates), otherwise append
-            insert_at = op_dict["payload"].get("insertAt")
-            if insert_at is not None and insert_at >= 0:
-                table_opt.constraints.insert(insert_at, constraint)
-            else:
-                table_opt.constraints.append(constraint)
-
-    elif op_type == "drop_constraint":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            table_opt.constraints = [c for c in table_opt.constraints if c.id != op_dict["target"]]
-
-    # Row filter operations
-    elif op_type == "add_row_filter":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            if table_opt.row_filters is None:
-                table_opt.row_filters = []
-            filter_obj = UnityRowFilter(
-                id=op_dict["payload"]["filterId"],
-                name=op_dict["payload"]["name"],
-                enabled=op_dict["payload"].get("enabled", True),
-                udf_expression=op_dict["payload"]["udfExpression"],
-                description=op_dict["payload"].get("description"),
-            )
-            table_opt.row_filters.append(filter_obj)
-
-    elif op_type == "update_row_filter":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt and table_opt.row_filters:
-            for filter_obj in table_opt.row_filters:
-                if filter_obj.id == op_dict["target"]:
-                    if "name" in op_dict["payload"]:
-                        filter_obj.name = op_dict["payload"]["name"]
-                    if "enabled" in op_dict["payload"]:
-                        filter_obj.enabled = op_dict["payload"]["enabled"]
-                    if "udfExpression" in op_dict["payload"]:
-                        filter_obj.udf_expression = op_dict["payload"]["udfExpression"]
-                    if "description" in op_dict["payload"]:
-                        filter_obj.description = op_dict["payload"]["description"]
-                    break
-
-    elif op_type == "remove_row_filter":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt and table_opt.row_filters:
-            table_opt.row_filters = [f for f in table_opt.row_filters if f.id != op_dict["target"]]
-
-    # Column mask operations
-    elif op_type == "add_column_mask":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt:
-            if table_opt.column_masks is None:
-                table_opt.column_masks = []
-            mask = UnityColumnMask(
-                id=op_dict["payload"]["maskId"],
-                column_id=op_dict["payload"]["columnId"],
-                name=op_dict["payload"]["name"],
-                enabled=op_dict["payload"].get("enabled", True),
-                mask_function=op_dict["payload"]["maskFunction"],
-                description=op_dict["payload"].get("description"),
-            )
-            table_opt.column_masks.append(mask)
-
-            # Link mask to column
-            for column in table_opt.columns:
-                if column.id == op_dict["payload"]["columnId"]:
-                    column.mask_id = op_dict["payload"]["maskId"]
-                    break
-
-    elif op_type == "update_column_mask":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt and table_opt.column_masks:
-            for mask in table_opt.column_masks:
-                if mask.id == op_dict["target"]:
-                    if "name" in op_dict["payload"]:
-                        mask.name = op_dict["payload"]["name"]
-                    if "enabled" in op_dict["payload"]:
-                        mask.enabled = op_dict["payload"]["enabled"]
-                    if "maskFunction" in op_dict["payload"]:
-                        mask.mask_function = op_dict["payload"]["maskFunction"]
-                    if "description" in op_dict["payload"]:
-                        mask.description = op_dict["payload"]["description"]
-                    break
-
-    elif op_type == "remove_column_mask":
-        table_opt = _find_table(new_state, op_dict["payload"]["tableId"])
-        if table_opt and table_opt.column_masks:
-            # Find the mask to get column ID
-            mask_opt = next((m for m in table_opt.column_masks if m.id == op_dict["target"]), None)
-            if mask_opt:
-                # Unlink mask from column
-                for column in table_opt.columns:
-                    if column.id == mask_opt.column_id:
-                        column.mask_id = None
-                        break
-                # Remove mask
-                table_opt.column_masks = [
-                    m for m in table_opt.column_masks if m.id != op_dict["target"]
-                ]
-
-    # Grant operations
-    elif op_type == "add_grant":
-        payload = op_dict.get("payload", {})
-        target_type = payload.get("targetType")
-        target_id = payload.get("targetId")
-        principal = payload.get("principal")
-        privileges = payload.get("privileges") or []
-        if not target_type or not target_id or principal is None:
-            return new_state
-        obj = _find_grant_target(new_state, target_type, target_id)
-        if obj is not None:
-            grant = UnityGrant(principal=principal, privileges=list(privileges))
-            # Replace existing grant for same principal or append
-            existing = [g for g in obj.grants if g.principal != principal]
-            existing.append(grant)
-            obj.grants = existing
-
-    elif op_type == "revoke_grant":
-        payload = op_dict.get("payload", {})
-        target_type = payload.get("targetType")
-        target_id = payload.get("targetId")
-        principal = payload.get("principal")
-        privileges_to_remove = payload.get("privileges")  # Optional; if None, revoke all
-        if not target_type or not target_id or principal is None:
-            return new_state
-        obj = _find_grant_target(new_state, target_type, target_id)
-        if obj is not None:
-            if privileges_to_remove is None or len(privileges_to_remove) == 0:
-                obj.grants = [g for g in obj.grants if g.principal != principal]
-            else:
-                set_remove = set(privileges_to_remove)
-                new_grants = []
-                for g in obj.grants:
-                    if g.principal != principal:
-                        new_grants.append(g)
-                    else:
-                        remaining = [p for p in g.privileges if p not in set_remove]
-                        if remaining:
-                            new_grants.append(
-                                UnityGrant(principal=g.principal, privileges=remaining)
-                            )
-                obj.grants = new_grants
-
-    return new_state
+    grant_target.grants = updated_grants
 
 
-def apply_operations(state: UnityState, ops: list[Operation]) -> UnityState:
-    """
-    Apply multiple operations to state
-
-    Args:
-        state: Current state
-        ops: List of operations to apply
-
-    Returns:
-        New state with all operations applied
-    """
-    current_state = state
-    for op in ops:
-        current_state = apply_operation(current_state, op)
-    return current_state
-
-
-def _find_table(state: UnityState, table_id: str) -> UnityTable | None:
-    """
-    Find a table by ID across all catalogs and schemas
-
-    Args:
-        state: Unity state
-        table_id: Table ID to find
-
-    Returns:
-        Table or None if not found
-    """
-    for catalog in state.catalogs:
-        for schema in catalog.schemas:
-            for table in schema.tables:
-                if table.id == table_id:
-                    return table
-    return None
-
-
-def _find_view(state: UnityState, view_id: str) -> UnityView | None:
-    """
-    Find a view by ID across all catalogs and schemas
-
-    Args:
-        state: Unity state
-        view_id: View ID to find
-
-    Returns:
-        View or None if not found
-    """
-    for catalog in state.catalogs:
-        for schema in catalog.schemas:
-            for view in schema.views:
-                if view.id == view_id:
-                    return view
-    return None
-
-
-def _find_volume(state: UnityState, volume_id: str) -> UnityVolume | None:
-    """Find a volume by ID across all catalogs and schemas."""
-    for catalog in state.catalogs:
-        for schema in catalog.schemas:
-            for volume in schema.volumes:
-                if volume.id == volume_id:
-                    return volume
-    return None
-
-
-def _find_function(state: UnityState, function_id: str) -> UnityFunction | None:
-    """Find a function by ID across all catalogs and schemas."""
-    for catalog in state.catalogs:
-        for schema in catalog.schemas:
-            for func in schema.functions:
-                if func.id == function_id:
-                    return func
-    return None
-
-
-def _find_materialized_view(state: UnityState, mv_id: str) -> UnityMaterializedView | None:
-    """Find a materialized view by ID across all catalogs and schemas."""
-    for catalog in state.catalogs:
-        for schema in catalog.schemas:
-            for mv in schema.materialized_views:
-                if mv.id == mv_id:
-                    return mv
-    return None
-
-
-def _find_grant_target(
-    state: UnityState, target_type: str, target_id: str
-) -> (
-    UnityCatalog
-    | UnitySchema
-    | UnityTable
-    | UnityView
-    | UnityVolume
-    | UnityFunction
-    | UnityMaterializedView
-    | None
-):
-    """
-    Find a securable object by type and ID for grant operations.
-
-    Returns:
-        The catalog, schema, table, view, volume, function, or materialized view,
-        or None if not found.
-    """
-    if target_type == "catalog":
-        for catalog in state.catalogs:
-            if catalog.id == target_id:
-                return catalog
-        return None
-    if target_type == "schema":
-        for catalog in state.catalogs:
-            for schema in catalog.schemas:
-                if schema.id == target_id:
-                    return schema
-        return None
-    if target_type == "table":
-        return _find_table(state, target_id)
-    if target_type == "view":
-        return _find_view(state, target_id)
-    if target_type == "volume":
-        return _find_volume(state, target_id)
-    if target_type == "function":
-        return _find_function(state, target_id)
-    if target_type == "materialized_view":
-        return _find_materialized_view(state, target_id)
-    return None
+_HANDLERS: dict[str, OperationHandler] = {
+    "add_catalog": _add_catalog,
+    "rename_catalog": _rename_catalog,
+    "update_catalog": _update_catalog,
+    "drop_catalog": _drop_catalog,
+    "add_schema": _add_schema,
+    "rename_schema": _rename_schema,
+    "update_schema": _update_schema,
+    "drop_schema": _drop_schema,
+    "add_table": _add_table,
+    "rename_table": _rename_table,
+    "drop_table": _drop_table,
+    "set_table_comment": _set_table_comment,
+    "set_table_property": _set_table_property,
+    "unset_table_property": _unset_table_property,
+    "set_table_tag": _set_table_tag,
+    "unset_table_tag": _unset_table_tag,
+    "add_view": _add_view,
+    "rename_view": _rename_view,
+    "drop_view": _drop_view,
+    "update_view": _update_view,
+    "set_view_comment": _set_view_comment,
+    "set_view_property": _set_view_property,
+    "unset_view_property": _unset_view_property,
+    "add_volume": _add_volume,
+    "rename_volume": _rename_volume,
+    "update_volume": _update_volume,
+    "drop_volume": _drop_volume,
+    "add_function": _add_function,
+    "rename_function": _rename_function,
+    "update_function": _update_function,
+    "drop_function": _drop_function,
+    "set_function_comment": _set_function_comment,
+    "add_materialized_view": _add_materialized_view,
+    "rename_materialized_view": _rename_materialized_view,
+    "update_materialized_view": _update_materialized_view,
+    "drop_materialized_view": _drop_materialized_view,
+    "set_materialized_view_comment": _set_materialized_view_comment,
+    "add_column": _add_column,
+    "rename_column": _rename_column,
+    "drop_column": _drop_column,
+    "reorder_columns": _reorder_columns,
+    "change_column_type": _change_column_type,
+    "set_nullable": _set_nullable,
+    "set_column_comment": _set_column_comment,
+    "set_column_tag": _set_column_tag,
+    "unset_column_tag": _unset_column_tag,
+    "add_constraint": _add_constraint,
+    "drop_constraint": _drop_constraint,
+    "add_row_filter": _add_row_filter,
+    "update_row_filter": _update_row_filter,
+    "remove_row_filter": _remove_row_filter,
+    "add_column_mask": _add_column_mask,
+    "update_column_mask": _update_column_mask,
+    "remove_column_mask": _remove_column_mask,
+    "add_grant": _add_grant,
+    "revoke_grant": _revoke_grant,
+}

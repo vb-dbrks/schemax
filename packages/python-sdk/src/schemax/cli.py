@@ -5,6 +5,7 @@ Click-based CLI for SchemaX.
 import json
 import sys
 import traceback
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -626,27 +627,28 @@ def rollback(ctx: click.Context, **_kwargs: Any) -> None:
         # Non-interactive (skip confirmation prompts, for CI/CD)
         schemax rollback --partial --deployment deploy_abc123 -p PROD -w abc123 -t prod --no-interaction
     """
-    params = None
+    params: dict[str, Any] | None = None
     workspace_path = None
     try:
-        params = ctx.params
+        raw_params = ctx.params
+        if not isinstance(raw_params, Mapping):
+            raise RollbackError("Invalid rollback parameters")
+        params = dict(raw_params)
         workspace_path = Path(params["workspace"]).resolve()
         _handle_rollback_dispatch(workspace_path, params)
     except RollbackError as e:
         console.print(f"[red]✗[/red] {e}")
-        if (
-            "not found" in str(e).lower()
-            and params is not None
-            and params.get("target")
-            and workspace_path is not None
-        ):
+        if "not found" in str(e).lower() and params is not None and workspace_path is not None:
+            target_env = str(params.get("target") or "")
+            if not target_env:
+                sys.exit(1)
             try:
                 project = read_project(workspace_path)
-                env_config = get_environment_config(project, params["target"])
+                env_config = get_environment_config(project, target_env)
                 _print_rollback_deployment_not_found_help(
                     params.get("deployment") or "",
                     env_config.get("topLevelName", ""),
-                    params["target"],
+                    target_env,
                 )
             except (FileNotFoundError, ValueError):
                 pass

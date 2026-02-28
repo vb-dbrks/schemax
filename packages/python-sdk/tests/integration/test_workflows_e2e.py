@@ -316,7 +316,7 @@ class TestWorkflowS3Brownfield:
                     mock_provider,
                     None,
                 )
-            with patch("schemax.commands.diff._build_catalog_mapping") as mock_map:
+            with patch("schemax.commands.rollback.build_catalog_mapping") as mock_map:
                 mock_map.return_value = {"__implicit__": "dev_catalog"}
                 result = rollback_complete(
                     workspace=initialized_workspace,

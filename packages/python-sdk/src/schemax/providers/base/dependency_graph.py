@@ -195,37 +195,7 @@ class DependencyGraph:
             )
             raise ValueError(f"Circular dependencies detected:\n{cycle_str}")
 
-        try:
-            # Use lexicographical topological sort for stable ordering
-            # This ensures that for nodes at the same level (no dependencies),
-            # they are ordered by a key function (timestamp in our case)
-            def sort_key(node_id: str) -> tuple[int, str]:
-                """
-                Sort key: (hierarchy_level, timestamp)
-                This ensures hierarchical ordering first, then timestamp within each level
-                """
-                node = self.nodes.get(node_id)
-                if not node or not node.operation:
-                    return (999, "9999-99-99T99:99:99Z")  # Push to end if no operation
-
-                # Handle both Operation objects and dict (for tests)
-                if hasattr(node.operation, "ts"):
-                    timestamp = node.operation.ts
-                elif isinstance(node.operation, dict):
-                    timestamp = node.operation.get("ts", "9999-99-99T99:99:99Z")
-                else:
-                    timestamp = "9999-99-99T99:99:99Z"
-
-                # Use hierarchy level and timestamp as sort key
-                return (node.hierarchy_level, timestamp)
-
-            # NetworkX lexicographical_topological_sort sorts by key when there's no dependency
-            # Note: NetworkX returns nodes such that for edge u -> v, u comes before v
-            # Our edges are FROM dependency TO dependent (table -> view),
-            # so the result is already in correct order (dependencies first)
-            sorted_node_ids = list(nx.lexicographical_topological_sort(self.graph, key=sort_key))
-        except nx.NetworkXError as e:
-            raise ValueError(f"Failed to perform topological sort: {e}") from e
+        sorted_node_ids = self._topological_sort_node_ids()
 
         # Extract operations from sorted nodes
         # For each node, return ALL operations (not just the first one)
@@ -236,15 +206,7 @@ class DependencyGraph:
             # If we have multiple operations for this object, add them all
             # Sort them by timestamp to maintain temporal order
             if node_id in ops_by_target:
-                # Handle both Operation objects and dict (for tests)
-                def get_timestamp(op: Operation | dict) -> str:
-                    if hasattr(op, "ts"):
-                        return str(op.ts)
-                    if isinstance(op, dict):
-                        return str(op.get("ts", ""))
-                    return ""
-
-                ops_for_node = sorted(ops_by_target[node_id], key=get_timestamp)
+                ops_for_node = sorted(ops_by_target[node_id], key=self._operation_timestamp)
                 sorted_operations.extend(ops_for_node)
             else:
                 # Fallback: use single operation from node
@@ -253,6 +215,34 @@ class DependencyGraph:
                     sorted_operations.append(node.operation)
 
         return sorted_operations
+
+    def _operation_timestamp(self, operation: Operation | dict) -> str:
+        """Get operation timestamp for deterministic sorting."""
+        if hasattr(operation, "ts"):
+            return str(operation.ts)
+        if isinstance(operation, dict):
+            return str(operation.get("ts", ""))
+        return ""
+
+    def _sort_key(self, node_id: str) -> tuple[int, str]:
+        """Sort key for lexicographical topological sort."""
+        node = self.nodes.get(node_id)
+        if not node or not node.operation:
+            return (999, "9999-99-99T99:99:99Z")
+        if hasattr(node.operation, "ts"):
+            timestamp = node.operation.ts
+        elif isinstance(node.operation, dict):
+            timestamp = node.operation.get("ts", "9999-99-99T99:99:99Z")
+        else:
+            timestamp = "9999-99-99T99:99:99Z"
+        return (node.hierarchy_level, timestamp)
+
+    def _topological_sort_node_ids(self) -> list[str]:
+        """Return topologically sorted node IDs with stable ordering."""
+        try:
+            return list(nx.lexicographical_topological_sort(self.graph, key=self._sort_key))
+        except nx.NetworkXError as err:
+            raise ValueError(f"Failed to perform topological sort: {err}") from err
 
     def topological_sort_by_level(
         self, operations_by_level: dict[int, list[Operation]]

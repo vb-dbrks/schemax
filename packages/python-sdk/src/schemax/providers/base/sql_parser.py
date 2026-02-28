@@ -121,20 +121,10 @@ def resolve_table_or_view(
         This function searches the current state to determine if a reference
         points to a table or view. If not found, it assumes "table".
     """
-    # Parse the table reference
-    parts = table_ref.split(".")
-
-    if len(parts) == 3:
-        catalog_name, schema_name, object_name = parts
-    elif len(parts) == 2:
-        schema_name, object_name = parts
-        catalog_name = default_catalog or "__implicit__"
-    elif len(parts) == 1:
-        object_name = parts[0]
-        catalog_name = default_catalog or "__implicit__"
-        schema_name = None  # Will search all schemas
-    else:
+    parsed = _parse_table_reference(table_ref, default_catalog)
+    if parsed is None:
         return "table", ""  # Invalid reference
+    catalog_name, schema_name, object_name = parsed
 
     # Search in current state
     catalogs = current_state.get("catalogs", [])
@@ -146,19 +136,40 @@ def resolve_table_or_view(
         for schema in catalog.get("schemas", []):
             if schema_name and schema.get("name") != schema_name:
                 continue
-
-            # Check tables
-            for table in schema.get("tables", []):
-                if table.get("name") == object_name:
-                    return "table", table.get("id", "")
-
-            # Check views
-            for view in schema.get("views", []):
-                if view.get("name") == object_name:
-                    return "view", view.get("id", "")
+            resolved = _resolve_from_schema(schema, object_name)
+            if resolved is not None:
+                return resolved
 
     # Not found - assume table (external or not yet created)
     return "table", ""
+
+
+def _parse_table_reference(
+    table_ref: str, default_catalog: str | None
+) -> tuple[str, str | None, str] | None:
+    """Parse object reference into (catalog_name, schema_name, object_name)."""
+    parts = table_ref.split(".")
+    if len(parts) == 3:
+        catalog_name, schema_name, object_name = parts
+        return catalog_name, schema_name, object_name
+    if len(parts) == 2:
+        schema_name, object_name = parts
+        return default_catalog or "__implicit__", schema_name, object_name
+    if len(parts) == 1:
+        object_name = parts[0]
+        return default_catalog or "__implicit__", None, object_name
+    return None
+
+
+def _resolve_from_schema(schema: dict[str, Any], object_name: str) -> tuple[str, str] | None:
+    """Resolve object from one schema by name."""
+    for table in schema.get("tables", []):
+        if table.get("name") == object_name:
+            return "table", table.get("id", "")
+    for view in schema.get("views", []):
+        if view.get("name") == object_name:
+            return "view", view.get("id", "")
+    return None
 
 
 def extract_dependencies_from_view(

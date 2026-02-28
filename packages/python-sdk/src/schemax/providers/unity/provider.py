@@ -6,6 +6,7 @@ Implements the Provider interface to enable Unity Catalog support in SchemaX.
 """
 
 import hashlib
+import importlib
 import json
 import os
 import threading
@@ -898,13 +899,12 @@ class UnityProvider(BaseProvider):
         warehouse_id: str,
         snapshot_version: str,
     ) -> str:
-        from schemax.core.deployment import DeploymentTracker
-
         deployment_catalog = env_config["topLevelName"]
         auto_create_schema = env_config.get("autoCreateSchemaxSchema", True)
 
         client = create_databricks_client(profile)
-        tracker = DeploymentTracker(client, deployment_catalog, warehouse_id)
+        deployment_module = importlib.import_module("schemax.core.deployment")
+        tracker = deployment_module.DeploymentTracker(client, deployment_catalog, warehouse_id)
         tracker.ensure_tracking_schema(auto_create=auto_create_schema)
 
         latest_success = tracker.get_latest_deployment(target_env)

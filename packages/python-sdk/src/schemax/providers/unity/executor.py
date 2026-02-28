@@ -164,28 +164,33 @@ class UnitySQLExecutor:
         exec_start = time.time()
 
         try:
-            response = self._submit_statement(sql, config)
-            statement_id = getattr(response, "statement_id", None)
-            if not statement_id or not str(statement_id).strip():
-                raise ExecutionError(
-                    "Statement submission did not return a statement ID; cannot poll for result"
-                )
-            terminal = self._poll_until_terminal(statement_id, config.timeout_seconds)
-
-            if terminal is None:
-                return self._make_failure_result(
-                    statement_id,
-                    sql,
-                    exec_start,
-                    f"Statement execution timed out after {config.timeout_seconds}s",
-                )
-            return self._handle_terminal_state(terminal, statement_id, sql, exec_start)
+            return self._execute_single_statement_core(sql, config, exec_start)
         except ExecutionError:
             raise
         except Exception as e:
             return self._make_failure_result(
                 f"stmt_error_{statement_num}", sql, exec_start, f"API error: {e}"
             )
+
+    def _execute_single_statement_core(
+        self, sql: str, config: ExecutionConfig, exec_start: float
+    ) -> StatementResult:
+        """Execute and poll a statement; errors are handled by caller."""
+        response = self._submit_statement(sql, config)
+        statement_id = getattr(response, "statement_id", None)
+        if not statement_id or not str(statement_id).strip():
+            raise ExecutionError(
+                "Statement submission did not return a statement ID; cannot poll for result"
+            )
+        terminal = self._poll_until_terminal(statement_id, config.timeout_seconds)
+        if terminal is None:
+            return self._make_failure_result(
+                statement_id,
+                sql,
+                exec_start,
+                f"Statement execution timed out after {config.timeout_seconds}s",
+            )
+        return self._handle_terminal_state(terminal, statement_id, sql, exec_start)
 
     def _submit_statement(self, sql: str, config: ExecutionConfig) -> Any:
         """Submit a SQL statement for async execution via the Databricks API."""

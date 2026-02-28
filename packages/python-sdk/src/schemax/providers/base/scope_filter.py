@@ -39,30 +39,30 @@ def filter_operations_by_managed_scope(
     existing_catalogs = {str(s).strip() for s in raw_catalogs if s is not None and str(s).strip()}
 
     result: list[Operation] = []
-    for op in ops:
+    for operation in ops:
         # Skip add_catalog for catalogs in existingObjects.catalog
-        if existing_catalogs and op.op and op.op.endswith("add_catalog"):
-            name = (op.payload or {}).get("name")
+        if existing_catalogs and operation.op and operation.op.endswith("add_catalog"):
+            name = (operation.payload or {}).get("name")
             if name is not None and str(name).strip() in existing_catalogs:
                 continue
 
         # If no managed scope restriction, keep op
         if not managed_categories:
-            result.append(op)
+            result.append(operation)
             continue
 
         # Look up managed_category from provider metadata
-        meta = provider.get_operation_metadata(op.op)
+        meta = provider.get_operation_metadata(operation.op)
         if meta is None:
             # Unknown op type: keep it (no filtering by category)
-            result.append(op)
+            result.append(operation)
             continue
         cat = getattr(meta, "managed_category", None)
         if cat is None:
-            result.append(op)
+            result.append(operation)
             continue
         cat_value = cat.value if hasattr(cat, "value") else str(cat)
         if cat_value in managed_categories:
-            result.append(op)
+            result.append(operation)
 
     return result

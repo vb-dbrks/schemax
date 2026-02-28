@@ -603,7 +603,7 @@ class TestRollbackCompleteBaselineGuard:
                         mock_provider,
                         None,
                     )
-                    with patch("schemax.commands.diff._build_catalog_mapping") as mock_build_map:
+                    with patch("schemax.commands.rollback.build_catalog_mapping") as mock_build_map:
                         mock_build_map.return_value = {"__implicit__": "dev_catalog"}
                         result = rollback_complete(
                             workspace=Path("/tmp"),
@@ -652,7 +652,7 @@ class TestRollbackCompleteBaselineGuard:
                             None,
                         )
                         with patch(
-                            "schemax.commands.diff._build_catalog_mapping"
+                            "schemax.commands.rollback.build_catalog_mapping"
                         ) as mock_build_map:
                             mock_build_map.return_value = {"__implicit__": "dev_catalog"}
                             result = rollback_complete(

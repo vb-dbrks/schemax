@@ -316,7 +316,17 @@ def load_current_state(
     project = read_project(workspace_path)
     changelog = read_changelog(workspace_path)
 
-    # Get provider
+    return _load_current_state_from_data(workspace_path, project, changelog, validate=validate)
+
+
+def _load_current_state_from_data(
+    workspace_path: Path,
+    project: dict[str, Any],
+    changelog: dict[str, Any],
+    *,
+    validate: bool,
+) -> tuple[ProviderState, dict[str, Any], Provider, dict[str, Any] | None]:
+    """Load state using preloaded project/changelog data to avoid duplicate disk reads."""
     provider = ProviderRegistry.get(project["provider"]["type"])
     if provider is None:
         raise ValueError(
@@ -324,25 +334,16 @@ def load_current_state(
             "Please ensure the provider is installed."
         )
 
-    # Load state
     if project["latestSnapshot"]:
-        # Load latest snapshot
         snapshot = read_snapshot(workspace_path, project["latestSnapshot"])
         state = snapshot["state"]
     else:
-        # No snapshots yet, start with empty state
         state = provider.create_initial_state()
 
-    # Apply changelog ops using provider's state reducer
-    # Convert dict ops to Operation objects at storage boundary
     ops = [Operation(**op) for op in changelog["ops"]]
     state = provider.apply_operations(state, ops)
-
-    # Update changelog to contain Operation objects (standardize on Pydantic)
-    # This ensures consistent types throughout the system
     changelog["ops"] = ops
 
-    # Validate dependencies if requested
     validation_result = None
     if validate:
         validation_result = validate_dependencies_internal(state, ops, provider)
@@ -445,8 +446,10 @@ def create_snapshot(
     project = read_project(workspace_path)
     changelog = read_changelog(workspace_path)
 
-    # Load current state
-    state, _, _, _ = load_current_state(workspace_path, validate=False)
+    # Load current state using preloaded project/changelog to avoid duplicate reads.
+    state, _, _, _ = _load_current_state_from_data(
+        workspace_path, project, changelog, validate=False
+    )
 
     # Determine version
     snapshot_version = version or _get_next_version(
