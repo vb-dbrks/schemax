@@ -74,6 +74,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [editRuleObjectType, setEditRuleObjectType] = useState<NamingRuleObjectType>('schema');
   const [editRulePattern, setEditRulePattern] = useState('');
+  const [namingPatternError, setNamingPatternError] = useState<string | null>(null);
 
   // Update local state when catalog changes
   useEffect(() => {
@@ -156,10 +157,16 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   const rules: NamingStandardsRule[] = catalog?.namingStandards?.rules ?? [];
 
   const handleAddNamingRule = () => {
+    const pattern = newRulePattern.trim();
+    if (!pattern) {
+      setNamingPatternError('Pattern (regex) cannot be empty.');
+      return;
+    }
+    setNamingPatternError(null);
     const newRule: NamingStandardsRule = {
       id: newRuleId(),
       objectType: newRuleObjectType,
-      pattern: newRulePattern.trim() || undefined,
+      pattern,
       enabled: true,
     };
     const nextRules = [...rules, newRule];
@@ -178,10 +185,14 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   };
 
   const handleSaveEditRule = (ruleId: string) => {
+    const pattern = editRulePattern.trim();
+    if (!pattern) {
+      setNamingPatternError('Pattern (regex) cannot be empty.');
+      return;
+    }
+    setNamingPatternError(null);
     const nextRules = rules.map((r) =>
-      r.id === ruleId
-        ? { ...r, objectType: editRuleObjectType, pattern: editRulePattern.trim() || undefined }
-        : r
+      r.id === ruleId ? { ...r, objectType: editRuleObjectType, pattern } : r
     );
     updateCatalog(catalogId, {
       namingStandards: { ...catalog?.namingStandards, rules: nextRules },
@@ -195,6 +206,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
     setEditingRuleId(null);
     setEditRuleObjectType('schema');
     setEditRulePattern('');
+    setNamingPatternError(null);
   };
 
   const handleRemoveNamingRule = (ruleId: string) => {
@@ -532,6 +544,11 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
       {/* Naming Standards (catalog-level) */}
       <div className="table-properties-section">
         <h3>Naming Standards</h3>
+        {namingPatternError && (
+          <p className="form-error" style={{ marginTop: '4px', marginBottom: '8px' }}>
+            {namingPatternError}
+          </p>
+        )}
 
         {rules.length === 0 && !addRuleForm ? (
           <div className="empty-properties">
@@ -572,7 +589,10 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                           type="text"
                           value={editRulePattern}
                           placeholder="^[a-z][a-z0-9_]*$"
-                          onChange={(e) => setEditRulePattern(e.target.value)}
+                          onChange={(e) => {
+                            setEditRulePattern(e.target.value);
+                            setNamingPatternError(null);
+                          }}
                         />
                       </td>
                       <td className="actions-cell">
@@ -580,6 +600,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                           className="action-button-save"
                           onClick={() => handleSaveEditRule(rule.id)}
                           title="Save"
+                          disabled={!editRulePattern.trim()}
                         >
                           ✓
                         </button>
@@ -641,7 +662,10 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                       type="text"
                       value={newRulePattern}
                       placeholder="^[a-z][a-z0-9_]*$"
-                      onChange={(e) => setNewRulePattern(e.target.value)}
+                      onChange={(e) => {
+                        setNewRulePattern(e.target.value);
+                        setNamingPatternError(null);
+                      }}
                     />
                   </td>
                   <td className="actions-cell">
@@ -649,6 +673,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                       className="action-button-save"
                       onClick={handleAddNamingRule}
                       title="Add rule"
+                      disabled={!newRulePattern.trim()}
                     >
                       ✓
                     </button>
@@ -657,6 +682,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                       onClick={() => {
                         setAddRuleForm(false);
                         setNewRulePattern('');
+                        setNamingPatternError(null);
                       }}
                       title="Cancel"
                     >
