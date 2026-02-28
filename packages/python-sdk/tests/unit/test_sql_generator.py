@@ -322,7 +322,7 @@ class TestTableSQL:
             "events",
             "schema_456",
             "delta",
-            comment="Table for storing event data",
+            options={"comment": "Table for storing event data"},
             op_id="op_007",
         )
 
@@ -1896,7 +1896,7 @@ class TestSQLOptimization:
                 "test",
                 "schema_456",
                 "delta",
-                comment="Table for test data",
+                options={"comment": "Table for test data"},
                 op_id="table_001",
             ),
             builder.column.add_column(

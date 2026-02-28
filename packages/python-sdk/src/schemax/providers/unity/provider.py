@@ -926,16 +926,7 @@ class UnityProvider(BaseProvider):
 
         tracker.complete_deployment(
             deployment_id=deployment_id,
-            result=ExecutionResult(
-                deployment_id=deployment_id,
-                total_statements=0,
-                successful_statements=0,
-                failed_statement_index=None,
-                statement_results=[],
-                total_execution_time_ms=0,
-                status="success",
-                error_message=None,
-            ),
+            result=ExecutionResult.empty(deployment_id=deployment_id),
         )
         return deployment_id
 

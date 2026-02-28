@@ -4,6 +4,11 @@ from shutil import copytree
 
 import pytest
 
+from schemax.core.storage import (
+    append_ops,
+    default_project_skeleton_tail,
+    ensure_project_file,
+)
 from schemax.providers.unity.models import (
     UnityState,
 )
@@ -101,14 +106,7 @@ def sample_project_v4():
                 },
             },
         },
-        "snapshots": [],
-        "deployments": [],
-        "settings": {
-            "autoIncrementVersion": True,
-            "versionPrefix": "v",
-            "catalogMode": "single",
-        },
-        "latestSnapshot": None,
+        **default_project_skeleton_tail(),
     }
 
 
@@ -151,8 +149,6 @@ def empty_unity_state():
 @pytest.fixture
 def initialized_workspace(temp_workspace):
     """Workspace with initialized .schemax project (v4)"""
-    from schemax.core.storage import ensure_project_file
-
     ensure_project_file(temp_workspace, provider_id="unity")
     return temp_workspace
 
@@ -160,8 +156,6 @@ def initialized_workspace(temp_workspace):
 @pytest.fixture
 def workspace_with_operations(initialized_workspace, sample_operations):
     """Workspace with operations in changelog"""
-    from schemax.core.storage import append_ops
-
     append_ops(initialized_workspace, sample_operations)
     return initialized_workspace
 

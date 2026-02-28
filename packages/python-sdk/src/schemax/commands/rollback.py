@@ -16,6 +16,7 @@ from uuid import uuid4
 from rich.console import Console
 from rich.prompt import Confirm
 
+from schemax.commands._preview import print_sql_statements_preview
 from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
 from schemax.core.deployment import DeploymentRecord, DeploymentTracker
 from schemax.core.storage import (
@@ -340,28 +341,11 @@ def rollback_partial(
         )
 
     # 9. Show SQL preview (match apply command behavior)
-    console.print()
-    console.print("[bold]SQL Preview:[/bold]")
-    console.print("─" * 60)
-
-    # Show each statement with per-statement truncation
-    for i, stmt in enumerate(statements, 1):
-        console.print(f"\n[cyan]Statement {i}/{len(statements)}:[/cyan]")
-        stmt_lines = stmt.strip().split("\n")
-
-        if len(stmt_lines) <= 5:
-            # Short statement - show in full
-            for line in stmt_lines:
-                console.print(f"  {line}")
-        else:
-            # Long statement - show first 3 and last 1 line
-            for line in stmt_lines[:3]:
-                console.print(f"  {line}")
-            console.print(f"  ... ({len(stmt_lines) - 4} more lines)")
-            console.print(f"  {stmt_lines[-1]}")
-
-    console.print()
-    console.print(f"[bold]Execute {len(statements)} rollback statements?[/bold]")
+    print_sql_statements_preview(
+        statements,
+        title="SQL Preview",
+        action_prompt=f"Execute {len(statements)} rollback statements?",
+    )
 
     # 10. Dry run - stop here
     if dry_run:
@@ -856,28 +840,11 @@ def rollback_complete(
         console.print(f"  [green]✓[/green] Generated {len(statements)} SQL statements")
 
         # 10. Show SQL preview (match apply command behavior)
-        console.print()
-        console.print("[bold]SQL Preview:[/bold]")
-        console.print("─" * 60)
-
-        # Show each statement with per-statement truncation
-        for i, stmt in enumerate(statements, 1):
-            console.print(f"\n[cyan]Statement {i}/{len(statements)}:[/cyan]")
-            stmt_lines = stmt.strip().split("\n")
-
-            if len(stmt_lines) <= 5:
-                # Short statement - show in full
-                for line in stmt_lines:
-                    console.print(f"  {line}")
-            else:
-                # Long statement - show first 3 and last 1 line
-                for line in stmt_lines[:3]:
-                    console.print(f"  {line}")
-                console.print(f"  ... ({len(stmt_lines) - 4} more lines)")
-                console.print(f"  {stmt_lines[-1]}")
-
-        console.print()
-        console.print(f"[bold]Execute {len(statements)} rollback statements?[/bold]")
+        print_sql_statements_preview(
+            statements,
+            title="SQL Preview",
+            action_prompt=f"Execute {len(statements)} rollback statements?",
+        )
 
         # 11. Dry run - stop here
         if dry_run:

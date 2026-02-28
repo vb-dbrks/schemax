@@ -28,7 +28,10 @@ def _prompt_env_if_tty(var_name: str, prompt: str | None = None) -> str | None:
         return None
     msg = prompt or f"{var_name} (required for live integration tests): "
     try:
-        return input(msg).strip() or None
+        sys.stdout.write(msg)
+        sys.stdout.flush()
+        line = sys.stdin.readline()
+        return line.strip() if line else None
     except (EOFError, OSError):
         return None
 

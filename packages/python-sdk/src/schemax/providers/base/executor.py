@@ -79,6 +79,20 @@ class ExecutionResult(BaseModel):
     status: Literal["success", "failed", "partial"] = Field(..., description="Overall status")
     error_message: str | None = Field(None, description="Error summary")
 
+    @classmethod
+    def empty(cls, deployment_id: str = "none") -> "ExecutionResult":
+        """Return an empty success result (no statements executed). Reusable across apply and providers."""
+        return cls(
+            deployment_id=deployment_id,
+            total_statements=0,
+            successful_statements=0,
+            failed_statement_index=None,
+            statement_results=[],
+            total_execution_time_ms=0,
+            status="success",
+            error_message=None,
+        )
+
 
 class SQLExecutor(Protocol):
     """Protocol for executing SQL statements against a data catalog

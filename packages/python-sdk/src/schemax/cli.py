@@ -626,20 +626,30 @@ def rollback(ctx: click.Context, **_kwargs: Any) -> None:
         # Non-interactive (skip confirmation prompts, for CI/CD)
         schemax rollback --partial --deployment deploy_abc123 -p PROD -w abc123 -t prod --no-interaction
     """
+    params = None
+    workspace_path = None
     try:
         params = ctx.params
         workspace_path = Path(params["workspace"]).resolve()
         _handle_rollback_dispatch(workspace_path, params)
     except RollbackError as e:
         console.print(f"[red]✗[/red] {e}")
-        if "not found" in str(e).lower():
-            project = read_project(workspace_path)
-            env_config = get_environment_config(project, params["target"] or "")
-            _print_rollback_deployment_not_found_help(
-                params["deployment"] or "",
-                env_config.get("topLevelName", ""),
-                params["target"] or "",
-            )
+        if (
+            "not found" in str(e).lower()
+            and params is not None
+            and params.get("target")
+            and workspace_path is not None
+        ):
+            try:
+                project = read_project(workspace_path)
+                env_config = get_environment_config(project, params["target"])
+                _print_rollback_deployment_not_found_help(
+                    params.get("deployment") or "",
+                    env_config.get("topLevelName", ""),
+                    params["target"],
+                )
+            except (FileNotFoundError, ValueError):
+                pass
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Rollback error:[/red] {e}")

@@ -126,7 +126,7 @@ def _load_snapshots(workspace: Path, from_version: str, to_version: str) -> tupl
 
 
 def _resolve_diff_catalog_mapping(
-    workspace: Path,
+    _workspace: Path,
     target_env: str | None,
     state: dict,
     project: dict,

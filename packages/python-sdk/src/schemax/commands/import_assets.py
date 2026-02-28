@@ -129,7 +129,7 @@ def import_from_provider(
         console.print("[green]✓[/green] No import operations required")
 
     if adopt_baseline:
-        project, baseline_updates = _adopt_baseline(
+        _, baseline_updates = _adopt_baseline(
             provider,
             discover.project,
             discover.env_config,

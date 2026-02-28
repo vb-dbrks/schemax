@@ -40,17 +40,17 @@ UNITY_CATALOG_COLUMN_TYPES: list[tuple[str, str, bool, str]] = [
 
 def make_rich_sample_operations() -> list:
     """Build rich sample operations: full data types, tables, views, functions, volumes, MVs."""
-    b = OperationBuilder()
+    builder = OperationBuilder()
     ops = [
-        b.catalog.add_catalog("cat_123", "bronze", op_id="op_001"),
-        b.schema.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
-        b.table.add_table("table_789", "users", "schema_456", "delta", op_id="op_003"),
+        builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001"),
+        builder.schema.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
+        builder.table.add_table("table_789", "users", "schema_456", "delta", op_id="op_003"),
     ]
     # All data types table: one column per type (col_001 .. col_022)
     for i, (name, col_type, nullable, comment) in enumerate(UNITY_CATALOG_COLUMN_TYPES):
         col_id = f"col_{i + 1:03d}"
         ops.append(
-            b.column.add_column(
+            builder.column.add_column(
                 col_id,
                 "table_789",
                 name,
@@ -63,16 +63,18 @@ def make_rich_sample_operations() -> list:
     # Second table: Iceberg
     ops.extend(
         [
-            b.table.add_table(
+            builder.table.add_table(
                 "table_ice",
                 "events_iceberg",
                 "schema_456",
                 "iceberg",
-                comment="Iceberg table",
+                options={"comment": "Iceberg table"},
                 op_id="op_tice",
             ),
-            b.column.add_column("col_ice_id", "table_ice", "id", "BIGINT", False, op_id="op_cice1"),
-            b.column.add_column(
+            builder.column.add_column(
+                "col_ice_id", "table_ice", "id", "BIGINT", False, op_id="op_cice1"
+            ),
+            builder.column.add_column(
                 "col_ice_ts", "table_ice", "event_ts", "TIMESTAMP_NTZ", True, op_id="op_cice2"
             ),
         ]
@@ -80,22 +82,23 @@ def make_rich_sample_operations() -> list:
     # Third table: partitioned and clustered
     ops.extend(
         [
-            b.table.add_table(
+            builder.table.add_table(
                 "table_pc",
                 "events_partitioned",
                 "schema_456",
                 "delta",
-                partition_columns=["dt"],
-                cluster_columns=["id"],
+                options={"partition_columns": ["dt"], "cluster_columns": ["id"]},
                 op_id="op_tpc",
             ),
-            b.column.add_column("col_pc_id", "table_pc", "id", "BIGINT", False, op_id="op_cpc1"),
-            b.column.add_column("col_pc_dt", "table_pc", "dt", "DATE", True, op_id="op_cpc2"),
+            builder.column.add_column(
+                "col_pc_id", "table_pc", "id", "BIGINT", False, op_id="op_cpc1"
+            ),
+            builder.column.add_column("col_pc_dt", "table_pc", "dt", "DATE", True, op_id="op_cpc2"),
         ]
     )
     # View
     ops.append(
-        b.view.add_view(
+        builder.view.add_view(
             "view_001",
             "users_view",
             "schema_456",
@@ -106,7 +109,7 @@ def make_rich_sample_operations() -> list:
     )
     # SQL function
     ops.append(
-        b.function.add_function(
+        builder.function.add_function(
             "func_sql_001",
             "add_one",
             "schema_456",
@@ -120,7 +123,7 @@ def make_rich_sample_operations() -> list:
     )
     # Python function
     ops.append(
-        b.function.add_function(
+        builder.function.add_function(
             "func_py_001",
             "bmi",
             "schema_456",
@@ -137,7 +140,7 @@ def make_rich_sample_operations() -> list:
     )
     # Managed volume
     ops.append(
-        b.volume.add_volume(
+        builder.volume.add_volume(
             "vol_001",
             "managed_vol",
             "schema_456",
@@ -148,7 +151,7 @@ def make_rich_sample_operations() -> list:
     )
     # External volume (location placeholder)
     ops.append(
-        b.volume.add_volume(
+        builder.volume.add_volume(
             "vol_002",
             "external_vol",
             "schema_456",
@@ -159,7 +162,7 @@ def make_rich_sample_operations() -> list:
     )
     # Materialized view with schedule
     ops.append(
-        b.materialized_view.add_materialized_view(
+        builder.materialized_view.add_materialized_view(
             "mv_001",
             "daily_summary",
             "schema_456",
@@ -171,7 +174,7 @@ def make_rich_sample_operations() -> list:
     )
     # Materialized view with CLUSTER BY
     ops.append(
-        b.materialized_view.add_materialized_view(
+        builder.materialized_view.add_materialized_view(
             "mv_002",
             "clustered_mv",
             "schema_456",

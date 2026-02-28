@@ -242,6 +242,44 @@ def test_rollback_complete_routes_to_command(monkeypatch, temp_workspace: Path) 
     assert result.exit_code == 0
 
 
+def test_rollback_error_without_target_does_not_raise_value_error(
+    monkeypatch, temp_workspace: Path
+) -> None:
+    """RollbackError with 'not found' and missing --target must not call get_environment_config.
+
+    Previously, the handler called get_environment_config(project, params['target'] or ''),
+    which raised ValueError when target was missing, masking the original RollbackError.
+    """
+    from schemax.commands.rollback import RollbackError
+
+    def _raise_not_found(*args: object, **kwargs: object) -> None:
+        raise RollbackError("Deployment 'deploy_abc' not found in my_catalog.schemax")
+
+    runner = CliRunner()
+    monkeypatch.setattr("schemax.cli._handle_rollback_dispatch", _raise_not_found)
+
+    result = runner.invoke(
+        cli,
+        [
+            "rollback",
+            "--partial",
+            "--deployment",
+            "deploy_abc",
+            "--profile",
+            "p",
+            "--warehouse-id",
+            "w",
+            str(temp_workspace),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "not found" in result.output
+    assert "Deployment 'deploy_abc' not found" in result.output
+    # Bug fix: ValueError from get_environment_config(project, "") must not leak
+    assert "Environment '' not found" not in result.output
+
+
 def test_snapshot_create_no_ops_is_graceful(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
 

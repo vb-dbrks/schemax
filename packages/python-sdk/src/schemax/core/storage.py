@@ -21,6 +21,26 @@ PROJECT_FILENAME = "project.json"
 CHANGELOG_FILENAME = "changelog.json"
 SNAPSHOTS_DIR = "snapshots"
 
+# Default project settings (single source of truth for new/empty projects and tests)
+DEFAULT_PROJECT_SETTINGS: dict[str, Any] = {
+    "autoIncrementVersion": True,
+    "versionPrefix": "v",
+    "catalogMode": "single",  # "single" = implicit catalog (recommended), "multi" = explicit catalogs
+}
+
+
+def default_project_skeleton_tail() -> dict[str, Any]:
+    """Return snapshots, deployments, settings, and latestSnapshot for a new/empty project.
+
+    Shared by ensure_project_file and test fixtures to avoid duplicate structure.
+    """
+    return {
+        "snapshots": [],
+        "deployments": [],
+        "settings": dict(DEFAULT_PROJECT_SETTINGS),
+        "latestSnapshot": None,
+    }
+
 
 def get_schemax_dir(workspace_path: Path) -> Path:
     """Get the .schemax directory path"""
@@ -127,15 +147,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         },
         "managedLocations": {},
         "externalLocations": {},
-        "snapshots": [],
-        "deployments": [],
-        "settings": {
-            "autoIncrementVersion": True,
-            "versionPrefix": "v",
-            # "single" = implicit catalog (recommended), "multi" = explicit catalogs
-            "catalogMode": "single",
-        },
-        "latestSnapshot": None,
+        **default_project_skeleton_tail(),
     }
 
     # Initialize changelog with implicit catalog for single-catalog mode

@@ -248,31 +248,40 @@ def _prepare_operations(
     return operations
 
 
+def _extract_add_table_payload(
+    operation: Operation | dict[str, Any],
+) -> tuple[str, str | None, str] | None:
+    """Get (table_name, external_location_name, path) from add_table op or None if not external."""
+    if isinstance(operation, Operation):
+        if operation.op != "unity.add_table" or not operation.payload.get("external"):
+            return None
+        payload = operation.payload
+    else:
+        if operation.get("op") != "unity.add_table" or not operation.get("payload", {}).get(
+            "external"
+        ):
+            return None
+        payload = operation["payload"]
+    name = payload.get("name", "")
+    loc_name = payload.get("externalLocationName")
+    path = payload.get("path", "") or ""
+    return (name, loc_name, path)
+
+
 def _log_external_table_ops(operations: list[Operation], project: dict, target_env: str) -> None:
     """Extract and display external table operation details."""
-    external_table_ops = []
+    external_details = []
     for operation in operations:
-        if isinstance(operation, Operation):
-            if operation.op == "unity.add_table" and operation.payload.get("external"):
-                external_table_ops.append(operation)
-        elif operation.get("op") == "unity.add_table" and operation["payload"].get("external"):
-            external_table_ops.append(operation)
+        details = _extract_add_table_payload(operation)
+        if details is not None:
+            external_details.append(details)
 
-    if not external_table_ops:
+    if not external_details:
         return
 
-    console.print(f"\n[cyan]External Tables ({len(external_table_ops)}):[/cyan]")
+    console.print(f"\n[cyan]External Tables ({len(external_details)}):[/cyan]")
     ext_locs = project.get("externalLocations", {})
-    for operation in external_table_ops:
-        if isinstance(operation, Operation):
-            table_name = operation.payload["name"]
-            loc_name = operation.payload.get("externalLocationName")
-            path = operation.payload.get("path", "")
-        else:
-            table_name = operation["payload"]["name"]
-            loc_name = operation["payload"].get("externalLocationName")
-            path = operation["payload"].get("path", "")
-
+    for table_name, loc_name, path in external_details:
         if loc_name and loc_name in ext_locs:
             loc_def = ext_locs[loc_name]
             base = loc_def.get("paths", {}).get(target_env)
@@ -281,7 +290,8 @@ def _log_external_table_ops(operations: list[Operation], project: dict, target_e
                 console.print(f"  • {table_name}: {loc_name}/{path or '(base)'} → {resolved}")
             else:
                 console.print(
-                    f"  • {table_name}: [yellow]Location '{loc_name}' not configured for {target_env}[/yellow]"
+                    f"  • {table_name}: [yellow]Location '{loc_name}' not configured for "
+                    f"{target_env}[/yellow]"
                 )
         else:
             console.print(f"  • {table_name}: [red]Location '{loc_name}' not found[/red]")

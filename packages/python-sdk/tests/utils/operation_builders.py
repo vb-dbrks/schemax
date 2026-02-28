@@ -5,9 +5,20 @@ Domain builders (CatalogOpBuilder, SchemaOpBuilder, etc.) each handle one object
 OperationBuilder is a container: use builder.catalog.add_catalog(...), builder.schema.add_schema(...), etc.
 """
 
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from schemax.providers.base.operations import Operation, create_operation
+
+
+class TableAddOptions(TypedDict, total=False):
+    """Optional fields for add_table payload."""
+
+    comment: str
+    external: bool
+    external_location_name: str
+    path: str
+    partition_columns: list[str]
+    cluster_columns: list[str]
 
 
 class CatalogOpBuilder:
@@ -105,12 +116,7 @@ class TableOpBuilder:
         name: str,
         schema_id: str,
         table_format: Literal["delta", "iceberg"] = "delta",
-        comment: str | None = None,
-        external: bool = False,
-        external_location_name: str | None = None,
-        path: str | None = None,
-        partition_columns: list[str] | None = None,
-        cluster_columns: list[str] | None = None,
+        options: TableAddOptions | None = None,
         op_id: str | None = None,
     ) -> Operation:
         payload: dict[str, Any] = {
@@ -119,18 +125,19 @@ class TableOpBuilder:
             "schemaId": schema_id,
             "format": table_format,
         }
-        if comment is not None:
-            payload["comment"] = comment
-        if external:
-            payload["external"] = True
-        if external_location_name is not None:
-            payload["externalLocationName"] = external_location_name
-        if path is not None:
-            payload["path"] = path
-        if partition_columns is not None:
-            payload["partitionColumns"] = partition_columns
-        if cluster_columns is not None:
-            payload["clusterColumns"] = cluster_columns
+        if options:
+            if "comment" in options and options["comment"] is not None:
+                payload["comment"] = options["comment"]
+            if options.get("external"):
+                payload["external"] = True
+            if options.get("external_location_name") is not None:
+                payload["externalLocationName"] = options["external_location_name"]
+            if options.get("path") is not None:
+                payload["path"] = options["path"]
+            if options.get("partition_columns") is not None:
+                payload["partitionColumns"] = options["partition_columns"]
+            if options.get("cluster_columns") is not None:
+                payload["clusterColumns"] = options["cluster_columns"]
         return create_operation(
             provider=self.provider,
             op_type="add_table",
