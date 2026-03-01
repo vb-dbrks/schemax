@@ -5,21 +5,22 @@
  * Implements the Provider interface to enable Unity Catalog support in SchemaX.
  */
 
-import {
+import type {
   Provider,
-  BaseProvider,
   ProviderInfo,
-  ProviderCapabilities,
+  ProviderCapabilities} from '../base/provider';
+import {
+  BaseProvider
 } from '../base/provider';
-import { Operation, OperationMetadata } from '../base/operations';
-import { ValidationResult, ProviderState } from '../base/models';
-import { SQLGenerator } from '../base/sql-generator';
+import type { Operation, OperationMetadata } from '../base/operations';
+import type { ValidationResult, ProviderState } from '../base/models';
+import type { SQLGenerator } from '../base/sql-generator';
 import { unityHierarchy } from './hierarchy';
-import { UnityState } from './models';
+import type { UnityState } from './models';
 import { UNITY_OPERATIONS, unityOperationMetadata } from './operations';
 import { applyOperation, applyOperations } from './state-reducer';
 import { UnitySQLGenerator } from './sql-generator';
-import { LocationDefinition } from '../../storage-v4';
+import type { LocationDefinition } from '../../storage-v4';
 
 /**
  * Unity Catalog Provider Implementation
@@ -106,8 +107,8 @@ export class UnityProvider extends BaseProvider implements Provider {
   }
   
   private validateOperationSpecificRules(
-    op: Operation,
-    metadata: OperationMetadata
+    _op: Operation,
+    _metadata: OperationMetadata
   ): Array<{field: string; message: string; code?: string}> {
     const errors: Array<{field: string; message: string; code?: string}> = [];
     

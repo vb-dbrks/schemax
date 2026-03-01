@@ -1,8 +1,21 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, ColumnMask, View } from '../../providers/unity/models';
-import { Operation } from '../../providers/base/operations';
-import { ProviderInfo, ProviderCapabilities } from '../../providers/base/provider';
+import type {
+  ProjectFile,
+  Catalog,
+  Schema,
+  Table,
+  Constraint,
+  RowFilter,
+  ColumnMask,
+  View,
+  UnityFunction,
+  UnityFunctionParameter,
+  UnityMaterializedView,
+  UnityVolume,
+} from '../../providers/unity/models';
+import type { Operation } from '../../providers/base/operations';
+import type { ProviderCapabilities } from '../../providers/base/provider';
 import { getVsCodeApi } from '../vscode-api';
 import type { ScopeResult, GrantTargetType } from '../utils/bulkUtils';
 import { getObjectsInScope as computeScope } from '../utils/bulkUtils';
@@ -76,7 +89,11 @@ interface DesignerState {
     }
   ) => void;
   renameView: (viewId: string, newName: string) => void;
-  updateView: (viewId: string, definition: string, extractedDependencies?: any) => void;
+  updateView: (
+    viewId: string,
+    definition: string,
+    extractedDependencies?: { tables: string[]; views: string[]; catalogs?: string[]; schemas?: string[] }
+  ) => void;
   dropView: (viewId: string) => void;
 
   // Volume operations
@@ -86,15 +103,29 @@ interface DesignerState {
   dropVolume: (volumeId: string) => void;
 
   // Function operations
-  addFunction: (schemaId: string, name: string, language: 'SQL' | 'PYTHON', body: string, options?: { returnType?: string; comment?: string; parameters?: any[] }) => void;
+  addFunction: (
+    schemaId: string,
+    name: string,
+    language: 'SQL' | 'PYTHON',
+    body: string,
+    options?: { returnType?: string; comment?: string; parameters?: UnityFunctionParameter[] }
+  ) => void;
   renameFunction: (functionId: string, newName: string) => void;
-  updateFunction: (functionId: string, updates: { body?: string; returnType?: string; comment?: string; parameters?: any[] }) => void;
+  updateFunction: (
+    functionId: string,
+    updates: { body?: string; returnType?: string; comment?: string; parameters?: UnityFunctionParameter[] }
+  ) => void;
   dropFunction: (functionId: string) => void;
 
   // Materialized view operations
   addMaterializedView: (schemaId: string, name: string, definition: string, options?: { comment?: string; refreshSchedule?: string; extractedDependencies?: { tables: string[]; views: string[] } }) => void;
   renameMaterializedView: (materializedViewId: string, newName: string) => void;
-  updateMaterializedView: (materializedViewId: string, definition: string, extractedDependencies?: any, options?: { refreshSchedule?: string; comment?: string }) => void;
+  updateMaterializedView: (
+    materializedViewId: string,
+    definition: string,
+    extractedDependencies?: { tables: string[]; views: string[] },
+    options?: { refreshSchedule?: string; comment?: string }
+  ) => void;
   dropMaterializedView: (materializedViewId: string) => void;
   
   addColumn: (tableId: string, name: string, type: string, nullable: boolean, comment?: string, tags?: Record<string, string>) => void;
@@ -140,9 +171,11 @@ interface DesignerState {
   findSchema: (schemaId: string) => { catalog: Catalog; schema: Schema } | undefined;
   findTable: (tableId: string) => { catalog: Catalog; schema: Schema; table: Table } | undefined;
   findView: (viewId: string) => { catalog: Catalog; schema: Schema; view: View } | undefined;
-  findVolume: (volumeId: string) => { catalog: Catalog; schema: Schema; volume: any } | undefined;
-  findFunction: (functionId: string) => { catalog: Catalog; schema: Schema; func: any } | undefined;
-  findMaterializedView: (mvId: string) => { catalog: Catalog; schema: Schema; mv: any } | undefined;
+  findVolume: (volumeId: string) => { catalog: Catalog; schema: Schema; volume: UnityVolume } | undefined;
+  findFunction: (functionId: string) => { catalog: Catalog; schema: Schema; func: UnityFunction } | undefined;
+  findMaterializedView: (
+    mvId: string
+  ) => { catalog: Catalog; schema: Schema; mv: UnityMaterializedView } | undefined;
 
   // Bulk operations (scope from catalog or schema selection)
   getObjectsInScope: (scope: 'catalog' | 'schema', catalogId?: string | null, schemaId?: string | null) => ScopeResult;
@@ -168,7 +201,7 @@ function createOperation(
   store: DesignerState,
   opType: string,
   target: string,
-  payload: Record<string, any>
+  payload: Record<string, unknown>
 ): Operation {
   const provider = store.provider;
   if (!provider) {
@@ -707,13 +740,13 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   findCatalog: (catalogId) => {
     const { project } = get();
-    return (project as any)?.state.catalogs.find((c: Catalog) => c.id === catalogId);
+    return project?.state.catalogs.find((c: Catalog) => c.id === catalogId);
   },
 
   findSchema: (schemaId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       const schema = catalog.schemas.find((s: Schema) => s.id === schemaId);
       if (schema) return { catalog, schema };
     }
@@ -723,7 +756,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findTable: (tableId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
         const table = schema.tables.find((t: Table) => t.id === tableId);
         if (table) return { catalog, schema, table };
@@ -735,7 +768,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findView: (viewId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
         if (schema.views) {
           const view = schema.views.find((v: View) => v.id === viewId);
@@ -749,10 +782,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findVolume: (volumeId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
         const volumes = schema.volumes ?? [];
-        const volume = volumes.find((v: any) => v.id === volumeId);
+        const volume = volumes.find((v: UnityVolume) => v.id === volumeId);
         if (volume) return { catalog, schema, volume };
       }
     }
@@ -762,10 +795,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findFunction: (functionId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
         const functions = schema.functions ?? [];
-        const func = functions.find((f: any) => f.id === functionId);
+        const func = functions.find((f: UnityFunction) => f.id === functionId);
         if (func) return { catalog, schema, func };
       }
     }
@@ -775,10 +808,14 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findMaterializedView: (mvId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
-        const mvs = schema.materializedViews ?? schema.materialized_views ?? [];
-        const mv = mvs.find((m: any) => m.id === mvId);
+        const mvs = (
+          schema as Schema & { materialized_views?: UnityMaterializedView[] }
+        ).materializedViews ?? (
+          schema as Schema & { materialized_views?: UnityMaterializedView[] }
+        ).materialized_views ?? [];
+        const mv = mvs.find((m: UnityMaterializedView) => m.id === mvId);
         if (mv) return { catalog, schema, mv };
       }
     }

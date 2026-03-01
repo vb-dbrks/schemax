@@ -5,8 +5,8 @@
  * Migrated from storage-v2.ts applyOpsToState function.
  */
 
-import { Operation } from '../base/operations';
-import {
+import type { Operation } from '../base/operations';
+import type {
   UnityState,
   UnityCatalog,
   UnitySchema,
@@ -22,7 +22,6 @@ import {
   UnityFunctionParameter,
   UnityMaterializedView,
 } from './models';
-import { UNITY_OPERATIONS } from './operations';
 
 /**
  * Apply a single operation to Unity Catalog state
@@ -805,4 +804,3 @@ function findGrantTarget(
   if (targetType === 'materialized_view') return findMaterializedView(state, targetId);
   return undefined;
 }
-

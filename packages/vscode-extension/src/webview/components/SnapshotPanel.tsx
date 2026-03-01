@@ -65,7 +65,7 @@ export const SnapshotPanel: React.FC = () => {
                       </div>
                       {snapshot.tags && snapshot.tags.length > 0 && (
                         <div className="snapshot-tags">
-                          {snapshot.tags.map(tag => (
+                          {snapshot.tags.map((tag: string) => (
                             <span key={tag} className="snapshot-tag">{tag}</span>
                           ))}
                         </div>
@@ -101,4 +101,3 @@ export const SnapshotPanel: React.FC = () => {
     </div>
   );
 };
-

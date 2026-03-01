@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
+import type { UnityCatalog, UnityTable } from '../../providers/unity/models';
 
 // Codicon icons - theme-aware and vector-based
 const IconEdit: React.FC = () => (
@@ -27,11 +28,10 @@ export function TableTags({ tableId }: TableTagsProps) {
 
   // Find the table
   const table = React.useMemo(() => {
-    const projectWithState = project as any;
-    if (!projectWithState?.state?.catalogs) return null;
-    for (const catalog of projectWithState.state.catalogs) {
+    if (!project?.state?.catalogs) return null;
+    for (const catalog of project.state.catalogs as UnityCatalog[]) {
       for (const schema of catalog.schemas) {
-        const found = schema.tables.find((t: any) => t.id === tableId);
+        const found = schema.tables.find((t: UnityTable) => t.id === tableId);
         if (found) return found;
       }
     }
@@ -249,4 +249,3 @@ export function TableTags({ tableId }: TableTagsProps) {
     </div>
   );
 }
-

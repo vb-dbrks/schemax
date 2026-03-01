@@ -5,11 +5,13 @@
  * Migrated from sql-generator.ts
  */
 
-import { Operation } from '../base/operations';
-import { BaseSQLGenerator, SQLGenerationResult } from '../base/sql-generator';
-import { UnityState } from './models';
+import type { Operation } from '../base/operations';
+import type { SQLGenerationResult } from '../base/sql-generator';
+import { BaseSQLGenerator } from '../base/sql-generator';
+import { DependencyEnforcement, DependencyType } from '../base/dependency-graph';
+import type { UnityState } from './models';
 import { UNITY_OPERATIONS } from './operations';
-import { LocationDefinition } from '../../storage-v4';
+import type { LocationDefinition } from '../../storage-v4';
 
 interface LocationResolution {
   resolved: string;
@@ -222,7 +224,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
   
   canGenerateSQL(op: Operation): boolean {
     const supportedOps = Object.values(UNITY_OPERATIONS);
-    return supportedOps.includes(op.op as any);
+    return (supportedOps as string[]).includes(op.op);
   }
 
   /**
@@ -269,15 +271,15 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         for (const depId of op.payload.dependencies) {
           dependencies.push([
             depId as string,
-            'view_dependency' as any,
-            'informational' as any,
+            DependencyType.VIEW_DEPENDENCY,
+            DependencyEnforcement.INFORMATIONAL,
           ]);
         }
       }
 
       // Extract dependencies from SQL definition if available
       if (op.payload.extractedDependencies) {
-        const extracted = op.payload.extractedDependencies as Record<string, any>;
+        const extracted = op.payload.extractedDependencies as Record<string, unknown>;
         if (extracted.tables && Array.isArray(extracted.tables)) {
           for (const _tableFqn of extracted.tables) {
             // FQN-to-ID mapping limitation as with views
@@ -292,12 +294,12 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
         for (const depId of op.payload.dependencies) {
           dependencies.push([
             depId as string,
-            'view_dependency' as any,
-            'informational' as any,
+            DependencyType.VIEW_DEPENDENCY,
+            DependencyEnforcement.INFORMATIONAL,
           ]);
         }
       }
-      const extracted = op.payload.extractedDependencies as Record<string, any> | undefined;
+      const extracted = op.payload.extractedDependencies as Record<string, unknown> | undefined;
       if (extracted?.tables && Array.isArray(extracted.tables)) {
         for (const _tid of extracted.tables) {
           // Optional: map to IDs if needed
@@ -349,7 +351,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
 
     // Filter each group
     const filtered: Operation[] = [];
-    for (const [targetId, targetOps] of Object.entries(byTarget)) {
+    for (const [_targetId, targetOps] of Object.entries(byTarget)) {
       // Skip empty groups
       if (!targetOps || targetOps.length === 0) {
         continue;
@@ -587,7 +589,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     // Tags need to be set via ALTER after creation
     let result = sql;
     if (tags && Object.keys(tags).length > 0) {
-      const tagEntries = Object.entries(tags).map(([key, value]) => 
+      const tagEntries = Object.entries(tags as Record<string, string>).map(([key, value]) =>
         `'${this.escapeString(key)}' = '${this.escapeString(value)}'`
       ).join(', ');
       result += `;\nALTER CATALOG ${this.escapeIdentifier(name)} SET TAGS (${tagEntries})`;
@@ -647,7 +649,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     // Tags need to be set via ALTER after creation
     let result = sql;
     if (tags && Object.keys(tags).length > 0) {
-      const tagEntries = Object.entries(tags).map(([key, value]) => 
+      const tagEntries = Object.entries(tags as Record<string, string>).map(([key, value]) =>
         `'${this.escapeString(key)}' = '${this.escapeString(value)}'`
       ).join(', ');
       result += `;\nALTER SCHEMA ${this.buildFqn(catalogName, schemaName)} SET TAGS (${tagEntries})`;
@@ -859,7 +861,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     return `ALTER TABLE ${tableEscaped} DROP COLUMN ${this.escapeIdentifier(colName)}`;
   }
   
-  private reorderColumns(op: Operation): string {
+  private reorderColumns(_op: Operation): string {
     // Databricks doesn't support direct column reordering
     return '-- Column reordering not directly supported in Databricks SQL';
   }
@@ -927,7 +929,7 @@ export class UnitySQLGenerator extends BaseSQLGenerator {
     tableId: string,
     originalOrder: string[],
     finalOrder: string[],
-    opIds: string[]
+    _opIds: string[]
   ): string {
     if (!originalOrder.length || !finalOrder.length) {
       return '-- No columns to reorder';
@@ -1832,7 +1834,10 @@ ${columnsSql}
         const tagName = op.payload.tagName;
         if (!unsetByCol.has(key)) unsetByCol.set(key, new Set());
         unsetByCol.get(key)!.add(tagName);
-        setByCol.get(key)?.delete(tagName);
+        const existingTags = setByCol.get(key);
+        if (existingTags) {
+          delete existingTags[tagName];
+        }
       }
     }
 
@@ -1887,7 +1892,10 @@ ${columnsSql}
         const tagName = op.payload.tagName;
         if (!unsetByTable.has(tableId)) unsetByTable.set(tableId, new Set());
         unsetByTable.get(tableId)!.add(tagName);
-        setByTable.get(tableId)?.delete(tagName);
+        const existingTags = setByTable.get(tableId);
+        if (existingTags) {
+          delete existingTags[tagName];
+        }
       }
     }
 
@@ -2011,11 +2019,11 @@ ${columnsSql}
     return `-- Row filter: ${op.payload.name} - UDF: ${op.payload.udfExpression}`;
   }
   
-  private updateRowFilter(op: Operation): string {
+  private updateRowFilter(_op: Operation): string {
     return '-- Row filter update';
   }
   
-  private removeRowFilter(op: Operation): string {
+  private removeRowFilter(_op: Operation): string {
     return '-- Row filter removal';
   }
   
@@ -2025,11 +2033,11 @@ ${columnsSql}
     return `-- Column mask: ${op.payload.name} - Function: ${op.payload.maskFunction}`;
   }
   
-  private updateColumnMask(op: Operation): string {
+  private updateColumnMask(_op: Operation): string {
     return '-- Column mask update';
   }
   
-  private removeColumnMask(op: Operation): string {
+  private removeColumnMask(_op: Operation): string {
     return '-- Column mask removal';
   }
 
@@ -2307,4 +2315,3 @@ ${columnsSql}
     return `REVOKE ${privClause} ON ${kind} ${fqn} FROM ${principalEsc}`;
   }
 }
-

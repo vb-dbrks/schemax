@@ -1,6 +1,5 @@
 // Telemetry stub for future implementation
-export function trackEvent(eventName: string, properties?: Record<string, any>): void {
+export function trackEvent(eventName: string, properties?: Record<string, unknown>): void {
   // Future: Send telemetry
-  console.log(`[Telemetry] ${eventName}`, properties);
+  console.warn(`[Telemetry] ${eventName}`, properties);
 }
-

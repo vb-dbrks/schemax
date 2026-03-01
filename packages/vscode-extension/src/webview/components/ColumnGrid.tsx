@@ -5,7 +5,7 @@ import {
   VSCodeOption,
   VSCodeTextField,
 } from '@vscode/webview-ui-toolkit/react';
-import { Column } from '../../providers/unity/models';
+import type { Column } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
 
@@ -74,7 +74,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     setDraggedIndex(index);
   };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e: React.DragEvent, _index: number) => {
     e.preventDefault();
   };
 

@@ -4,7 +4,8 @@
  * Migrated from shared/model.ts with Unity-specific types
  */
 
-import { BaseObject, ProviderState } from '../base/models';
+import type { BaseObject, ProviderState } from '../base/models';
+import type { Operation } from '../base/operations';
 
 // Column definition
 export interface UnityColumn extends BaseObject {
@@ -33,7 +34,7 @@ export interface UnityColumnMask extends BaseObject {
 // Constraint definition
 export interface UnityConstraint extends BaseObject {
   type: 'primary_key' | 'foreign_key' | 'check';
-  name?: string; // CONSTRAINT name
+  name: string; // CONSTRAINT name
   columns: string[]; // column IDs
   
   // For PRIMARY KEY
@@ -167,22 +168,61 @@ export interface UnityState extends ProviderState {
 }
 
 // Project file structure (what webview receives)
+export interface UnityProjectEnvironment {
+  topLevelName: string;
+  description?: string;
+  catalogMappings?: Record<string, string>;
+  allowDrift?: boolean;
+  requireSnapshot?: boolean;
+  requireApproval?: boolean;
+  autoCreateTopLevel?: boolean;
+  autoCreateSchemaxSchema?: boolean;
+  managedCategories?: string[];
+  existingObjects?: {
+    catalog?: string[];
+    schema?: string[];
+    table?: string[];
+  };
+  [key: string]: unknown;
+}
+
+export interface ProjectSnapshot {
+  id: string;
+  version: string;
+  name: string;
+  ts: string;
+  comment?: string;
+  createdBy?: string;
+  opsCount?: number;
+  tags?: string[];
+}
+
+export interface ProjectDeployment {
+  snapshotId: string | null;
+  environment: string;
+}
+
 export interface ProjectFile {
   version: number;
   name: string;
+  activeEnvironment?: string;
   provider: {
     type: string;
     version: string;
-    environments?: Record<string, {
-      topLevelName: string;
-      description?: string;
-      [key: string]: any;
-    }>;
+    environments?: Record<string, UnityProjectEnvironment>;
   };
+  managedLocations?: Record<string, {
+    description?: string;
+    paths: Record<string, string>;
+  }>;
+  externalLocations?: Record<string, {
+    description?: string;
+    paths: Record<string, string>;
+  }>;
   state: UnityState;
-  ops: any[];
-  snapshots: any[];
-  deployments: any[];
+  ops: Operation[];
+  snapshots: ProjectSnapshot[];
+  deployments: ProjectDeployment[];
   settings: {
     autoIncrementVersion: boolean;
     versionPrefix: string;
@@ -190,3 +230,12 @@ export interface ProjectFile {
   latestSnapshot: string | null;
 }
 
+// Legacy compatibility aliases used across webview components.
+export type Column = UnityColumn;
+export type RowFilter = UnityRowFilter;
+export type ColumnMask = UnityColumnMask;
+export type Constraint = UnityConstraint;
+export type Table = UnityTable;
+export type View = UnityView;
+export type Schema = UnitySchema;
+export type Catalog = UnityCatalog;

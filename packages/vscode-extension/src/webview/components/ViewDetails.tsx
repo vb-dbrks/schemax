@@ -4,6 +4,7 @@ import { useDesignerStore } from '../state/useDesignerStore';
 import { parsePrivileges } from '../utils/grants';
 import { extractDependenciesFromView } from '../../providers/base/sql-parser';
 import { RichComment } from './RichComment';
+import type { UnityCatalog, UnityView } from '../../providers/unity/models';
 import './ViewDetails.css';
 
 const IconEdit: React.FC = () => (
@@ -35,9 +36,9 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
   const viewInfo = useMemo(() => {
     if (!project?.state?.catalogs) return null;
     
-    for (const catalog of project.state.catalogs) {
+    for (const catalog of project.state.catalogs as UnityCatalog[]) {
       for (const schema of catalog.schemas || []) {
-        for (const view of (schema as any).views || []) {
+        for (const view of schema.views || []) {
           if (view.id === viewId) {
             return { catalog, schema, view };
           }
@@ -356,8 +357,8 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
 
       {/* Grants - same layout as catalog/schema/table */}
       <div className="table-properties-section">
-        <h3>Grants ({(view as any).grants?.length ?? 0})</h3>
-        {(!(view as any).grants || (view as any).grants.length === 0) && !addGrantDialog ? (
+        <h3>Grants ({view.grants?.length ?? 0})</h3>
+        {(!view.grants || view.grants.length === 0) && !addGrantDialog ? (
           <div className="empty-properties">
             <p>No grants defined. Grant privileges (e.g. SELECT, MODIFY) to users or groups.</p>
           </div>
@@ -371,7 +372,7 @@ export const ViewDetails: React.FC<ViewDetailsProps> = ({ viewId }) => {
               </tr>
             </thead>
             <tbody>
-              {((view as any).grants || []).map((g: { principal: string; privileges: string[] }) => (
+              {(view.grants || []).map((g: UnityView['grants'][number]) => (
                 <tr key={g.principal}>
                   <td>{g.principal}</td>
                   <td>{(g.privileges || []).join(', ')}</td>

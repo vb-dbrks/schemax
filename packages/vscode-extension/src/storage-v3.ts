@@ -5,15 +5,15 @@
  * Migrates from v2 storage format to v3 format with provider metadata.
  */
 
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { ProviderRegistry } from './providers/registry';
-import { Provider } from './providers/base/provider';
-import { Operation } from './providers/base/operations';
-import { ProviderState } from './providers/base/models';
+import type { Provider } from './providers/base/provider';
+import type { Operation } from './providers/base/operations';
+import type { ProviderState } from './providers/base/models';
 
 const SCHEMAX_DIR = '.schemax';
 const PROJECT_FILENAME = 'project.json';
@@ -24,7 +24,7 @@ const SNAPSHOTS_DIR = 'snapshots';
 interface ProviderConfig {
   type: string; // 'unity', 'hive', 'postgres'
   version: string; // Provider schema version
-  config?: Record<string, any>; // Provider-specific config
+  config?: Record<string, unknown>; // Provider-specific config
 }
 
 interface ProjectSettings {
@@ -62,7 +62,16 @@ interface Deployment {
   status: 'success' | 'failed' | 'rolled_back';
   error?: string;
   driftDetected: boolean;
-  driftDetails?: any[];
+  driftDetails?: unknown[];
+}
+
+interface V2ProjectLike {
+  name: string;
+  environments?: string[];
+  snapshots?: SnapshotMetadata[];
+  deployments?: Deployment[];
+  settings?: Partial<ProjectSettings>;
+  latestSnapshot?: string | null;
 }
 
 export interface ProjectFileV3 {
@@ -142,7 +151,7 @@ async function ensureSchemaxDir(workspaceUri: vscode.Uri): Promise<void> {
   try {
     await fs.mkdir(schemaxDir, { recursive: true });
     await fs.mkdir(snapshotsDir, { recursive: true });
-  } catch (error) {
+  } catch (_error) {
     // Directory might already exist, that's ok
   }
 }
@@ -209,7 +218,7 @@ export async function ensureProjectFile(
     await fs.writeFile(projectPath, JSON.stringify(newProject, null, 2), 'utf8');
     await fs.writeFile(changelogPath, JSON.stringify(newChangelog, null, 2), 'utf8');
     
-    console.log(`[SchemaX] Initialized new v3 project: ${workspaceName} with provider: ${provider.info.name}`);
+    console.warn(`[SchemaX] Initialized new v3 project: ${workspaceName} with provider: ${provider.info.name}`);
   }
 }
 
@@ -218,10 +227,10 @@ export async function ensureProjectFile(
  */
 async function migrateV2ToV3(
   workspaceUri: vscode.Uri,
-  v2Project: any,
+  v2Project: V2ProjectLike,
   providerId: string = 'unity'
 ): Promise<void> {
-  console.log(`[SchemaX] Migrating project from v2 to v3...`);
+  console.warn('[SchemaX] Migrating project from v2 to v3...');
   
   const provider = ProviderRegistry.get(providerId);
   if (!provider) {
@@ -238,13 +247,14 @@ async function migrateV2ToV3(
     environments: v2Project.environments || ['dev', 'test', 'prod'],
     snapshots: v2Project.snapshots || [],
     deployments: v2Project.deployments || [],
-    settings: v2Project.settings || {
+    settings: {
       autoIncrementVersion: true,
       versionPrefix: 'v',
       requireSnapshotForProd: true,
       allowDrift: false,
       requireComments: false,
       warnOnBreakingChanges: true,
+      ...(v2Project.settings ?? {}),
     },
     latestSnapshot: v2Project.latestSnapshot || null,
   };
@@ -277,7 +287,7 @@ async function migrateV2ToV3(
   const projectPath = getProjectFilePath(workspaceUri);
   await fs.writeFile(projectPath, JSON.stringify(v3Project, null, 2), 'utf8');
   
-  console.log(`[SchemaX] Migration complete: v2 → v3`);
+  console.warn('[SchemaX] Migration complete: v2 -> v3');
 }
 
 /**
@@ -501,9 +511,9 @@ export async function createSnapshot(
   };
   await writeChangelog(workspaceUri, newChangelog);
   
-  console.log(`[SchemaX] Created snapshot ${snapshotVersion}: ${name}`);
-  console.log(`[SchemaX] Snapshot file: ${snapshotMetadata.file}`);
-  console.log(`[SchemaX] Ops included: ${opsWithIds.length}`);
+  console.warn(`[SchemaX] Created snapshot ${snapshotVersion}: ${name}`);
+  console.warn(`[SchemaX] Snapshot file: ${snapshotMetadata.file}`);
+  console.warn(`[SchemaX] Ops included: ${opsWithIds.length}`);
   
   return { project, snapshot: snapshotFile };
 }
@@ -519,7 +529,7 @@ export async function getUncommittedOpsCount(workspaceUri: vscode.Uri): Promise<
 /**
  * Calculate hash of state for integrity checking
  */
-function calculateStateHash(state: any, opsIncluded: string[]): string {
+function calculateStateHash(state: unknown, opsIncluded: string[]): string {
   const content = JSON.stringify({ state, opsIncluded });
   return crypto.createHash('sha256').update(content).digest('hex');
 }
@@ -538,9 +548,8 @@ function getNextVersion(currentVersion: string | null, settings: ProjectSettings
     return settings.versionPrefix + '0.1.0';
   }
   
-  const [, major, minor, patch] = versionMatch;
+  const [, major, minor, _patch] = versionMatch;
   const nextMinor = parseInt(minor) + 1;
   
   return `${settings.versionPrefix}${major}.${nextMinor}.0`;
 }
-

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
+import type { UnityCatalog, UnityTable } from '../../providers/unity/models';
 
 interface TablePropertiesProps {
   tableId: string;
@@ -22,12 +23,10 @@ export function TableProperties({ tableId }: TablePropertiesProps) {
 
   // Find the table
   const table = React.useMemo(() => {
-    // In the webview, project includes state (added by extension.ts)
-    const projectWithState = project as any;
-    if (!projectWithState?.state?.catalogs) return null;
-    for (const catalog of projectWithState.state.catalogs) {
+    if (!project?.state?.catalogs) return null;
+    for (const catalog of project.state.catalogs as UnityCatalog[]) {
       for (const schema of catalog.schemas) {
-        const found = schema.tables.find((t: any) => t.id === tableId);
+        const found = schema.tables.find((t: UnityTable) => t.id === tableId);
         if (found) return found;
       }
     }
@@ -273,4 +272,3 @@ export function TableProperties({ tableId }: TablePropertiesProps) {
     </div>
   );
 }
-

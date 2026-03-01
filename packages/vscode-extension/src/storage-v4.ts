@@ -6,20 +6,21 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 import { ProviderRegistry } from './providers/registry';
-import { Provider } from './providers/base/provider';
-import { Operation } from './providers/base/operations';
-import { ProviderState } from './providers/base/models';
+import { PythonBackendClient } from './backend/pythonBackendClient';
+import type { Provider } from './providers/base/provider';
+import type { Operation } from './providers/base/operations';
+import type { ProviderState } from './providers/base/models';
 
 const SCHEMAX_DIR = '.schemax';
 const PROJECT_FILENAME = 'project.json';
 const CHANGELOG_FILENAME = 'changelog.json';
 const SNAPSHOTS_DIR = 'snapshots';
+const pythonBackend = new PythonBackendClient();
 
 // Location Configuration Types
 export interface LocationDefinition {
@@ -86,7 +87,7 @@ interface Deployment {
   status: 'success' | 'failed' | 'partial' | 'rolled_back';
   error?: string;
   driftDetected?: boolean;
-  driftDetails?: any[];
+  driftDetails?: unknown[];
 }
 
 export interface ProjectFileV4 {
@@ -162,6 +163,15 @@ function getSnapshotFilePath(workspaceUri: vscode.Uri, version: string): vscode.
   return vscode.Uri.joinPath(workspaceUri, SCHEMAX_DIR, SNAPSHOTS_DIR, `${version}.json`);
 }
 
+function isFileNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'FileNotFound'
+  );
+}
+
 /**
  * Ensure .schemax/ directory structure exists
  */
@@ -172,7 +182,7 @@ export async function ensureSchemaxDir(workspaceUri: vscode.Uri): Promise<void> 
   try {
     await vscode.workspace.fs.createDirectory(schemaxDir);
     await vscode.workspace.fs.createDirectory(snapshotsDir);
-  } catch (error) {
+  } catch (_error) {
     // Directory might already exist, ignore
   }
 }
@@ -205,8 +215,8 @@ export async function ensureProjectFile(
         'Please create a new project or manually migrate to v4.'
       );
     }
-  } catch (error: any) {
-    if (error.code !== 'FileNotFound') {
+  } catch (error: unknown) {
+    if (!isFileNotFoundError(error)) {
       throw error;
     }
   }
@@ -313,8 +323,8 @@ export async function readProject(workspaceUri: vscode.Uri): Promise<ProjectFile
     }
 
     return project;
-  } catch (error: any) {
-    if (error.code === 'FileNotFound') {
+  } catch (error: unknown) {
+    if (isFileNotFoundError(error)) {
       throw new Error(
         'Project file not found. Please initialize a new project first.'
       );
@@ -344,8 +354,8 @@ export async function readChangelog(workspaceUri: vscode.Uri): Promise<Changelog
   try {
     const content = await vscode.workspace.fs.readFile(changelogPath);
     return JSON.parse(content.toString()) as ChangelogFile;
-  } catch (error: any) {
-    if (error.code === 'FileNotFound') {
+  } catch (error: unknown) {
+    if (isFileNotFoundError(error)) {
       // Changelog doesn't exist, create empty one
       const changelog: ChangelogFile = {
         version: 1,
@@ -459,59 +469,27 @@ export async function loadCurrentState(
 async function validateDependenciesInternal(
   workspaceUri: vscode.Uri
 ): Promise<ValidationResult> {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  try {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-
-    // Call schemax validate with --json flag
-    const { stdout } = await execAsync('schemax validate --json', {
-      cwd: workspaceUri.fsPath,
-    });
-
-    // Parse JSON output (last non-empty line)
-    const lines = stdout.trim().split('\n').filter((line: string) => line.trim());
-    const jsonLine = lines[lines.length - 1];
-    const result = JSON.parse(jsonLine);
-
-    return {
-      errors: result.errors || [],
-      warnings: result.warnings || [],
-    };
-  } catch (error: any) {
-    // If validation fails, try to parse stdout
-    if (error.stdout) {
-      try {
-        const lines = error.stdout.trim().split('\n').filter((line: string) => line.trim());
-        const jsonLine = lines[lines.length - 1];
-        const result = JSON.parse(jsonLine);
-        return {
-          errors: result.errors || [],
-          warnings: result.warnings || [],
-        };
-      } catch {
-        // Fallback to error message
-        warnings.push(`Could not validate dependencies: ${error.message}`);
-      }
-    } else {
-      // Check if it's just CLI not installed (common case - not an error)
-      const errorMsg = error.message || '';
-      if (errorMsg.includes('command not found') || 
-          errorMsg.includes('schemax: command not found') ||
-          errorMsg.includes('ENOENT')) {
-        // Silently skip - CLI validation is optional
-        // User can install Python SDK later if they want validation features
-      } else {
-        // Actual validation error - show warning
-        warnings.push(`Could not validate dependencies: ${error.message}`);
-      }
+  const envelope = await pythonBackend.runJson<
+    { errors?: string[]; warnings?: string[]; data?: { errors?: string[]; warnings?: string[] } }
+  >('validate', ['validate'], workspaceUri.fsPath);
+  if (envelope.status === 'error') {
+    const message = envelope.errors[0]?.message || 'Could not validate dependencies';
+    if (
+      message.includes('command not found') ||
+      message.includes('schemax: command not found') ||
+      message.includes('ENOENT') ||
+      message.includes('not found')
+    ) {
+      return { errors: [], warnings: [] };
     }
+    return { errors: [], warnings: [`Could not validate dependencies: ${message}`] };
   }
 
-  return { errors, warnings };
+  const data = envelope.data ?? {};
+  return {
+    errors: data.errors ?? data.data?.errors ?? [],
+    warnings: data.warnings ?? data.data?.warnings ?? [],
+  };
 }
 
 /**

@@ -168,7 +168,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
             <VSCodeDropdown
               id="bulk-op-type"
               value={operationType}
-              onInput={(e: React.FormEvent<HTMLSelectElement>) => {
+              onInput={(e) => {
                 const value = (e.target as HTMLSelectElement).value as BulkOperationType;
                 setOperationType(value || 'add_table_grants');
               }}
@@ -197,7 +197,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
                 <VSCodeTextField
                   id="bulk-grant-principal"
                   value={principal}
-                  onInput={(e: Event) => {
+                  onInput={(e) => {
                     const target = e.target as HTMLInputElement;
                     setPrincipal(target.value ?? '');
                   }}
@@ -213,7 +213,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
                 <VSCodeTextField
                   id="bulk-grant-privileges"
                   value={privilegesStr}
-                  onInput={(e: Event) => {
+                  onInput={(e) => {
                     const target = e.target as HTMLInputElement;
                     setPrivilegesStr(target.value ?? '');
                   }}
@@ -231,7 +231,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
                 <VSCodeTextField
                   id="bulk-tag-name"
                   value={tagName}
-                  onInput={(e: Event) => {
+                  onInput={(e) => {
                     const target = e.target as HTMLInputElement;
                     setTagName(target.value ?? '');
                   }}
@@ -244,7 +244,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
                 <VSCodeTextField
                   id="bulk-tag-value"
                   value={tagValue}
-                  onInput={(e: Event) => {
+                  onInput={(e) => {
                     const target = e.target as HTMLInputElement;
                     setTagValue(target.value ?? '');
                   }}

@@ -31,6 +31,5 @@ export interface ValidationError {
  * Provider state - generic container for provider-specific state
  */
 export interface ProviderState {
-  [key: string]: any;
+  [key: string]: unknown;
 }
-

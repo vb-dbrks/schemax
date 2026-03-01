@@ -5,13 +5,14 @@
  * Each provider implements this interface to generate provider-specific SQL.
  */
 
-import { Operation } from './operations';
-import { ProviderState } from './models';
-import {
-  DependencyGraph,
+import type { Operation } from './operations';
+import type { ProviderState } from './models';
+import type {
   DependencyNode,
   DependencyType,
-  DependencyEnforcement,
+  DependencyEnforcement} from './dependency-graph';
+import {
+  DependencyGraph
 } from './dependency-graph';
 
 /**
@@ -100,7 +101,6 @@ export abstract class BaseSQLGenerator implements SQLGenerator {
       return '';
     }
 
-    const statements: string[] = [];
     const warnings: string[] = [];
 
     try {
@@ -350,7 +350,7 @@ export abstract class BaseSQLGenerator implements SQLGenerator {
    * @returns Array of tuples: [dependencyId, dependencyType, enforcement]
    */
   protected _extractOperationDependencies(
-    op: Operation
+    _op: Operation
   ): Array<[string, DependencyType, DependencyEnforcement]> {
     // Base implementation returns empty array
     // Providers override this to extract dependencies (e.g., from view SQL)
@@ -372,7 +372,7 @@ export abstract class BaseSQLGenerator implements SQLGenerator {
    * Public method to get object name for validation
    */
   getObjectName(objectId: string): string | null {
-    return this._getObjectName(objectId);
+    return objectId || null;
   }
   
   /**
@@ -389,4 +389,3 @@ export abstract class BaseSQLGenerator implements SQLGenerator {
     return str.replace(/'/g, "''");
   }
 }
-

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
-import { Constraint, Table } from '../../providers/unity/models';
+import type { Constraint, Table, UnityCatalog, UnityColumn } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
 
 // Codicon icons - theme-aware and vector-based
@@ -16,6 +16,16 @@ interface TableConstraintsProps {
   tableId: string;
 }
 
+interface ConstraintFormData {
+  type: 'primary_key' | 'foreign_key' | 'check';
+  name?: string;
+  columns?: string[];
+  timeseries?: boolean;
+  parentTable?: string;
+  parentColumns?: string[];
+  expression?: string;
+}
+
 export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) => {
   const { project, addConstraint, updateConstraint, dropConstraint } = useDesignerStore();
   const [addDialog, setAddDialog] = useState(false);
@@ -24,12 +34,12 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
   const [pkWarningDialog, setPkWarningDialog] = useState(false);
 
   // Form state for adding/editing constraints (including type selection)
-  const [formData, setFormData] = useState<any>({ type: 'primary_key' });
+  const [formData, setFormData] = useState<ConstraintFormData>({ type: 'primary_key' });
 
   // Find the table
   const table = React.useMemo(() => {
     if (!project) return null;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs as UnityCatalog[]) {
       for (const schema of catalog.schemas) {
         const t = schema.tables.find((t: Table) => t.id === tableId);
         if (t) return t;
@@ -41,8 +51,8 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
   // Get all tables for foreign key reference (excluding current table)
   const allTables = React.useMemo(() => {
     if (!project) return [];
-    const tables: Array<{id: string, name: string, catalogName: string, schemaName: string, columns: any[]}> = [];
-    for (const catalog of (project as any).state.catalogs) {
+    const tables: Array<{id: string, name: string, catalogName: string, schemaName: string, columns: UnityColumn[]}> = [];
+    for (const catalog of project.state.catalogs as UnityCatalog[]) {
       for (const schema of catalog.schemas) {
         for (const t of schema.tables) {
           if (t.id !== tableId) { // Exclude current table
@@ -87,7 +97,7 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
 
     const constraint: Omit<Constraint, 'id'> = {
       type: formData.type,
-      name: formData.name || undefined,
+      name: formData.name?.trim() || '',
       columns: formData.columns || [],
     };
 
@@ -114,7 +124,7 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
 
   const handleOpenEditDialog = (constraint: Constraint) => {
     // Populate form data from existing constraint
-    const editFormData: any = {
+    const editFormData: ConstraintFormData = {
       type: constraint.type,
       name: constraint.name || '',
       columns: constraint.columns || [],
@@ -138,7 +148,7 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
 
     const constraint: Omit<Constraint, 'id'> = {
       type: formData.type,
-      name: formData.name || undefined,
+      name: formData.name?.trim() || '',
       columns: formData.columns || [],
     };
 
@@ -181,7 +191,7 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
         // Look up parent column names from IDs
         const parentColumns = (constraint.parentColumns || []).map(colId => {
           if (parentTableInfo) {
-            const col = parentTableInfo.columns.find((c: any) => c.id === colId);
+            const col = parentTableInfo.columns.find((c: UnityColumn) => c.id === colId);
             return col?.name || colId;
           }
           return colId;
@@ -377,7 +387,7 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
                             className="constraint-list-link"
                             onClick={() => {
                               const parentCols = allTables.find(t => t.id === formData.parentTable)?.columns || [];
-                              setFormData({...formData, parentColumns: parentCols.map((c: any) => c.id)});
+                              setFormData({...formData, parentColumns: parentCols.map((c: UnityColumn) => c.id)});
                             }}
                           >
                             Select all
@@ -392,7 +402,7 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
                           </button>
                         </div>
                         <ul className="constraint-columns-checkbox-list">
-                          {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: any) => (
+                          {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: UnityColumn) => (
                             <li key={col.id}>
                               <label className="constraint-checkbox-label">
                                 <input
@@ -578,7 +588,7 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
                             className="constraint-list-link"
                             onClick={() => {
                               const parentCols = allTables.find(t => t.id === formData.parentTable)?.columns || [];
-                              setFormData({...formData, parentColumns: parentCols.map((c: any) => c.id)});
+                              setFormData({...formData, parentColumns: parentCols.map((c: UnityColumn) => c.id)});
                             }}
                           >
                             Select all
@@ -593,7 +603,7 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
                           </button>
                         </div>
                         <ul className="constraint-columns-checkbox-list">
-                          {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: any) => (
+                          {(allTables.find(t => t.id === formData.parentTable)?.columns || []).map((col: UnityColumn) => (
                             <li key={col.id}>
                               <label className="constraint-checkbox-label">
                                 <input
@@ -708,4 +718,3 @@ export const TableConstraints: React.FC<TableConstraintsProps> = ({ tableId }) =
     </div>
   );
 };
-

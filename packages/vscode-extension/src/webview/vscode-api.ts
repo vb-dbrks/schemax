@@ -1,8 +1,15 @@
-// VS Code API singleton to prevent multiple acquisitions
+// VS Code API singleton to prevent multiple acquisitions.
+// Keep this boundary permissive because extension/webview payloads vary by command.
+interface VsCodeApiBridge {
+  postMessage: (message: unknown) => void;
+  getState: () => unknown;
+  setState: (state: unknown) => void;
+}
+
 declare const acquireVsCodeApi: () => {
-  postMessage: (message: any) => void;
-  getState: () => any;
-  setState: (state: any) => void;
+  postMessage: (message: unknown) => void;
+  getState: () => unknown;
+  setState: (state: unknown) => void;
 };
 
 type VsCodeApi = ReturnType<typeof acquireVsCodeApi>;
@@ -15,30 +22,31 @@ export function getVsCodeApi(): VsCodeApi {
   }
 
   // Store in window to persist across hot reloads
-  if (typeof (window as any).vsCodeApi !== 'undefined') {
-    vsCodeApi = (window as any).vsCodeApi;
+  const windowWithBridge = window as Window & { vsCodeApi?: VsCodeApi };
+  if (typeof windowWithBridge.vsCodeApi !== 'undefined') {
+    vsCodeApi = windowWithBridge.vsCodeApi;
     return vsCodeApi!;
   }
 
   try {
     if (typeof acquireVsCodeApi !== 'undefined') {
       vsCodeApi = acquireVsCodeApi();
-      (window as any).vsCodeApi = vsCodeApi;
-      console.log('[SchemaX] VS Code API acquired successfully');
+      windowWithBridge.vsCodeApi = vsCodeApi;
+      console.warn('[SchemaX] VS Code API acquired successfully');
       return vsCodeApi;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.warn('[SchemaX] Could not acquire VS Code API:', error);
   }
 
   // Fallback mock for development
-  vsCodeApi = {
-    postMessage: (message: any) => console.log('[Mock] postMessage:', message),
+  const fallbackApi: VsCodeApiBridge = {
+    postMessage: (message: unknown) => console.warn('[Mock] postMessage:', message),
     getState: () => ({}),
-    setState: (state: any) => console.log('[Mock] setState:', state),
+    setState: (state: unknown) => console.warn('[Mock] setState:', state),
   };
-  
-  (window as any).vsCodeApi = vsCodeApi;
+
+  vsCodeApi = fallbackApi as VsCodeApi;
+  windowWithBridge.vsCodeApi = vsCodeApi;
   return vsCodeApi;
 }
-

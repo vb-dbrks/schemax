@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
-import { ProjectFile } from '../providers/unity/models';
+import { VSCodeButton, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
+import type { ProjectFile } from '../../providers/unity/models';
 import { getVsCodeApi } from '../vscode-api';
 
 const vscode = getVsCodeApi();
@@ -46,6 +46,9 @@ interface LocationModalData {
   description: string;
   paths: Record<string, string>; // env -> path
 }
+
+type LocationMap = Record<string, LocationDefinition>;
+type EnvironmentMap = Record<string, EnvironmentConfig>;
 
 function formatCatalogMappingsText(mappings?: Record<string, string>): string {
   if (!mappings) {
@@ -97,7 +100,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
   const [mappingErrorByEnv, setMappingErrorByEnv] = useState<Record<string, string>>({});
 
   const activeEnv = project.activeEnvironment || 'dev';
-  const environments = editedProject.provider?.environments || {};
+  const environments: EnvironmentMap = (editedProject.provider?.environments as EnvironmentMap) || {};
   const environmentNames = Object.keys(environments);
   const logicalCatalogs = editedProject.state?.catalogs || [];
   const hasMappingErrors = Object.values(mappingErrorByEnv).some(Boolean);
@@ -179,7 +182,9 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
 
   const toggleManagedCategory = (envName: string, categoryId: string) => {
     const updated = { ...editedProject };
-    const env = updated.provider?.environments?.[envName];
+    const providerEnvironments = updated.provider?.environments;
+    if (!providerEnvironments) return;
+    const env = providerEnvironments[envName];
     if (!env) return;
     const current = env.managedCategories ?? ALL_MANAGED_CATEGORIES.map((c) => c.id);
     const set = new Set(current);
@@ -189,7 +194,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
       set.add(categoryId);
     }
     const next = [...set];
-    updated.provider.environments[envName] = {
+    providerEnvironments[envName] = {
       ...env,
       managedCategories: next.length === ALL_MANAGED_CATEGORIES.length ? undefined : next,
     };
@@ -199,13 +204,15 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
 
   const updateExistingCatalogs = (envName: string, rawText: string) => {
     const updated = { ...editedProject };
-    const env = updated.provider?.environments?.[envName];
+    const providerEnvironments = updated.provider?.environments;
+    if (!providerEnvironments) return;
+    const env = providerEnvironments[envName];
     if (!env) return;
     const list = rawText
       .split(/[\n,]/)
       .map((s) => s.trim())
       .filter(Boolean);
-    updated.provider.environments[envName] = {
+    providerEnvironments[envName] = {
       ...env,
       existingObjects: {
         ...(env.existingObjects ?? {}),
@@ -390,9 +397,9 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
               Configure storage locations for managed tables at the catalog or schema level. Define location names here and specify paths for each environment.
             </p>
 
-            {Object.keys(editedProject.managedLocations || {}).length > 0 ? (
+            {Object.keys((editedProject.managedLocations as LocationMap) || {}).length > 0 ? (
               <div className="location-list">
-                {Object.entries(editedProject.managedLocations || {}).map(([name, location]) => (
+                {Object.entries((editedProject.managedLocations as LocationMap) || {}).map(([name, location]) => (
                   <div key={name} className="location-item">
                     <div className="location-header">
                       <strong>{name}</strong>
@@ -437,9 +444,9 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
               Configure storage locations for external tables. Define location names here and specify paths for each environment.
             </p>
 
-            {Object.keys(editedProject.externalLocations || {}).length > 0 ? (
+            {Object.keys((editedProject.externalLocations as LocationMap) || {}).length > 0 ? (
               <div className="location-list">
-                {Object.entries(editedProject.externalLocations || {}).map(([name, location]) => (
+                {Object.entries((editedProject.externalLocations as LocationMap) || {}).map(([name, location]) => (
                   <div key={name} className="location-item">
                     <div className="location-header">
                       <strong>{name}</strong>
@@ -505,7 +512,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                         <div className="inline-edit">
                           <VSCodeTextField
                             value={editCatalogValue}
-                            onInput={(e: any) => setEditCatalogValue(e.target.value)}
+                            onInput={(e) => setEditCatalogValue((e.target as HTMLInputElement).value)}
                             placeholder="physical_catalog_name"
                           />
                           <VSCodeButton onClick={() => saveCatalogEdit(envName)}>
@@ -637,7 +644,7 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                   value={locationModalData.name}
                   placeholder="location_name"
                   disabled={locationModalData.mode === 'edit'}
-                  onInput={(e: any) => {
+                  onInput={(e) => {
                     const value = (e.target as HTMLInputElement).value;
                     setLocationModalData({ ...locationModalData, name: value });
                     if (!value.trim()) {
@@ -662,9 +669,9 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                 <VSCodeTextField
                   value={locationModalData.description}
                   placeholder="Describe this location's purpose"
-                  onInput={(e: any) => setLocationModalData({
+                  onInput={(e) => setLocationModalData({
                     ...locationModalData,
-                    description: e.target.value
+                    description: (e.target as HTMLInputElement).value
                   })}
                 />
               </div>
@@ -680,11 +687,11 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                       <VSCodeTextField
                         value={locationModalData.paths[envName] || ''}
                         placeholder={`s3://bucket-${envName}/path`}
-                        onInput={(e: any) => setLocationModalData({
+                        onInput={(e) => setLocationModalData({
                           ...locationModalData,
                           paths: {
                             ...locationModalData.paths,
-                            [envName]: e.target.value
+                            [envName]: (e.target as HTMLInputElement).value
                           }
                         })}
                       />

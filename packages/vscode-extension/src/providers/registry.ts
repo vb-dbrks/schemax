@@ -5,7 +5,7 @@
  * Providers must register themselves here to be available in the system.
  */
 
-import { Provider } from './base/provider';
+import type { Provider } from './base/provider';
 
 /**
  * Registry for managing catalog providers
@@ -26,7 +26,7 @@ class ProviderRegistryClass {
     }
     
     this.providers.set(provider.info.id, provider);
-    console.log(`[SchemaX] Registered provider: ${provider.info.name} (${provider.info.id})`);
+    console.warn(`[SchemaX] Registered provider: ${provider.info.name} (${provider.info.id})`);
   }
   
   /**
@@ -107,4 +107,3 @@ class ProviderRegistryClass {
 
 // Singleton instance
 export const ProviderRegistry = new ProviderRegistryClass();
-

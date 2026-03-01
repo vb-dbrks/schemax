@@ -1,7 +1,7 @@
 import React from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { getVsCodeApi } from '../vscode-api';
-import { ProjectFile } from '../../providers/unity/models';
+import type { ProjectFile } from '../../providers/unity/models';
 
 const vscode = getVsCodeApi();
 
@@ -260,7 +260,7 @@ export function ImportAssetsPanel({
                     value={sqlPath}
                     aria-label="SQL file path"
                     placeholder="e.g. scripts/schema.sql or /absolute/path/to/file.sql"
-                    onInput={(event: React.FormEvent<HTMLInputElement>) => setSqlPath((event.target as HTMLInputElement).value)}
+                    onInput={(event) => setSqlPath((event.target as HTMLInputElement).value)}
                     disabled={isRunning}
                   />
                   <VSCodeButton
@@ -280,7 +280,7 @@ export function ImportAssetsPanel({
                 <VSCodeDropdown
                   value={sqlMode}
                   aria-label="Import mode"
-                  onInput={(e: React.FormEvent) => setSqlMode(((e.target as HTMLInputElement)?.value ?? 'diff') as 'diff' | 'replace')}
+                  onInput={(e) => setSqlMode(((e.target as HTMLInputElement)?.value ?? 'diff') as 'diff' | 'replace')}
                   disabled={isRunning}
                 >
                   <VSCodeOption value="diff">Diff (append to changelog)</VSCodeOption>
@@ -292,7 +292,7 @@ export function ImportAssetsPanel({
                 <VSCodeDropdown
                   value={sqlTarget}
                   aria-label="Target environment"
-                  onInput={(e: React.FormEvent) => setSqlTarget((e.target as HTMLInputElement)?.value ?? '')}
+                  onInput={(e) => setSqlTarget((e.target as HTMLInputElement)?.value ?? '')}
                   disabled={isRunning}
                 >
                   {envNames.map((env) => (
@@ -329,7 +329,7 @@ export function ImportAssetsPanel({
             <VSCodeDropdown
               value={target}
               aria-label="Target Environment"
-              onInput={(event: any) => setTarget(event.target.value)}
+              onInput={(event) => setTarget((event.target as HTMLSelectElement).value)}
               disabled={isRunning}
             >
               {envNames.map((env) => (
@@ -346,7 +346,7 @@ export function ImportAssetsPanel({
             <VSCodeTextField
               value={profile}
               aria-label="Databricks Profile"
-              onInput={(event: any) => setProfile(event.target.value)}
+              onInput={(event) => setProfile((event.target as HTMLInputElement).value)}
               disabled={isRunning}
             />
           </div>
@@ -360,7 +360,7 @@ export function ImportAssetsPanel({
               value={warehouseId}
               aria-label="Warehouse ID"
               placeholder="e.g. 1234abcd5678efgh"
-              onInput={(event: any) => setWarehouseId(event.target.value)}
+              onInput={(event) => setWarehouseId((event.target as HTMLInputElement).value)}
               disabled={isRunning}
             />
           </div>
@@ -374,7 +374,7 @@ export function ImportAssetsPanel({
               value={catalog}
               aria-label="Catalog (optional)"
               placeholder="main"
-              onInput={(event: any) => setCatalog(event.target.value)}
+              onInput={(event) => setCatalog((event.target as HTMLInputElement).value)}
               disabled={isRunning}
             />
           </div>
@@ -388,7 +388,7 @@ export function ImportAssetsPanel({
               value={schema}
               aria-label="Schema (optional)"
               placeholder="analytics"
-              onInput={(event: any) => setSchema(event.target.value)}
+              onInput={(event) => setSchema((event.target as HTMLInputElement).value)}
               disabled={isRunning}
             />
           </div>
@@ -402,7 +402,7 @@ export function ImportAssetsPanel({
               value={table}
               aria-label="Table (optional)"
               placeholder="users"
-              onInput={(event: any) => setTable(event.target.value)}
+              onInput={(event) => setTable((event.target as HTMLInputElement).value)}
               disabled={isRunning}
             />
           </div>
@@ -558,7 +558,10 @@ function parseCatalogMappings(input: string): Record<string, string> | undefined
 }
 
 function buildSuggestedCatalogMappingsText(project: ProjectFile, target: string): string {
-  const envCfg = project.provider?.environments?.[target] || {};
+  const envCfg = (project.provider?.environments?.[target] || {}) as {
+    catalogMappings?: Record<string, string>;
+    topLevelName?: string;
+  };
   const existingMappings = envCfg.catalogMappings as Record<string, string> | undefined;
   if (existingMappings && Object.keys(existingMappings).length > 0) {
     return Object.entries(existingMappings)

@@ -3,13 +3,25 @@ import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vs
 import { useDesignerStore } from '../state/useDesignerStore';
 import { extractDependenciesFromView } from '../../providers/base/sql-parser';
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
+import type {
+  UnityFunction,
+  UnityMaterializedView,
+  UnitySchema,
+  UnityView,
+  UnityVolume,
+} from '../../providers/unity/models';
 
 // Environment config type for tooltip
 interface EnvironmentConfig {
   topLevelName: string;
   catalogMappings?: Record<string, string>;
   description?: string;
-  [key: string]: any;
+  [key: string]: unknown;
+}
+
+interface NamedLocation {
+  description?: string;
+  paths: Record<string, string>;
 }
 
 // SQL parsing and validation helpers for views (best-effort; handles name, optional (col list), optional COMMENT, AS)
@@ -152,27 +164,21 @@ export const Sidebar: React.FC = () => {
     addTable,
     addView,
     renameCatalog,
-    updateCatalog,
     renameSchema,
-    updateSchema,
     renameTable,
     renameView,
-    updateView,
     dropCatalog,
     dropSchema,
     dropTable,
     dropView,
     addVolume,
     renameVolume,
-    updateVolume,
     dropVolume,
     addFunction,
     renameFunction,
-    updateFunction,
     dropFunction,
     addMaterializedView,
     renameMaterializedView,
-    updateMaterializedView,
     dropMaterializedView,
   } = useDesignerStore();
 
@@ -254,7 +260,7 @@ export const Sidebar: React.FC = () => {
       
       // Auto-focus the name field after a short delay
       setTimeout(() => {
-        const nameInput = document.getElementById('rename-name-input') as any;
+        const nameInput = document.getElementById('rename-name-input') as { shadowRoot?: ShadowRoot } | null;
         if (nameInput && nameInput.shadowRoot) {
           const input = nameInput.shadowRoot.querySelector('input');
           if (input) input.focus();
@@ -300,7 +306,7 @@ export const Sidebar: React.FC = () => {
           if (sqlTextarea) sqlTextarea.focus();
         } else {
           // Focus on name field for catalog/schema/table
-          const nameInput = document.getElementById('add-name-input') as any;
+          const nameInput = document.getElementById('add-name-input') as { shadowRoot?: ShadowRoot } | null;
           if (nameInput && nameInput.shadowRoot) {
             const input = nameInput.shadowRoot.querySelector('input');
             if (input) input.focus();
@@ -430,32 +436,33 @@ export const Sidebar: React.FC = () => {
     const pendingTags = (addTagInput.tagName.trim() && addTagInput.tagValue.trim())
       ? { ...addTags, [addTagInput.tagName.trim()]: addTagInput.tagValue.trim() }
       : addTags;
+    const catalogs = project?.state.catalogs ?? [];
 
     if (addDialog.type === 'catalog') {
       // Check for duplicate catalog name
-      const catalogExists = (project?.state as any)?.catalogs?.some((c: any) => c.name.toLowerCase() === trimmedName.toLowerCase());
+      const catalogExists = catalogs.some((catalog) => catalog.name.toLowerCase() === trimmedName.toLowerCase());
       if (catalogExists) {
         setAddError(`Catalog "${trimmedName}" already exists.`);
         return;
       }
 
-      const options: any = {};
+      const options: Record<string, unknown> = {};
       if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
       if (addComment) options.comment = addComment;
       if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
       addCatalog(trimmedName, Object.keys(options).length > 0 ? options : undefined);
     } else if (addDialog.type === 'schema' && addDialog.catalogId) {
       // Check for duplicate schema name within the same catalog
-      const catalog = (project?.state as any)?.catalogs?.find((c: any) => c.id === addDialog.catalogId);
+      const catalog = catalogs.find((entry) => entry.id === addDialog.catalogId);
       if (catalog) {
-        const schemaExists = catalog.schemas?.some((s: any) => s.name.toLowerCase() === trimmedName.toLowerCase());
+        const schemaExists = catalog.schemas?.some((schema) => schema.name.toLowerCase() === trimmedName.toLowerCase());
         if (schemaExists) {
           setAddError(`Schema "${trimmedName}" already exists in this catalog.`);
           return;
         }
       }
 
-      const options: any = {};
+      const options: Record<string, unknown> = {};
       if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
       if (addComment) options.comment = addComment;
       if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
@@ -463,15 +470,15 @@ export const Sidebar: React.FC = () => {
       setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
     } else if (addDialog.type === 'table' && addDialog.schemaId) {
       // Find the schema to check for duplicate table/view names
-      let schema: any = null;
-      for (const catalog of ((project?.state as any)?.catalogs || [])) {
-        schema = catalog.schemas?.find((s: any) => s.id === addDialog.schemaId);
+      let schema: UnitySchema | null = null;
+      for (const catalog of catalogs) {
+        schema = catalog.schemas?.find((entry) => entry.id === addDialog.schemaId) ?? null;
         if (schema) break;
       }
 
       if (schema) {
         // Check for duplicate table or view name within the same schema
-        const tableExists = schema.tables?.some((t: any) => t.name.toLowerCase() === trimmedName.toLowerCase());
+        const tableExists = schema.tables?.some((table) => table.name.toLowerCase() === trimmedName.toLowerCase());
         if (tableExists) {
           setAddError(`Table or view "${trimmedName}" already exists in this schema.`);
           return;
@@ -803,7 +810,7 @@ export const Sidebar: React.FC = () => {
                       ))}
                       
                       {/* VIEWS */}
-                      {schema.views && schema.views.length > 0 && schema.views.map((view: any) => (
+                      {schema.views && schema.views.length > 0 && schema.views.map((view: UnityView) => (
                         <div
                           key={view.id}
                           className={`tree-item ${selectedTableId === view.id ? 'selected' : ''}`}
@@ -828,7 +835,7 @@ export const Sidebar: React.FC = () => {
                               onClick={(event: React.MouseEvent) => {
                                 event.stopPropagation();
                                 setRenameDialog({
-                                  type: 'view' as any,
+                                  type: 'view',
                                   id: view.id,
                                   name: view.name
                                 });
@@ -854,7 +861,7 @@ export const Sidebar: React.FC = () => {
                         </div>
                       ))}
                       {/* VOLUMES */}
-                      {schema.volumes && schema.volumes.length > 0 && schema.volumes.map((vol: any) => (
+                      {schema.volumes && schema.volumes.length > 0 && schema.volumes.map((vol: UnityVolume) => (
                         <div
                           key={vol.id}
                           className={`tree-item ${selectedTableId === vol.id ? 'selected' : ''}`}
@@ -874,7 +881,7 @@ export const Sidebar: React.FC = () => {
                         </div>
                       ))}
                       {/* FUNCTIONS */}
-                      {schema.functions && schema.functions.length > 0 && schema.functions.map((fn: any) => (
+                      {schema.functions && schema.functions.length > 0 && schema.functions.map((fn: UnityFunction) => (
                         <div
                           key={fn.id}
                           className={`tree-item ${selectedTableId === fn.id ? 'selected' : ''}`}
@@ -894,7 +901,12 @@ export const Sidebar: React.FC = () => {
                         </div>
                       ))}
                       {/* MATERIALIZED VIEWS */}
-                      {((schema as any).materializedViews ?? (schema as any).materialized_views)?.length > 0 && ((schema as any).materializedViews ?? (schema as any).materialized_views).map((mv: any) => (
+                      {((schema as UnitySchema & { materialized_views?: UnityMaterializedView[] }).materializedViews
+                        ?? (schema as UnitySchema & { materialized_views?: UnityMaterializedView[] }).materialized_views
+                        ?? []).length > 0
+                        && ((schema as UnitySchema & { materialized_views?: UnityMaterializedView[] }).materializedViews
+                          ?? (schema as UnitySchema & { materialized_views?: UnityMaterializedView[] }).materialized_views
+                          ?? []).map((mv: UnityMaterializedView) => (
                         <div
                           key={mv.id}
                           className={`tree-item ${selectedTableId === mv.id ? 'selected' : ''}`}
@@ -967,7 +979,7 @@ export const Sidebar: React.FC = () => {
               <VSCodeTextField
                 id="rename-name-input"
                 value={renameValue}
-                onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                onInput={(event) => {
                   setRenameValue((event.target as HTMLInputElement).value);
                   setRenameError(null);
                 }}
@@ -1105,7 +1117,7 @@ export const Sidebar: React.FC = () => {
                     addDialog.objectType === 'materialized_view' ? 'Enter materialized view name' :
                     'Enter table name'
                   }
-                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                  onInput={(event) => {
                     setAddNameInput((event.target as HTMLInputElement).value);
                     if (addDialog.objectType === 'materialized_view') setAddMVNameManual(true);
                     setAddError(null);
@@ -1133,13 +1145,13 @@ export const Sidebar: React.FC = () => {
                 {addVolumeType === 'external' && (
                   <div className="modal-field-group">
                     <label>Location *</label>
-                    <VSCodeTextField value={addVolumeLocation} onInput={(e: React.FormEvent<HTMLInputElement>) => { setAddVolumeLocation((e.target as HTMLInputElement).value); setAddError(null); }} placeholder="abfss://container@storage.dfs.core.windows.net/path or s3://bucket/path" />
+                    <VSCodeTextField value={addVolumeLocation} onInput={(e) => { setAddVolumeLocation((e.target as HTMLInputElement).value); setAddError(null); }} placeholder="abfss://container@storage.dfs.core.windows.net/path or s3://bucket/path" />
                     <span className="modal-field-hint">Required for external volumes. Use a cloud storage path (ABFSS, S3, or GCS).</span>
                   </div>
                 )}
                 <div className="modal-field-group">
                   <label>Comment</label>
-                  <VSCodeTextField value={addComment} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddComment((e.target as HTMLInputElement).value)} placeholder="Optional description" />
+                  <VSCodeTextField value={addComment} onInput={(e) => setAddComment((e.target as HTMLInputElement).value)} placeholder="Optional description" />
                 </div>
               </>
             )}
@@ -1161,7 +1173,7 @@ export const Sidebar: React.FC = () => {
                 </div>
                 <div className="modal-field-group">
                   <label>Return type</label>
-                  <VSCodeTextField value={addFunctionReturnType} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddFunctionReturnType((e.target as HTMLInputElement).value)} placeholder="STRING" />
+                  <VSCodeTextField value={addFunctionReturnType} onInput={(e) => setAddFunctionReturnType((e.target as HTMLInputElement).value)} placeholder="STRING" />
                 </div>
                 <div className="modal-field-group">
                   <label>Body (SQL expression or Python code)</label>
@@ -1169,7 +1181,7 @@ export const Sidebar: React.FC = () => {
                 </div>
                 <div className="modal-field-group">
                   <label>Comment</label>
-                  <VSCodeTextField value={addFunctionComment} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddFunctionComment((e.target as HTMLInputElement).value)} />
+                  <VSCodeTextField value={addFunctionComment} onInput={(e) => setAddFunctionComment((e.target as HTMLInputElement).value)} />
                 </div>
               </>
             )}
@@ -1187,7 +1199,7 @@ export const Sidebar: React.FC = () => {
                     rows={6}
                     style={{ width: '100%', fontFamily: 'var(--vscode-editor-font-family, monospace)', fontSize: '12px', padding: '8px', border: '1px solid var(--vscode-input-border)', background: 'var(--vscode-input-background)', color: 'var(--vscode-input-foreground)', resize: 'vertical' }}
                     placeholder="CREATE MATERIALIZED VIEW mv1 AS SELECT ... or just SELECT..."
-                    onInput={(e: React.FormEvent<HTMLTextAreaElement>) => {
+                    onInput={(e) => {
                       const sql = (e.target as HTMLTextAreaElement).value;
                       setAddMVDefinition(sql);
                       setAddError(null);
@@ -1207,11 +1219,11 @@ export const Sidebar: React.FC = () => {
                 </div>
                 <div className="modal-field-group">
                   <label>Refresh schedule (optional)</label>
-                  <VSCodeTextField value={addMVSchedule} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddMVSchedule((e.target as HTMLInputElement).value)} placeholder="EVERY 1 DAY" />
+                  <VSCodeTextField value={addMVSchedule} onInput={(e) => setAddMVSchedule((e.target as HTMLInputElement).value)} placeholder="EVERY 1 DAY" />
                 </div>
                 <div className="modal-field-group">
                   <label>Comment</label>
-                  <VSCodeTextField value={addMVComment} onInput={(e: React.FormEvent<HTMLInputElement>) => setAddMVComment((e.target as HTMLInputElement).value)} />
+                  <VSCodeTextField value={addMVComment} onInput={(e) => setAddMVComment((e.target as HTMLInputElement).value)} />
                 </div>
               </>
             )}
@@ -1240,7 +1252,7 @@ export const Sidebar: React.FC = () => {
                       color: 'var(--vscode-input-foreground)',
                       resize: 'vertical'
                     }}
-                    onInput={(e: React.FormEvent<HTMLTextAreaElement>) => {
+                    onInput={(e) => {
                       const sql = (e.target as HTMLTextAreaElement).value;
                       setAddViewSQL(sql);
                       setAddError(null);
@@ -1274,7 +1286,7 @@ export const Sidebar: React.FC = () => {
                     id="view-name"
                     value={addNameInput}
                     placeholder="Enter view name"
-                    onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                    onInput={(event) => {
                       setAddNameInput((event.target as HTMLInputElement).value);
                       setAddViewNameManual(true); // Mark as manually edited
                       setAddError(null);
@@ -1294,7 +1306,7 @@ export const Sidebar: React.FC = () => {
                     id="view-comment"
                     value={addViewComment}
                     placeholder="Describe this view"
-                    onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                    onInput={(event) => {
                       setAddViewComment((event.target as HTMLInputElement).value);
                     }}
                   />
@@ -1310,7 +1322,7 @@ export const Sidebar: React.FC = () => {
                   id="add-comment"
                   value={addComment}
                   placeholder="Optional description"
-                  onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                  onInput={(event) => {
                     setAddComment((event.target as HTMLInputElement).value);
                   }}
                 />
@@ -1327,12 +1339,12 @@ export const Sidebar: React.FC = () => {
                 <VSCodeDropdown
                   id="managed-location-select"
                   value={addManagedLocationName}
-                  onInput={(event: React.FormEvent<HTMLSelectElement>) => {
+                  onInput={(event) => {
                     setAddManagedLocationName((event.target as HTMLSelectElement).value);
                   }}
                 >
                   <VSCodeOption value="">-- Default --</VSCodeOption>
-                  {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
+                  {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, NamedLocation]) => (
                     <VSCodeOption key={name} value={name}>
                       {name} {location.description && `(${location.description})`}
                     </VSCodeOption>
@@ -1367,7 +1379,7 @@ export const Sidebar: React.FC = () => {
                     placeholder="Key"
                     value={addTagInput.tagName}
                     style={{ flex: '1' }}
-                    onInput={(e: Event) => {
+                    onInput={(e) => {
                       const target = e.target as HTMLInputElement;
                       setAddTagInput({...addTagInput, tagName: target.value});
                     }}
@@ -1376,7 +1388,7 @@ export const Sidebar: React.FC = () => {
                     placeholder="Value"
                     value={addTagInput.tagValue}
                     style={{ flex: '1' }}
-                    onInput={(e: Event) => {
+                    onInput={(e) => {
                       const target = e.target as HTMLInputElement;
                       setAddTagInput({...addTagInput, tagValue: target.value});
                     }}
@@ -1468,7 +1480,7 @@ export const Sidebar: React.FC = () => {
                   <VSCodeDropdown
                     id="table-format-select"
                     value={addFormatInput}
-                    onInput={(event: React.FormEvent<HTMLSelectElement>) => {
+                    onInput={(event) => {
                       setAddFormatInput((event.target as HTMLSelectElement).value as 'delta' | 'iceberg');
                     }}
                   >
@@ -1488,12 +1500,12 @@ export const Sidebar: React.FC = () => {
                       <VSCodeDropdown
                         id="external-location-select"
                         value={addExternalLocationName}
-                        onInput={(event: React.FormEvent<HTMLSelectElement>) => {
+                        onInput={(event) => {
                           setAddExternalLocationName((event.target as HTMLSelectElement).value);
                         }}
                       >
                         <VSCodeOption value="">-- Select Location --</VSCodeOption>
-                        {Object.entries(project?.externalLocations || {}).map(([name, location]: [string, any]) => (
+                        {Object.entries(project?.externalLocations || {}).map(([name, location]: [string, NamedLocation]) => (
                           <VSCodeOption key={name} value={name}>
                             {name} {location.description && `(${location.description})`}
                           </VSCodeOption>
@@ -1528,7 +1540,7 @@ export const Sidebar: React.FC = () => {
                         value={addTablePath}
                         placeholder="orders or relative/path/to/table"
                         disabled={!addExternalLocationName}
-                        onInput={(event: React.FormEvent<HTMLInputElement>) => {
+                        onInput={(event) => {
                           setAddTablePath((event.target as HTMLInputElement).value);
                         }}
                       />

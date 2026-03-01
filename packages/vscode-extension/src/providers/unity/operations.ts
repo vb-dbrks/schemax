@@ -5,7 +5,8 @@
  * Operations are prefixed with 'unity.' to indicate the provider.
  */
 
-import { OperationMetadata, OperationCategory, ManagedCategory } from '../base/operations';
+import type { OperationMetadata} from '../base/operations';
+import { OperationCategory, ManagedCategory } from '../base/operations';
 
 // Operation type constants
 export const UNITY_OPERATIONS = {

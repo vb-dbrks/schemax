@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
-import { Table, RowFilter, ColumnMask } from '../../providers/unity/models';
+import type { Table, RowFilter, ColumnMask, UnityCatalog } from '../../providers/unity/models';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { parsePrivileges } from '../utils/grants';
 
@@ -35,7 +35,7 @@ export const SecurityGovernance: React.FC<SecurityGovernanceProps> = ({ tableId 
   // Find the table
   const table = React.useMemo(() => {
     if (!project) return null;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs as UnityCatalog[]) {
       for (const schema of catalog.schemas) {
         const t = schema.tables.find((t: Table) => t.id === tableId);
         if (t) return t;
@@ -667,4 +667,3 @@ export const SecurityGovernance: React.FC<SecurityGovernanceProps> = ({ tableId 
     </div>
   );
 };
-

@@ -23,6 +23,11 @@ interface SchemaDetailsProps {
   schemaId: string;
 }
 
+interface NamedLocation {
+  description?: string;
+  paths: Record<string, string>;
+}
+
 export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   const { project, findSchema, updateSchema, renameSchema, addGrant, revokeGrant } = useDesignerStore();
   const schemaInfo = findSchema(schemaId);
@@ -142,7 +147,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
     setRenameDialog(true);
     // Auto-focus the input field after a short delay
     setTimeout(() => {
-      const input = document.getElementById('rename-schema-input') as any;
+      const input = document.getElementById('rename-schema-input') as { shadowRoot?: ShadowRoot } | null;
       if (input && input.shadowRoot) {
         const inputElement = input.shadowRoot.querySelector('input');
         if (inputElement) inputElement.focus();
@@ -259,13 +264,13 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
             <VSCodeDropdown
               value={managedLocationName}
               style={{ width: '100%' }}
-              onInput={(e: Event) => {
+              onInput={(e) => {
                 const target = e.target as HTMLSelectElement;
                 handleManagedLocationChange(target.value);
               }}
             >
               <VSCodeOption value={MANAGED_LOCATION_DEFAULT}>— Default —</VSCodeOption>
-              {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
+              {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, NamedLocation]) => (
                 <VSCodeOption key={name} value={name}>
                   {name} {location.description && `(${location.description})`}
                 </VSCodeOption>
@@ -531,7 +536,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
                 id="rename-schema-input"
                 value={newName}
                 placeholder="Schema name"
-                onInput={(e: Event) => {
+                onInput={(e) => {
                   const target = e.target as HTMLInputElement;
                   setNewName(target.value);
                   setRenameError(null);

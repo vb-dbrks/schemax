@@ -15,7 +15,7 @@ const IconEditInline: React.FC = () => (
 );
 
 export const TableDesigner: React.FC = () => {
-  const { selectedTableId, findTable, setTableComment, renameTable } = useDesignerStore();
+  const { project, selectedTableId, findTable, setTableComment, renameTable } = useDesignerStore();
   const [commentDialog, setCommentDialog] = React.useState<{tableId: string, comment: string} | null>(null);
   const [copySuccess, setCopySuccess] = React.useState(false);
   const [renameDialog, setRenameDialog] = React.useState(false);
@@ -63,7 +63,7 @@ export const TableDesigner: React.FC = () => {
     setRenameDialog(true);
     // Auto-focus the input field after a short delay
     setTimeout(() => {
-      const input = document.getElementById('rename-table-input') as any;
+      const input = document.getElementById('rename-table-input') as { shadowRoot?: ShadowRoot } | null;
       if (input && input.shadowRoot) {
         const inputElement = input.shadowRoot.querySelector('input');
         if (inputElement) inputElement.focus();
@@ -163,18 +163,18 @@ export const TableDesigner: React.FC = () => {
       </div>
 
       {/* Show resolved location for external tables */}
-      {table.external && table.externalLocationName && project?.environments?.[project?.activeEnvironment || ''] && (
+      {table.external && table.externalLocationName && project && (
         <div className="table-properties">
           <div className="property-row">
             <label>Resolved Location ({project.activeEnvironment || 'default'}):</label>
             <div className="property-value">
               {(() => {
-                const envConfig = project.environments[project.activeEnvironment || ''];
-                const extLoc = envConfig?.externalLocations?.[table.externalLocationName];
-                if (!extLoc) {
+                const activeEnv = project.activeEnvironment || 'dev';
+                const externalLocation = project.externalLocations?.[table.externalLocationName];
+                const basePath = externalLocation?.paths?.[activeEnv];
+                if (!basePath) {
                   return <code style={{color: 'var(--vscode-errorForeground)'}}>Location "{table.externalLocationName}" not found</code>;
                 }
-                const basePath = extLoc.path;
                 const fullPath = table.path ? `${basePath}/${table.path}` : basePath;
                 return <code>{fullPath}</code>;
               })()}

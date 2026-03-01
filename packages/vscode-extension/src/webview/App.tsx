@@ -12,11 +12,12 @@ import { SchemaDetails } from './components/SchemaDetails';
 import { SnapshotPanel } from './components/SnapshotPanel';
 import { getVsCodeApi } from './vscode-api';
 import { ProjectSettingsPanel } from './components/ProjectSettingsPanel';
-import {
-  ImportAssetsPanel,
+import type {
   ImportProgress,
   ImportRunRequest,
-  ImportRunResult,
+  ImportRunResult} from './components/ImportAssetsPanel';
+import {
+  ImportAssetsPanel
 } from './components/ImportAssetsPanel';
 
 const vscode = getVsCodeApi();
@@ -56,9 +57,9 @@ export const App: React.FC = () => {
   const [loading, setLoading] = React.useState(true);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = React.useState(false);
   const [hasConflicts, setHasConflicts] = React.useState(false);
-  const [conflictInfo, setConflictInfo] = React.useState<any>(null);
+  const [conflictInfo, setConflictInfo] = React.useState<unknown>(null);
   const [hasStaleSnapshots, setHasStaleSnapshots] = React.useState(false);
-  const [staleSnapshotInfo, setStaleSnapshotInfo] = React.useState<any>(null);
+  const [staleSnapshotInfo, setStaleSnapshotInfo] = React.useState<unknown>(null);
   const [validationResult, setValidationResult] = React.useState<{errors: string[], warnings: string[]} | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [isImportOpen, setIsImportOpen] = React.useState(false);

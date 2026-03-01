@@ -47,7 +47,7 @@ jobs:
         working-directory: packages/python-sdk
         run: mypy src/
 
-      - name: Pylint (min score 9.5)
+      - name: Pylint (configured via pyproject.toml)
         working-directory: packages/python-sdk
         run: pylint -j 0 src/ tests/
       

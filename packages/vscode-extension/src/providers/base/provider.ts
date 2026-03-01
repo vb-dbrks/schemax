@@ -6,11 +6,11 @@
  * through a unified interface while allowing provider-specific features.
  */
 
-import { ProviderHierarchy } from './hierarchy';
-import { Operation, OperationMetadata } from './operations';
-import { ValidationResult, ProviderState } from './models';
-import { SQLGenerator } from './sql-generator';
-import { LocationDefinition } from '../../storage-v4';
+import type { ProviderHierarchy } from './hierarchy';
+import type { Operation, OperationMetadata } from './operations';
+import type { ValidationResult, ProviderState } from './models';
+import type { SQLGenerator } from './sql-generator';
+import type { LocationDefinition } from '../../storage-v4';
 
 /**
  * Provider capabilities - defines what features this provider supports

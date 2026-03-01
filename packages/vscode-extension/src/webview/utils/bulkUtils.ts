@@ -33,12 +33,12 @@ export interface ScopeResult {
   grantTargets: GrantTarget[];
 }
 
-function isUnityCatalog(c: any): c is UnityCatalog {
-  return c && Array.isArray(c.schemas);
+function isUnityCatalog(c: unknown): c is UnityCatalog {
+  return typeof c === 'object' && c !== null && Array.isArray((c as UnityCatalog).schemas);
 }
 
-function isUnitySchema(s: any): s is UnitySchema {
-  return s && Array.isArray(s.tables);
+function isUnitySchema(s: unknown): s is UnitySchema {
+  return typeof s === 'object' && s !== null && Array.isArray((s as UnitySchema).tables);
 }
 
 /**

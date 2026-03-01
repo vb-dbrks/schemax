@@ -1,16 +1,18 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ChildProcess, spawn } from 'child_process';
+import { exec as execCallback } from 'child_process';
+import { promisify } from 'util';
 import * as storageV4 from './storage-v4';
-import { Operation } from './providers/base/operations';
-import { filterOpsByManagedScope } from './providers/base/scope-filter';
+import type { Operation } from './providers/base/operations';
 import { ProviderRegistry } from './providers/registry';
 import { trackEvent } from './telemetry';
+import { PythonBackendClient } from './backend/pythonBackendClient';
 import './providers'; // Initialize providers
 
 let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
+const pythonBackend = new PythonBackendClient();
 
 interface ImportRequestFromSql {
   fromSql: {
@@ -34,6 +36,8 @@ interface ImportRequestLive {
 }
 
 type ImportRequest = ImportRequestLive | ImportRequestFromSql;
+type CatalogState = { catalogs?: Array<{ name?: string }> };
+type StaleSnapshot = { version: string; currentBase: string; shouldBeBase: string; missing: string[] };
 
 function isImportFromSql(req: ImportRequest): req is ImportRequestFromSql {
   return 'fromSql' in req && req.fromSql != null;
@@ -54,8 +58,8 @@ interface ImportProgressUpdate {
   level?: 'info' | 'warning' | 'error' | 'success';
 }
 
-let activeImportProcess: ChildProcess | null = null;
 let activeImportCancelled = false;
+let activeImportController: AbortController | null = null;
 
 export function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('SchemaX');
@@ -124,9 +128,7 @@ export function deactivate() {
 
 /** Check if the SchemaX CLI (schemax) is available on PATH. */
 async function checkSchemaxCliAvailable(): Promise<boolean> {
-  const { exec } = require('child_process');
-  const { promisify } = require('util');
-  const execAsync = promisify(exec);
+  const execAsync = promisify(execCallback);
   try {
     await execAsync('schemax --version', { timeout: 5000 });
     return true;
@@ -169,9 +171,7 @@ async function installPythonSdk(): Promise<void> {
           cancellable: false,
         },
         async () => {
-          const { exec } = require('child_process');
-          const { promisify } = require('util');
-          const execAsync = promisify(exec);
+          const execAsync = promisify(execCallback);
           await execAsync(`"${py}" -m pip install schemaxpy`, { timeout: 120000 });
         }
       );
@@ -180,61 +180,14 @@ async function installPythonSdk(): Promise<void> {
       );
       outputChannel.appendLine('[SchemaX] Python SDK installed via pip install schemaxpy');
       return;
-    } catch (err: any) {
-      outputChannel.appendLine(`[SchemaX] ${py} -m pip install schemaxpy failed: ${err?.message ?? err}`);
+    } catch (err: unknown) {
+      const errMessage = err instanceof Error ? err.message : String(err);
+      outputChannel.appendLine(`[SchemaX] ${py} -m pip install schemaxpy failed: ${errMessage}`);
     }
   }
   vscode.window.showErrorMessage(
     'Could not install SchemaX Python SDK. Install it in your Python environment: pip install schemaxpy (or set python.defaultInterpreterPath and try again).'
   );
-}
-
-function runCommand(
-  command: string,
-  args: string[],
-  cwd: string,
-  onStdout?: (chunk: string) => void,
-  onStderr?: (chunk: string) => void
-): Promise<{ code: number | null; stdout: string; stderr: string; spawnError?: any; cancelled?: boolean }> {
-  return new Promise((resolve) => {
-    if (activeImportCancelled) {
-      resolve({ code: null, stdout: '', stderr: '', cancelled: true });
-      return;
-    }
-
-    const child = spawn(command, args, { cwd, shell: false });
-    activeImportProcess = child;
-    let stdout = '';
-    let stderr = '';
-    let spawnError: any;
-
-    child.stdout.on('data', (chunk) => {
-      const text = chunk.toString();
-      stdout += text;
-      onStdout?.(text);
-    });
-    child.stderr.on('data', (chunk) => {
-      const text = chunk.toString();
-      stderr += text;
-      onStderr?.(text);
-    });
-    child.on('error', (err) => {
-      spawnError = err;
-    });
-    child.on('close', (code) => {
-      const cancelled = activeImportCancelled;
-      if (activeImportProcess === child) {
-        activeImportProcess = null;
-      }
-      resolve({ code, stdout, stderr, spawnError, cancelled });
-    });
-
-    if (activeImportCancelled) {
-      try {
-        child.kill('SIGTERM');
-      } catch {}
-    }
-  });
 }
 
 async function executeImport(
@@ -271,20 +224,8 @@ async function executeImport(
     if (request.adoptBaseline) importArgs.push('--adopt-baseline');
   }
 
-  const candidates: Array<{ cmd: string; args: string[] }> = [
-    { cmd: 'schemax', args: importArgs },
-    { cmd: 'python3', args: ['-m', 'schemax.cli', ...importArgs] },
-    { cmd: 'python', args: ['-m', 'schemax.cli', ...importArgs] },
-  ];
-
-  let lastResult: ImportExecutionResult = {
-    success: false,
-    command: '',
-    stdout: '',
-    stderr: 'No import command candidates were executed',
-  };
-
   activeImportCancelled = false;
+  activeImportController = new AbortController();
 
   let currentPercent = 10;
   const emitProgress = (update: ImportProgressUpdate) => {
@@ -313,7 +254,6 @@ async function executeImport(
   }, 1200);
 
   try {
-    for (const candidate of candidates) {
     if (activeImportCancelled) {
       onProgress?.({
         phase: 'cancelled',
@@ -330,19 +270,12 @@ async function executeImport(
       };
     }
 
-    const renderedCommand = `${candidate.cmd} ${candidate.args.join(' ')}`;
-    emitProgress({
-      phase: 'launch',
-      message: `Launching import command: ${candidate.cmd}`,
-      percent: 20,
-      level: 'info',
-    });
-
-    const result = await runCommand(
-      candidate.cmd,
-      candidate.args,
+    const result = await pythonBackend.run(
+      importArgs,
       workspacePath,
-      (stdoutChunk) => {
+      {
+        signal: activeImportController.signal,
+        onStdout: (stdoutChunk) => {
         for (const line of stdoutChunk.split('\n')) {
           const update = parseImportProgressLine(line);
           if (update) {
@@ -350,7 +283,7 @@ async function executeImport(
           }
         }
       },
-      (stderrChunk) => {
+        onStderr: (stderrChunk) => {
         const text = stderrChunk.trim();
         if (text) {
           emitProgress({
@@ -360,10 +293,11 @@ async function executeImport(
             level: 'warning',
           });
         }
+        },
       }
     );
 
-    if (result.cancelled) {
+    if (result.cancelled || activeImportCancelled) {
       onProgress?.({
         phase: 'cancelled',
         message: 'Import cancelled by user.',
@@ -372,30 +306,14 @@ async function executeImport(
       });
       return {
         success: false,
-        command: renderedCommand,
+        command: result.command,
         stdout: result.stdout.trim(),
         stderr: result.stderr.trim() || 'Import cancelled by user',
         cancelled: true,
       };
     }
 
-    if (result.spawnError) {
-      lastResult = {
-        success: false,
-        command: renderedCommand,
-        stdout: result.stdout,
-        stderr: `${result.stderr}\n${result.spawnError.message || result.spawnError}`,
-      };
-      emitProgress({
-        phase: 'spawn-error',
-        message: `Import launcher failed for ${candidate.cmd}: ${result.spawnError.message || result.spawnError}`,
-        percent: 25,
-        level: 'warning',
-      });
-      continue;
-    }
-
-    if (result.code === 0) {
+    if (result.success) {
       const isDryRun = isImportFromSql(request) ? request.fromSql.dryRun : request.dryRun;
       onProgress?.({
         phase: 'completed',
@@ -405,36 +323,27 @@ async function executeImport(
       });
       return {
         success: true,
-        command: renderedCommand,
+        command: result.command,
         stdout: result.stdout.trim(),
         stderr: result.stderr.trim(),
       };
     }
 
-    lastResult = {
-      success: false,
-      command: renderedCommand,
-      stdout: result.stdout.trim(),
-      stderr: result.stderr.trim(),
-    };
-    emitProgress({
-      phase: 'command-failed',
-      message: `Import command failed (${candidate.cmd})`,
-      percent: 35,
-      level: 'warning',
-    });
-    }
-
     onProgress?.({
-    phase: 'failed',
-    message: 'Import failed. Check stderr/output for details.',
-    percent: 100,
-    level: 'error',
-  });
-    return lastResult;
+      phase: 'failed',
+      message: 'Import failed. Check stderr/output for details.',
+      percent: 100,
+      level: 'error',
+    });
+    return {
+      success: false,
+      command: result.command,
+      stdout: result.stdout.trim(),
+      stderr: result.stderr.trim() || 'Import command failed',
+    };
   } finally {
     clearInterval(runningTimer);
-    activeImportProcess = null;
+    activeImportController = null;
     activeImportCancelled = false;
   }
 }
@@ -710,17 +619,7 @@ async function runImportWithRequest(
 
 function cancelActiveImport(): void {
   activeImportCancelled = true;
-  if (!activeImportProcess) return;
-
-  try {
-    activeImportProcess.kill('SIGTERM');
-  } catch {}
-  setTimeout(() => {
-    if (!activeImportProcess) return;
-    try {
-      activeImportProcess.kill('SIGKILL');
-    } catch {}
-  }, 3000);
+  activeImportController?.abort();
 }
 
 /**
@@ -1166,46 +1065,24 @@ async function openDesigner(context: vscode.ExtensionContext) {
   );
 
   // Helper function to detect stale snapshots using Python SDK
-  async function detectStaleSnapshots(workspacePath: string): Promise<any[]> {
-    try {
-      const { exec } = require('child_process');
-      const { promisify } = require('util');
-      const execAsync = promisify(exec);
-
-      // Call SchemaX CLI with --json flag
-      const { stdout } = await execAsync('schemax snapshot validate --json', {
-        cwd: workspacePath,
-      });
-
-      // Parse only the JSON line (last non-empty line)
-      const lines = stdout.trim().split('\n').filter((line: string) => line.trim());
-      const jsonLine = lines[lines.length - 1];
-      const result = JSON.parse(jsonLine);
-      return result.stale || [];
-    } catch (error: any) {
-      // If exit code is 1, parse stdout (stale snapshots found)
-      if (error.stdout) {
-        try {
-          // Parse only the JSON line (last non-empty line)
-          const lines = error.stdout.trim().split('\n').filter((line: string) => line.trim());
-          const jsonLine = lines[lines.length - 1];
-          const result = JSON.parse(jsonLine);
-          return result.stale || [];
-        } catch (parseError) {
-          outputChannel.appendLine(`[SchemaX] Failed to parse stale snapshot output: ${parseError}`);
-        }
-      }
-      
-      outputChannel.appendLine(`[SchemaX] Failed to detect stale snapshots: ${error.message}`);
-      if (
-        error.message?.includes('not found') ||
-        error.message?.includes('ENOENT') ||
-        error.code === 'ENOENT'
-      ) {
-        promptToInstallPythonSdkIfNeeded();
+  async function detectStaleSnapshots(workspacePath: string): Promise<StaleSnapshot[]> {
+    const envelope = await pythonBackend.runJson<{ stale?: StaleSnapshot[]; data?: { stale_snapshots?: StaleSnapshot[] } }>(
+      'snapshot.validate',
+      ['snapshot', 'validate'],
+      workspacePath
+    );
+    if (envelope.status === 'error') {
+      const firstError = envelope.errors[0];
+      outputChannel.appendLine(
+        `[SchemaX] Failed to detect stale snapshots: ${firstError?.message || 'unknown error'}`
+      );
+      if (firstError?.message?.includes('not found') || firstError?.message?.includes('ENOENT')) {
+        await promptToInstallPythonSdkIfNeeded();
       }
       return [];
     }
+    const data = envelope.data ?? {};
+    return data.stale ?? data.data?.stale_snapshots ?? [];
   }
 
   // Helper function to reload project data and send to webview
@@ -1231,7 +1108,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
           conflicts = JSON.parse(Buffer.from(conflictContent).toString('utf8'));
           outputChannel.appendLine(`[SchemaX] - Rebase conflict detected: ${latestConflictFile[0]}`);
         }
-      } catch (error) {
+      } catch {
         // No conflicts directory or no conflicts - that's fine
       }
 
@@ -1376,7 +1253,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             
             // For Unity provider, log catalog count (provider-specific)
             if (state && 'catalogs' in state) {
-              outputChannel.appendLine(`[SchemaX] - Catalogs: ${(state as any).catalogs.length}`);
+              outputChannel.appendLine(`[SchemaX] - Catalogs: ${(state as CatalogState).catalogs?.length ?? 0}`);
             }
             
             // Check for rebase conflicts
@@ -1392,7 +1269,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
                 conflicts = JSON.parse(Buffer.from(conflictContent).toString('utf8'));
                 outputChannel.appendLine(`[SchemaX] - Rebase conflict detected: ${latestConflictFile[0]}`);
               }
-            } catch (error) {
+            } catch {
               // No conflicts directory or no conflicts - that's fine
             }
             
@@ -1452,7 +1329,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             vscode.window.showWarningMessage(
               '⚠️ Snapshot Rebase Conflict',
               { modal: true, detail: detailMessage }
-            ).then((choice) => {
+            ).then(() => {
               // User acknowledged the conflict
               outputChannel.appendLine('[SchemaX] User acknowledged rebase conflict');
             });
@@ -1463,7 +1340,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         case 'show-stale-snapshot-details': {
           const staleSnapshots = message.payload;
           if (staleSnapshots && staleSnapshots.length > 0) {
-            const detailLines = staleSnapshots.map((snap: any) => {
+            const detailLines = staleSnapshots.map((snap: StaleSnapshot) => {
               return `Snapshot: ${snap.version}\n` +
                 `  Current base: ${snap.currentBase}\n` +
                 `  Should be: ${snap.shouldBeBase}\n` +
@@ -1474,12 +1351,12 @@ async function openDesigner(context: vscode.ExtensionContext) {
               detailLines + '\n\n' +
               `Resolution:\n` +
               `Run the following command(s) in terminal:\n` +
-              staleSnapshots.map((snap: any) => `  schemax snapshot rebase ${snap.version}`).join('\n');
+              staleSnapshots.map((snap: StaleSnapshot) => `  schemax snapshot rebase ${snap.version}`).join('\n');
             
             vscode.window.showWarningMessage(
               '⚠️ Stale Snapshots Detected',
               { modal: true, detail: detailMessage }
-            ).then((choice) => {
+            ).then(() => {
               // User acknowledged the stale snapshots
               outputChannel.appendLine('[SchemaX] User acknowledged stale snapshots');
             });
@@ -1927,33 +1804,6 @@ async function createSnapshotCommand_impl() {
  * Uses provider.environments.<env>.catalogMappings and requires mappings for all logical
  * catalogs currently present in state.
  */
-function buildCatalogMapping(state: any, envConfig: storageV4.EnvironmentConfig): Record<string, string> {
-  const catalogs = state.catalogs || [];
-
-  if (catalogs.length === 0) {
-    return {};
-  }
-
-  const rawMappings = envConfig.catalogMappings || {};
-  const catalogNames = catalogs
-    .map((catalog: any) => String(catalog?.name || '').trim())
-    .filter(Boolean);
-
-  const missing = catalogNames.filter((name: string) => !(name in rawMappings));
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing catalog mapping(s) for logical catalog(s): ${missing.join(', ')}. ` +
-      `Update provider.environments.<env>.catalogMappings in project settings.`
-    );
-  }
-
-  const resolved: Record<string, string> = {};
-  for (const logicalName of catalogNames) {
-    resolved[logicalName] = String(rawMappings[logicalName]);
-  }
-  return resolved;
-}
-
 async function generateSQLMigration() {
   outputChannel.appendLine('[SchemaX] Generate SQL migration command invoked');
   
@@ -1965,25 +1815,8 @@ async function generateSQLMigration() {
   }
 
   try {
-    outputChannel.appendLine(`[SchemaX] Loading current state from: ${workspaceFolder.uri.fsPath}`);
-    
-    // Load project and state
+    outputChannel.appendLine(`[SchemaX] Loading project from: ${workspaceFolder.uri.fsPath}`);
     const project = await storageV4.readProject(workspaceFolder.uri);
-    const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
-    
-    outputChannel.appendLine(`[SchemaX] Provider: ${provider.info.name} v${provider.info.version}`);
-    outputChannel.appendLine(`[SchemaX] Changelog operations: ${changelog.ops.length}`);
-    
-    // For Unity provider, log catalog count (provider-specific)
-    if (state && 'catalogs' in state) {
-      outputChannel.appendLine(`[SchemaX] Loaded state: ${(state as any).catalogs.length} catalogs`);
-    }
-
-    if (changelog.ops.length === 0) {
-      outputChannel.appendLine('[SchemaX] No operations in changelog, nothing to generate');
-      vscode.window.showInformationMessage('No changes to generate SQL for. Changelog is empty.');
-      return;
-    }
 
     // Ask for target environment
     const environments = Object.keys(project.provider.environments);
@@ -2002,34 +1835,7 @@ async function generateSQLMigration() {
       return;
     }
 
-    const envConfig = storageV4.getEnvironmentConfig(project, targetEnv);
     outputChannel.appendLine(`[SchemaX] Target environment: ${targetEnv}`);
-    outputChannel.appendLine(`[SchemaX] Tracking catalog: ${envConfig.topLevelName}`);
-
-    // Build catalog name mapping (logical → physical)
-    const catalogMapping = buildCatalogMapping(state, envConfig);
-    outputChannel.appendLine(`[SchemaX] Catalog mapping: ${JSON.stringify(catalogMapping)}`);
-
-    // Filter ops by deployment scope (managed categories, existing objects)
-    const opsToUse = filterOpsByManagedScope(changelog.ops, envConfig, (opType) =>
-      provider.getOperationMetadata(opType)
-    );
-    if (opsToUse.length !== changelog.ops.length) {
-      outputChannel.appendLine(
-        `[SchemaX] Deployment scope filter: ${changelog.ops.length} → ${opsToUse.length} ops`
-      );
-    }
-
-    // Generate SQL using provider's SQL generator
-    // Note: Catalog mapping is applied during SQL generation via the generator's internal mapping
-    const generator = provider.getSQLGenerator(state, catalogMapping, {
-      managedLocations: project.managedLocations,
-      externalLocations: project.externalLocations,
-      environmentName: targetEnv,
-    });
-    const sql = generator.generateSQL(opsToUse);
-
-    outputChannel.appendLine(`[SchemaX] Generated SQL (${sql.length} characters)`);
 
     // Create migrations directory
     const migrationsDir = path.join(workspaceFolder.uri.fsPath, '.schemax', 'migrations');
@@ -2043,8 +1849,14 @@ async function generateSQLMigration() {
     const filename = `migration_${targetEnv}_${timestamp}.sql`;
     const filepath = path.join(migrationsDir, filename);
     
-    // Write SQL to file
-    fs.writeFileSync(filepath, sql, 'utf8');
+    const sqlResult = await pythonBackend.run(
+      ['sql', '--target', targetEnv, '--output', filepath],
+      workspaceFolder.uri.fsPath
+    );
+    if (!sqlResult.success) {
+      throw new Error(sqlResult.stderr || sqlResult.stdout || 'SQL generation command failed');
+    }
+    const fileContent = fs.readFileSync(filepath, 'utf8');
     outputChannel.appendLine(`[SchemaX] SQL written to: ${filepath}`);
 
     // Open the file in editor
@@ -2052,13 +1864,12 @@ async function generateSQLMigration() {
     await vscode.window.showTextDocument(doc);
     
     vscode.window.showInformationMessage(
-      `SQL migration generated: ${filename} (${opsToUse.length} operations)`
+      `SQL migration generated: ${filename}`
     );
 
     trackEvent('sql_generated', {
-      opsCount: opsToUse.length,
-      sqlLength: sql.length,
-      provider: provider.info.id
+      sqlLength: fileContent.length,
+      provider: project.provider.type
     });
 
   } catch (error) {

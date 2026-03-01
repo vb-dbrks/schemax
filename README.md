@@ -4,6 +4,14 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Integration Coverage](https://codecov.io/gh/vb-dbrks/schemax-vscode/graph/badge.svg?flag=integration)](https://codecov.io/gh/vb-dbrks/schemax-vscode)
+[![Python SDK CI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/python-sdk-ci.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/python-sdk-ci.yml)
+[![Extension CI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/extension-ci.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/extension-ci.yml)
+[![Docs CI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/docs-ci.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/docs-ci.yml)
+[![Publish to PyPI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-pypi.yml)
+[![Publish VS Code Extension](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-vscode-extension.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-vscode-extension.yml)
+[![PyPI](https://img.shields.io/pypi/v/schemaxpy)](https://pypi.org/project/schemaxpy/)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/schemaxpy)](https://pypi.org/project/schemaxpy/)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/schematic-dev.schemax-vscode)](https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode)
 
 ## What SchemaX Does
 

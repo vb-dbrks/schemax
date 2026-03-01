@@ -2,7 +2,8 @@
  * Unity Catalog Hierarchy Configuration
  */
 
-import { Hierarchy, HierarchyLevel } from '../base/hierarchy';
+import type { HierarchyLevel } from '../base/hierarchy';
+import { Hierarchy } from '../base/hierarchy';
 
 /**
  * Unity Catalog has a 3-level hierarchy:

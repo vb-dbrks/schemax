@@ -10,7 +10,7 @@
  * - Dependency validation
  */
 
-import { Operation } from './operations';
+import type { Operation } from './operations';
 
 /**
  * Types of dependencies between objects
@@ -137,7 +137,7 @@ export class DependencyGraph {
    */
   getDependents(nodeId: string): DependencyEdge[] {
     const dependents: DependencyEdge[] = [];
-    for (const [fromId, edges] of this.edges.entries()) {
+    for (const [, edges] of this.edges.entries()) {
       for (const edge of edges) {
         if (edge.toId === nodeId) {
           dependents.push(edge);
