@@ -23,6 +23,20 @@ def _op(op_id: str = "op_1") -> Operation:
     )
 
 
+class _RepoStub:
+    def __init__(self, *, project: dict, state_result: tuple) -> None:
+        self._project = project
+        self._state_result = state_result
+
+    def read_project(self, *, workspace: Path) -> dict:
+        del workspace
+        return self._project
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple:
+        del workspace, validate
+        return self._state_result
+
+
 def test_validate_dependencies_reports_cycle() -> None:
     graph = Mock()
     graph.detect_cycles.return_value = [["table_a", "view_b", "table_a"]]
@@ -39,7 +53,7 @@ def test_validate_dependencies_reports_cycle() -> None:
 
     assert len(errors) == 1
     assert "Circular dependency" in errors[0]
-    assert warnings == []
+    assert not warnings
 
 
 def test_validate_project_json_success(
@@ -49,17 +63,9 @@ def test_validate_project_json_success(
     provider.info = SimpleNamespace(name="Unity Catalog", version="1.0.0")
     provider.validate_state.return_value = ValidationResult(valid=True, errors=[])
 
-    monkeypatch.setattr(
-        "schemax.commands.validate.read_project",
-        lambda _workspace: {
-            "version": 4,
-            "name": "demo",
-            "provider": {"type": "unity", "version": "1.0.0"},
-        },
-    )
-    monkeypatch.setattr(
-        "schemax.commands.validate.load_current_state",
-        lambda _workspace, validate=False: ({"catalogs": []}, {"ops": []}, provider, None),
+    repo = _RepoStub(
+        project={"version": 4, "name": "demo", "provider": {"type": "unity", "version": "1.0.0"}},
+        state_result=({"catalogs": []}, {"ops": []}, provider, None),
     )
     monkeypatch.setattr(
         "schemax.commands.validate.validate_dependencies",
@@ -67,10 +73,10 @@ def test_validate_project_json_success(
     )
     monkeypatch.setattr(
         "schemax.commands.validate.detect_stale_snapshots",
-        lambda _workspace: [],
+        lambda _workspace, workspace_repo=None: [],
     )
 
-    result = validate_project(Path("."), json_output=True)
+    result = validate_project(Path("."), json_output=True, workspace_repo=repo)
     out = capsys.readouterr().out
 
     assert result is True
@@ -84,21 +90,13 @@ def test_validate_project_raises_on_invalid_state(monkeypatch: pytest.MonkeyPatc
         errors=[ProviderValidationError(field="catalogs", message="invalid")],
     )
 
-    monkeypatch.setattr(
-        "schemax.commands.validate.read_project",
-        lambda _workspace: {
-            "version": 4,
-            "name": "demo",
-            "provider": {"type": "unity", "version": "1.0.0"},
-        },
-    )
-    monkeypatch.setattr(
-        "schemax.commands.validate.load_current_state",
-        lambda _workspace, validate=False: ({"catalogs": []}, {"ops": []}, provider, None),
+    repo = _RepoStub(
+        project={"version": 4, "name": "demo", "provider": {"type": "unity", "version": "1.0.0"}},
+        state_result=({"catalogs": []}, {"ops": []}, provider, None),
     )
 
     with pytest.raises(ValidationError, match="State validation failed"):
-        validate_project(Path("."), json_output=False)
+        validate_project(Path("."), json_output=False, workspace_repo=repo)
 
 
 def test_validate_project_returns_false_when_stale_snapshots(
@@ -108,17 +106,9 @@ def test_validate_project_returns_false_when_stale_snapshots(
     provider.info = SimpleNamespace(name="Unity Catalog", version="1.0.0")
     provider.validate_state.return_value = ValidationResult(valid=True, errors=[])
 
-    monkeypatch.setattr(
-        "schemax.commands.validate.read_project",
-        lambda _workspace: {
-            "version": 4,
-            "name": "demo",
-            "provider": {"type": "unity", "version": "1.0.0"},
-        },
-    )
-    monkeypatch.setattr(
-        "schemax.commands.validate.load_current_state",
-        lambda _workspace, validate=False: ({"catalogs": []}, {"ops": []}, provider, None),
+    repo = _RepoStub(
+        project={"version": 4, "name": "demo", "provider": {"type": "unity", "version": "1.0.0"}},
+        state_result=({"catalogs": []}, {"ops": []}, provider, None),
     )
     monkeypatch.setattr(
         "schemax.commands.validate.validate_dependencies",
@@ -126,7 +116,7 @@ def test_validate_project_returns_false_when_stale_snapshots(
     )
     monkeypatch.setattr(
         "schemax.commands.validate.detect_stale_snapshots",
-        lambda _workspace: [
+        lambda _workspace, workspace_repo=None: [
             {
                 "version": "v0.2.0",
                 "currentBase": "v0.1.0",
@@ -136,4 +126,4 @@ def test_validate_project_returns_false_when_stale_snapshots(
         ],
     )
 
-    assert validate_project(Path("."), json_output=False) is False
+    assert validate_project(Path("."), json_output=False, workspace_repo=repo) is False

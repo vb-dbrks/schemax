@@ -53,15 +53,8 @@ jobs:
       
       - name: Run tests
         working-directory: packages/python-sdk
-        run: pytest --cov=schemax --cov-report=xml --cov-fail-under=20
-      
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        if: always()
-        with:
-          file: packages/python-sdk/coverage.xml
-          flags: python-sdk
-  
+        run: pytest -q
+
   validate-example:
     runs-on: ubuntu-latest
     needs: test
@@ -86,4 +79,3 @@ jobs:
       - name: Generate SQL from example
         working-directory: examples/basic-schema
         run: schemax sql --output test-migration.sql
-

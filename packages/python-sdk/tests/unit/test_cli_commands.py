@@ -8,7 +8,6 @@ from click.testing import CliRunner
 
 from schemax.cli import cli
 from schemax.commands import SQLGenerationError
-from schemax.providers.registry import ProviderRegistry
 
 
 def test_cli_help_smoke() -> None:
@@ -32,20 +31,20 @@ def test_init_fails_for_unknown_provider(temp_workspace: Path) -> None:
 
 def test_init_success_routes_to_storage(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
-    provider = SimpleNamespace(
-        info=SimpleNamespace(name="Unity Catalog", version="1.0.0", docs_url=None)
-    )
+    called: dict[str, object] = {}
 
-    monkeypatch.setattr(ProviderRegistry, "has", lambda _provider: True)
-    monkeypatch.setattr(ProviderRegistry, "get", lambda _provider: provider)
-
-    called: dict[str, Path] = {}
-
-    def _ensure(workspace: Path, provider_id: str) -> None:
+    def _run(_self, *, workspace: Path, provider_id: str):
         called["workspace"] = workspace
         called["provider_id"] = provider_id
+        return SimpleNamespace(
+            success=True,
+            data={
+                "provider_name": "Unity Catalog",
+                "provider_version": "1.0.0",
+            },
+        )
 
-    monkeypatch.setattr("schemax.cli.ensure_project_file", _ensure)
+    monkeypatch.setattr("schemax.cli.InitService.run", _run)
 
     result = runner.invoke(cli, ["init", "--provider", "unity", str(temp_workspace)])
 
@@ -58,11 +57,11 @@ def test_sql_routes_arguments(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     captured: dict[str, object] = {}
 
-    def _generate(**kwargs):
+    def _run(_self, **kwargs):
         captured.update(kwargs)
-        return "SELECT 1"
+        return SimpleNamespace(success=True, data={"sql": "SELECT 1"})
 
-    monkeypatch.setattr("schemax.cli.generate_sql_migration", _generate)
+    monkeypatch.setattr("schemax.cli.SqlService.run", _run)
 
     output = temp_workspace / "out.sql"
     result = runner.invoke(
@@ -84,18 +83,18 @@ def test_sql_routes_arguments(monkeypatch, temp_workspace: Path) -> None:
     assert result.exit_code == 0
     assert captured["workspace"] == temp_workspace.resolve()
     assert captured["output"] == output.resolve()
-    assert captured["_from_version"] == "v0.1.0"
-    assert captured["_to_version"] == "v0.2.0"
+    assert captured["from_version"] == "v0.1.0"
+    assert captured["to_version"] == "v0.2.0"
     assert captured["target_env"] == "dev"
 
 
 def test_sql_returns_error_code_on_command_error(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
 
-    def _raise(**kwargs):  # noqa: ARG001
+    def _raise(_self, **kwargs):  # noqa: ARG001
         raise SQLGenerationError("boom")
 
-    monkeypatch.setattr("schemax.cli.generate_sql_migration", _raise)
+    monkeypatch.setattr("schemax.cli.SqlService.run", _raise)
 
     result = runner.invoke(cli, ["sql", str(temp_workspace)])
     assert result.exit_code == 1
@@ -106,12 +105,12 @@ def test_validate_routes_json_option(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     captured: dict[str, object] = {}
 
-    def _validate(workspace: Path, json_output: bool) -> bool:
+    def _run(_self, *, workspace: Path, json_output: bool):
         captured["workspace"] = workspace
         captured["json_output"] = json_output
-        return True
+        return SimpleNamespace(success=True)
 
-    monkeypatch.setattr("schemax.cli.validate_project", _validate)
+    monkeypatch.setattr("schemax.cli.ValidateService.run", _run)
 
     result = runner.invoke(cli, ["validate", "--json", str(temp_workspace)])
     assert result.exit_code == 0
@@ -123,11 +122,11 @@ def test_diff_routes_arguments(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     captured: dict[str, object] = {}
 
-    def _diff(**kwargs):
+    def _run(_self, **kwargs):
         captured.update(kwargs)
-        return []
+        return SimpleNamespace(success=True, data={"operations": []})
 
-    monkeypatch.setattr("schemax.cli.generate_diff", _diff)
+    monkeypatch.setattr("schemax.cli.DiffService.run", _run)
 
     result = runner.invoke(
         cli,
@@ -165,8 +164,8 @@ def test_apply_uses_status_to_set_exit_code(monkeypatch, temp_workspace: Path) -
     runner = CliRunner()
 
     monkeypatch.setattr(
-        "schemax.cli.apply_to_environment",
-        lambda **kwargs: SimpleNamespace(status="success"),
+        "schemax.cli.ApplyService.run",
+        lambda _self, **kwargs: SimpleNamespace(success=True),
     )
     ok = runner.invoke(
         cli,
@@ -185,8 +184,8 @@ def test_apply_uses_status_to_set_exit_code(monkeypatch, temp_workspace: Path) -
     assert ok.exit_code == 0
 
     monkeypatch.setattr(
-        "schemax.cli.apply_to_environment",
-        lambda **kwargs: SimpleNamespace(status="failed"),
+        "schemax.cli.ApplyService.run",
+        lambda _self, **kwargs: SimpleNamespace(success=False),
     )
     fail = runner.invoke(
         cli,
@@ -217,9 +216,13 @@ def test_rollback_complete_routes_to_command(monkeypatch, temp_workspace: Path) 
     runner = CliRunner()
 
     monkeypatch.setattr(
-        "schemax.cli.rollback_complete",
-        lambda **kwargs: SimpleNamespace(
-            success=True, operations_rolled_back=0, error_message=None
+        "schemax.cli.RollbackService.run_complete",
+        lambda _self, **kwargs: SimpleNamespace(
+            data={
+                "result": SimpleNamespace(
+                    success=True, operations_rolled_back=0, error_message=None
+                )
+            }
         ),
     )
 
@@ -283,7 +286,10 @@ def test_rollback_error_without_target_does_not_raise_value_error(
 def test_snapshot_create_no_ops_is_graceful(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
 
-    monkeypatch.setattr("schemax.cli.read_changelog", lambda _workspace: {"ops": []})
+    monkeypatch.setattr(
+        "schemax.cli.workspace_repo",
+        SimpleNamespace(read_changelog=lambda *, workspace: {"ops": []}),
+    )
 
     result = runner.invoke(
         cli,
@@ -297,8 +303,11 @@ def test_snapshot_create_no_ops_is_graceful(monkeypatch, temp_workspace: Path) -
 def test_snapshot_rebase_routes_to_command(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     monkeypatch.setattr(
-        "schemax.cli.rebase_snapshot",
-        lambda **kwargs: SimpleNamespace(success=True, applied_count=0, conflict_count=0),
+        "schemax.cli.SnapshotService.rebase",
+        lambda _self, **kwargs: SimpleNamespace(
+            success=True,
+            data={"result": SimpleNamespace(success=True, applied_count=0, conflict_count=0)},
+        ),
     )
 
     result = runner.invoke(
@@ -313,8 +322,8 @@ def test_snapshot_rebase_routes_to_command(monkeypatch, temp_workspace: Path) ->
 def test_snapshot_validate_json_output(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     monkeypatch.setattr(
-        "schemax.cli.detect_stale_snapshots",
-        lambda _workspace, _json_output=False: [],
+        "schemax.cli.SnapshotService.validate",
+        lambda _self, **kwargs: SimpleNamespace(success=True, data={"stale_snapshots": []}),
     )
 
     result = runner.invoke(

@@ -9,23 +9,28 @@ import hashlib
 import json
 import os
 import re
+import tempfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+from schemax.domain.errors import StorageConflictError
 from schemax.providers import Operation, Provider, ProviderRegistry, ProviderState
 
 SCHEMAX_DIR = ".schemax"
 PROJECT_FILENAME = "project.json"
 CHANGELOG_FILENAME = "changelog.json"
 SNAPSHOTS_DIR = "snapshots"
+LOCK_FILENAME = ".workspace.lock"
 
 # Default project settings (single source of truth for new/empty projects and tests)
 DEFAULT_PROJECT_SETTINGS: dict[str, Any] = {
     "autoIncrementVersion": True,
     "versionPrefix": "v",
-    "catalogMode": "single",  # "single" = implicit catalog (recommended), "multi" = explicit catalogs
+    # "single" = implicit catalog (recommended), "multi" = explicit catalogs
+    "catalogMode": "single",
 }
 
 
@@ -67,6 +72,125 @@ def get_snapshot_file_path(workspace_path: Path, version: str) -> Path:
     return get_snapshots_dir(workspace_path) / f"{version}.json"
 
 
+def get_lock_file_path(workspace_path: Path) -> Path:
+    """Get workspace mutation lock path."""
+    return get_schemax_dir(workspace_path) / LOCK_FILENAME
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    """Atomically write JSON payload to file with deterministic formatting."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    file_descriptor, temp_path = tempfile.mkstemp(
+        prefix=f"{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    try:
+        with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temp_path, path)
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+
+class WorkspaceMutationLock:
+    """Single-process lock for write operations against one workspace."""
+
+    def __init__(self, workspace_path: Path) -> None:
+        self._workspace_path = workspace_path
+        self._lock_path = get_lock_file_path(workspace_path)
+        self._locked = False
+
+    def acquire(self) -> None:
+        """Acquire lock or raise StorageConflictError if already held."""
+        ensure_schemax_dir(self._workspace_path)
+        try:
+            lock_fd = os.open(self._lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError as exc:
+            raise StorageConflictError(
+                message=f"Workspace is locked: {self._lock_path}",
+                code="workspace_locked",
+            ) from exc
+        with os.fdopen(lock_fd, "w", encoding="utf-8") as lock_file:
+            lock_file.write(f"{os.getpid()}\n")
+        self._locked = True
+
+    def release(self) -> None:
+        """Release lock if held."""
+        if not self._locked:
+            return
+        try:
+            os.unlink(self._lock_path)
+        except FileNotFoundError:
+            pass
+        self._locked = False
+
+    def __enter__(self) -> "WorkspaceMutationLock":
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback_obj: Any) -> None:
+        del exc_type, exc, traceback_obj
+        self.release()
+
+
+class WorkspaceSession:
+    """Transactional session for workspace project/changelog/snapshot writes."""
+
+    def __init__(self, workspace_path: Path) -> None:
+        self._workspace_path = workspace_path
+        self._lock = WorkspaceMutationLock(workspace_path)
+        self._project: dict[str, Any] | None = None
+        self._changelog: dict[str, Any] | None = None
+        self._snapshots: dict[str, dict[str, Any]] = {}
+
+    def __enter__(self) -> "WorkspaceSession":
+        self._lock.acquire()
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback_obj: Any) -> None:
+        del exc_type, exc, traceback_obj
+        self._lock.release()
+
+    def read_project(self) -> dict[str, Any]:
+        """Read and cache project in this session."""
+        if self._project is None:
+            self._project = read_project(self._workspace_path)
+        return self._project
+
+    def write_project(self, project: dict[str, Any]) -> None:
+        """Stage project payload for commit."""
+        self._project = project
+
+    def read_changelog(self) -> dict[str, Any]:
+        """Read and cache changelog in this session."""
+        if self._changelog is None:
+            self._changelog = read_changelog(self._workspace_path)
+        return self._changelog
+
+    def write_changelog(self, changelog: dict[str, Any]) -> None:
+        """Stage changelog payload for commit."""
+        self._changelog = changelog
+
+    def write_snapshot(self, snapshot: dict[str, Any]) -> None:
+        """Stage snapshot payload for commit."""
+        snapshot_version = str(snapshot["version"])
+        self._snapshots[snapshot_version] = snapshot
+
+    def commit(self) -> None:
+        """Atomically persist staged changes."""
+        for snapshot in self._snapshots.values():
+            snapshot_path = get_snapshot_file_path(self._workspace_path, str(snapshot["version"]))
+            _write_json_atomic(snapshot_path, snapshot)
+        if self._project is not None:
+            _write_json_atomic(get_project_file_path(self._workspace_path), self._project)
+        if self._changelog is not None:
+            _write_json_atomic(get_changelog_file_path(self._workspace_path), self._changelog)
+
+
 def ensure_schemax_dir(workspace_path: Path) -> None:
     """Ensure .schemax/snapshots/ directory exists"""
     schemax_dir = get_schemax_dir(workspace_path)
@@ -84,105 +208,92 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         provider_id: Provider ID (default: 'unity')
     """
     project_path = get_project_file_path(workspace_path)
-    changelog_path = get_changelog_file_path(workspace_path)
+    with WorkspaceMutationLock(workspace_path):
+        if project_path.exists():
+            with open(project_path, encoding="utf-8") as f:
+                project = cast(dict[str, Any], json.load(f))
+            if project.get("version") == 4:
+                return
+            raise ValueError(
+                f"Project version {project.get('version')} not supported. "
+                "Please create a new project or manually migrate to v4."
+            )
 
-    if project_path.exists():
-        # Project exists - check version
-        with open(project_path, encoding="utf-8") as f:
-            project = cast(dict[str, Any], json.load(f))
+        workspace_name = workspace_path.name
+        provider = ProviderRegistry.get(provider_id)
+        if provider is None:
+            available = ", ".join(ProviderRegistry.get_all_ids())
+            raise ValueError(
+                f"Provider '{provider_id}' not found. Available providers: {available}"
+            )
 
-        if project.get("version") == 4:
-            return  # Already v4
-        raise ValueError(
-            f"Project version {project.get('version')} not supported. "
-            "Please create a new project or manually migrate to v4."
-        )
-
-    # Create new v4 project
-    workspace_name = workspace_path.name
-
-    # Verify provider exists
-    provider = ProviderRegistry.get(provider_id)
-    if provider is None:
-        available = ", ".join(ProviderRegistry.get_all_ids())
-        raise ValueError(f"Provider '{provider_id}' not found. Available providers: {available}")
-
-    # Create v4 project with environment configuration
-    new_project = {
-        "version": 4,
-        "name": workspace_name,
-        "provider": {
-            "type": provider_id,
-            "version": provider.info.version,
-            "environments": {
-                "dev": {
-                    "topLevelName": f"dev_{workspace_name}",
-                    "description": "Development environment",
-                    "allowDrift": True,
-                    "requireSnapshot": False,
-                    "autoCreateTopLevel": True,
-                    "autoCreateSchemaxSchema": True,
-                    "catalogMappings": {"__implicit__": f"dev_{workspace_name}"},
-                },
-                "test": {
-                    "topLevelName": f"test_{workspace_name}",
-                    "description": "Test/staging environment",
-                    "allowDrift": False,
-                    "requireSnapshot": True,
-                    "autoCreateTopLevel": True,
-                    "autoCreateSchemaxSchema": True,
-                    "catalogMappings": {"__implicit__": f"test_{workspace_name}"},
-                },
-                "prod": {
-                    "topLevelName": f"prod_{workspace_name}",
-                    "description": "Production environment",
-                    "allowDrift": False,
-                    "requireSnapshot": True,
-                    "requireApproval": False,
-                    "autoCreateTopLevel": False,
-                    "autoCreateSchemaxSchema": True,
-                    "catalogMappings": {"__implicit__": f"prod_{workspace_name}"},
+        new_project = {
+            "version": 4,
+            "name": workspace_name,
+            "provider": {
+                "type": provider_id,
+                "version": provider.info.version,
+                "environments": {
+                    "dev": {
+                        "topLevelName": f"dev_{workspace_name}",
+                        "description": "Development environment",
+                        "allowDrift": True,
+                        "requireSnapshot": False,
+                        "autoCreateTopLevel": True,
+                        "autoCreateSchemaxSchema": True,
+                        "catalogMappings": {"__implicit__": f"dev_{workspace_name}"},
+                    },
+                    "test": {
+                        "topLevelName": f"test_{workspace_name}",
+                        "description": "Test/staging environment",
+                        "allowDrift": False,
+                        "requireSnapshot": True,
+                        "autoCreateTopLevel": True,
+                        "autoCreateSchemaxSchema": True,
+                        "catalogMappings": {"__implicit__": f"test_{workspace_name}"},
+                    },
+                    "prod": {
+                        "topLevelName": f"prod_{workspace_name}",
+                        "description": "Production environment",
+                        "allowDrift": False,
+                        "requireSnapshot": True,
+                        "requireApproval": False,
+                        "autoCreateTopLevel": False,
+                        "autoCreateSchemaxSchema": True,
+                        "catalogMappings": {"__implicit__": f"prod_{workspace_name}"},
+                    },
                 },
             },
-        },
-        "managedLocations": {},
-        "externalLocations": {},
-        **default_project_skeleton_tail(),
-    }
+            "managedLocations": {},
+            "externalLocations": {},
+            **default_project_skeleton_tail(),
+        }
 
-    # Initialize changelog with implicit catalog for single-catalog mode
-    initial_ops = []
+        initial_ops = []
+        settings = cast(dict[str, Any], new_project.get("settings", {}))
+        if settings.get("catalogMode") == "single":
+            catalog_id = "cat_implicit"
+            initial_ops.append(
+                {
+                    "id": "op_init_catalog",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "provider": provider_id,
+                    "op": f"{provider_id}.add_catalog",
+                    "target": catalog_id,
+                    "payload": {"catalogId": catalog_id, "name": "__implicit__"},
+                }
+            )
+            print("[SchemaX] Auto-created implicit catalog for single-catalog mode")
 
-    settings = cast(dict[str, Any], new_project.get("settings", {}))
-    if settings.get("catalogMode") == "single":
-        # Auto-create implicit catalog
-        catalog_id = "cat_implicit"
-        initial_ops.append(
-            {
-                "id": "op_init_catalog",
-                "ts": datetime.now(UTC).isoformat(),
-                "provider": provider_id,
-                "op": f"{provider_id}.add_catalog",
-                "target": catalog_id,
-                "payload": {"catalogId": catalog_id, "name": "__implicit__"},
-            }
-        )
-        print("[SchemaX] Auto-created implicit catalog for single-catalog mode")
+        new_changelog = {
+            "version": 1,
+            "sinceSnapshot": None,
+            "ops": initial_ops,
+            "lastModified": datetime.now(UTC).isoformat(),
+        }
 
-    new_changelog = {
-        "version": 1,
-        "sinceSnapshot": None,
-        "ops": initial_ops,
-        "lastModified": datetime.now(UTC).isoformat(),
-    }
-
-    ensure_schemax_dir(workspace_path)
-
-    with open(project_path, "w", encoding="utf-8") as f:
-        json.dump(new_project, f, indent=2)
-
-    with open(changelog_path, "w", encoding="utf-8") as f:
-        json.dump(new_changelog, f, indent=2)
+        _write_json_atomic(get_project_file_path(workspace_path), new_project)
+        _write_json_atomic(get_changelog_file_path(workspace_path), new_changelog)
 
     provider_name = provider.info.name
     print(f"[SchemaX] Initialized new v4 project: {workspace_name} with provider: {provider_name}")
@@ -226,9 +337,7 @@ def read_project(workspace_path: Path) -> dict[str, Any]:
 def write_project(workspace_path: Path, project: dict[str, Any]) -> None:
     """Write project file"""
     project_path = get_project_file_path(workspace_path)
-
-    with open(project_path, "w", encoding="utf-8") as f:
-        json.dump(project, f, indent=2)
+    _write_json_atomic(project_path, project)
 
 
 def read_changelog(workspace_path: Path) -> dict[str, Any]:
@@ -277,8 +386,7 @@ def write_changelog(workspace_path: Path, changelog: dict[str, Any]) -> None:
                 operation.model_dump(by_alias=True) for operation in serializable_changelog["ops"]
             ]
 
-    with open(changelog_path, "w", encoding="utf-8") as f:
-        json.dump(serializable_changelog, f, indent=2)
+    _write_json_atomic(changelog_path, serializable_changelog)
 
 
 def read_snapshot(workspace_path: Path, version: str) -> dict[str, Any]:
@@ -293,9 +401,7 @@ def write_snapshot(workspace_path: Path, snapshot: dict[str, Any]) -> None:
     """Write a snapshot file"""
     ensure_schemax_dir(workspace_path)
     snapshot_path = get_snapshot_file_path(workspace_path, snapshot["version"])
-
-    with open(snapshot_path, "w", encoding="utf-8") as f:
-        json.dump(snapshot, f, indent=2)
+    _write_json_atomic(snapshot_path, snapshot)
 
 
 def load_current_state(
@@ -372,6 +478,11 @@ def _collect_graph_hierarchy_warnings(graph: Any) -> list[dict[str, Any]]:
     return [{"type": "hierarchy_warning", "message": w} for w in graph.validate_dependencies()]
 
 
+def _handle_validation_failure(err: Exception) -> list[dict[str, Any]]:
+    """Build warnings payload for dependency validation errors."""
+    return [{"type": "validation_error", "message": f"Could not validate dependencies: {err}"}]
+
+
 def validate_dependencies_internal(
     state: Any, ops: list[Operation], provider: Any
 ) -> dict[str, Any]:
@@ -385,10 +496,8 @@ def validate_dependencies_internal(
         cycles = graph.detect_cycles()
         errors.extend(_format_cycle_errors(generator, cycles))
         warnings.extend(_collect_graph_hierarchy_warnings(graph))
-    except Exception as e:
-        warnings.append(
-            {"type": "validation_error", "message": f"Could not validate dependencies: {e}"}
-        )
+    except (AttributeError, KeyError, TypeError, ValueError, RuntimeError) as err:
+        warnings.extend(_handle_validation_failure(err))
 
     return {"errors": errors, "warnings": warnings}
 
@@ -400,25 +509,88 @@ def append_ops(workspace_path: Path, ops: list[Operation]) -> None:
         workspace_path: Path to workspace
         ops: Operations to append
     """
-    project = read_project(workspace_path)
-    changelog = read_changelog(workspace_path)
-    provider = ProviderRegistry.get(project["provider"]["type"])
+    with WorkspaceSession(workspace_path) as session:
+        project = session.read_project()
+        changelog = session.read_changelog()
+        provider = ProviderRegistry.get(project["provider"]["type"])
 
-    if provider is None:
-        raise ValueError(f"Provider '{project['provider']['type']}' not found")
+        if provider is None:
+            raise ValueError(f"Provider '{project['provider']['type']}' not found")
 
-    # Validate operations
-    for operation in ops:
-        validation = provider.validate_operation(operation)
-        if not validation.valid:
-            errors = ", ".join(f"{e.field}: {e.message}" for e in validation.errors)
-            raise ValueError(f"Invalid operation: {errors}")
+        for operation in ops:
+            validation = provider.validate_operation(operation)
+            if not validation.valid:
+                errors = ", ".join(f"{e.field}: {e.message}" for e in validation.errors)
+                raise ValueError(f"Invalid operation: {errors}")
 
-    # Append ops
-    changelog["ops"].extend([operation.model_dump(by_alias=True) for operation in ops])
+        changelog["ops"].extend([operation.model_dump(by_alias=True) for operation in ops])
+        session.write_changelog(changelog)
+        session.commit()
 
-    # Write back
-    write_changelog(workspace_path, changelog)
+
+def _normalize_ops_with_ids(changelog_ops: list[Any]) -> list[dict[str, Any]]:
+    """Normalize changelog operations into dict form with stable IDs."""
+    ops_with_ids: list[dict[str, Any]] = []
+    for index, operation_item in enumerate(changelog_ops):
+        if isinstance(operation_item, Operation):
+            op_dict = operation_item.model_dump(by_alias=True)
+            if not operation_item.id:
+                op_dict["id"] = f"op_{index}_{operation_item.ts}_{operation_item.target}"
+            ops_with_ids.append(op_dict)
+            continue
+        if "id" not in operation_item or not operation_item["id"]:
+            operation_item["id"] = f"op_{index}_{operation_item['ts']}_{operation_item['target']}"
+        ops_with_ids.append(operation_item)
+    return ops_with_ids
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotRequest:
+    """Input request for snapshot creation transaction."""
+
+    name: str
+    version: str | None
+    comment: str | None
+    tags: list[str]
+
+
+def _build_snapshot_file(
+    snapshot_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Build snapshot file payload."""
+    return {
+        "id": f"snap_{uuid4()}",
+        "version": snapshot_context["snapshot_version"],
+        "name": snapshot_context["name"],
+        "ts": datetime.now(UTC).isoformat(),
+        "createdBy": os.environ.get("USER") or os.environ.get("USERNAME") or "unknown",
+        "state": snapshot_context["state"],
+        "operations": snapshot_context["ops_with_ids"],
+        "previousSnapshot": snapshot_context["previous_snapshot"],
+        "hash": snapshot_context["state_hash"],
+        "tags": snapshot_context["tags"],
+        "comment": snapshot_context["comment"],
+    }
+
+
+def _build_snapshot_metadata(
+    snapshot_file: dict[str, Any],
+    snapshot_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Build project snapshot metadata payload."""
+    return {
+        "id": snapshot_file["id"],
+        "version": snapshot_context["snapshot_version"],
+        "name": snapshot_context["name"],
+        "ts": snapshot_file["ts"],
+        "createdBy": snapshot_file["createdBy"],
+        "file": f".schemax/snapshots/{snapshot_context['snapshot_version']}.json",
+        "previousSnapshot": snapshot_context["previous_snapshot"],
+        "opsCount": len(snapshot_context["ops_with_ids"]),
+        "hash": snapshot_context["state_hash"],
+        "tags": snapshot_context["tags"],
+        "comment": snapshot_context["comment"],
+    }
 
 
 def create_snapshot(
@@ -443,90 +615,78 @@ def create_snapshot(
     if tags is None:
         tags = []
 
-    project = read_project(workspace_path)
-    changelog = read_changelog(workspace_path)
+    request = _SnapshotRequest(name=name, version=version, comment=comment, tags=tags)
+    project, snapshot_file, snapshot_metadata, ops_count = _create_snapshot_transaction(
+        workspace_path=workspace_path,
+        request=request,
+    )
 
-    # Load current state using preloaded project/changelog to avoid duplicate reads.
+    print(f"[SchemaX] Created snapshot {snapshot_file['version']}: {name}")
+    print(f"[SchemaX] Snapshot file: {snapshot_metadata['file']}")
+    print(f"[SchemaX] Ops included: {ops_count}")
+
+    return project, snapshot_file
+
+
+def _create_snapshot_transaction(
+    *,
+    workspace_path: Path,
+    request: _SnapshotRequest,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], int]:
+    """Execute snapshot creation transaction and return persisted payloads."""
+    with WorkspaceSession(workspace_path) as session:
+        project = session.read_project()
+        changelog = session.read_changelog()
+        snapshot_file, snapshot_metadata = _build_snapshot_artifacts(
+            workspace_path=workspace_path,
+            project=project,
+            changelog=changelog,
+            request=request,
+        )
+        snapshot_version = str(snapshot_file["version"])
+        project["snapshots"].append(snapshot_metadata)
+        project["latestSnapshot"] = snapshot_version
+        session.write_snapshot(snapshot_file)
+        session.write_project(project)
+        session.write_changelog(
+            {
+                "version": 1,
+                "sinceSnapshot": snapshot_version,
+                "ops": [],
+                "lastModified": datetime.now(UTC).isoformat(),
+            }
+        )
+        session.commit()
+    return project, snapshot_file, snapshot_metadata, len(snapshot_file["operations"])
+
+
+def _build_snapshot_artifacts(
+    *,
+    workspace_path: Path,
+    project: dict[str, Any],
+    changelog: dict[str, Any],
+    request: _SnapshotRequest,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build snapshot file and metadata from current state/changelog."""
     state, _, _, _ = _load_current_state_from_data(
         workspace_path, project, changelog, validate=False
     )
-
-    # Determine version
-    snapshot_version = version or _get_next_version(
-        project.get("latestSnapshot"), project["settings"]
-    )
-
-    # Generate IDs for ops that don't have them (backwards compatibility)
-    # Note: changelog["ops"] may contain Operation objects or dicts
-    ops_with_ids = []
-    for i, operation_item in enumerate(changelog["ops"]):
-        # Handle both Operation objects and dicts
-        if isinstance(operation_item, Operation):
-            op_dict = operation_item.model_dump(by_alias=True)
-            if not operation_item.id:
-                op_dict["id"] = f"op_{i}_{operation_item.ts}_{operation_item.target}"
-            ops_with_ids.append(op_dict)
-        else:
-            # Dict format (backwards compatibility)
-            if "id" not in operation_item or not operation_item["id"]:
-                operation_item["id"] = f"op_{i}_{operation_item['ts']}_{operation_item['target']}"
-            ops_with_ids.append(operation_item)
-
-    # Calculate hash (includes full operations)
-    state_hash = _calculate_state_hash(state, ops_with_ids)
-
-    # Create snapshot file
-    snapshot_file = {
-        "id": f"snap_{uuid4()}",
-        "version": snapshot_version,
-        "name": name,
-        "ts": datetime.now(UTC).isoformat(),
-        "createdBy": os.environ.get("USER") or os.environ.get("USERNAME") or "unknown",
+    previous_snapshot = cast(str | None, project.get("latestSnapshot"))
+    snapshot_version = request.version or _get_next_version(previous_snapshot, project["settings"])
+    ops_with_ids = _normalize_ops_with_ids(cast(list[Any], changelog["ops"]))
+    snapshot_context = {
+        "snapshot_version": snapshot_version,
+        "name": request.name,
+        "comment": request.comment,
+        "tags": request.tags,
         "state": state,
-        "operations": ops_with_ids,  # Full operation objects
-        "previousSnapshot": project.get("latestSnapshot"),
-        "hash": state_hash,
-        "tags": tags,
-        "comment": comment,
+        "ops_with_ids": ops_with_ids,
+        "previous_snapshot": previous_snapshot,
+        "state_hash": _calculate_state_hash(state, ops_with_ids),
     }
-
-    # Write snapshot file
-    write_snapshot(workspace_path, snapshot_file)
-
-    # Create snapshot metadata
-    snapshot_metadata = {
-        "id": snapshot_file["id"],
-        "version": snapshot_version,
-        "name": name,
-        "ts": snapshot_file["ts"],
-        "createdBy": snapshot_file["createdBy"],
-        "file": f".schemax/snapshots/{snapshot_version}.json",
-        "previousSnapshot": project.get("latestSnapshot"),
-        "opsCount": len(ops_with_ids),
-        "hash": state_hash,
-        "tags": tags,
-        "comment": comment,
-    }
-
-    # Update project
-    project["snapshots"].append(snapshot_metadata)
-    project["latestSnapshot"] = snapshot_version
-    write_project(workspace_path, project)
-
-    # Clear changelog
-    new_changelog = {
-        "version": 1,
-        "sinceSnapshot": snapshot_version,
-        "ops": [],
-        "lastModified": datetime.now(UTC).isoformat(),
-    }
-    write_changelog(workspace_path, new_changelog)
-
-    print(f"[SchemaX] Created snapshot {snapshot_version}: {name}")
-    print(f"[SchemaX] Snapshot file: {snapshot_metadata['file']}")
-    print(f"[SchemaX] Ops included: {len(ops_with_ids)}")
-
-    return project, snapshot_file
+    snapshot_file = _build_snapshot_file(snapshot_context)
+    snapshot_metadata = _build_snapshot_metadata(snapshot_file, snapshot_context)
+    return snapshot_file, snapshot_metadata
 
 
 def get_uncommitted_ops_count(workspace_path: Path) -> int:

@@ -42,6 +42,7 @@ from .version import (
     get_versions_between,
     parse_semantic_version,
 )
+from .workspace_repository import WorkspaceRepository
 
 __all__ = [
     # Storage
@@ -63,6 +64,7 @@ __all__ = [
     "write_changelog",
     "write_project",
     "write_snapshot",
+    "WorkspaceRepository",
     # SQL utils
     "split_sql_statements",
     # Deployment

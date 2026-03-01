@@ -3,6 +3,7 @@ Unity Catalog Hierarchy Configuration
 """
 
 from schemax.providers.base.hierarchy import Hierarchy, HierarchyLevel
+from schemax.providers.base.hierarchy_defaults import build_table_level
 
 # Unity Catalog has a 3-level hierarchy: Catalog → Schema → Table
 unity_hierarchy_levels = [
@@ -20,13 +21,7 @@ unity_hierarchy_levels = [
         icon="folder",
         is_container=True,
     ),
-    HierarchyLevel(
-        name="table",
-        display_name="Table",
-        plural_name="tables",
-        icon="table",
-        is_container=False,
-    ),
+    build_table_level(),
 ]
 
 unity_hierarchy = Hierarchy(unity_hierarchy_levels)

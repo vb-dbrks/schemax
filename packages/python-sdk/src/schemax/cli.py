@@ -13,38 +13,39 @@ import click
 from rich.console import Console
 
 from ._provider_registration import ensure_providers_loaded
+from .application import (
+    ApplyService,
+    DiffService,
+    ImportService,
+    InitService,
+    RollbackService,
+    SnapshotService,
+    SqlService,
+    ValidateService,
+)
 from .commands import (
     ApplyError,
     DiffError,
     ImportCommandError,
     SQLGenerationError,
-    apply_to_environment,
-    generate_diff,
-    generate_sql_migration,
-    import_from_provider,
-    import_from_sql_file,
-    rollback_complete,
-    validate_project,
 )
 from .commands import (
     ValidationError as CommandValidationError,
 )
-from .commands.rollback import RollbackError, run_partial_rollback_cli
-from .commands.snapshot_rebase import (
-    RebaseError,
-    detect_stale_snapshots,
-    rebase_snapshot,
-)
-from .core.storage import (
-    create_snapshot,
-    ensure_project_file,
-    get_environment_config,
-    read_changelog,
-    read_project,
-)
-from .providers import ProviderRegistry
+from .commands.rollback import RollbackError
+from .commands.snapshot_rebase import RebaseError
+from .core.workspace_repository import WorkspaceRepository
 
 console = Console()
+init_service = InitService()
+validate_service = ValidateService()
+sql_service = SqlService()
+diff_service = DiffService()
+import_service = ImportService()
+apply_service = ApplyService()
+rollback_service = RollbackService()
+snapshot_service = SnapshotService()
+workspace_repo = WorkspaceRepository()
 
 
 @click.group()
@@ -56,24 +57,20 @@ def cli() -> None:
 
 def _run_init(provider: str, workspace_path: Path) -> None:
     """Initialize a new SchemaX project: validate provider, ensure project file, print next steps."""
-    if not ProviderRegistry.has(provider):
-        available = ", ".join(ProviderRegistry.get_all_ids())
-        console.print(
-            f"[red]✗[/red] Provider '{provider}' not found. Available providers: {available}"
-        )
+    result = init_service.run(workspace=workspace_path, provider_id=provider)
+    if not result.success:
+        console.print(f"[red]✗[/red] {result.message}")
         sys.exit(1)
-    provider_obj = ProviderRegistry.get(provider)
-    if not provider_obj:
-        console.print(f"[red]✗[/red] Provider '{provider}' not found")
-        sys.exit(1)
-    ensure_project_file(workspace_path, provider_id=provider)
     console.print(f"[green]✓[/green] Initialized SchemaX project in {workspace_path}")
-    console.print(f"[blue]Provider:[/blue] {provider_obj.info.name}")
-    console.print(f"[blue]Version:[/blue] {provider_obj.info.version}")
+    if result.data:
+        provider_name = str(result.data.get("provider_name") or provider)
+        provider_version = str(result.data.get("provider_version") or "unknown")
+        console.print(f"[blue]Provider:[/blue] {provider_name}")
+        console.print(f"[blue]Version:[/blue] {provider_version}")
     console.print("\nNext steps:")
     console.print("  1. Run 'schemax sql' to generate SQL")
     console.print("  2. Use SchemaX VSCode extension to design schemas")
-    console.print("  3. Check provider docs: " + (provider_obj.info.docs_url or "N/A"))
+    console.print("  3. Check provider docs in the project README")
 
 
 @cli.command()
@@ -141,12 +138,12 @@ def sql(
         workspace_path = Path(workspace).resolve()
         output_path = Path(output).resolve() if output else None
 
-        generate_sql_migration(
+        sql_service.run(
             workspace=workspace_path,
             output=output_path,
             snapshot=snapshot_version,
-            _from_version=from_version,
-            _to_version=to_version,
+            from_version=from_version,
+            to_version=to_version,
             target_env=target,
         )
 
@@ -165,7 +162,7 @@ def validate(workspace: str, json_output: bool) -> None:
     """Validate .schemax/ project files"""
     try:
         workspace_path = Path(workspace).resolve()
-        validate_project(workspace_path, json_output=json_output)
+        validate_service.run(workspace=workspace_path, json_output=json_output)
 
     except CommandValidationError as e:
         if not json_output:
@@ -233,7 +230,7 @@ def diff(
     try:
         workspace_path = Path(workspace).resolve()
 
-        generate_diff(
+        diff_service.run(
             workspace=workspace_path,
             from_version=from_version,
             to_version=to_version,
@@ -347,13 +344,14 @@ def _run_import_command(workspace_path: Path, params: dict[str, Any]) -> None:
     """Execute import from SQL file or live provider based on params."""
     from_sql_path = params.get("from_sql_path")
     if from_sql_path is not None:
-        summary = import_from_sql_file(
+        result = import_service.run_sql_import(
             workspace=workspace_path,
             sql_path=from_sql_path,
             mode=params.get("mode", "diff"),
             dry_run=params.get("dry_run", False),
             target_env=params.get("target"),
         )
+        summary = dict(result.data or {}).get("summary", {})
         _print_import_summary(summary)
         return
     target = params.get("target")
@@ -375,7 +373,7 @@ def _run_import_command(workspace_path: Path, params: dict[str, Any]) -> None:
         console.print("[red]✗[/red] --table requires --catalog and --schema")
         sys.exit(1)
     binding_overrides = _parse_catalog_mappings(params.get("catalog_map", ()))
-    summary = import_from_provider(
+    result = import_service.run_provider_import(
         workspace=workspace_path,
         target_env=target,
         profile=profile,
@@ -387,6 +385,7 @@ def _run_import_command(workspace_path: Path, params: dict[str, Any]) -> None:
         adopt_baseline=params.get("adopt_baseline", False),
         catalog_mappings_override=binding_overrides,
     )
+    summary = dict(result.data or {}).get("summary", {})
     _print_import_summary(summary)
 
 
@@ -475,7 +474,7 @@ def apply(
     try:
         workspace_path = Path(workspace).resolve()
 
-        result = apply_to_environment(
+        result = apply_service.run(
             workspace=workspace_path,
             target_env=target,
             profile=profile,
@@ -484,12 +483,7 @@ def apply(
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
         )
-
-        # Exit with appropriate code
-        if result.status == "success":
-            sys.exit(0)
-        else:
-            sys.exit(1)
+        sys.exit(0 if result.success else 1)
 
     except ApplyError as e:
         console.print(f"[red]✗ Apply failed:[/red] {e}")
@@ -511,19 +505,22 @@ def _print_rollback_usage_and_exit() -> None:
 def _handle_rollback_dispatch(workspace_path: Path, params: dict[str, Any]) -> None:
     """Run partial or complete rollback from params; prints and exits."""
     if params["partial"]:
-        result = run_partial_rollback_cli(
-            workspace_path=workspace_path,
+        service_result = rollback_service.run_partial(
+            workspace=workspace_path,
             deployment_id=params["deployment"] or "",
-            target=params["target"] or "",
+            target_env=params["target"] or "",
             profile=params["profile"] or "",
             warehouse_id=params["warehouse_id"] or "",
-            no_interaction=params["no_interaction"],
             dry_run=params["dry_run"],
+            no_interaction=params["no_interaction"],
         )
+        result = service_result.data["result"] if service_result.data else None
+        if result is None:
+            console.print("[red]✗[/red] Rollback failed: missing rollback result")
+            sys.exit(1)
         if result.success:
-            console.print(
-                f"[green]✓[/green] Rolled back {result.operations_rolled_back} operations"
-            )
+            operations_rolled_back = int(result.operations_rolled_back)
+            console.print(f"[green]✓[/green] Rolled back {operations_rolled_back} operations")
             sys.exit(0)
         console.print(f"[red]✗[/red] Rollback failed: {result.error_message}")
         sys.exit(1)
@@ -534,22 +531,25 @@ def _handle_rollback_dispatch(workspace_path: Path, params: dict[str, Any]) -> N
         if not params["profile"] or not params["warehouse_id"]:
             console.print("[red]✗[/red] --profile and --warehouse-id required")
             sys.exit(1)
-        result = rollback_complete(
+        service_result = rollback_service.run_complete(
             workspace=workspace_path,
             target_env=params["target"],
             to_snapshot=params["to_snapshot"],
             profile=params["profile"],
             warehouse_id=params["warehouse_id"],
-            _create_clone=params["create_clone"],
+            create_clone=params["create_clone"],
             safe_only=params["safe_only"],
             dry_run=params["dry_run"],
             no_interaction=params["no_interaction"],
             force=params["force"],
         )
+        result = service_result.data["result"] if service_result.data else None
+        if result is None:
+            console.print("[red]✗[/red] Rollback failed: missing rollback result")
+            sys.exit(1)
         if result.success:
-            console.print(
-                f"[green]✓[/green] Rolled back {result.operations_rolled_back} operations"
-            )
+            operations_rolled_back = int(result.operations_rolled_back)
+            console.print(f"[green]✓[/green] Rolled back {operations_rolled_back} operations")
             sys.exit(0)
         console.print(f"[red]✗[/red] Rollback failed: {result.error_message}")
         sys.exit(1)
@@ -643,8 +643,11 @@ def rollback(ctx: click.Context, **_kwargs: Any) -> None:
             if not target_env:
                 sys.exit(1)
             try:
-                project = read_project(workspace_path)
-                env_config = get_environment_config(project, target_env)
+                project = workspace_repo.read_project(workspace=workspace_path)
+                env_config = workspace_repo.get_environment_config(
+                    project=project,
+                    environment=target_env,
+                )
                 _print_rollback_deployment_not_found_help(
                     params.get("deployment") or "",
                     env_config.get("topLevelName", ""),
@@ -671,20 +674,25 @@ def _run_snapshot_create(
     tags: tuple[str, ...] | None,
 ) -> None:
     """Create snapshot from changelog and print success message."""
-    changelog = read_changelog(workspace_path)
+    changelog = workspace_repo.read_changelog(workspace=workspace_path)
     if not changelog["ops"]:
         console.print("[yellow]⚠️  No uncommitted operations in changelog[/yellow]")
         console.print("Create operations in the SchemaX Designer before creating a snapshot.")
         return
     console.print(f"📸 Creating snapshot: [bold]{name}[/bold]")
     console.print(f"   Operations to snapshot: {len(changelog['ops'])}")
-    project, snap_meta = create_snapshot(
-        workspace_path,
+    result = snapshot_service.create(
+        workspace=workspace_path,
         name=name,
         version=version,
         comment=comment,
-        tags=list(tags) if tags else None,
+        tags=list(tags) if tags else [],
     )
+    if not result.data:
+        console.print("[red]✗ Snapshot creation failed: missing snapshot result[/red]")
+        sys.exit(1)
+    project = result.data["project"]
+    snap_meta = result.data["snapshot"]
     console.print()
     console.print("[green]✓ Snapshot created successfully![/green]")
     console.print(f"   Version: [bold]{snap_meta['version']}[/bold]")
@@ -693,7 +701,8 @@ def _run_snapshot_create(
         console.print(f"   Comment: {snap_meta['comment']}")
     if snap_meta.get("tags"):
         console.print(f"   Tags: {', '.join(snap_meta['tags'])}")
-    console.print(f"   Operations: {len(snap_meta['operations'])}")
+    operations = snap_meta.get("operations", [])
+    console.print(f"   Operations: {len(operations)}")
     console.print(f"   File: [dim].schemax/snapshots/{snap_meta['version']}.json[/dim]")
     console.print()
     console.print(
@@ -739,11 +748,13 @@ def snapshot_create_cmd(
 
 def _run_snapshot_rebase(workspace_path: Path, snapshot_version: str, base: str | None) -> None:
     """Run snapshot rebase and exit with appropriate code."""
-    result = rebase_snapshot(
-        workspace=workspace_path,
-        snapshot_version=snapshot_version,
-        new_base_version=base,
+    service_result = snapshot_service.rebase(
+        workspace=workspace_path, version=snapshot_version, base_version=base
     )
+    result = service_result.data["result"] if service_result.data else None
+    if result is None:
+        console.print("[red]✗ Rebase failed: missing rebase result[/red]")
+        sys.exit(1)
     if result.success:
         console.print()
         console.print(f"[green]✓ Successfully rebased {snapshot_version}[/green]")
@@ -787,7 +798,8 @@ def snapshot_rebase_cmd(snapshot_version: str, base: str | None, workspace: str)
 
 def _run_snapshot_validate(workspace_path: Path, json_output: bool) -> None:
     """Run snapshot validate and exit with appropriate code."""
-    stale = detect_stale_snapshots(workspace_path, _json_output=json_output)
+    result = snapshot_service.validate(workspace=workspace_path, json_output=json_output)
+    stale = result.data["stale_snapshots"] if result.data else []
     if json_output:
         output = {"stale": stale, "count": len(stale)}
         print(json.dumps(output))

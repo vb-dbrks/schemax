@@ -11,24 +11,18 @@ simpler and more robust than manual reverse operation generation.
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 from rich.console import Console
 from rich.prompt import Confirm
 
-import schemax.core.storage as storage_module
 import schemax.providers.unity.auth as unity_auth
 from schemax.commands._preview import print_sql_statements_preview
 from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
 from schemax.core.deployment import DeploymentRecord, DeploymentTracker
-from schemax.core.storage import (
-    get_environment_config,
-    load_current_state,
-    read_changelog,
-    read_project,
-)
 from schemax.core.version import parse_semantic_version
+from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.executor import ExecutionConfig, SQLExecutor
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.reverse_generator import SafetyLevel, SafetyReport
@@ -40,6 +34,44 @@ console = Console()
 
 class RollbackError(Exception):
     """Raised when rollback cannot proceed safely"""
+
+
+class _WorkspaceRepoPort(Protocol):
+    def read_project(self, *, workspace: Path) -> dict[str, Any]: ...
+
+    def get_environment_config(
+        self, *, project: dict[str, Any], environment: str
+    ) -> dict[str, Any]: ...
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]: ...
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]: ...
+
+    def read_changelog(self, *, workspace: Path) -> dict[str, Any]: ...
+
+
+class _RollbackWorkspaceRepository:
+    """Repository adapter for rollback workflows."""
+
+    def __init__(self) -> None:
+        self._repository = WorkspaceRepository()
+
+    def read_project(self, *, workspace: Path) -> dict[str, Any]:
+        return self._repository.read_project(workspace=workspace)
+
+    def get_environment_config(
+        self, *, project: dict[str, Any], environment: str
+    ) -> dict[str, Any]:
+        return self._repository.get_environment_config(project=project, environment=environment)
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
+        return self._repository.load_current_state(workspace=workspace, validate=validate)
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]:
+        return self._repository.read_snapshot(workspace=workspace, version=version)
+
+    def read_changelog(self, *, workspace: Path) -> dict[str, Any]:
+        return self._repository.read_changelog(workspace=workspace)
 
 
 @dataclass
@@ -153,6 +185,7 @@ def _classify_complete_rollback_safety(
 
 def _build_pre_deployment_state(
     workspace: Path,
+    workspace_repo: _WorkspaceRepoPort,
     provider: Any,
     tracker: DeploymentTracker,
     target_env: str,
@@ -175,7 +208,7 @@ def _build_pre_deployment_state(
 
     prev_from = previous_deployment.get("fromVersion")
     prev_from_state = (
-        storage_module.read_snapshot(workspace, prev_from)["state"]
+        workspace_repo.read_snapshot(workspace=workspace, version=prev_from)["state"]
         if isinstance(prev_from, str) and prev_from
         else provider.create_initial_state()
     )
@@ -342,14 +375,14 @@ def _load_partial_rollback_context(
     warehouse_id: str,
     executor: SQLExecutor,
     catalog_mapping: dict[str, str] | None,
-    from_version: str | None,
     auto_triggered: bool,
     dry_run: bool,
+    workspace_repo: _WorkspaceRepoPort,
 ) -> _PartialRollbackContext:
     """Load all state needed by partial rollback and generate rollback operations."""
-    project = read_project(workspace)
+    project = workspace_repo.read_project(workspace=workspace)
     project_name = project.get("name", "unknown")
-    env_config = get_environment_config(project, target_env)
+    env_config = workspace_repo.get_environment_config(project=project, environment=target_env)
     deployment_catalog = env_config["topLevelName"]
 
     tracker = DeploymentTracker(
@@ -360,12 +393,10 @@ def _load_partial_rollback_context(
         raise RollbackError(
             f"Deployment '{deployment_id}' not found in {deployment_catalog}.schemax"
         )
-    if from_version is None:
-        from_version = deployment.get("fromVersion")
-
-    _, _, provider, _ = load_current_state(workspace, validate=False)
+    _, _, provider, _ = workspace_repo.load_current_state(workspace=workspace, validate=False)
     pre_deployment_state = _build_pre_deployment_state(
         workspace=workspace,
+        workspace_repo=workspace_repo,
         provider=provider,
         tracker=tracker,
         target_env=target_env,
@@ -694,8 +725,8 @@ def rollback_partial(
     executor: SQLExecutor,
     catalog_mapping: dict[str, str] | None = None,
     auto_triggered: bool = False,
-    from_version: str | None = None,
     dry_run: bool = False,
+    workspace_repo: _WorkspaceRepoPort | None = None,
 ) -> RollbackResult:
     """Rollback failed deployment by reversing successful operations
 
@@ -713,8 +744,8 @@ def rollback_partial(
         executor: SQL executor (reused from apply)
         catalog_mapping: Logical to physical catalog name mapping
         auto_triggered: If True, skips confirmation and blocks on risky operations
-        from_version: Pre-deployment snapshot version (optional, auto-detected if not provided)
         dry_run: If True, show SQL preview and exit without executing
+        workspace_repo: Optional repository override for tests/injection
 
     Returns:
         RollbackResult with success status and details
@@ -728,6 +759,7 @@ def rollback_partial(
     if not successful_ops:
         console.print("   No operations to rollback")
         return RollbackResult(success=True, operations_rolled_back=0)
+    repository: _WorkspaceRepoPort = workspace_repo or _RollbackWorkspaceRepository()
 
     try:
         context = _load_partial_rollback_context(
@@ -739,9 +771,9 @@ def rollback_partial(
             warehouse_id=warehouse_id,
             executor=executor,
             catalog_mapping=catalog_mapping,
-            from_version=from_version,
             auto_triggered=auto_triggered,
             dry_run=dry_run,
+            workspace_repo=repository,
         )
     except RollbackError as err:
         console.print(f"[red]✗ {err}[/red]")
@@ -757,21 +789,22 @@ def _resolve_successful_ops_from_snapshots(
     workspace_path: Path,
     target_deployment: DeploymentRecord,
     successful_op_ids: list[str],
+    workspace_repo: _WorkspaceRepoPort,
 ) -> list[Operation]:
     """Regenerate diff ops from snapshots and match by opsDetails."""
     from_version = target_deployment.get("fromVersion")
     to_version = target_deployment.get("version")
     if not to_version:
         raise RollbackError("Deployment missing version information")
-    _, _, prov, _ = load_current_state(workspace_path, validate=False)
+    _, _, prov, _ = workspace_repo.load_current_state(workspace=workspace_path, validate=False)
     if from_version:
-        from_snap = storage_module.read_snapshot(workspace_path, from_version)
+        from_snap = workspace_repo.read_snapshot(workspace=workspace_path, version=from_version)
         from_state = from_snap["state"]
         from_ops = from_snap.get("operations", [])
     else:
         from_state = prov.create_initial_state()
         from_ops = []
-    to_snap = storage_module.read_snapshot(workspace_path, to_version)
+    to_snap = workspace_repo.read_snapshot(workspace=workspace_path, version=to_version)
     to_state = to_snap["state"]
     to_ops = to_snap.get("operations", [])
     differ = prov.get_state_differ(from_state, to_state, from_ops, to_ops)
@@ -821,16 +854,17 @@ def _resolve_successful_partial_ops(
     workspace_path: Path,
     target_deployment: DeploymentRecord,
     successful_op_ids: list[str],
+    workspace_repo: _WorkspaceRepoPort,
 ) -> list[Operation]:
     """Resolve successful operations for partial rollback from changelog/snapshots."""
-    changelog = read_changelog(workspace_path)
+    changelog = workspace_repo.read_changelog(workspace=workspace_path)
     all_ops = [Operation(**operation) for operation in changelog.get("ops", [])]
     successful_ops = [operation for operation in all_ops if operation.id in successful_op_ids]
     if successful_ops or not target_deployment.get("version"):
         return successful_ops
     console.print("[cyan]Operations not in changelog - regenerating from snapshots...[/cyan]")
     successful_ops = _resolve_successful_ops_from_snapshots(
-        workspace_path, target_deployment, successful_op_ids
+        workspace_path, target_deployment, successful_op_ids, workspace_repo
     )
     if successful_ops:
         console.print("[dim]Matched operations by type+target+payload[/dim]")
@@ -876,6 +910,85 @@ class _CompleteRollbackContext:
     destructive_ops: list[tuple[Operation, SafetyReport]]
 
 
+@dataclass
+class _PartialCliPlan:
+    env_config: dict[str, Any]
+    client: Any
+    successful_ops: list[Operation]
+    catalog_mapping: dict[str, str]
+
+
+def _prepare_partial_cli_plan(
+    workspace_path: Path,
+    deployment_id: str,
+    target: str,
+    profile: str,
+    warehouse_id: str,
+    no_interaction: bool,
+    workspace_repo: _WorkspaceRepoPort,
+) -> _PartialCliPlan:
+    """Load deployment and rollback operation inputs for partial CLI path."""
+    project = workspace_repo.read_project(workspace=workspace_path)
+    env_config = workspace_repo.get_environment_config(project=project, environment=target)
+    deployment_catalog = env_config["topLevelName"]
+    client = unity_auth.create_databricks_client(profile)
+    tracker = DeploymentTracker(client, deployment_catalog, warehouse_id)
+    target_deployment = tracker.get_deployment_by_id(deployment_id)
+
+    if not target_deployment:
+        raise RollbackError(
+            f"Deployment '{deployment_id}' not found in {deployment_catalog}.schemax"
+        )
+
+    if target_deployment.get("status") != "failed":
+        console.print(
+            f"[yellow]⚠️  Deployment '{deployment_id}' has status: "
+            f"{target_deployment.get('status')}[/yellow]"
+        )
+        console.print("Partial rollback is typically used for failed deployments.")
+        if not no_interaction and not Confirm.ask("Continue anyway?", default=False):
+            raise RollbackError("Cancelled by user")
+
+    ops_applied = target_deployment.get("opsApplied", [])
+    failed_idx = target_deployment.get("failedStatementIndex", len(ops_applied))
+    successful_op_ids = ops_applied[:failed_idx]
+    if not successful_op_ids:
+        console.print(
+            "[yellow]No operations to rollback (deployment had no successful operations)[/yellow]"
+        )
+        return _PartialCliPlan(
+            env_config=env_config,
+            client=client,
+            successful_ops=[],
+            catalog_mapping={},
+        )
+
+    successful_ops = _resolve_successful_partial_ops(
+        workspace_path, target_deployment, successful_op_ids, workspace_repo
+    )
+    if not successful_ops:
+        raise RollbackError(
+            "Could not find operation details (deployment may be too old or data corrupted)"
+        )
+
+    console.print(f"[cyan]Found {len(successful_ops)} operations to rollback[/cyan]")
+    state, _, _provider, _ = workspace_repo.load_current_state(
+        workspace=workspace_path, validate=False
+    )
+    state_dict = state.model_dump(by_alias=True) if hasattr(state, "model_dump") else state
+    try:
+        catalog_mapping = build_catalog_mapping(state_dict, env_config)
+    except SQLGenerationError as err:
+        raise RollbackError(str(err)) from err
+
+    return _PartialCliPlan(
+        env_config=env_config,
+        client=client,
+        successful_ops=successful_ops,
+        catalog_mapping=catalog_mapping,
+    )
+
+
 def _load_complete_rollback_setup(
     workspace: Path,
     target_env: str,
@@ -884,6 +997,7 @@ def _load_complete_rollback_setup(
     warehouse_id: str,
     no_interaction: bool,
     force: bool,
+    workspace_repo: _WorkspaceRepoPort,
 ) -> (
     tuple[
         str,
@@ -897,13 +1011,13 @@ def _load_complete_rollback_setup(
     | RollbackResult
 ):
     """Load project/env setup and establish tracking/runtime clients."""
-    project = read_project(workspace)
+    project = workspace_repo.read_project(workspace=workspace)
     project_name = project.get("name", "unknown")
-    env_config = get_environment_config(project, target_env)
+    env_config = workspace_repo.get_environment_config(project=project, environment=target_env)
     deployment_catalog = env_config["topLevelName"]
     _enforce_import_baseline_guard(env_config, to_snapshot, force, no_interaction)
 
-    target_snapshot = storage_module.read_snapshot(workspace, to_snapshot)
+    target_snapshot = workspace_repo.read_snapshot(workspace=workspace, version=to_snapshot)
     catalog_mapping = build_catalog_mapping(target_snapshot["state"], env_config)
 
     console.print(f"[cyan]Environment:[/cyan] {target_env}")
@@ -939,6 +1053,7 @@ def _build_complete_rollback_plan(
     target_snapshot: dict[str, Any],
     catalog_mapping: dict[str, str] | None,
     executor: UnitySQLExecutor,
+    workspace_repo: _WorkspaceRepoPort,
 ) -> (
     tuple[
         Any,
@@ -953,7 +1068,9 @@ def _build_complete_rollback_plan(
     """Load states, generate rollback operations, and classify safety."""
     console.print()
     console.print("[cyan]Loading states...[/cyan]")
-    current_state, _, provider, _ = load_current_state(workspace, validate=False)
+    current_state, _, provider, _ = workspace_repo.load_current_state(
+        workspace=workspace, validate=False
+    )
     console.print("  [green]✓[/green] Current state loaded")
     console.print(f"  [green]✓[/green] Target snapshot loaded: {to_snapshot}")
 
@@ -993,6 +1110,7 @@ def _initialize_complete_rollback(
     warehouse_id: str,
     no_interaction: bool,
     force: bool,
+    workspace_repo: _WorkspaceRepoPort,
 ) -> _CompleteRollbackContext | RollbackResult:
     """Load config, validate baseline, and build diff/safety context."""
     setup = _load_complete_rollback_setup(
@@ -1003,6 +1121,7 @@ def _initialize_complete_rollback(
         warehouse_id=warehouse_id,
         no_interaction=no_interaction,
         force=force,
+        workspace_repo=workspace_repo,
     )
     if isinstance(setup, RollbackResult):
         return setup
@@ -1024,6 +1143,7 @@ def _initialize_complete_rollback(
         target_snapshot=target_snapshot,
         catalog_mapping=catalog_mapping,
         executor=executor,
+        workspace_repo=workspace_repo,
     )
     if isinstance(plan, RollbackResult):
         return plan
@@ -1214,6 +1334,7 @@ def _run_complete_rollback_workflow(
     dry_run: bool,
     no_interaction: bool,
     force: bool,
+    workspace_repo: _WorkspaceRepoPort,
 ) -> RollbackResult:
     """Orchestrate complete rollback flow using focused helper steps."""
     initialized = _initialize_complete_rollback(
@@ -1224,6 +1345,7 @@ def _run_complete_rollback_workflow(
         warehouse_id=warehouse_id,
         no_interaction=no_interaction,
         force=force,
+        workspace_repo=workspace_repo,
     )
     if isinstance(initialized, RollbackResult):
         return initialized
@@ -1292,78 +1414,41 @@ def run_partial_rollback_cli(
     warehouse_id: str,
     no_interaction: bool = False,
     dry_run: bool = False,
+    workspace_repo: _WorkspaceRepoPort | None = None,
 ) -> RollbackResult:
     """Run partial rollback from CLI: load deployment, resolve successful ops, execute rollback.
 
     Raises RollbackError on validation errors, deployment not found, user cancel, or
     SQLGenerationError when building catalog mapping.
     """
+    repository: _WorkspaceRepoPort = workspace_repo or _RollbackWorkspaceRepository()
     _validate_partial_cli_inputs(deployment_id, target, profile, warehouse_id)
-
-    project = read_project(workspace_path)
-    env_config = get_environment_config(project, target)
-    deployment_catalog = env_config["topLevelName"]
-    client = unity_auth.create_databricks_client(profile)
-    tracker = DeploymentTracker(client, deployment_catalog, warehouse_id)
-    target_deployment = tracker.get_deployment_by_id(deployment_id)
-
-    if not target_deployment:
-        raise RollbackError(
-            f"Deployment '{deployment_id}' not found in {deployment_catalog}.schemax"
-        )
-
-    if target_deployment.get("status") != "failed":
-        console.print(
-            f"[yellow]⚠️  Deployment '{deployment_id}' has status: "
-            f"{target_deployment.get('status')}[/yellow]"
-        )
-        console.print("Partial rollback is typically used for failed deployments.")
-        if not no_interaction and not Confirm.ask("Continue anyway?", default=False):
-            raise RollbackError("Cancelled by user")
-
-    ops_applied = target_deployment.get("opsApplied", [])
-    failed_idx = target_deployment.get("failedStatementIndex", len(ops_applied))
-    successful_op_ids = ops_applied[:failed_idx]
-
-    if not successful_op_ids:
-        console.print(
-            "[yellow]No operations to rollback (deployment had no successful operations)[/yellow]"
-        )
+    plan = _prepare_partial_cli_plan(
+        workspace_path=workspace_path,
+        deployment_id=deployment_id,
+        target=target,
+        profile=profile,
+        warehouse_id=warehouse_id,
+        no_interaction=no_interaction,
+        workspace_repo=repository,
+    )
+    if not plan.successful_ops:
         return RollbackResult(success=True, operations_rolled_back=0)
 
-    successful_ops = _resolve_successful_partial_ops(
-        workspace_path, target_deployment, successful_op_ids
-    )
-
-    if not successful_ops:
-        raise RollbackError(
-            "Could not find operation details (deployment may be too old or data corrupted)"
-        )
-
-    console.print(f"[cyan]Found {len(successful_ops)} operations to rollback[/cyan]")
-
-    state, _, _provider, _ = load_current_state(workspace_path, validate=False)
-    state_dict = state.model_dump(by_alias=True) if hasattr(state, "model_dump") else state
-    try:
-        catalog_mapping = build_catalog_mapping(state_dict, env_config)
-    except SQLGenerationError as e:
-        raise RollbackError(str(e)) from e
-
-    executor = UnitySQLExecutor(client)
-    from_version = target_deployment.get("fromVersion")
+    executor = UnitySQLExecutor(plan.client)
 
     return rollback_partial(
         workspace=workspace_path,
         deployment_id=deployment_id,
-        successful_ops=successful_ops,
+        successful_ops=plan.successful_ops,
         target_env=target,
         profile=profile,
         warehouse_id=warehouse_id,
         executor=executor,
-        catalog_mapping=catalog_mapping,
-        auto_triggered=False,
-        from_version=from_version,
+        catalog_mapping=plan.catalog_mapping,
+        auto_triggered=no_interaction,
         dry_run=dry_run,
+        workspace_repo=repository,
     )
 
 
@@ -1378,6 +1463,7 @@ def rollback_complete(
     dry_run: bool = False,
     no_interaction: bool = False,
     force: bool = False,
+    workspace_repo: _WorkspaceRepoPort | None = None,
 ) -> RollbackResult:
     """Complete rollback to a previous snapshot
 
@@ -1394,6 +1480,7 @@ def rollback_complete(
         dry_run: Preview impact without executing
         no_interaction: If True, skip confirmation prompt
         force: If True, allow rollback to snapshot before import baseline (with confirmation)
+        workspace_repo: Optional repository override for tests/injection
 
     Returns:
         RollbackResult with success status
@@ -1401,6 +1488,7 @@ def rollback_complete(
     console.print(f"[bold]🔄 Complete Rollback to {to_snapshot}[/bold]")
     console.print()
     del _create_clone
+    repository: _WorkspaceRepoPort = workspace_repo or _RollbackWorkspaceRepository()
 
     try:
         return _run_complete_rollback_workflow(
@@ -1413,6 +1501,7 @@ def rollback_complete(
             dry_run=dry_run,
             no_interaction=no_interaction,
             force=force,
+            workspace_repo=repository,
         )
 
     except RollbackError:

@@ -7,13 +7,14 @@ planning environment deployments.
 """
 
 from pathlib import Path
+from typing import Any, Protocol
 
 from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
 from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
-from schemax.core.storage import get_environment_config, read_project, read_snapshot
+from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.provider import Provider
 from schemax.providers.registry import ProviderRegistry
@@ -25,6 +26,34 @@ class DiffError(Exception):
     """Raised when diff command fails"""
 
 
+class _WorkspaceRepoPort(Protocol):
+    def read_project(self, *, workspace: Path) -> dict[str, Any]: ...
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]: ...
+
+    def get_environment_config(
+        self, *, project: dict[str, Any], environment: str
+    ) -> dict[str, Any]: ...
+
+
+class _DiffWorkspaceRepository:
+    """Repository adapter for diff workflow."""
+
+    def __init__(self) -> None:
+        self._repository = WorkspaceRepository()
+
+    def read_project(self, *, workspace: Path) -> dict[str, Any]:
+        return self._repository.read_project(workspace=workspace)
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]:
+        return self._repository.read_snapshot(workspace=workspace, version=version)
+
+    def get_environment_config(
+        self, *, project: dict[str, Any], environment: str
+    ) -> dict[str, Any]:
+        return self._repository.get_environment_config(project=project, environment=environment)
+
+
 def generate_diff(
     workspace: Path,
     from_version: str,
@@ -32,6 +61,7 @@ def generate_diff(
     show_sql: bool = False,
     show_details: bool = False,
     target_env: str | None = None,
+    workspace_repo: _WorkspaceRepoPort | None = None,
 ) -> list[Operation]:
     """Generate diff operations between two snapshot versions
 
@@ -42,6 +72,7 @@ def generate_diff(
         show_sql: Whether to display generated SQL
         show_details: Whether to display detailed operation payloads
         target_env: Target environment for catalog name mapping (optional)
+        workspace_repo: Optional repository override for tests/injection
 
     Returns:
         List of operations representing the diff
@@ -49,16 +80,26 @@ def generate_diff(
     Raises:
         DiffError: If diff generation fails
     """
-    old_snap, new_snap = _load_snapshots(workspace, from_version, to_version)
+    repository: _WorkspaceRepoPort = workspace_repo or _DiffWorkspaceRepository()
+    old_snap, new_snap = _load_snapshots(
+        workspace=workspace,
+        from_version=from_version,
+        to_version=to_version,
+        workspace_repo=repository,
+    )
 
-    project = read_project(workspace)
+    project = repository.read_project(workspace=workspace)
     provider_id = project["provider"]["type"]
     provider = ProviderRegistry.get(provider_id)
     if not provider:
         raise DiffError(f"Provider '{provider_id}' not found in registry")
 
     catalog_mapping = _resolve_diff_catalog_mapping(
-        workspace, target_env, new_snap["state"], project
+        workspace=workspace,
+        target_env=target_env,
+        state=new_snap["state"],
+        project=project,
+        workspace_repo=repository,
     )
     if target_env and catalog_mapping is not None:
         console.print(f"  [blue]Environment:[/blue] {target_env}")
@@ -90,7 +131,13 @@ def generate_diff(
     return operations
 
 
-def _load_snapshots(workspace: Path, from_version: str, to_version: str) -> tuple[dict, dict]:
+def _load_snapshots(
+    *,
+    workspace: Path,
+    from_version: str,
+    to_version: str,
+    workspace_repo: _WorkspaceRepoPort,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Load and validate both snapshot files; raise DiffError on failure."""
     if from_version == to_version:
         raise DiffError(
@@ -99,8 +146,8 @@ def _load_snapshots(workspace: Path, from_version: str, to_version: str) -> tupl
         )
     try:
         console.print("[bold]Loading snapshots...[/bold]")
-        old_snap = read_snapshot(workspace, from_version)
-        new_snap = read_snapshot(workspace, to_version)
+        old_snap = workspace_repo.read_snapshot(workspace=workspace, version=from_version)
+        new_snap = workspace_repo.read_snapshot(workspace=workspace, version=to_version)
     except FileNotFoundError as err:
         msg = str(err)
         if from_version in msg:
@@ -126,15 +173,18 @@ def _load_snapshots(workspace: Path, from_version: str, to_version: str) -> tupl
 
 
 def _resolve_diff_catalog_mapping(
-    _workspace: Path,
+    *,
+    workspace: Path,
     target_env: str | None,
-    state: dict,
-    project: dict,
+    state: dict[str, Any],
+    project: dict[str, Any],
+    workspace_repo: _WorkspaceRepoPort,
 ) -> dict[str, str] | None:
     """Build catalog mapping for target environment, or None if not specified."""
+    del workspace
     if not target_env:
         return None
-    env_config = get_environment_config(project, target_env)
+    env_config = workspace_repo.get_environment_config(project=project, environment=target_env)
     try:
         return build_catalog_mapping(state, env_config)
     except SQLGenerationError as err:

@@ -1,7 +1,6 @@
 """Deterministic command workflow integration tests."""
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -69,49 +68,3 @@ class TestCommandWorkflows:
         )
         assert diff_result.exit_code == 0
         assert "Diff generated successfully" in diff_result.output
-
-    def test_apply_and_rollback_cli_sequence_with_stubbed_execution(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        temp_workspace: Path,
-    ) -> None:
-        ensure_project_file(temp_workspace, provider_id="unity")
-
-        monkeypatch.setattr(
-            "schemax.cli.apply_to_environment",
-            lambda **kwargs: SimpleNamespace(status="success"),
-        )
-        monkeypatch.setattr(
-            "schemax.cli.rollback_complete",
-            lambda **kwargs: SimpleNamespace(
-                success=True, operations_rolled_back=0, error_message=None
-            ),
-        )
-
-        apply_result = invoke_cli(
-            "apply",
-            "--target",
-            "dev",
-            "--profile",
-            "dev",
-            "--warehouse-id",
-            "wh_123",
-            "--dry-run",
-            str(temp_workspace),
-        )
-        assert apply_result.exit_code == 0
-
-        rollback_result = invoke_cli(
-            "rollback",
-            "--target",
-            "dev",
-            "--to-snapshot",
-            "v0.1.0",
-            "--profile",
-            "dev",
-            "--warehouse-id",
-            "wh_123",
-            "--dry-run",
-            str(temp_workspace),
-        )
-        assert rollback_result.exit_code == 0

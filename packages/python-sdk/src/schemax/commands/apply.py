@@ -9,7 +9,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 from rich.console import Console
@@ -19,14 +19,7 @@ from schemax.commands._preview import print_sql_statements_preview
 from schemax.commands.rollback import RollbackError, rollback_partial
 from schemax.commands.sql import build_catalog_mapping
 from schemax.core.deployment import DeploymentTracker
-from schemax.core.storage import (
-    create_snapshot,
-    get_environment_config,
-    load_current_state,
-    read_changelog,
-    read_project,
-    read_snapshot,
-)
+from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.exceptions import SchemaXProviderError
 from schemax.providers.base.executor import ExecutionConfig, ExecutionResult
 from schemax.providers.base.scope_filter import filter_operations_by_managed_scope
@@ -40,6 +33,71 @@ class ApplyError(Exception):
     """Raised when apply command fails"""
 
 
+class _WorkspaceRepoPort(Protocol):
+    def read_project(self, *, workspace: Path) -> dict[str, Any]: ...
+
+    def read_changelog(self, *, workspace: Path) -> dict[str, Any]: ...
+
+    def get_environment_config(
+        self, *, project: dict[str, Any], environment: str
+    ) -> dict[str, Any]: ...
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]: ...
+
+    def create_snapshot(
+        self,
+        *,
+        workspace: Path,
+        name: str,
+        version: str | None,
+        comment: str | None,
+        tags: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]: ...
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]: ...
+
+
+class _ApplyWorkspaceRepository:
+    """Repository adapter for apply workflow."""
+
+    def __init__(self) -> None:
+        self._repository = WorkspaceRepository()
+
+    def read_project(self, *, workspace: Path) -> dict[str, Any]:
+        return self._repository.read_project(workspace=workspace)
+
+    def read_changelog(self, *, workspace: Path) -> dict[str, Any]:
+        return self._repository.read_changelog(workspace=workspace)
+
+    def get_environment_config(
+        self, *, project: dict[str, Any], environment: str
+    ) -> dict[str, Any]:
+        return self._repository.get_environment_config(project=project, environment=environment)
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
+        return self._repository.load_current_state(workspace=workspace, validate=validate)
+
+    def create_snapshot(
+        self,
+        *,
+        workspace: Path,
+        name: str,
+        version: str | None,
+        comment: str | None,
+        tags: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return self._repository.create_snapshot(
+            workspace=workspace,
+            name=name,
+            version=version,
+            comment=comment,
+            tags=tags,
+        )
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]:
+        return self._repository.read_snapshot(workspace=workspace, version=version)
+
+
 def apply_to_environment(
     workspace: Path,
     target_env: str,
@@ -48,6 +106,7 @@ def apply_to_environment(
     dry_run: bool = False,
     no_interaction: bool = False,
     auto_rollback: bool = False,
+    workspace_repo: _WorkspaceRepoPort | None = None,
 ) -> ExecutionResult:
     """Apply changes to target environment
 
@@ -63,6 +122,7 @@ def apply_to_environment(
         dry_run: If True, preview without executing
         no_interaction: If True, skip confirmation prompt
         auto_rollback: If True, automatically roll back on failed deployment
+        workspace_repo: Optional repository override for tests/injection
 
     Returns:
         ExecutionResult with deployment details
@@ -70,6 +130,7 @@ def apply_to_environment(
     Raises:
         ApplyError: If apply fails
     """
+    repository: _WorkspaceRepoPort = workspace_repo or _ApplyWorkspaceRepository()
     try:
         return _ApplyCommand(
             workspace=workspace,
@@ -79,6 +140,7 @@ def apply_to_environment(
             dry_run=dry_run,
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
+            workspace_repo=repository,
         ).execute()
     except Exception as err:
         console.print(f"\n[red]✗ Apply failed: {err}[/red]")
@@ -213,6 +275,7 @@ class _ApplyCommand:
         dry_run: bool,
         no_interaction: bool,
         auto_rollback: bool,
+        workspace_repo: _WorkspaceRepoPort,
     ) -> None:
         self._config = _ApplyConfig(
             workspace=workspace,
@@ -223,6 +286,7 @@ class _ApplyCommand:
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
         )
+        self._workspace_repo = workspace_repo
         self._runtime = _ApplyRuntime()
 
     def execute(self) -> ExecutionResult:
@@ -252,7 +316,9 @@ class _ApplyCommand:
 
     def _handle_uncommitted_changes(self) -> None:
         """Prompt for snapshot creation when there are uncommitted ops."""
-        self._runtime.changelog = read_changelog(self._config.workspace)
+        self._runtime.changelog = self._workspace_repo.read_changelog(
+            workspace=self._config.workspace
+        )
         if not self._runtime.changelog["ops"]:
             return
         console.print(
@@ -274,7 +340,7 @@ class _ApplyCommand:
             sys.exit(0)
         if choice != "create":
             return
-        project = read_project(self._config.workspace)
+        project = self._workspace_repo.read_project(workspace=self._config.workspace)
         settings = project.get("settings", {})
         version_prefix = str(settings.get("versionPrefix", "v"))
         current = project.get("latestSnapshot")
@@ -288,11 +354,12 @@ class _ApplyCommand:
         else:
             next_version = f"{version_prefix}0.1.0"
         console.print(f"[blue]Creating snapshot:[/blue] {next_version}")
-        create_snapshot(
-            self._config.workspace,
+        self._workspace_repo.create_snapshot(
+            workspace=self._config.workspace,
             name=f"Auto-snapshot for {self._config.target_env}",
             version=next_version,
             comment=f"Automatic snapshot created before deploying to {self._config.target_env}",
+            tags=[],
         )
         console.print("[green]✓[/green] Snapshot created")
 
@@ -300,14 +367,16 @@ class _ApplyCommand:
         """Load project, env config, state, provider; build catalog mapping."""
         runtime = self._runtime
         config = self._config
-        runtime.project = read_project(config.workspace)
+        runtime.project = self._workspace_repo.read_project(workspace=config.workspace)
         runtime.project_name = runtime.project.get("name", "unknown")
-        runtime.env_config = get_environment_config(runtime.project, config.target_env)
+        runtime.env_config = self._workspace_repo.get_environment_config(
+            project=runtime.project, environment=config.target_env
+        )
         console.print()
         console.print("[bold]SchemaX Apply[/bold]")
         console.print("─" * 60)
-        runtime.state, runtime.changelog, runtime.provider, _ = load_current_state(
-            config.workspace, validate=False
+        runtime.state, runtime.changelog, runtime.provider, _ = (
+            self._workspace_repo.load_current_state(workspace=config.workspace, validate=False)
         )
         console.print(
             f"[blue]Provider:[/blue] {runtime.provider.info.name} v{runtime.provider.info.version}"
@@ -362,11 +431,15 @@ class _ApplyCommand:
     def _compute_diff(self) -> list[Any]:
         """Compute diff operations (deployed vs desired); filter by scope."""
         runtime, config = self._runtime, self._config
-        latest_snap = read_snapshot(config.workspace, runtime.latest_snapshot_version or "")
+        latest_snap = self._workspace_repo.read_snapshot(
+            workspace=config.workspace, version=runtime.latest_snapshot_version or ""
+        )
         desired_ops = list(latest_snap.get("operations", [])) + list(runtime.changelog["ops"])
         if runtime.deployed_version:
             try:
-                deployed_snap = read_snapshot(config.workspace, runtime.deployed_version)
+                deployed_snap = self._workspace_repo.read_snapshot(
+                    workspace=config.workspace, version=runtime.deployed_version
+                )
                 deployed_state = deployed_snap["state"]
                 deployed_ops = deployed_snap.get("operations", [])
                 console.print(
@@ -540,7 +613,6 @@ class _ApplyCommand:
                 executor=runtime.executor,
                 catalog_mapping=runtime.catalog_mapping,
                 auto_triggered=True,
-                from_version=runtime.deployed_version,
             )
             _print_rollback_result(rollback_result)
         except RollbackError as err:

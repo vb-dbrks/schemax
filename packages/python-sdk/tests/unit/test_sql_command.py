@@ -19,6 +19,39 @@ def _make_op(op_id: str = "op_1") -> dict:
     }
 
 
+class _RepoStub:
+    def __init__(
+        self,
+        *,
+        project: dict,
+        state_result: tuple | None = None,
+        snapshots: dict[str, dict] | None = None,
+        env_config: dict | None = None,
+    ) -> None:
+        self._project = project
+        self._state_result = state_result
+        self._snapshots = snapshots or {}
+        self._env_config = env_config or {}
+
+    def read_project(self, *, workspace: Path) -> dict:
+        del workspace
+        return self._project
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple:
+        del workspace, validate
+        if self._state_result is None:
+            raise AssertionError("state_result not configured")
+        return self._state_result
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict:
+        del workspace
+        return self._snapshots[version]
+
+    def get_environment_config(self, *, project: dict, environment: str) -> dict:
+        del project, environment
+        return self._env_config
+
+
 def test_build_catalog_mapping_empty_state_returns_empty_mapping() -> None:
     assert build_catalog_mapping({"catalogs": []}, {"catalogMappings": {}}) == {}
 
@@ -37,29 +70,27 @@ def test_build_catalog_mapping_requires_all_catalogs() -> None:
 
 
 def test_generate_sql_migration_returns_empty_when_no_ops(monkeypatch: pytest.MonkeyPatch) -> None:
+    del monkeypatch
     provider = Mock()
     provider.info.name = "Unity Catalog"
     provider.info.version = "1.0.0"
 
-    monkeypatch.setattr(
-        "schemax.commands.sql.read_project",
-        lambda _workspace: {
+    repo = _RepoStub(
+        project={
             "provider": {"environments": {"dev": {"topLevelName": "dev_demo"}}},
             "managedLocations": {},
             "externalLocations": {},
         },
-    )
-    monkeypatch.setattr(
-        "schemax.commands.sql.load_current_state",
-        lambda _workspace, validate=False: ({"catalogs": []}, {"ops": []}, provider, None),
+        state_result=({"catalogs": []}, {"ops": []}, provider, None),
     )
 
-    assert generate_sql_migration(workspace=Path(".")) == ""
+    assert generate_sql_migration(workspace=Path("."), workspace_repo=repo) == ""
 
 
 def test_generate_sql_migration_with_target_and_output(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    del monkeypatch
     provider = Mock()
     provider.info.name = "Unity Catalog"
     provider.info.version = "1.0.0"
@@ -75,22 +106,19 @@ def test_generate_sql_migration_with_target_and_output(
         "managedLocations": {},
         "externalLocations": {},
     }
-
-    monkeypatch.setattr("schemax.commands.sql.read_project", lambda _workspace: project)
-    monkeypatch.setattr(
-        "schemax.commands.sql.load_current_state",
-        lambda _workspace, validate=False: (state, changelog, provider, None),
-    )
-    monkeypatch.setattr(
-        "schemax.commands.sql.get_environment_config",
-        lambda _project, _env: {
-            "topLevelName": "dev_demo",
-            "catalogMappings": {"demo": "dev_demo"},
-        },
+    repo = _RepoStub(
+        project=project,
+        state_result=(state, changelog, provider, None),
+        env_config={"topLevelName": "dev_demo", "catalogMappings": {"demo": "dev_demo"}},
     )
 
     out_file = tmp_path / "migration.sql"
-    sql = generate_sql_migration(workspace=tmp_path, output=out_file, target_env="dev")
+    sql = generate_sql_migration(
+        workspace=tmp_path,
+        output=out_file,
+        target_env="dev",
+        workspace_repo=repo,
+    )
 
     assert sql == "CREATE CATALOG `dev_demo`;"
     assert out_file.read_text() == "CREATE CATALOG `dev_demo`;"
@@ -100,9 +128,9 @@ def test_generate_sql_migration_with_target_and_output(
 def test_generate_sql_migration_snapshot_latest_requires_existing_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "schemax.commands.sql.read_project",
-        lambda _workspace: {
+    del monkeypatch
+    repo = _RepoStub(
+        project={
             "latestSnapshot": None,
             "managedLocations": {},
             "externalLocations": {},
@@ -110,4 +138,4 @@ def test_generate_sql_migration_snapshot_latest_requires_existing_snapshot(
     )
 
     with pytest.raises(SQLGenerationError, match="No snapshots available"):
-        generate_sql_migration(workspace=Path("."), snapshot="latest")
+        generate_sql_migration(workspace=Path("."), snapshot="latest", workspace_repo=repo)

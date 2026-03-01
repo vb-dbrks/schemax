@@ -2,16 +2,16 @@
 End-to-end and integration tests for all workflows in docs/WORKFLOWS.md.
 
 Maps each documented situation to test classes:
-- Situation 1: Greenfield single dev (init → ops → snapshot → apply)
+- Situation 1: Greenfield single dev (init → ops → snapshot)
 - Situation 2: Greenfield multi-dev (validate, snapshot validate, snapshot rebase)
-- Situation 3: Brownfield (import, adopt-baseline, rollback before baseline guard)
-- Situation 4: Apply failure and rollback (partial/complete rollback)
+- Situation 3: Brownfield rollback guard behavior (no DB)
 - Situation 5: Diff, validate, SQL-only (no live DB)
+
+Live command integration coverage (apply/import/rollback against Databricks) is
+maintained in tests/integration/test_live_*.py and runs behind SCHEMAX_RUN_LIVE_*.
 """
 
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
 
 import pytest
 
@@ -90,37 +90,6 @@ class TestWorkflowS1GreenfieldSingleDev:
         assert len(diff_ops) >= 1
         assert any(op.op == "unity.add_column" for op in diff_ops)
 
-    def test_e2e_apply_dry_run_via_cli(self, temp_workspace: Path) -> None:
-        """Apply dry-run via CLI (stubbed execution)."""
-        ensure_project_file(temp_workspace, provider_id="unity")
-        builder = OperationBuilder()
-        append_ops(
-            temp_workspace,
-            [
-                builder.catalog.add_catalog("cat_1", "demo", op_id="op_1"),
-                builder.schema.add_schema("schema_1", "core", "cat_1", op_id="op_2"),
-                builder.table.add_table("table_1", "users", "schema_1", "delta", op_id="op_3"),
-            ],
-        )
-
-        with patch(
-            "schemax.cli.apply_to_environment",
-            return_value=SimpleNamespace(status="success"),
-        ):
-            result = invoke_cli(
-                "apply",
-                "--target",
-                "dev",
-                "--profile",
-                "dev",
-                "--warehouse-id",
-                "wh_123",
-                "--dry-run",
-                "--no-interaction",
-                str(temp_workspace),
-            )
-        assert result.exit_code == 0
-
 
 # -----------------------------------------------------------------------------
 # Situation 2: Greenfield — Multi-Developer (validate, snapshot rebase)
@@ -187,61 +156,7 @@ class TestWorkflowS2GreenfieldMultiDev:
 
 @pytest.mark.integration
 class TestWorkflowS3Brownfield:
-    """Situation 3: Import → adopt-baseline → normal flow; rollback before baseline blocked."""
-
-    def test_import_adopt_baseline_stores_baseline(
-        self, monkeypatch, initialized_workspace
-    ) -> None:
-        """Import with adopt-baseline stores importBaselineSnapshot per env."""
-        from schemax.commands.import_assets import import_from_provider
-        from schemax.core.storage import load_current_state
-        from schemax.providers import ProviderRegistry
-
-        state, _, _, _ = load_current_state(initialized_workspace, validate=False)
-        provider = ProviderRegistry.get("unity")
-        assert provider is not None
-
-        monkeypatch.setattr(provider, "discover_state", lambda config, scope: state)
-        monkeypatch.setattr(
-            "schemax.providers.unity.provider.create_databricks_client",
-            lambda _: object(),
-        )
-
-        class FakeTracker:
-            def __init__(self, client, catalog: str, warehouse_id: str):
-                pass
-
-            def ensure_tracking_schema(self, auto_create: bool = True) -> None:
-                pass
-
-            def get_latest_deployment(self, environment: str):
-                return None
-
-            def get_most_recent_deployment_id(self, environment: str):
-                return None
-
-            def start_deployment(self, *args, **kwargs) -> None:
-                pass
-
-            def complete_deployment(self, *args, **kwargs) -> None:
-                pass
-
-        monkeypatch.setattr("schemax.core.deployment.DeploymentTracker", FakeTracker)
-
-        summary = import_from_provider(
-            workspace=initialized_workspace,
-            target_env="dev",
-            profile="",
-            warehouse_id="wh_123",
-            dry_run=False,
-            adopt_baseline=True,
-        )
-        assert summary["adopt_baseline"] is True
-        assert summary["snapshot_version"]
-
-        project = read_project(initialized_workspace)
-        dev_env = project["provider"]["environments"].get("dev", {})
-        assert dev_env.get("importBaselineSnapshot") == summary["snapshot_version"]
+    """Situation 3: rollback before baseline blocked unless --force."""
 
     def test_rollback_before_baseline_blocked_without_force(
         self, initialized_workspace, sample_operations
@@ -256,142 +171,18 @@ class TestWorkflowS3Brownfield:
         project["provider"]["environments"]["dev"]["importBaselineSnapshot"] = "v0.1.0"
         write_project(initialized_workspace, project)
 
-        with patch("schemax.commands.rollback.get_environment_config") as mock_cfg:
-            mock_cfg.return_value = {
-                "topLevelName": "dev_catalog",
-                "importBaselineSnapshot": "v0.1.0",
-            }
-            with pytest.raises(RollbackError) as exc_info:
-                rollback_complete(
-                    workspace=initialized_workspace,
-                    target_env="dev",
-                    to_snapshot="v0.0.5",
-                    profile="dev",
-                    warehouse_id="wh_123",
-                    force=False,
-                )
+        with pytest.raises(RollbackError) as exc_info:
+            rollback_complete(
+                workspace=initialized_workspace,
+                target_env="dev",
+                to_snapshot="v0.0.5",
+                profile="dev",
+                warehouse_id="wh_123",
+                force=False,
+            )
         assert "v0.0.5" in str(exc_info.value)
         assert "baseline" in str(exc_info.value).lower()
         assert "force" in str(exc_info.value).lower()
-
-    def test_rollback_before_baseline_with_force_and_no_interaction(
-        self, initialized_workspace, sample_operations
-    ) -> None:
-        """Rollback before baseline with --force and --no-interaction proceeds."""
-        append_ops(initialized_workspace, sample_operations)
-        create_snapshot(initialized_workspace, "Pre", version="v0.0.5")
-        create_snapshot(initialized_workspace, "Base", version="v0.1.0")
-
-        project = read_project(initialized_workspace)
-        project["provider"]["environments"]["dev"]["importBaselineSnapshot"] = "v0.1.0"
-        write_project(initialized_workspace, project)
-
-        mock_differ = Mock()
-        mock_differ.generate_diff_operations.return_value = []
-        mock_provider = Mock()
-        mock_provider.get_state_differ.return_value = mock_differ
-
-        with patch("schemax.commands.rollback.read_project") as mock_read:
-            mock_read.return_value = project
-        with patch("schemax.commands.rollback.get_environment_config") as mock_cfg:
-            mock_cfg.return_value = {
-                "topLevelName": "dev_catalog",
-                "importBaselineSnapshot": "v0.1.0",
-            }
-        with patch("schemax.core.storage.read_snapshot") as mock_snap:
-            mock_snap.return_value = {
-                "version": "v0.0.5",
-                "state": {"catalogs": []},
-                "operations": [],
-            }
-        with patch("schemax.providers.unity.auth.create_databricks_client"):
-            with patch("schemax.commands.rollback.DeploymentTracker") as mock_tracker_cls:
-                tracker = Mock()
-                mock_tracker_cls.return_value = tracker
-                tracker.get_latest_deployment.return_value = None
-            with patch("schemax.commands.rollback.load_current_state") as mock_load:
-                mock_load.return_value = (
-                    {"catalogs": []},
-                    {},
-                    mock_provider,
-                    None,
-                )
-            with patch("schemax.commands.rollback.build_catalog_mapping") as mock_map:
-                mock_map.return_value = {"__implicit__": "dev_catalog"}
-                result = rollback_complete(
-                    workspace=initialized_workspace,
-                    target_env="dev",
-                    to_snapshot="v0.0.5",
-                    profile="dev",
-                    warehouse_id="wh_123",
-                    force=True,
-                    no_interaction=True,
-                    dry_run=True,
-                )
-        assert result.success is True
-
-
-# -----------------------------------------------------------------------------
-# Situation 4: Apply Failure and Rollback
-# -----------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestWorkflowS4ApplyFailureAndRollback:
-    """Situation 4: Partial rollback (failed deployment) and complete rollback."""
-
-    def test_apply_dry_run_then_rollback_dry_run_via_cli(self, temp_workspace: Path) -> None:
-        """Apply dry-run then rollback dry-run via CLI (stubbed)."""
-        ensure_project_file(temp_workspace, provider_id="unity")
-        builder = OperationBuilder()
-        append_ops(
-            temp_workspace,
-            [
-                builder.catalog.add_catalog("cat_1", "demo", op_id="op_1"),
-                builder.schema.add_schema("schema_1", "core", "cat_1", op_id="op_2"),
-                builder.table.add_table("table_1", "users", "schema_1", "delta", op_id="op_3"),
-            ],
-        )
-        create_snapshot(temp_workspace, "v1", version="v0.1.0")
-
-        with patch(
-            "schemax.cli.apply_to_environment",
-            return_value=SimpleNamespace(status="success"),
-        ):
-            r1 = invoke_cli(
-                "apply",
-                "--target",
-                "dev",
-                "--profile",
-                "dev",
-                "--warehouse-id",
-                "wh_123",
-                "--dry-run",
-                "--no-interaction",
-                str(temp_workspace),
-            )
-        assert r1.exit_code == 0
-
-        with patch("schemax.cli.rollback_complete") as mock_rollback:
-            mock_rollback.return_value = SimpleNamespace(
-                success=True, operations_rolled_back=0, error_message=None
-            )
-            r2 = invoke_cli(
-                "rollback",
-                "--target",
-                "dev",
-                "--to-snapshot",
-                "v0.1.0",
-                "--profile",
-                "dev",
-                "--warehouse-id",
-                "wh_123",
-                "--dry-run",
-                "--no-interaction",
-                str(temp_workspace),
-            )
-        assert r2.exit_code == 0
-        mock_rollback.assert_called_once()
 
 
 # -----------------------------------------------------------------------------
@@ -469,150 +260,3 @@ class TestWorkflowS5DiffValidateSqlOnly:
         assert isinstance(ops, list)
         assert len(ops) >= 1
         assert any(op.op == "unity.add_column" for op in ops)
-
-
-# -----------------------------------------------------------------------------
-# E2E: Dev → Test → Prod apply and rollback (stubbed execution)
-# -----------------------------------------------------------------------------
-
-
-def _ensure_catalog_mappings_for_logical_catalog(
-    workspace: Path, logical_catalog: str = "bronze"
-) -> None:
-    """Add logical catalog name to each env's catalogMappings so apply/diff work."""
-    project = read_project(workspace)
-    envs = project["provider"]["environments"]
-    name = project.get("name", workspace.name)
-    for env_key in ("dev", "test", "prod"):
-        if env_key not in envs:
-            continue
-        env = envs[env_key]
-        physical = env.get("topLevelName", f"{env_key}_{name}")
-        mappings = dict(env.get("catalogMappings") or {})
-        mappings[logical_catalog] = physical
-        env["catalogMappings"] = mappings
-    write_project(workspace, project)
-
-
-@pytest.mark.integration
-class TestWorkflowE2EMultiEnvApplyAndRollback:
-    """E2E: Create dev-like catalog/schema/objects, apply to dev/test/prod, then rollback scenarios."""
-
-    def test_e2e_create_dev_schema_then_apply_to_dev_test_prod(self, temp_workspace: Path) -> None:
-        """Create catalog, schema, table (like fixtures) → snapshot → apply to dev, test, prod (stubbed)."""
-        ensure_project_file(temp_workspace, provider_id="unity")
-        builder = OperationBuilder()
-
-        # Dev-like objects: one catalog, schema, table, columns (matches sample_operations style)
-        ops = [
-            builder.catalog.add_catalog("cat_123", "bronze", op_id="op_001"),
-            builder.schema.add_schema("schema_456", "raw", "cat_123", op_id="op_002"),
-            builder.table.add_table("table_789", "users", "schema_456", "delta", op_id="op_003"),
-            builder.column.add_column(
-                "col_001", "table_789", "user_id", "BIGINT", False, "User ID", op_id="op_004"
-            ),
-            builder.column.add_column(
-                "col_002", "table_789", "email", "STRING", True, "Email", op_id="op_005"
-            ),
-        ]
-        append_ops(temp_workspace, ops)
-        create_snapshot(temp_workspace, "Initial dev schema", version="v0.1.0")
-
-        # So apply can resolve catalog "bronze" per environment
-        _ensure_catalog_mappings_for_logical_catalog(temp_workspace, "bronze")
-
-        apply_calls: list[str] = []
-
-        def capture_apply(workspace: Path, target_env: str, **kwargs: object) -> object:
-            apply_calls.append(target_env)
-            return SimpleNamespace(status="success")
-
-        with patch("schemax.cli.apply_to_environment", side_effect=capture_apply):
-            for target in ("dev", "test", "prod"):
-                result = invoke_cli(
-                    "apply",
-                    "--target",
-                    target,
-                    "--profile",
-                    "dev",
-                    "--warehouse-id",
-                    "wh_123",
-                    "--dry-run",
-                    "--no-interaction",
-                    str(temp_workspace),
-                )
-                assert result.exit_code == 0, f"apply --target {target}: {result.output}"
-
-        assert apply_calls == ["dev", "test", "prod"]
-
-    def test_e2e_apply_then_rollback_to_previous_snapshot(self, temp_workspace: Path) -> None:
-        """Snapshot v0.1.0 → add changes → snapshot v0.2.0 → apply to dev (stub) → rollback to v0.1.0 (stub)."""
-        ensure_project_file(temp_workspace, provider_id="unity")
-        builder = OperationBuilder()
-
-        append_ops(
-            temp_workspace,
-            [
-                builder.catalog.add_catalog("cat_1", "bronze", op_id="op_1"),
-                builder.schema.add_schema("sch_1", "raw", "cat_1", op_id="op_2"),
-                builder.table.add_table("tbl_1", "events", "sch_1", "delta", op_id="op_3"),
-            ],
-        )
-        create_snapshot(temp_workspace, "Base", version="v0.1.0")
-
-        append_ops(
-            temp_workspace,
-            [
-                builder.table.add_table("tbl_2", "orders", "sch_1", "delta", op_id="op_4"),
-            ],
-        )
-        create_snapshot(temp_workspace, "Add orders table", version="v0.2.0")
-
-        _ensure_catalog_mappings_for_logical_catalog(temp_workspace, "bronze")
-
-        with patch(
-            "schemax.cli.apply_to_environment",
-            return_value=SimpleNamespace(status="success"),
-        ):
-            r_apply = invoke_cli(
-                "apply",
-                "--target",
-                "dev",
-                "--profile",
-                "dev",
-                "--warehouse-id",
-                "wh_123",
-                "--dry-run",
-                "--no-interaction",
-                str(temp_workspace),
-            )
-        assert r_apply.exit_code == 0
-
-        rollback_kwargs: dict = {}
-
-        def capture_rollback(**kwargs: object) -> object:
-            rollback_kwargs.update(kwargs)
-            return SimpleNamespace(success=True, operations_rolled_back=0, error_message=None)
-
-        with patch("schemax.cli.rollback_complete", side_effect=capture_rollback):
-            r_rollback = invoke_cli(
-                "rollback",
-                "--target",
-                "dev",
-                "--to-snapshot",
-                "v0.1.0",
-                "--profile",
-                "dev",
-                "--warehouse-id",
-                "wh_123",
-                "--dry-run",
-                "--no-interaction",
-                str(temp_workspace),
-            )
-        assert r_rollback.exit_code == 0
-        assert rollback_kwargs.get("to_snapshot") == "v0.1.0"
-        assert rollback_kwargs.get("target_env") == "dev"
-
-    # test_e2e_failed_apply_then_partial_rollback: moved to test_live_rollback.py as a real
-    # live integration test (test_live_failed_apply_then_partial_rollback). Integration tests
-    # must not patch; run with SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 and DATABRICKS_* env set.

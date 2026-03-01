@@ -6,17 +6,12 @@ Generates SQL migration scripts from schema changes in the changelog.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from rich.console import Console
 from rich.syntax import Syntax
 
-from schemax.core.storage import (
-    get_environment_config,
-    load_current_state,
-    read_project,
-    read_snapshot,
-)
+from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.scope_filter import filter_operations_by_managed_scope
 
@@ -25,6 +20,39 @@ console = Console()
 
 class SQLGenerationError(Exception):
     """Raised when SQL generation fails"""
+
+
+class _WorkspaceRepoPort(Protocol):
+    def read_project(self, *, workspace: Path) -> dict[str, Any]: ...
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]: ...
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]: ...
+
+    def get_environment_config(
+        self, *, project: dict[str, Any], environment: str
+    ) -> dict[str, Any]: ...
+
+
+class _SqlWorkspaceRepository:
+    """Repository adapter for SQL generation workflow."""
+
+    def __init__(self) -> None:
+        self._repository = WorkspaceRepository()
+
+    def read_project(self, *, workspace: Path) -> dict[str, Any]:
+        return self._repository.read_project(workspace=workspace)
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]:
+        return self._repository.read_snapshot(workspace=workspace, version=version)
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
+        return self._repository.load_current_state(workspace=workspace, validate=validate)
+
+    def get_environment_config(
+        self, *, project: dict[str, Any], environment: str
+    ) -> dict[str, Any]:
+        return self._repository.get_environment_config(project=project, environment=environment)
 
 
 # TODO: Snapshot-based SQL generation requires issue #56 to be implemented first
@@ -99,6 +127,7 @@ def generate_sql_migration(
     _from_version: str | None = None,
     _to_version: str | None = None,
     target_env: str | None = None,
+    workspace_repo: _WorkspaceRepoPort | None = None,
 ) -> str:
     """Generate SQL migration script from schema changes
 
@@ -110,6 +139,7 @@ def generate_sql_migration(
         output: Optional output file path
         snapshot: Optional snapshot version ('latest' or specific version like 'v0.1.0')
         target_env: Optional target environment (for catalog name mapping)
+        workspace_repo: Optional repository override for tests/injection
 
     Returns:
         Generated SQL string
@@ -117,8 +147,15 @@ def generate_sql_migration(
     Raises:
         SQLGenerationError: If SQL generation fails
     """
+    repository: _WorkspaceRepoPort = workspace_repo or _SqlWorkspaceRepository()
     try:
-        return _generate_sql_impl(workspace, output, snapshot, target_env)
+        return _generate_sql_impl(
+            workspace=workspace,
+            output=output,
+            snapshot=snapshot,
+            target_env=target_env,
+            workspace_repo=repository,
+        )
     except FileNotFoundError as err:
         raise SQLGenerationError(f"Project files not found: {err}") from err
     except SQLGenerationError:
@@ -132,14 +169,25 @@ def _generate_sql_impl(
     output: Path | None,
     snapshot: str | None,
     target_env: str | None,
+    workspace_repo: _WorkspaceRepoPort,
 ) -> str:
     """Inner implementation of SQL generation (called from generate_sql_migration)."""
-    project = read_project(workspace)
-    source = _resolve_ops_source(workspace, project, snapshot)
+    project = workspace_repo.read_project(workspace=workspace)
+    source = _resolve_ops_source(
+        workspace=workspace,
+        project=project,
+        snapshot=snapshot,
+        workspace_repo=workspace_repo,
+    )
     if not source.ops:
         console.print("[yellow]No operations to generate SQL for[/yellow]")
         return ""
-    env_ctx = _build_env_context(project, target_env, source.state)
+    env_ctx = _build_env_context(
+        project=project,
+        target_env=target_env,
+        state=source.state,
+        workspace_repo=workspace_repo,
+    )
     operations = _prepare_operations(source.ops, env_ctx.env_config, source.provider)
     if env_ctx.env_config and source.provider:
         console.print(f"[dim]After deployment scope filter: {len(operations)} ops[/dim]")
@@ -157,14 +205,31 @@ def _generate_sql_impl(
     return cast(str, sql_output)
 
 
-def _resolve_ops_source(workspace: Path, project: dict, snapshot: str | None) -> _OpsSource:
+def _resolve_ops_source(
+    *,
+    workspace: Path,
+    project: dict[str, Any],
+    snapshot: str | None,
+    workspace_repo: _WorkspaceRepoPort,
+) -> _OpsSource:
     """Determine snapshot vs changelog source; load state, ops, and provider."""
     if snapshot:
-        return _resolve_ops_source_from_snapshot(workspace, project, snapshot)
-    return _resolve_ops_source_from_changelog(workspace)
+        return _resolve_ops_source_from_snapshot(
+            workspace=workspace,
+            project=project,
+            snapshot=snapshot,
+            workspace_repo=workspace_repo,
+        )
+    return _resolve_ops_source_from_changelog(workspace=workspace, workspace_repo=workspace_repo)
 
 
-def _resolve_ops_source_from_snapshot(workspace: Path, project: dict, snapshot: str) -> _OpsSource:
+def _resolve_ops_source_from_snapshot(
+    *,
+    workspace: Path,
+    project: dict[str, Any],
+    snapshot: str,
+    workspace_repo: _WorkspaceRepoPort,
+) -> _OpsSource:
     """Load state and ops from a snapshot file."""
     if snapshot == "latest":
         if not project.get("latestSnapshot"):
@@ -176,7 +241,7 @@ def _resolve_ops_source_from_snapshot(workspace: Path, project: dict, snapshot: 
     else:
         snapshot_version = snapshot
         console.print(f"[blue]Snapshot:[/blue] {snapshot_version}")
-    snapshot_data = read_snapshot(workspace, snapshot_version)
+    snapshot_data = workspace_repo.read_snapshot(workspace=workspace, version=snapshot_version)
     if not ("operations" in snapshot_data and snapshot_data["operations"]):
         raise SQLGenerationError(
             "Snapshot-based SQL generation is not yet supported.\n\n"
@@ -186,28 +251,38 @@ def _resolve_ops_source_from_snapshot(workspace: Path, project: dict, snapshot: 
         )
     ops_to_process = snapshot_data["operations"]
     state = snapshot_data["state"]
-    _, _, provider, _ = load_current_state(workspace, validate=False)
+    _, _, provider, _ = workspace_repo.load_current_state(workspace=workspace, validate=False)
     console.print(f"[blue]Provider:[/blue] {provider.info.name}")
     console.print("[blue]Source:[/blue] Snapshot (operations preserved)")
     console.print(f"[blue]Operations:[/blue] {len(ops_to_process)}")
     return _OpsSource(state=state, ops=ops_to_process, provider=provider)
 
 
-def _resolve_ops_source_from_changelog(workspace: Path) -> _OpsSource:
+def _resolve_ops_source_from_changelog(
+    *, workspace: Path, workspace_repo: _WorkspaceRepoPort
+) -> _OpsSource:
     """Load state and ops from changelog."""
-    state, changelog, provider, _ = load_current_state(workspace, validate=False)
+    state, changelog, provider, _ = workspace_repo.load_current_state(
+        workspace=workspace, validate=False
+    )
     ops_to_process = changelog["ops"]
     console.print(f"[blue]Provider:[/blue] {provider.info.name}")
     console.print(f"[blue]Operations:[/blue] {len(ops_to_process)} (from changelog)")
     return _OpsSource(state=state, ops=ops_to_process, provider=provider)
 
 
-def _build_env_context(project: dict, target_env: str | None, state: Any) -> _EnvContext:
+def _build_env_context(
+    *,
+    project: dict[str, Any],
+    target_env: str | None,
+    state: Any,
+    workspace_repo: _WorkspaceRepoPort,
+) -> _EnvContext:
     """Build catalog mapping and log managed/external locations for target env."""
     catalog_mapping: dict[str, str] = {}
     env_config = None
     if target_env:
-        env_config = get_environment_config(project, target_env)
+        env_config = workspace_repo.get_environment_config(project=project, environment=target_env)
         console.print(f"[blue]Target Environment:[/blue] {target_env}")
         console.print(f"[blue]Physical Catalog:[/blue] {env_config['topLevelName']}")
         catalog_mapping = build_catalog_mapping(state, env_config)
