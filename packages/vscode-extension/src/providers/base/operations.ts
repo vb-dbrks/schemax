@@ -25,6 +25,7 @@ export interface Operation {
   target: string;
   
   /** Operation-specific payload data */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Operation payload is provider-defined and currently dynamic by design.
   payload: Record<string, any>;
 }
 
@@ -93,6 +94,7 @@ export function createOperation(
   provider: string,
   opType: string,
   target: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Operation payload is provider-defined and currently dynamic by design.
   payload: Record<string, any>,
   id?: string
 ): Operation {
