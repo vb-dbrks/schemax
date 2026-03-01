@@ -288,6 +288,7 @@ def sql(
                 started_at=started_at,
                 exit_code=0,
             )
+        sys.exit(0)
 
     except SQLGenerationError as e:
         if json_output:
@@ -324,6 +325,7 @@ def validate(workspace: str, json_output: bool) -> None:
     workspace_path = Path(workspace).resolve()
     try:
         _run_validate_command(workspace_path, json_output, started_at)
+        sys.exit(0)
     except CommandValidationError as e:
         if json_output:
             _emit_json_error(
@@ -456,6 +458,7 @@ def diff(
                 started_at=started_at,
                 exit_code=0,
             )
+        sys.exit(0)
 
     except DiffError as e:
         if json_output:
@@ -769,7 +772,7 @@ def apply(
     """
     started_at = perf_counter()
     try:
-        _run_apply_command(
+        exit_code = _run_apply_command(
             workspace=workspace,
             target=target,
             profile=profile,
@@ -780,6 +783,7 @@ def apply(
             json_output=json_output,
             started_at=started_at,
         )
+        sys.exit(exit_code)
 
     except ApplyError as e:
         if json_output:
@@ -818,7 +822,7 @@ def _run_apply_command(
     auto_rollback: bool,
     json_output: bool,
     started_at: float,
-) -> None:
+) -> int:
     """Run apply service and emit result envelope if requested."""
     workspace_path = Path(workspace).resolve()
     if json_output:
@@ -851,7 +855,8 @@ def _run_apply_command(
             started_at=started_at,
             exit_code=exit_code,
         )
-    sys.exit(0 if result.success else 1)
+        return exit_code
+    return 0 if result.success else 1
 
 
 def _print_rollback_usage_and_exit() -> None:
@@ -1153,6 +1158,7 @@ def _run_rollback_dispatch_entry(
     """Dispatch rollback based on JSON mode."""
     if bool(params.get("json_output", False)):
         _run_rollback_json(workspace_path, params, started_at)
+        return
     _handle_rollback_dispatch(workspace_path, params)
 
 
