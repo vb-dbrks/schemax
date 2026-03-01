@@ -1891,6 +1891,20 @@ class UnitySQLGenerator(BaseSQLGenerator):
         self._apply_fqn_to_parsed(parsed, name_to_fqn)
         return parsed.sql(dialect="databricks", pretty=True)
 
+    @staticmethod
+    def _normalize_extracted_dependencies(value: Any) -> dict[str, list[str]]:
+        """Normalize extractedDependencies payload to a stable dict shape."""
+        if not isinstance(value, dict):
+            return {}
+        normalized: dict[str, list[str]] = {}
+        for key in ("tables", "views"):
+            raw = value.get(key, [])
+            if isinstance(raw, list):
+                normalized[key] = [str(item) for item in raw]
+            else:
+                normalized[key] = []
+        return normalized
+
     def _add_view(self, operation: Operation) -> str:
         """Generate CREATE VIEW statement"""
         # Get schema FQN and extract catalog/schema names
@@ -1910,7 +1924,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         # Always qualify table/view references in the definition
         # (even if extractedDependencies is missing, we use all objects from id_name_map)
-        extracted_deps = operation.payload.get("extractedDependencies", {})
+        extracted_deps = self._normalize_extracted_dependencies(
+            operation.payload.get("extractedDependencies")
+        )
         definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Build CREATE VIEW statement
@@ -1963,7 +1979,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         definition = update_op.payload.get("definition", "")
 
         # Always qualify table/view references in the definition
-        extracted_deps = update_op.payload.get("extractedDependencies", {})
+        extracted_deps = self._normalize_extracted_dependencies(
+            update_op.payload.get("extractedDependencies")
+        )
         definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Use comment from create_op (if any)
@@ -2057,7 +2075,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         definition = operation.payload.get("definition", "")
 
         # Always qualify table/view references in the definition
-        extracted_deps = operation.payload.get("extractedDependencies", {})
+        extracted_deps = self._normalize_extracted_dependencies(
+            operation.payload.get("extractedDependencies")
+        )
         definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Use CREATE OR REPLACE for updates
@@ -2256,7 +2276,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         mv_name = operation.payload["name"]
         mv_esc = self._build_fqn(*parts, mv_name)
         definition = operation.payload.get("definition") or "SELECT 1"
-        extracted_deps = operation.payload.get("extractedDependencies", {})
+        extracted_deps = self._normalize_extracted_dependencies(
+            operation.payload.get("extractedDependencies")
+        )
         definition = self._qualify_view_definition(definition, extracted_deps)
         comment_clause = ""
         if operation.payload.get("comment"):
@@ -2297,7 +2319,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
             catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
             parts[0] = catalog_physical
             mv_esc = self._build_fqn(*parts)
-            extracted_deps = operation.payload.get("extractedDependencies", {})
+            extracted_deps = self._normalize_extracted_dependencies(
+                operation.payload.get("extractedDependencies")
+            )
             definition = self._qualify_view_definition(definition, extracted_deps)
             comment_clause = ""
             if operation.payload.get("comment"):

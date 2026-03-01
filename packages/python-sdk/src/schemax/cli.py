@@ -323,23 +323,7 @@ def validate(workspace: str, json_output: bool) -> None:
     started_at = perf_counter()
     workspace_path = Path(workspace).resolve()
     try:
-        if not json_output:
-            validate_service.run(workspace=workspace_path, json_output=False)
-            return
-        captured = StringIO()
-        with redirect_stdout(captured):
-            validate_service.run(workspace=workspace_path, json_output=True)
-        payload = _parse_validate_payload(captured.getvalue())
-        warnings = payload.get("warnings", [])
-        warning_list = warnings if isinstance(warnings, list) else []
-        _emit_json_success(
-            command="validate",
-            data=payload,
-            warnings=warning_list,
-            started_at=started_at,
-            exit_code=0,
-        )
-
+        _run_validate_command(workspace_path, json_output, started_at)
     except CommandValidationError as e:
         if json_output:
             _emit_json_error(
@@ -364,6 +348,26 @@ def validate(workspace: str, json_output: bool) -> None:
         else:
             console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
+
+
+def _run_validate_command(workspace_path: Path, json_output: bool, started_at: float) -> None:
+    """Run validate command in console or JSON mode."""
+    if not json_output:
+        validate_service.run(workspace=workspace_path, json_output=False)
+        return
+    captured = StringIO()
+    with redirect_stdout(captured):
+        validate_service.run(workspace=workspace_path, json_output=True)
+    payload = _parse_validate_payload(captured.getvalue())
+    warnings = payload.get("warnings", [])
+    warning_list = warnings if isinstance(warnings, list) else []
+    _emit_json_success(
+        command="validate",
+        data=payload,
+        warnings=warning_list,
+        started_at=started_at,
+        exit_code=0,
+    )
 
 
 @cli.command()
@@ -566,26 +570,7 @@ def import_command(ctx: click.Context, **_kwargs: Any) -> None:
     params = ctx.params
     json_output = bool(params.get("json_output", False))
     try:
-        workspace_path = Path(params["workspace"]).resolve()
-        if json_output:
-            with redirect_stdout(StringIO()):
-                summary = _run_import_command(
-                    workspace_path,
-                    params,
-                    json_output=json_output,
-                )
-        else:
-            summary = _run_import_command(workspace_path, params, json_output=False)
-        if json_output:
-            warnings = summary.get("warnings", [])
-            warning_list = warnings if isinstance(warnings, list) else []
-            _emit_json_success(
-                command="import",
-                data={"summary": summary},
-                warnings=warning_list,
-                started_at=started_at,
-                exit_code=0,
-            )
+        _run_import_entry(params, json_output, started_at)
     except (ImportCommandError, ImportError) as e:
         if json_output:
             _emit_json_error(
@@ -612,6 +597,31 @@ def import_command(ctx: click.Context, **_kwargs: Any) -> None:
         sys.exit(1)
 
 
+def _run_import_entry(params: dict[str, Any], json_output: bool, started_at: float) -> None:
+    """Run import command and emit optional JSON envelope."""
+    workspace_path = Path(params["workspace"]).resolve()
+    if json_output:
+        with redirect_stdout(StringIO()):
+            summary = _run_import_command(
+                workspace_path,
+                params,
+                json_output=True,
+            )
+    else:
+        summary = _run_import_command(workspace_path, params, json_output=False)
+    if not json_output:
+        return
+    warnings = summary.get("warnings", [])
+    warning_list = warnings if isinstance(warnings, list) else []
+    _emit_json_success(
+        command="import",
+        data={"summary": summary},
+        warnings=warning_list,
+        started_at=started_at,
+        exit_code=0,
+    )
+
+
 def _run_import_command(
     workspace_path: Path, params: dict[str, Any], *, json_output: bool
 ) -> dict[str, Any]:
@@ -625,7 +635,7 @@ def _run_import_command(
             dry_run=params.get("dry_run", False),
             target_env=params.get("target"),
         )
-        summary = dict(result.data or {}).get("summary", {})
+        summary = _extract_import_summary(result.data)
         if not json_output:
             _print_import_summary(summary)
         return summary
@@ -657,10 +667,20 @@ def _run_import_command(
         adopt_baseline=params.get("adopt_baseline", False),
         catalog_mappings_override=binding_overrides,
     )
-    summary = dict(result.data or {}).get("summary", {})
+    summary = _extract_import_summary(result.data)
     if not json_output:
         _print_import_summary(summary)
     return summary
+
+
+def _extract_import_summary(raw_data: Any) -> dict[str, Any]:
+    """Extract import summary payload as a typed dict."""
+    if not isinstance(raw_data, dict):
+        return {}
+    raw_summary = raw_data.get("summary")
+    if not isinstance(raw_summary, dict):
+        return {}
+    return dict(raw_summary)
 
 
 def _parse_catalog_mappings(catalog_map: tuple[str, ...]) -> dict[str, str]:
@@ -749,39 +769,17 @@ def apply(
     """
     started_at = perf_counter()
     try:
-        workspace_path = Path(workspace).resolve()
-
-        if json_output:
-            with redirect_stdout(StringIO()):
-                result = apply_service.run(
-                    workspace=workspace_path,
-                    target_env=target,
-                    profile=profile,
-                    warehouse_id=warehouse_id,
-                    dry_run=dry_run,
-                    no_interaction=no_interaction,
-                    auto_rollback=auto_rollback,
-                )
-        else:
-            result = apply_service.run(
-                workspace=workspace_path,
-                target_env=target,
-                profile=profile,
-                warehouse_id=warehouse_id,
-                dry_run=dry_run,
-                no_interaction=no_interaction,
-                auto_rollback=auto_rollback,
-            )
-        if json_output:
-            exit_code = 0 if result.success else 1
-            _emit_json_success(
-                command="apply",
-                data=result.data or {},
-                warnings=[],
-                started_at=started_at,
-                exit_code=exit_code,
-            )
-        sys.exit(0 if result.success else 1)
+        _run_apply_command(
+            workspace=workspace,
+            target=target,
+            profile=profile,
+            warehouse_id=warehouse_id,
+            dry_run=dry_run,
+            no_interaction=no_interaction,
+            auto_rollback=auto_rollback,
+            json_output=json_output,
+            started_at=started_at,
+        )
 
     except ApplyError as e:
         if json_output:
@@ -807,6 +805,53 @@ def apply(
         else:
             console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
+
+
+def _run_apply_command(
+    *,
+    workspace: str,
+    target: str,
+    profile: str,
+    warehouse_id: str,
+    dry_run: bool,
+    no_interaction: bool,
+    auto_rollback: bool,
+    json_output: bool,
+    started_at: float,
+) -> None:
+    """Run apply service and emit result envelope if requested."""
+    workspace_path = Path(workspace).resolve()
+    if json_output:
+        with redirect_stdout(StringIO()):
+            result = apply_service.run(
+                workspace=workspace_path,
+                target_env=target,
+                profile=profile,
+                warehouse_id=warehouse_id,
+                dry_run=dry_run,
+                no_interaction=no_interaction,
+                auto_rollback=auto_rollback,
+            )
+    else:
+        result = apply_service.run(
+            workspace=workspace_path,
+            target_env=target,
+            profile=profile,
+            warehouse_id=warehouse_id,
+            dry_run=dry_run,
+            no_interaction=no_interaction,
+            auto_rollback=auto_rollback,
+        )
+    if json_output:
+        exit_code = 0 if result.success else 1
+        _emit_json_success(
+            command="apply",
+            data=result.data or {},
+            warnings=[],
+            started_at=started_at,
+            exit_code=exit_code,
+        )
+    sys.exit(0 if result.success else 1)
 
 
 def _print_rollback_usage_and_exit() -> None:
@@ -1072,43 +1117,10 @@ def rollback(ctx: click.Context, **_kwargs: Any) -> None:
     workspace_path = None
     started_at = perf_counter()
     try:
-        raw_params = ctx.params
-        if not isinstance(raw_params, Mapping):
-            raise RollbackError("Invalid rollback parameters")
-        params = dict(raw_params)
-        workspace_path = Path(params["workspace"]).resolve()
-        if bool(params.get("json_output", False)):
-            _run_rollback_json(workspace_path, params, started_at)
-        _handle_rollback_dispatch(workspace_path, params)
+        params, workspace_path = _resolve_rollback_context(ctx)
+        _run_rollback_dispatch_entry(workspace_path, params, started_at)
     except RollbackError as e:
-        json_output = bool(params and params.get("json_output", False))
-        if json_output:
-            _emit_json_error(
-                command="rollback",
-                code="ROLLBACK_FAILED",
-                message=str(e),
-                started_at=started_at,
-                exit_code=1,
-            )
-        else:
-            console.print(f"[red]✗[/red] {e}")
-        if "not found" in str(e).lower() and params is not None and workspace_path is not None:
-            target_env = str(params.get("target") or "")
-            if not target_env:
-                sys.exit(1)
-            try:
-                project = workspace_repo.read_project(workspace=workspace_path)
-                env_config = workspace_repo.get_environment_config(
-                    project=project,
-                    environment=target_env,
-                )
-                _print_rollback_deployment_not_found_help(
-                    params.get("deployment") or "",
-                    env_config.get("topLevelName", ""),
-                    target_env,
-                )
-            except (FileNotFoundError, ValueError):
-                pass
+        _handle_rollback_error(e, params, workspace_path, started_at)
         sys.exit(1)
     except Exception as e:
         json_output = bool(params and params.get("json_output", False))
@@ -1123,6 +1135,63 @@ def rollback(ctx: click.Context, **_kwargs: Any) -> None:
         else:
             console.print(f"[red]✗ Rollback error:[/red] {e}")
         sys.exit(1)
+
+
+def _resolve_rollback_context(ctx: click.Context) -> tuple[dict[str, Any], Path]:
+    """Resolve rollback params and workspace path from click context."""
+    raw_params = ctx.params
+    if not isinstance(raw_params, Mapping):
+        raise RollbackError("Invalid rollback parameters")
+    params = dict(raw_params)
+    workspace_path = Path(params["workspace"]).resolve()
+    return params, workspace_path
+
+
+def _run_rollback_dispatch_entry(
+    workspace_path: Path, params: dict[str, Any], started_at: float
+) -> None:
+    """Dispatch rollback based on JSON mode."""
+    if bool(params.get("json_output", False)):
+        _run_rollback_json(workspace_path, params, started_at)
+    _handle_rollback_dispatch(workspace_path, params)
+
+
+def _handle_rollback_error(
+    error: RollbackError,
+    params: dict[str, Any] | None,
+    workspace_path: Path | None,
+    started_at: float,
+) -> None:
+    """Render rollback errors and optional deployment lookup guidance."""
+    json_output = bool(params and params.get("json_output", False))
+    if json_output:
+        _emit_json_error(
+            command="rollback",
+            code="ROLLBACK_FAILED",
+            message=str(error),
+            started_at=started_at,
+            exit_code=1,
+        )
+    else:
+        console.print(f"[red]✗[/red] {error}")
+    if "not found" not in str(error).lower() or params is None or workspace_path is None:
+        return
+    target_env = str(params.get("target") or "")
+    if not target_env:
+        return
+    try:
+        project = workspace_repo.read_project(workspace=workspace_path)
+        env_config = workspace_repo.get_environment_config(
+            project=project,
+            environment=target_env,
+        )
+        _print_rollback_deployment_not_found_help(
+            params.get("deployment") or "",
+            env_config.get("topLevelName", ""),
+            target_env,
+        )
+    except (FileNotFoundError, ValueError):
+        return
 
 
 @cli.group()
@@ -1326,7 +1395,11 @@ def _serialize_provider_capabilities(capabilities: Any) -> dict[str, Any]:
 
 
 def _run_workspace_state(
-    workspace_path: Path, *, validate_dependencies: bool, json_output: bool
+    workspace_path: Path,
+    *,
+    validate_dependencies: bool,
+    json_output: bool,
+    payload_mode: str,
 ) -> None:
     """Load provider-resolved workspace state for IDE consumers."""
     started_at = perf_counter()
@@ -1335,12 +1408,17 @@ def _run_workspace_state(
         workspace=workspace_path, validate=validate_dependencies
     )
     serialized_ops = [_serialize_operation(op) for op in changelog.get("ops", [])]
+    changelog_payload: dict[str, Any] = {
+        **changelog,
+        "opsCount": len(serialized_ops),
+    }
+    if payload_mode == "state-only":
+        changelog_payload["ops"] = []
+    else:
+        changelog_payload["ops"] = serialized_ops
     payload = {
         "state": state,
-        "changelog": {
-            **changelog,
-            "ops": serialized_ops,
-        },
+        "changelog": changelog_payload,
         "provider": {
             "id": provider.info.id,
             "name": provider.info.name,
@@ -1373,9 +1451,21 @@ def _run_workspace_state(
     is_flag=True,
     help="Run dependency validation and include structured validation payload",
 )
+@click.option(
+    "--payload-mode",
+    type=click.Choice(["full", "state-only"]),
+    default="full",
+    show_default=True,
+    help="Payload shape for workspace-state transport",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
-def workspace_state_cmd(workspace: str, validate_dependencies: bool, json_output: bool) -> None:
+def workspace_state_cmd(
+    workspace: str,
+    validate_dependencies: bool,
+    payload_mode: str,
+    json_output: bool,
+) -> None:
     """Emit current workspace state/changelog/provider metadata for extension transport."""
     started_at = perf_counter()
     try:
@@ -1384,6 +1474,7 @@ def workspace_state_cmd(workspace: str, validate_dependencies: bool, json_output
             workspace_path,
             validate_dependencies=validate_dependencies,
             json_output=json_output,
+            payload_mode=payload_mode,
         )
     except Exception as e:
         if json_output:

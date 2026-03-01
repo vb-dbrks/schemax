@@ -402,4 +402,79 @@ describe('Storage V4 - Python transport contract', () => {
     );
     runJsonSpy.mockRestore();
   });
+
+  test('loadCurrentState uses short-lived cache to reduce backend calls', async () => {
+    const runJsonSpy = jest
+      .spyOn(PythonBackendClient.prototype, 'runJson')
+      .mockResolvedValue({
+        schemaVersion: '1',
+        command: 'workspace-state',
+        status: 'success',
+        data: {
+          state: { catalogs: [] },
+          changelog: {
+            version: 1,
+            sinceSnapshot: null,
+            ops: [],
+            lastModified: '2026-01-01T00:00:00Z',
+          },
+          provider: {
+            id: 'unity',
+            name: 'Unity Catalog',
+            version: '1.0.0',
+            capabilities: {},
+          },
+          validation: null,
+        },
+        warnings: [],
+        errors: [],
+        meta: { durationMs: 1, executedCommand: 'schemax workspace-state --json', exitCode: 0 },
+      });
+
+    await loadCurrentState(vscode.Uri.file('/tmp/workspace-cache'), false);
+    await loadCurrentState(vscode.Uri.file('/tmp/workspace-cache'), false);
+
+    expect(runJsonSpy).toHaveBeenCalledTimes(1);
+    runJsonSpy.mockRestore();
+  });
+
+  test('loadCurrentState requests state-only payload mode when specified', async () => {
+    const runJsonSpy = jest
+      .spyOn(PythonBackendClient.prototype, 'runJson')
+      .mockResolvedValueOnce({
+        schemaVersion: '1',
+        command: 'workspace-state',
+        status: 'success',
+        data: {
+          state: { catalogs: [] },
+          changelog: {
+            version: 1,
+            sinceSnapshot: null,
+            ops: [],
+            opsCount: 4,
+            lastModified: '2026-01-01T00:00:00Z',
+          },
+          provider: {
+            id: 'unity',
+            name: 'Unity Catalog',
+            version: '1.0.0',
+            capabilities: {},
+          },
+          validation: null,
+        },
+        warnings: [],
+        errors: [],
+        meta: { durationMs: 1, executedCommand: 'schemax workspace-state --json', exitCode: 0 },
+      });
+
+    await loadCurrentState(vscode.Uri.file('/tmp/workspace-state-only'), false, {
+      payloadMode: 'state-only',
+    });
+    expect(runJsonSpy).toHaveBeenCalledWith(
+      'workspace-state',
+      ['workspace-state', '--payload-mode', 'state-only'],
+      '/tmp/workspace-state-only'
+    );
+    runJsonSpy.mockRestore();
+  });
 });

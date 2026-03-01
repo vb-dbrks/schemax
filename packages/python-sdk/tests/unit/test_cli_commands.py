@@ -11,9 +11,7 @@ from schemax.commands import SQLGenerationError
 
 
 def _read_contract_fixture(name: str) -> dict[str, object]:
-    fixture_path = (
-        Path(__file__).resolve().parents[4] / "contracts" / "cli-envelopes" / name
-    )
+    fixture_path = Path(__file__).resolve().parents[4] / "contracts" / "cli-envelopes" / name
     return json.loads(fixture_path.read_text(encoding="utf-8"))
 
 

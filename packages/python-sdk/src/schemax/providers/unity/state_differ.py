@@ -1026,10 +1026,12 @@ class UnityStateDiffer(StateDiffer):
         # Include optional fields if present
         if "comment" in view and view["comment"]:
             payload["comment"] = view["comment"]
-        if "dependencies" in view:
-            payload["dependencies"] = view["dependencies"]
-        if "extractedDependencies" in view:
-            payload["extractedDependencies"] = view["extractedDependencies"]
+        dependencies = view.get("dependencies")
+        if isinstance(dependencies, list):
+            payload["dependencies"] = dependencies
+        extracted_dependencies = view.get("extractedDependencies")
+        if isinstance(extracted_dependencies, dict):
+            payload["extractedDependencies"] = extracted_dependencies
 
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
@@ -1054,8 +1056,9 @@ class UnityStateDiffer(StateDiffer):
         payload = {"definition": view.get("definition", "")}
 
         # Include extracted dependencies if present
-        if "extractedDependencies" in view:
-            payload["extractedDependencies"] = view["extractedDependencies"]
+        extracted_dependencies = view.get("extractedDependencies")
+        if isinstance(extracted_dependencies, dict):
+            payload["extractedDependencies"] = extracted_dependencies
 
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
@@ -1283,13 +1286,18 @@ class UnityStateDiffer(StateDiffer):
     def _create_update_materialized_view_op(
         self, materialized_view_id: str, materialized_view: dict[str, Any]
     ) -> Operation:
-        payload: dict[str, Any] = {
-            "definition": materialized_view.get("definition"),
-            "refreshSchedule": materialized_view.get(
-                "refreshSchedule", materialized_view.get("refresh_schedule")
-            ),
-            "extractedDependencies": materialized_view.get("extractedDependencies"),
-        }
+        payload: dict[str, Any] = {}
+        definition = materialized_view.get("definition")
+        if definition is not None:
+            payload["definition"] = definition
+        refresh_schedule = materialized_view.get(
+            "refreshSchedule", materialized_view.get("refresh_schedule")
+        )
+        if refresh_schedule is not None:
+            payload["refreshSchedule"] = refresh_schedule
+        extracted_dependencies = materialized_view.get("extractedDependencies")
+        if isinstance(extracted_dependencies, dict):
+            payload["extractedDependencies"] = extracted_dependencies
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",
             ts=datetime.now(UTC).isoformat(),

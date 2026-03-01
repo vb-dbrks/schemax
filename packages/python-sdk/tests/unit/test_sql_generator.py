@@ -1173,6 +1173,44 @@ class TestViewSQL:
         # Validate SQL syntax
         assert_sql(sql)
 
+    def test_add_view_with_null_extracted_dependencies(self, empty_unity_state, assert_sql):
+        """Null extractedDependencies must not crash SQL generation."""
+        state = empty_unity_state.model_dump(by_alias=True)
+        state["catalogs"] = [
+            {
+                "id": "cat1",
+                "name": "production",
+                "schemas": [
+                    {
+                        "id": "schema1",
+                        "name": "sales",
+                        "tables": [
+                            {"id": "table1", "name": "customers", "format": "delta", "columns": []}
+                        ],
+                        "views": [],
+                    }
+                ],
+            }
+        ]
+        generator = UnitySQLGenerator(state)
+        op = Operation(
+            id="op_v_null",
+            provider="unity",
+            op="unity.add_view",
+            target="view1",
+            payload={
+                "viewId": "view1",
+                "name": "customer_summary",
+                "schemaId": "schema1",
+                "definition": "SELECT * FROM customers",
+                "extractedDependencies": None,
+            },
+            ts="2024-01-01T00:00:00Z",
+        )
+        sql = generator.generate_sql([op])
+        assert "CREATE VIEW IF NOT EXISTS" in sql
+        assert_sql(sql)
+
     def test_view_dependencies_ordered_correctly(self, empty_unity_state, assert_sql):
         """Test that views depending on other views are created in correct order"""
         # Create empty state with one catalog and schema
@@ -1590,6 +1628,29 @@ class TestVolumeFunctionMaterializedViewSQL:
         result = generator.generate_sql_for_operation(op)
         assert "MATERIALIZED VIEW" in result.sql
         assert "SELECT" in result.sql
+        assert_sql(result.sql)
+
+    def test_add_materialized_view_with_null_extracted_dependencies(
+        self, sample_unity_state, assert_sql
+    ):
+        """Null extractedDependencies must not crash MV SQL generation."""
+        op = Operation(
+            id="op_mv_null",
+            provider="unity",
+            op="unity.add_materialized_view",
+            target="mv_001",
+            payload={
+                "materializedViewId": "mv_001",
+                "name": "my_mv",
+                "schemaId": "schema_456",
+                "definition": "SELECT id, name FROM users",
+                "extractedDependencies": None,
+            },
+            ts="2024-01-01T00:00:00Z",
+        )
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        result = generator.generate_sql_for_operation(op)
+        assert "MATERIALIZED VIEW" in result.sql
         assert_sql(result.sql)
 
     def test_add_materialized_view_comment_before_as(self, sample_unity_state, assert_sql):

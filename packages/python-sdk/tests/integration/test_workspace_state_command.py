@@ -58,3 +58,27 @@ def test_workspace_state_validate_dependencies_shape(temp_workspace: Path) -> No
     assert "validation" in payload
     assert "errors" in payload["validation"]
     assert "warnings" in payload["validation"]
+
+
+@pytest.mark.integration
+def test_workspace_state_state_only_payload_mode(temp_workspace: Path) -> None:
+    ensure_project_file(temp_workspace, provider_id="unity")
+    builder = OperationBuilder()
+    append_ops(
+        temp_workspace,
+        [builder.catalog.add_catalog("cat_1", "bronze", op_id="op_1")],
+    )
+
+    result = invoke_cli(
+        "workspace-state",
+        "--json",
+        "--payload-mode",
+        "state-only",
+        str(temp_workspace),
+    )
+
+    assert result.exit_code == 0
+    envelope = json.loads(result.output)
+    payload = envelope["data"]
+    assert payload["changelog"]["ops"] == []
+    assert payload["changelog"]["opsCount"] >= 1

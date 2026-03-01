@@ -1,5 +1,7 @@
 .PHONY: format fmt lint typecheck pylint test integration integration-coverage-upload all check ci pre-commit install clean help
 
+PYTEST_WORKERS ?= auto
+
 help:
 	@echo "SchemaX Python SDK - Development Commands"
 	@echo ""
@@ -43,7 +45,7 @@ pylint:
 
 test:
 	@echo "🧪 Running tests..."
-	uv run pytest tests/ -v
+	uv run pytest tests/ -v -n $(PYTEST_WORKERS)
 
 # Run all integration tests including live ones (Databricks).
 # Live tests run only when SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 (and optionally

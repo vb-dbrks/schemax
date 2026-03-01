@@ -19,8 +19,10 @@ const CHANGELOG_FILENAME = 'changelog.json';
 const SNAPSHOTS_DIR = 'snapshots';
 const pythonBackend = new PythonBackendClient();
 const DEFAULT_PROVIDER_VERSION = '1.0.0';
+const STATE_CACHE_TTL_MS = 750;
 
 type ProviderState = Record<string, unknown>;
+type WorkspaceStatePayloadMode = 'full' | 'state-only';
 
 export interface ProviderMetadata {
   id: string;
@@ -45,6 +47,23 @@ interface RawWorkspaceStatePayload {
     warnings?: Array<{ message?: string } | string>;
   };
 }
+
+interface LoadStateOptions {
+  payloadMode?: WorkspaceStatePayloadMode;
+}
+
+interface CachedStateEntry {
+  cachedAtMs: number;
+  value: {
+    state: ProviderState;
+    changelog: ChangelogFile;
+    provider: ProviderMetadata;
+    validationResult: ValidationResult | null;
+  };
+}
+
+const workspaceStateCache = new Map<string, CachedStateEntry>();
+const lastWriteHashByPath = new Map<string, string>();
 
 function getProviderDisplayName(providerId: string): string {
   if (providerId === 'unity') {
@@ -181,6 +200,42 @@ function getProjectFilePath(workspaceUri: vscode.Uri): vscode.Uri {
  */
 function getChangelogFilePath(workspaceUri: vscode.Uri): vscode.Uri {
   return vscode.Uri.joinPath(workspaceUri, SCHEMAX_DIR, CHANGELOG_FILENAME);
+}
+
+function getWorkspaceStateCacheKey(
+  workspaceUri: vscode.Uri,
+  validate: boolean,
+  payloadMode: WorkspaceStatePayloadMode
+): string {
+  return `${workspaceUri.fsPath}::${validate ? 'validate' : 'no-validate'}::${payloadMode}`;
+}
+
+function invalidateWorkspaceStateCache(workspaceUri: vscode.Uri): void {
+  const prefix = `${workspaceUri.fsPath}::`;
+  for (const key of workspaceStateCache.keys()) {
+    if (key.startsWith(prefix)) {
+      workspaceStateCache.delete(key);
+    }
+  }
+}
+
+function cloneStateResult<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function hashText(text: string): string {
+  return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+async function writeJsonFileCoalesced(uri: vscode.Uri, payload: unknown): Promise<void> {
+  const text = JSON.stringify(payload, null, 2);
+  const nextHash = hashText(text);
+  const key = uri.fsPath;
+  if (lastWriteHashByPath.get(key) === nextHash) {
+    return;
+  }
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(text, 'utf8'));
+  lastWriteHashByPath.set(key, nextHash);
 }
 
 /**
@@ -366,8 +421,8 @@ export async function writeProject(
   project: ProjectFileV4
 ): Promise<void> {
   const projectPath = getProjectFilePath(workspaceUri);
-  const content = Buffer.from(JSON.stringify(project, null, 2), 'utf8');
-  await vscode.workspace.fs.writeFile(projectPath, content);
+  await writeJsonFileCoalesced(projectPath, project);
+  invalidateWorkspaceStateCache(workspaceUri);
 }
 
 /**
@@ -407,8 +462,8 @@ export async function writeChangelog(
 ): Promise<void> {
   changelog.lastModified = new Date().toISOString();
   const changelogPath = getChangelogFilePath(workspaceUri);
-  const content = Buffer.from(JSON.stringify(changelog, null, 2), 'utf8');
-  await vscode.workspace.fs.writeFile(changelogPath, content);
+  await writeJsonFileCoalesced(changelogPath, changelog);
+  invalidateWorkspaceStateCache(workspaceUri);
 }
 
 /**
@@ -432,8 +487,8 @@ export async function writeSnapshot(
 ): Promise<void> {
   await ensureSchemaxDir(workspaceUri);
   const snapshotPath = getSnapshotFilePath(workspaceUri, snapshot.version);
-  const content = Buffer.from(JSON.stringify(snapshot, null, 2), 'utf8');
-  await vscode.workspace.fs.writeFile(snapshotPath, content);
+  await writeJsonFileCoalesced(snapshotPath, snapshot);
+  invalidateWorkspaceStateCache(workspaceUri);
 }
 
 /**
@@ -499,16 +554,27 @@ export function normalizeProviderCapabilities(
 
 export async function loadCurrentState(
   workspaceUri: vscode.Uri,
-  validate: boolean = false
+  validate: boolean = false,
+  options: LoadStateOptions = {}
 ): Promise<{
   state: ProviderState;
   changelog: ChangelogFile;
   provider: ProviderMetadata;
   validationResult: ValidationResult | null;
 }> {
+  const payloadMode = options.payloadMode ?? 'full';
+  const cacheKey = getWorkspaceStateCacheKey(workspaceUri, validate, payloadMode);
+  const cached = workspaceStateCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAtMs <= STATE_CACHE_TTL_MS) {
+    return cloneStateResult(cached.value);
+  }
+
   const args = ['workspace-state'];
   if (validate) {
     args.push('--validate-dependencies');
+  }
+  if (payloadMode !== 'full') {
+    args.push('--payload-mode', payloadMode);
   }
   const envelope = await pythonBackend.runJson<RawWorkspaceStatePayload>(
     'workspace-state',
@@ -528,7 +594,7 @@ export async function loadCurrentState(
     throw new Error('Python backend returned incomplete workspace-state payload');
   }
   const validation = data.validation;
-  return {
+  const result = {
     state,
     changelog,
     provider: {
@@ -548,6 +614,11 @@ export async function loadCurrentState(
         }
       : null,
   };
+  workspaceStateCache.set(cacheKey, {
+    cachedAtMs: Date.now(),
+    value: cloneStateResult(result),
+  });
+  return result;
 }
 
 /**
@@ -618,7 +689,7 @@ export async function appendOps(
   changelog.ops.push(...ops);
 
   // Write back changelog
-  await writeChangelog(workspaceUri, changelog);
+  const writeTasks: Promise<void>[] = [writeChangelog(workspaceUri, changelog)];
 
   // When user adds a new catalog (e.g. after dropping the default), add its logical name to
   // each environment's catalogMappings so apply/sql don't fail with "Missing catalog mapping(s)"
@@ -627,8 +698,9 @@ export async function appendOps(
     ops
   );
   if (updated) {
-    await writeProject(workspaceUri, projectAfterMappings);
+    writeTasks.push(writeProject(workspaceUri, projectAfterMappings));
   }
+  await Promise.all(writeTasks);
 }
 
 /**
@@ -645,7 +717,7 @@ export async function createSnapshot(
   const changelog = await readChangelog(workspaceUri);
 
   // Load current state
-  const { state } = await loadCurrentState(workspaceUri);
+  const { state } = await loadCurrentState(workspaceUri, false, { payloadMode: 'state-only' });
 
   // Determine version
   const snapshotVersion = version || getNextVersion(project.latestSnapshot, project.settings);
