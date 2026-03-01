@@ -2,9 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { parsePrivileges } from '../utils/grants';
-import { extractDependenciesFromView } from '../../providers/base/sql-parser';
+import { extractDependenciesFromView } from '../utils/sqlParser';
 import { RichComment } from './RichComment';
-import type { UnityCatalog, UnityView } from '../../providers/unity/models';
+import type { UnityCatalog, UnityView } from '../models/unity';
 import './ViewDetails.css';
 
 const IconEdit: React.FC = () => (

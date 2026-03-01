@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
-import type { UnityCatalog, UnityTable } from '../../providers/unity/models';
+import type { UnityCatalog, UnityTable } from '../models/unity';
 
 // Codicon icons - theme-aware and vector-based
 const IconEdit: React.FC = () => (

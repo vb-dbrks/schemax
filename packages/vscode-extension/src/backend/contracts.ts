@@ -24,3 +24,10 @@ export interface PythonCommandResult {
   exitCode: number | null;
   cancelled?: boolean;
 }
+
+export interface RuntimeInfoData {
+  cliVersion: string;
+  envelopeSchemaVersion: string;
+  supportedCommands: string[];
+  providerIds: string[];
+}

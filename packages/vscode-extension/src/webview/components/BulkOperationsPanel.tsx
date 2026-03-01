@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
-import type { Operation } from '../../providers/base/operations';
+import type { Operation } from '../../contracts/workspace';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { formatScopePreview } from '../utils/bulkUtils';
 import type { GrantTargetType } from '../utils/bulkUtils';

@@ -13,9 +13,8 @@ import type {
   UnityFunctionParameter,
   UnityMaterializedView,
   UnityVolume,
-} from '../../providers/unity/models';
-import type { Operation } from '../../providers/base/operations';
-import type { ProviderCapabilities } from '../../providers/base/provider';
+} from '../models/unity';
+import type { Operation, ProviderCapabilities } from '../../contracts/workspace';
 import { getVsCodeApi } from '../vscode-api';
 import type { ScopeResult, GrantTargetType } from '../utils/bulkUtils';
 import { getObjectsInScope as computeScope } from '../utils/bulkUtils';

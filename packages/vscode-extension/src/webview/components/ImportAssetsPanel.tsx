@@ -1,7 +1,7 @@
 import React from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { getVsCodeApi } from '../vscode-api';
-import type { ProjectFile } from '../../providers/unity/models';
+import type { ProjectFile } from '../models/unity';
 
 const vscode = getVsCodeApi();
 

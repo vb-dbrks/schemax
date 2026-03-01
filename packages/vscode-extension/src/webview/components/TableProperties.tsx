@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDesignerStore } from '../state/useDesignerStore';
-import type { UnityCatalog, UnityTable } from '../../providers/unity/models';
+import type { UnityCatalog, UnityTable } from '../models/unity';
 
 interface TablePropertiesProps {
   tableId: string;

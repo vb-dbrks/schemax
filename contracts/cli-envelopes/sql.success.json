@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1",
+  "command": "sql",
+  "status": "success",
+  "data": {
+    "sql": "-- migration sql"
+  },
+  "warnings": [],
+  "errors": [],
+  "meta": {
+    "durationMs": 1,
+    "executedCommand": "schemax sql --json",
+    "exitCode": 0
+  }
+}

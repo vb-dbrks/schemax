@@ -1,54 +1,43 @@
-/**
- * Unity Catalog Models
- * 
- * Migrated from shared/model.ts with Unity-specific types
- */
+import type { Operation } from '../../contracts/workspace';
 
-import type { BaseObject, ProviderState } from '../base/models';
-import type { Operation } from '../base/operations';
+interface BaseObject {
+  id: string;
+  name: string;
+}
 
 // Column definition
 export interface UnityColumn extends BaseObject {
   type: string;
   nullable: boolean;
   comment?: string;
-  tags?: Record<string, string>; // tag_name: tag_value
-  maskId?: string; // Reference to active column mask
+  tags?: Record<string, string>;
+  maskId?: string;
 }
 
 // Row Filter definition (row-level security)
 export interface UnityRowFilter extends BaseObject {
   enabled: boolean;
-  udfExpression: string; // SQL UDF expression
+  udfExpression: string;
   description?: string;
 }
 
 // Column Mask definition (column-level data masking)
 export interface UnityColumnMask extends BaseObject {
-  columnId: string; // Reference to column
+  columnId: string;
   enabled: boolean;
-  maskFunction: string; // SQL UDF that returns same type
+  maskFunction: string;
   description?: string;
 }
 
 // Constraint definition
 export interface UnityConstraint extends BaseObject {
   type: 'primary_key' | 'foreign_key' | 'check';
-  name: string; // CONSTRAINT name
-  columns: string[]; // column IDs
-  
-  // For PRIMARY KEY
+  name: string;
+  columns: string[];
   timeseries?: boolean;
-  
-  // For FOREIGN KEY
-  parentTable?: string; // Reference to parent table ID
-  parentColumns?: string[]; // Parent column IDs
-  
-  // For CHECK
-  expression?: string; // CHECK expression
-  
-  // Note: Unity Catalog constraints are informational only (not enforced).
-  // They are used for query optimization and documentation purposes.
+  parentTable?: string;
+  parentColumns?: string[];
+  expression?: string;
 }
 
 // Grant definition
@@ -60,46 +49,43 @@ export interface UnityGrant {
 // Table definition
 export interface UnityTable extends BaseObject {
   format: 'delta' | 'iceberg';
-  external?: boolean; // Whether this is an external table
-  externalLocationName?: string; // Reference to environment external location
-  path?: string; // Relative path under the external location
-  partitionColumns?: string[]; // For PARTITIONED BY clause
-  clusterColumns?: string[]; // For CLUSTER BY clause (liquid clustering)
+  external?: boolean;
+  externalLocationName?: string;
+  path?: string;
+  partitionColumns?: string[];
+  clusterColumns?: string[];
   columnMapping?: 'name' | 'id';
   columns: UnityColumn[];
-  properties: Record<string, string>; // TBLPROPERTIES (Delta Lake config)
-  tags: Record<string, string>; // TABLE TAGS (Unity Catalog governance)
+  properties: Record<string, string>;
+  tags: Record<string, string>;
   constraints: UnityConstraint[];
   grants: UnityGrant[];
   comment?: string;
-  rowFilters?: UnityRowFilter[]; // Row-level security
-  columnMasks?: UnityColumnMask[]; // Column-level masking
+  rowFilters?: UnityRowFilter[];
+  columnMasks?: UnityColumnMask[];
 }
 
 // View definition
 export interface UnityView extends BaseObject {
-  definition: string; // SQL query (SELECT statement)
+  definition: string;
   comment?: string;
-  // Explicit dependencies (user-specified)
-  dependencies?: string[]; // IDs of tables/views this view depends on
-  // Extracted dependencies (from SQL parsing)
+  dependencies?: string[];
   extractedDependencies?: {
     tables: string[];
     views: string[];
     catalogs: string[];
     schemas: string[];
   };
-  // Metadata
-  tags: Record<string, string>; // VIEW TAGS (Unity Catalog governance)
-  properties: Record<string, string>; // View properties
+  tags: Record<string, string>;
+  properties: Record<string, string>;
   grants: UnityGrant[];
 }
 
-// Volume definition (managed or external)
+// Volume definition
 export interface UnityVolume extends BaseObject {
   volumeType: 'managed' | 'external';
   comment?: string;
-  location?: string; // For external volumes
+  location?: string;
   grants?: UnityGrant[];
 }
 
@@ -111,7 +97,7 @@ export interface UnityFunctionParameter {
   comment?: string;
 }
 
-// Function definition (SQL or Python UDF)
+// Function definition
 export interface UnityFunction extends BaseObject {
   language: 'SQL' | 'PYTHON';
   returnType?: string;
@@ -142,11 +128,11 @@ export interface UnityMaterializedView extends BaseObject {
 
 // Schema definition
 export interface UnitySchema extends BaseObject {
-  managedLocationName?: string; // Reference to env managedLocations
-  comment?: string; // Schema comment
-  tags?: Record<string, string>; // Schema tags (Unity Catalog governance)
+  managedLocationName?: string;
+  comment?: string;
+  tags?: Record<string, string>;
   tables: UnityTable[];
-  views: UnityView[]; // Views stored alongside tables in schema
+  views: UnityView[];
   volumes?: UnityVolume[];
   functions?: UnityFunction[];
   materializedViews?: UnityMaterializedView[];
@@ -155,19 +141,18 @@ export interface UnitySchema extends BaseObject {
 
 // Catalog definition
 export interface UnityCatalog extends BaseObject {
-  managedLocationName?: string; // Reference to env managedLocations
-  comment?: string; // Catalog comment
-  tags?: Record<string, string>; // Catalog tags (Unity Catalog governance)
+  managedLocationName?: string;
+  comment?: string;
+  tags?: Record<string, string>;
   schemas: UnitySchema[];
   grants: UnityGrant[];
 }
 
 // Unity Catalog State
-export interface UnityState extends ProviderState {
+export interface UnityState {
   catalogs: UnityCatalog[];
 }
 
-// Project file structure (what webview receives)
 export interface UnityProjectEnvironment {
   topLevelName: string;
   description?: string;
@@ -211,14 +196,20 @@ export interface ProjectFile {
     version: string;
     environments?: Record<string, UnityProjectEnvironment>;
   };
-  managedLocations?: Record<string, {
-    description?: string;
-    paths: Record<string, string>;
-  }>;
-  externalLocations?: Record<string, {
-    description?: string;
-    paths: Record<string, string>;
-  }>;
+  managedLocations?: Record<
+    string,
+    {
+      description?: string;
+      paths: Record<string, string>;
+    }
+  >;
+  externalLocations?: Record<
+    string,
+    {
+      description?: string;
+      paths: Record<string, string>;
+    }
+  >;
   state: UnityState;
   ops: Operation[];
   snapshots: ProjectSnapshot[];

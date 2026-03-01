@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
-import { extractDependenciesFromView } from '../../providers/base/sql-parser';
+import { extractDependenciesFromView } from '../utils/sqlParser';
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
 import type {
   UnityFunction,
@@ -9,7 +9,7 @@ import type {
   UnitySchema,
   UnityView,
   UnityVolume,
-} from '../../providers/unity/models';
+} from '../models/unity';
 
 // Environment config type for tooltip
 interface EnvironmentConfig {

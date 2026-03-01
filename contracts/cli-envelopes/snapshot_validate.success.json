@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1",
+  "command": "snapshot.validate",
+  "status": "success",
+  "data": {
+    "stale": [],
+    "count": 0
+  },
+  "warnings": [],
+  "errors": [],
+  "meta": {
+    "durationMs": 1,
+    "executedCommand": "schemax snapshot validate --json",
+    "exitCode": 0
+  }
+}

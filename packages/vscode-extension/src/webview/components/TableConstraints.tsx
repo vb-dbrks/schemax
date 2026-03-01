@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
-import type { Constraint, Table, UnityCatalog, UnityColumn } from '../../providers/unity/models';
+import type { Constraint, Table, UnityCatalog, UnityColumn } from '../models/unity';
 import { useDesignerStore } from '../state/useDesignerStore';
 
 // Codicon icons - theme-aware and vector-based

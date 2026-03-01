@@ -1,5 +1,6 @@
 """Deterministic command workflow integration tests."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,19 @@ class TestCommandWorkflows:
 
         validate_result = invoke_cli("validate", str(temp_workspace))
         assert validate_result.exit_code == 0
+
+        workspace_state_result = invoke_cli(
+            "workspace-state",
+            "--json",
+            "--validate-dependencies",
+            str(temp_workspace),
+        )
+        assert workspace_state_result.exit_code == 0
+        workspace_state_envelope = json.loads(workspace_state_result.output)
+        assert workspace_state_envelope["status"] == "success"
+        workspace_state = workspace_state_envelope["data"]
+        assert workspace_state["provider"]["id"] == "unity"
+        assert len(workspace_state["changelog"]["ops"]) >= 3
 
         sql_file = temp_workspace / "migration.sql"
         sql_result = invoke_cli("sql", "--output", str(sql_file), str(temp_workspace))

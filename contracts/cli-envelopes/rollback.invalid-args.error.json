@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "command": "rollback",
+  "status": "error",
+  "data": null,
+  "warnings": [],
+  "errors": [
+    {
+      "code": "ROLLBACK_INVALID_ARGS",
+      "message": "Must specify either --partial or --to-snapshot"
+    }
+  ],
+  "meta": {
+    "durationMs": 1,
+    "executedCommand": "schemax rollback --json",
+    "exitCode": 1
+  }
+}

@@ -35,8 +35,40 @@ function parseJsonLine(output: string): unknown {
   return null;
 }
 
+function isObjectLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function normalizeError(code: string, message: string): CommandEnvelope<null>['errors'][number] {
   return { code, message };
+}
+
+function isErrorEntry(value: unknown): value is CommandEnvelope<null>['errors'][number] {
+  return isObjectLike(value) && typeof value.code === 'string' && typeof value.message === 'string';
+}
+
+function isEnvelopeMeta(value: unknown): value is CommandEnvelope<null>['meta'] {
+  return (
+    isObjectLike(value) &&
+    typeof value.durationMs === 'number' &&
+    typeof value.executedCommand === 'string' &&
+    (typeof value.exitCode === 'number' || value.exitCode === null)
+  );
+}
+
+function isCommandEnvelope(value: unknown): value is CommandEnvelope<unknown> {
+  return (
+    isObjectLike(value) &&
+    value.schemaVersion === '1' &&
+    typeof value.command === 'string' &&
+    (value.status === 'success' || value.status === 'error') &&
+    Array.isArray(value.warnings) &&
+    value.warnings.every((item) => typeof item === 'string') &&
+    Array.isArray(value.errors) &&
+    value.errors.every((item) => isErrorEntry(item)) &&
+    isEnvelopeMeta(value.meta) &&
+    'data' in value
+  );
 }
 
 export class PythonBackendClient {
@@ -75,11 +107,29 @@ export class PythonBackendClient {
     const result = await this.run(jsonArgs, cwd, options);
     const parsed = parseJsonLine(result.stdout);
 
-    if (parsed && typeof parsed === 'object' && 'schemaVersion' in (parsed as Record<string, unknown>)) {
+    if (isCommandEnvelope(parsed)) {
       return parsed as CommandEnvelope<T>;
     }
 
-    if (result.success && parsed && typeof parsed === 'object') {
+    if (result.success && isObjectLike(parsed) && 'schemaVersion' in parsed) {
+      return {
+        schemaVersion: '1',
+        command: commandName,
+        status: 'error',
+        data: null,
+        warnings: [],
+        errors: [
+          normalizeError('INVALID_ENVELOPE', 'Command returned malformed envelope JSON.')
+        ],
+        meta: {
+          durationMs: Date.now() - startedAt,
+          executedCommand: result.command,
+          exitCode: result.exitCode,
+        },
+      };
+    }
+
+    if (result.success && isObjectLike(parsed)) {
       return {
         schemaVersion: '1',
         command: commandName,
@@ -95,14 +145,19 @@ export class PythonBackendClient {
       };
     }
 
+    const nonJsonSuccess = result.success && !isObjectLike(parsed);
+    const errorMessage = nonJsonSuccess
+      ? 'Command succeeded but did not return JSON output.'
+      : result.stderr || result.stdout || 'Command failed';
+
     return {
       schemaVersion: '1',
       command: commandName,
-      status: result.success ? 'success' : 'error',
+      status: 'error',
       data: null,
       warnings: [],
       errors: [
-        normalizeError('PYTHON_COMMAND_FAILED', result.stderr || result.stdout || 'Command failed')
+        normalizeError('PYTHON_COMMAND_FAILED', errorMessage)
       ],
       meta: {
         durationMs: Date.now() - startedAt,

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { parsePrivileges } from '../utils/grants';
-import { extractDependenciesFromView } from '../../providers/base/sql-parser';
+import { extractDependenciesFromView } from '../utils/sqlParser';
 import './ViewDetails.css';
 
 const IconEdit: React.FC = () => (

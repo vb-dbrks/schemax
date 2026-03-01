@@ -3,7 +3,7 @@
  * Pure helpers over project.state for use by BulkOperationsPanel and store.
  */
 
-import type { ProjectFile, UnityCatalog, UnitySchema } from '../../providers/unity/models';
+import type { ProjectFile, UnityCatalog, UnitySchema } from '../models/unity';
 
 export type GrantTargetType =
   | 'catalog'

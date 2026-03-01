@@ -5,7 +5,7 @@ import {
   VSCodeOption,
   VSCodeTextField,
 } from '@vscode/webview-ui-toolkit/react';
-import type { Column } from '../../providers/unity/models';
+import type { Column } from '../models/unity';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { validateUnityCatalogObjectName } from '../utils/unityNames';
 

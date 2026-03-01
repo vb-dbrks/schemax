@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
-import type { Table, RowFilter, ColumnMask, UnityCatalog } from '../../providers/unity/models';
+import type { Table, RowFilter, ColumnMask, UnityCatalog } from '../models/unity';
 import { useDesignerStore } from '../state/useDesignerStore';
 import { parsePrivileges } from '../utils/grants';
 

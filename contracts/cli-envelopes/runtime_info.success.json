@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1",
+  "command": "runtime-info",
+  "status": "success",
+  "data": {
+    "cliVersion": "0.2.0",
+    "envelopeSchemaVersion": "1",
+    "supportedCommands": [
+      "runtime-info",
+      "validate",
+      "sql",
+      "diff",
+      "import",
+      "apply",
+      "rollback",
+      "workspace-state",
+      "snapshot.validate"
+    ],
+    "providerIds": [
+      "unity",
+      "hive"
+    ]
+  },
+  "warnings": [],
+  "errors": [],
+  "meta": {
+    "durationMs": 1,
+    "executedCommand": "schemax runtime-info --json",
+    "exitCode": 0
+  }
+}

@@ -10,17 +10,51 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
-import { ProviderRegistry } from './providers/registry';
 import { PythonBackendClient } from './backend/pythonBackendClient';
-import type { Provider } from './providers/base/provider';
-import type { Operation } from './providers/base/operations';
-import type { ProviderState } from './providers/base/models';
+import type { Operation, ProviderCapabilities } from './contracts/workspace';
 
 const SCHEMAX_DIR = '.schemax';
 const PROJECT_FILENAME = 'project.json';
 const CHANGELOG_FILENAME = 'changelog.json';
 const SNAPSHOTS_DIR = 'snapshots';
 const pythonBackend = new PythonBackendClient();
+const DEFAULT_PROVIDER_VERSION = '1.0.0';
+
+type ProviderState = Record<string, unknown>;
+
+export interface ProviderMetadata {
+  id: string;
+  name: string;
+  version: string;
+  capabilities: ProviderCapabilities;
+}
+
+interface RawProviderMetadata {
+  id: string;
+  name: string;
+  version: string;
+  capabilities?: Record<string, unknown>;
+}
+
+interface RawWorkspaceStatePayload {
+  state?: ProviderState;
+  changelog?: ChangelogFile;
+  provider?: RawProviderMetadata;
+  validation?: {
+    errors?: Array<{ message?: string } | string>;
+    warnings?: Array<{ message?: string } | string>;
+  };
+}
+
+function getProviderDisplayName(providerId: string): string {
+  if (providerId === 'unity') {
+    return 'Unity Catalog';
+  }
+  if (providerId === 'hive') {
+    return 'Hive Metastore';
+  }
+  return providerId;
+}
 
 // Location Configuration Types
 export interface LocationDefinition {
@@ -224,22 +258,13 @@ export async function ensureProjectFile(
   // Create new v4 project
   const workspaceName = path.basename(workspaceUri.fsPath);
   
-  // Get provider
-  const provider = ProviderRegistry.get(providerId);
-  if (!provider) {
-    const available = ProviderRegistry.getAllIds().join(', ');
-    throw new Error(
-      `Provider '${providerId}' not found. Available providers: ${available}`
-    );
-  }
-
   // Create v4 project with environment configuration
   const newProject: ProjectFileV4 = {
     version: 4,
     name: workspaceName,
     provider: {
       type: providerId,
-      version: provider.info.version,
+      version: DEFAULT_PROVIDER_VERSION,
       environments: {
         dev: {
           topLevelName: `dev_${workspaceName}`,
@@ -299,7 +324,7 @@ export async function ensureProjectFile(
   await vscode.workspace.fs.writeFile(changelogPath, changelogContent);
 
   outputChannel.appendLine(`[SchemaX] Initialized new v4 project: ${workspaceName}`);
-  outputChannel.appendLine(`[SchemaX] Provider: ${provider.info.name}`);
+  outputChannel.appendLine(`[SchemaX] Provider: ${getProviderDisplayName(providerId)}`);
   outputChannel.appendLine('[SchemaX] Environments: dev, test, prod');
 }
 
@@ -419,76 +444,109 @@ export interface ValidationResult {
   warnings: string[];
 }
 
+export function normalizeProviderCapabilities(
+  capabilities: Record<string, unknown> | undefined
+): ProviderCapabilities {
+  const rawLevels = ((capabilities?.hierarchy as { levels?: unknown[] } | undefined)?.levels ??
+    []) as Array<Record<string, unknown>>;
+  const levels = rawLevels.map((level) => ({
+    name: typeof level.name === 'string' ? level.name : undefined,
+    displayName:
+      typeof level.display_name === 'string'
+        ? level.display_name
+        : typeof level.displayName === 'string'
+          ? level.displayName
+          : undefined,
+    pluralName:
+      typeof level.plural_name === 'string'
+        ? level.plural_name
+        : typeof level.pluralName === 'string'
+          ? level.pluralName
+          : undefined,
+    icon: typeof level.icon === 'string' ? level.icon : undefined,
+    isContainer:
+      typeof level.is_container === 'boolean'
+        ? level.is_container
+        : typeof level.isContainer === 'boolean'
+          ? level.isContainer
+          : undefined,
+  }));
+  const rawFeatures = capabilities?.features;
+  const features: Record<string, boolean> =
+    typeof rawFeatures === 'object' && rawFeatures !== null
+      ? Object.fromEntries(
+          Object.entries(rawFeatures).filter((entry): entry is [string, boolean] => {
+            const [, value] = entry;
+            return typeof value === 'boolean';
+          })
+        )
+      : {};
+  return {
+    supportedOperations: Array.isArray(capabilities?.supported_operations)
+      ? (capabilities?.supported_operations as string[])
+      : Array.isArray(capabilities?.supportedOperations)
+        ? (capabilities?.supportedOperations as string[])
+        : [],
+    supportedObjectTypes: Array.isArray(capabilities?.supported_object_types)
+      ? (capabilities?.supported_object_types as string[])
+      : Array.isArray(capabilities?.supportedObjectTypes)
+        ? (capabilities?.supportedObjectTypes as string[])
+        : [],
+    hierarchy: { levels },
+    features,
+  };
+}
+
 export async function loadCurrentState(
   workspaceUri: vscode.Uri,
   validate: boolean = false
 ): Promise<{
   state: ProviderState;
   changelog: ChangelogFile;
-  provider: Provider;
+  provider: ProviderMetadata;
   validationResult: ValidationResult | null;
 }> {
-  const project = await readProject(workspaceUri);
-  const changelog = await readChangelog(workspaceUri);
-
-  // Get provider
-  const provider = ProviderRegistry.get(project.provider.type);
-  if (!provider) {
-    throw new Error(
-      `Provider '${project.provider.type}' not found. ` +
-      'Please ensure the provider is installed.'
-    );
-  }
-
-  // Load state
-  let state: ProviderState;
-  if (project.latestSnapshot) {
-    // Load latest snapshot
-    const snapshot = await readSnapshot(workspaceUri, project.latestSnapshot);
-    state = snapshot.state;
-  } else {
-    // No snapshots yet, start with empty state
-    state = provider.createInitialState();
-  }
-
-  // Apply changelog ops using provider's state reducer
-  state = provider.applyOperations(state, changelog.ops);
-
-  // Optionally validate state and dependencies (calls Python SDK: schemax validate --json)
-  let validationResult: ValidationResult | null = null;
+  const args = ['workspace-state'];
   if (validate) {
-    validationResult = await validateDependenciesInternal(workspaceUri);
+    args.push('--validate-dependencies');
+  }
+  const envelope = await pythonBackend.runJson<RawWorkspaceStatePayload>(
+    'workspace-state',
+    args,
+    workspaceUri.fsPath
+  );
+  if (envelope.status === 'error' || !envelope.data?.state || !envelope.data?.changelog || !envelope.data?.provider) {
+    const message = envelope.errors[0]?.message || 'Could not load workspace state from Python backend';
+    throw new Error(message);
   }
 
-  return { state, changelog, provider, validationResult };
-}
-
-/**
- * Internal dependency validation helper - calls Python SDK
- */
-async function validateDependenciesInternal(
-  workspaceUri: vscode.Uri
-): Promise<ValidationResult> {
-  const envelope = await pythonBackend.runJson<
-    { errors?: string[]; warnings?: string[]; data?: { errors?: string[]; warnings?: string[] } }
-  >('validate', ['validate'], workspaceUri.fsPath);
-  if (envelope.status === 'error') {
-    const message = envelope.errors[0]?.message || 'Could not validate dependencies';
-    if (
-      message.includes('command not found') ||
-      message.includes('schemax: command not found') ||
-      message.includes('ENOENT') ||
-      message.includes('not found')
-    ) {
-      return { errors: [], warnings: [] };
-    }
-    return { errors: [], warnings: [`Could not validate dependencies: ${message}`] };
+  const data = envelope.data;
+  const state = data.state;
+  const changelog = data.changelog;
+  const provider = data.provider;
+  if (!state || !changelog || !provider) {
+    throw new Error('Python backend returned incomplete workspace-state payload');
   }
-
-  const data = envelope.data ?? {};
+  const validation = data.validation;
   return {
-    errors: data.errors ?? data.data?.errors ?? [],
-    warnings: data.warnings ?? data.data?.warnings ?? [],
+    state,
+    changelog,
+    provider: {
+      ...provider,
+      capabilities: normalizeProviderCapabilities(provider.capabilities),
+    },
+    validationResult: validation
+      ? {
+          errors: (validation.errors ?? []).map((item) => {
+            if (typeof item === 'string') return item;
+            return item.message || 'Unknown validation error';
+          }),
+          warnings: (validation.warnings ?? []).map((item) => {
+            if (typeof item === 'string') return item;
+            return item.message || 'Unknown validation warning';
+          }),
+        }
+      : null,
   };
 }
 
@@ -554,20 +612,7 @@ export async function appendOps(
 ): Promise<void> {
   const project = await readProject(workspaceUri);
   const changelog = await readChangelog(workspaceUri);
-  const provider = ProviderRegistry.get(project.provider.type);
-
-  if (!provider) {
-    throw new Error(`Provider '${project.provider.type}' not found`);
-  }
-
-  // Validate operations
-  for (const op of ops) {
-    const validation = provider.validateOperation(op);
-    if (!validation.valid) {
-      const errors = validation.errors.map(e => `${e.field}: ${e.message}`).join(', ');
-      throw new Error(`Invalid operation: ${errors}`);
-    }
-  }
+  validateOperationBatch(ops);
 
   // Append ops
   changelog.ops.push(...ops);
@@ -723,4 +768,17 @@ function getNextVersion(currentVersion: string | null, settings: ProjectSettings
   const nextMinor = parseInt(minor, 10) + 1;
 
   return `${settings.versionPrefix}${major}.${nextMinor}.0`;
+}
+
+function validateOperationBatch(ops: Operation[]): void {
+  for (const operation of ops) {
+    const missingFields: string[] = [];
+    if (!operation.provider?.trim()) missingFields.push('provider');
+    if (!operation.op?.trim()) missingFields.push('op');
+    if (!operation.target?.trim()) missingFields.push('target');
+    if (!operation.ts?.trim()) missingFields.push('ts');
+    if (missingFields.length > 0) {
+      throw new Error(`Invalid operation: missing required field(s): ${missingFields.join(', ')}`);
+    }
+  }
 }

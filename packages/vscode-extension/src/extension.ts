@@ -4,15 +4,32 @@ import * as fs from 'fs';
 import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import * as storageV4 from './storage-v4';
-import type { Operation } from './providers/base/operations';
-import { ProviderRegistry } from './providers/registry';
+import type { Operation } from './contracts/workspace';
 import { trackEvent } from './telemetry';
 import { PythonBackendClient } from './backend/pythonBackendClient';
-import './providers'; // Initialize providers
+import type { CommandEnvelope, RuntimeInfoData } from './backend/contracts';
+import { validateRuntimeInfo } from './backend/runtimeCompatibility';
 
 let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
 const pythonBackend = new PythonBackendClient();
+let extensionContextRef: vscode.ExtensionContext | undefined;
+const REQUIRED_ENVELOPE_SCHEMA_VERSION = '1';
+const MIN_SUPPORTED_CLI_VERSION = '0.2.0';
+
+interface BackendCompatibilityState {
+  checked: boolean;
+  ok: boolean;
+  reason: string | null;
+  runtimeInfo: RuntimeInfoData | null;
+}
+
+const backendCompatibilityState: BackendCompatibilityState = {
+  checked: false,
+  ok: false,
+  reason: null,
+  runtimeInfo: null,
+};
 
 interface ImportRequestFromSql {
   fromSql: {
@@ -48,6 +65,7 @@ interface ImportExecutionResult {
   command: string;
   stdout: string;
   stderr: string;
+  envelope?: CommandEnvelope<unknown>;
   cancelled?: boolean;
 }
 
@@ -62,6 +80,7 @@ let activeImportCancelled = false;
 let activeImportController: AbortController | null = null;
 
 export function activate(context: vscode.ExtensionContext) {
+  extensionContextRef = context;
   outputChannel = vscode.window.createOutputChannel('SchemaX');
   outputChannel.appendLine('[SchemaX] Extension activating...');
   outputChannel.appendLine('[SchemaX] Extension Activated!');
@@ -120,10 +139,85 @@ export function activate(context: vscode.ExtensionContext) {
   outputChannel.appendLine('[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps, schemax.createSnapshot, schemax.generateSQL, schemax.importAssets');
   vscode.window.showInformationMessage('SchemaX Extension Activated!');
   trackEvent('extension_activated');
+  void ensureBackendCompatibility(true);
 }
 
 export function deactivate() {
   trackEvent('extension_deactivated');
+}
+
+function backendCwd(): string {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (workspaceFolder) {
+    return workspaceFolder.uri.fsPath;
+  }
+  if (extensionContextRef) {
+    return extensionContextRef.extensionPath;
+  }
+  return process.cwd();
+}
+
+async function ensureBackendCompatibility(showUserMessage: boolean = false): Promise<boolean> {
+  if (backendCompatibilityState.checked && backendCompatibilityState.ok) {
+    return true;
+  }
+  const envelope = await pythonBackend.runJson<RuntimeInfoData>(
+    'runtime-info',
+    ['runtime-info'],
+    backendCwd()
+  );
+  if (envelope.status !== 'success') {
+    backendCompatibilityState.checked = true;
+    backendCompatibilityState.ok = false;
+    backendCompatibilityState.reason = envelope.errors[0]?.message || 'runtime-info failed';
+    if (showUserMessage) {
+      vscode.window.showWarningMessage(
+        'SchemaX Python SDK runtime check failed. Install/update SDK with: pip install -U schemaxpy'
+      );
+    }
+    return false;
+  }
+  if (!envelope.data) {
+    backendCompatibilityState.checked = true;
+    backendCompatibilityState.ok = false;
+    backendCompatibilityState.reason = 'runtime-info returned empty payload';
+    if (showUserMessage) {
+      vscode.window.showWarningMessage(
+        'SchemaX Python SDK runtime check returned no data. Please update SDK: pip install -U schemaxpy'
+      );
+    }
+    return false;
+  }
+
+  const validation = validateRuntimeInfo(
+    envelope.data,
+    MIN_SUPPORTED_CLI_VERSION,
+    REQUIRED_ENVELOPE_SCHEMA_VERSION
+  );
+  backendCompatibilityState.checked = true;
+  backendCompatibilityState.ok = validation.ok;
+  backendCompatibilityState.reason = validation.reason ?? null;
+  backendCompatibilityState.runtimeInfo = envelope.data;
+  if (!validation.ok && showUserMessage) {
+    const cliVersion = envelope.data?.cliVersion ?? 'unknown';
+    vscode.window.showErrorMessage(
+      `SchemaX Python SDK incompatible (${cliVersion}). ${validation.reason ?? ''} ` +
+      `Please update SDK: pip install -U schemaxpy`
+    );
+  }
+  return validation.ok;
+}
+
+async function requireCompatibleSdk(workflowName: string): Promise<boolean> {
+  const compatible = await ensureBackendCompatibility(true);
+  if (compatible) {
+    return true;
+  }
+  outputChannel.appendLine(
+    `[SchemaX] Blocked workflow '${workflowName}' due to SDK incompatibility: ` +
+    `${backendCompatibilityState.reason ?? 'unknown reason'}`
+  );
+  return false;
 }
 
 /** Check if the SchemaX CLI (schemax) is available on PATH. */
@@ -270,7 +364,8 @@ async function executeImport(
       };
     }
 
-    const result = await pythonBackend.run(
+    const envelope = await pythonBackend.runJson<Record<string, unknown>>(
+      'import',
       importArgs,
       workspacePath,
       {
@@ -297,7 +392,7 @@ async function executeImport(
       }
     );
 
-    if (result.cancelled || activeImportCancelled) {
+    if (activeImportCancelled) {
       onProgress?.({
         phase: 'cancelled',
         message: 'Import cancelled by user.',
@@ -306,14 +401,14 @@ async function executeImport(
       });
       return {
         success: false,
-        command: result.command,
-        stdout: result.stdout.trim(),
-        stderr: result.stderr.trim() || 'Import cancelled by user',
+        command: '',
+        stdout: '',
+        stderr: 'Import cancelled by user',
         cancelled: true,
       };
     }
 
-    if (result.success) {
+    if (envelope.status === 'success') {
       const isDryRun = isImportFromSql(request) ? request.fromSql.dryRun : request.dryRun;
       onProgress?.({
         phase: 'completed',
@@ -323,9 +418,10 @@ async function executeImport(
       });
       return {
         success: true,
-        command: result.command,
-        stdout: result.stdout.trim(),
-        stderr: result.stderr.trim(),
+        command: envelope.meta.executedCommand,
+        stdout: JSON.stringify(envelope.data),
+        stderr: '',
+        envelope,
       };
     }
 
@@ -337,9 +433,10 @@ async function executeImport(
     });
     return {
       success: false,
-      command: result.command,
-      stdout: result.stdout.trim(),
-      stderr: result.stderr.trim() || 'Import command failed',
+      command: envelope.meta.executedCommand,
+      stdout: JSON.stringify(envelope.data),
+      stderr: envelope.errors.map((error) => error.message).join('\n') || 'Import command failed',
+      envelope,
     };
   } finally {
     clearInterval(runningTimer);
@@ -502,6 +599,9 @@ function parseCatalogMappingsInput(input: string): Record<string, string> | unde
 }
 
 async function runImportFromPrompts(): Promise<void> {
+  if (!(await requireCompatibleSdk('import'))) {
+    return;
+  }
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
     vscode.window.showErrorMessage('SchemaX: Please open a workspace folder first.');
@@ -794,7 +894,12 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
   
   // Step 1: Select provider (for now, only Unity is available)
   const providers = [
-    { label: 'Unity Catalog', description: 'Databricks Unity Catalog', id: 'unity' }
+    {
+      label: 'Unity Catalog',
+      description: 'Databricks Unity Catalog',
+      id: 'unity',
+      version: '1.0.0',
+    },
   ];
   
   const selectedProvider = await vscode.window.showQuickPick(providers, {
@@ -925,18 +1030,13 @@ async function promptForProjectSetup(workspaceUri: vscode.Uri, outputChannel: vs
   try {
     await storageV4.ensureSchemaxDir(workspaceUri);
     
-    const provider = ProviderRegistry.get(selectedProvider.id);
-    if (!provider) {
-      throw new Error(`Provider '${selectedProvider.id}' not found`);
-    }
-    
     // Create v4 project
     const newProject: storageV4.ProjectFileV4 = {
       version: 4,
       name: projectName,
       provider: {
         type: selectedProvider.id,
-        version: provider.info.version,
+        version: selectedProvider.version,
         environments: environments,
       },
       snapshots: [],
@@ -1066,6 +1166,9 @@ async function openDesigner(context: vscode.ExtensionContext) {
 
   // Helper function to detect stale snapshots using Python SDK
   async function detectStaleSnapshots(workspacePath: string): Promise<StaleSnapshot[]> {
+    if (!(await ensureBackendCompatibility(false))) {
+      return [];
+    }
     const envelope = await pythonBackend.runJson<{ stale?: StaleSnapshot[]; data?: { stale_snapshots?: StaleSnapshot[] } }>(
       'snapshot.validate',
       ['snapshot', 'validate'],
@@ -1143,9 +1246,9 @@ async function openDesigner(context: vscode.ExtensionContext) {
         validationResult,
         provider: {
           ...project.provider,
-          id: provider.info.id,
-          name: provider.info.name,
-          version: provider.info.version,
+          id: provider.id,
+          name: provider.name,
+          version: provider.version,
           capabilities: provider.capabilities,
         },
       };
@@ -1246,7 +1349,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             const { state, changelog, provider } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
             
             outputChannel.appendLine(`[SchemaX] Project loaded successfully (v${project.version})`);
-            outputChannel.appendLine(`[SchemaX] - Provider: ${provider.info.name} v${provider.info.version}`);
+            outputChannel.appendLine(`[SchemaX] - Provider: ${provider.name} v${provider.version}`);
             outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots.length}`);
             outputChannel.appendLine(`[SchemaX] - Latest snapshot: ${project.latestSnapshot || 'none'}`);
             outputChannel.appendLine(`[SchemaX] - Changelog ops: ${changelog.ops.length}`);
@@ -1281,22 +1384,22 @@ async function openDesigner(context: vscode.ExtensionContext) {
               conflicts, // Include conflict info if present
               provider: {
                 ...project.provider, // Keep environments and other project provider config
-                id: provider.info.id,
-                name: provider.info.name,
-                version: provider.info.version,
+                id: provider.id,
+                name: provider.name,
+                version: provider.version,
                 capabilities: provider.capabilities,
               },
             };
             
             outputChannel.appendLine(`[SchemaX] Sending to webview:`);
-            outputChannel.appendLine(`[SchemaX] - Provider: ${provider.info.name}`);
+            outputChannel.appendLine(`[SchemaX] - Provider: ${provider.name}`);
             outputChannel.appendLine(`[SchemaX] - Project version: ${project.version}`);
             
             currentPanel?.webview.postMessage({
               type: 'project-loaded',
               payload: payloadForWebview,
             });
-            trackEvent('project_loaded', { provider: provider.info.id });
+            trackEvent('project_loaded', { provider: provider.id });
           } catch (error) {
             outputChannel.appendLine(`[SchemaX] ERROR: Failed to load project: ${error}`);
             vscode.window.showErrorMessage(`Failed to load project: ${error}`);
@@ -1425,9 +1528,9 @@ async function openDesigner(context: vscode.ExtensionContext) {
               ops: changelog.ops,
               provider: {
                 ...project.provider, // Keep environments and other project provider config
-                id: provider.info.id,
-                name: provider.info.name,
-                version: provider.info.version,
+                id: provider.id,
+                name: provider.name,
+                version: provider.version,
                 capabilities: provider.capabilities,
               },
             };
@@ -1436,7 +1539,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
               type: 'project-updated',
               payload: payloadForWebview,
             });
-            trackEvent('ops_appended', { count: ops.length, provider: provider.info.id });
+            trackEvent('ops_appended', { count: ops.length, provider: provider.id });
           } catch (error) {
             outputChannel.appendLine(`[SchemaX] ERROR: Failed to append operations: ${error}`);
             vscode.window.showErrorMessage(`Failed to append operations: ${error}`);
@@ -1464,9 +1567,9 @@ async function openDesigner(context: vscode.ExtensionContext) {
               ops: changelog.ops,
               provider: {
                 ...project.provider,
-                id: provider.info.id,
-                name: provider.info.name,
-                version: provider.info.version,
+                id: provider.id,
+                name: provider.name,
+                version: provider.version,
                 capabilities: provider.capabilities,
               },
             };
@@ -1477,7 +1580,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
             });
             
             vscode.window.showInformationMessage('SchemaX: Project settings saved successfully');
-            trackEvent('project_config_updated', { provider: provider.info.id });
+            trackEvent('project_config_updated', { provider: provider.id });
           } catch (error) {
             outputChannel.appendLine(`[SchemaX] ERROR: Failed to update project config: ${error}`);
             vscode.window.showErrorMessage(`Failed to save project settings: ${error}`);
@@ -1760,9 +1863,9 @@ async function createSnapshotCommand_impl() {
           ops: changelog.ops,
           provider: {
             ...updatedProject.provider, // Keep environments and other project provider config
-            id: provider.info.id,
-            name: provider.info.name,
-            version: provider.info.version,
+            id: provider.id,
+            name: provider.name,
+            version: provider.version,
             capabilities: provider.capabilities,
           },
         };
@@ -1805,6 +1908,9 @@ async function createSnapshotCommand_impl() {
  * catalogs currently present in state.
  */
 async function generateSQLMigration() {
+  if (!(await requireCompatibleSdk('sql'))) {
+    return;
+  }
   outputChannel.appendLine('[SchemaX] Generate SQL migration command invoked');
   
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -1849,12 +1955,16 @@ async function generateSQLMigration() {
     const filename = `migration_${targetEnv}_${timestamp}.sql`;
     const filepath = path.join(migrationsDir, filename);
     
-    const sqlResult = await pythonBackend.run(
+    const sqlResult = await pythonBackend.runJson<{ sql?: string }>(
+      'sql',
       ['sql', '--target', targetEnv, '--output', filepath],
       workspaceFolder.uri.fsPath
     );
-    if (!sqlResult.success) {
-      throw new Error(sqlResult.stderr || sqlResult.stdout || 'SQL generation command failed');
+    if (sqlResult.status !== 'success') {
+      throw new Error(
+        sqlResult.errors.map((error) => error.message).join('\n') ||
+        'SQL generation command failed'
+      );
     }
     const fileContent = fs.readFileSync(filepath, 'utf8');
     outputChannel.appendLine(`[SchemaX] SQL written to: ${filepath}`);
