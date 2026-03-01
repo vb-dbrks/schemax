@@ -258,28 +258,15 @@ def sql(
     """
     started_at = perf_counter()
     try:
-        workspace_path = Path(workspace).resolve()
-        output_path = Path(output).resolve() if output else None
-
-        if json_output:
-            with redirect_stdout(StringIO()):
-                result = sql_service.run(
-                    workspace=workspace_path,
-                    output=output_path,
-                    snapshot=snapshot_version,
-                    from_version=from_version,
-                    to_version=to_version,
-                    target_env=target,
-                )
-        else:
-            result = sql_service.run(
-                workspace=workspace_path,
-                output=output_path,
-                snapshot=snapshot_version,
-                from_version=from_version,
-                to_version=to_version,
-                target_env=target,
-            )
+        result = _run_sql_command(
+            workspace=workspace,
+            output=output,
+            snapshot_version=snapshot_version,
+            from_version=from_version,
+            to_version=to_version,
+            target=target,
+            json_output=json_output,
+        )
         if json_output:
             _emit_json_success(
                 command="sql",
@@ -314,6 +301,39 @@ def sql(
         else:
             console.print(f"[red]✗ Unexpected error:[/red] {e}")
         sys.exit(1)
+
+
+def _run_sql_command(
+    *,
+    workspace: str,
+    output: str | None,
+    snapshot_version: str | None,
+    from_version: str | None,
+    to_version: str | None,
+    target: str | None,
+    json_output: bool,
+) -> Any:
+    """Execute SQL service call for SQL command."""
+    workspace_path = Path(workspace).resolve()
+    output_path = Path(output).resolve() if output else None
+    if json_output:
+        with redirect_stdout(StringIO()):
+            return sql_service.run(
+                workspace=workspace_path,
+                output=output_path,
+                snapshot=snapshot_version,
+                from_version=from_version,
+                to_version=to_version,
+                target_env=target,
+            )
+    return sql_service.run(
+        workspace=workspace_path,
+        output=output_path,
+        snapshot=snapshot_version,
+        from_version=from_version,
+        to_version=to_version,
+        target_env=target,
+    )
 
 
 @cli.command()
