@@ -52,7 +52,7 @@ test:
 # SCHEMAX_RUN_LIVE_IMPORT_TESTS=1). They still require profile, warehouse-id, etc.
 integration:
 	@echo "🧪 Running integration tests with coverage (including live when env is set)..."
-	SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 SCHEMAX_RUN_LIVE_IMPORT_TESTS=1 uv run pytest tests/integration/ -v \
+	SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 SCHEMAX_RUN_LIVE_IMPORT_TESTS=1 uv run pytest tests/integration/ -v -n $(PYTEST_WORKERS) \
 		--cov=src/schemax \
 		--cov-report=xml:coverage-integration.xml \
 		--cov-report=term-missing
@@ -76,7 +76,7 @@ integration:
 integration-coverage-upload:
 	@echo "📊 Running integration coverage and uploading to Codecov..."
 	@test -n "$$CODECOV_TOKEN" || (echo "❌ CODECOV_TOKEN is required"; exit 1)
-	uv run pytest tests/integration \
+	uv run pytest tests/integration -n $(PYTEST_WORKERS) \
 		--cov=src/schemax \
 		--cov-report=xml:coverage-integration.xml \
 		--cov-report=term-missing
