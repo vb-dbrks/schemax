@@ -5,5 +5,8 @@
  */
 export function parsePrivileges(privilegesStr: string): string[] {
   if (!privilegesStr || !privilegesStr.trim()) return [];
-  return privilegesStr.split(',').map((p) => p.trim()).filter(Boolean);
+  return privilegesStr
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
 }

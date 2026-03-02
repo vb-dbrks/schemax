@@ -5,7 +5,10 @@ Generates Databricks SQL DDL statements from operations.
 Migrated from TypeScript sql-generator.ts
 """
 
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
+
+import sqlglot
+from sqlglot import expressions as exp
 
 from schemax.providers.base.batching import BatchInfo
 from schemax.providers.base.dependency_graph import (
@@ -14,9 +17,13 @@ from schemax.providers.base.dependency_graph import (
     DependencyNode,
     DependencyType,
 )
-from schemax.providers.base.exceptions import SchemaXProviderError
+from schemax.providers.base.exceptions import CircularDependencyError, SchemaXProviderError
 from schemax.providers.base.operations import Operation
-from schemax.providers.base.sql_generator import BaseSQLGenerator, SQLGenerationResult
+from schemax.providers.base.sql_generator import (
+    BaseSQLGenerator,
+    SQLGenerationResult,
+    StatementInfo,
+)
 
 from .models import UnityState
 from .operations import UNITY_OPERATIONS
@@ -40,6 +47,65 @@ class LocationDefinition(TypedDict):
 class UnitySQLGenerator(BaseSQLGenerator):
     """Unity Catalog SQL Generator"""
 
+    _OP_HANDLERS: dict[str, str] = {
+        "add_catalog": "_add_catalog",
+        "rename_catalog": "_rename_catalog",
+        "update_catalog": "_update_catalog",
+        "drop_catalog": "_drop_catalog",
+        "add_schema": "_add_schema",
+        "rename_schema": "_rename_schema",
+        "update_schema": "_update_schema",
+        "drop_schema": "_drop_schema",
+        "add_table": "_add_table",
+        "rename_table": "_rename_table",
+        "drop_table": "_drop_table",
+        "set_table_comment": "_set_table_comment",
+        "set_table_property": "_set_table_property",
+        "unset_table_property": "_unset_table_property",
+        "set_table_tag": "_set_table_tag",
+        "unset_table_tag": "_unset_table_tag",
+        "add_view": "_add_view",
+        "rename_view": "_rename_view",
+        "drop_view": "_drop_view",
+        "update_view": "_update_view",
+        "set_view_comment": "_set_view_comment",
+        "set_view_property": "_set_view_property",
+        "unset_view_property": "_unset_view_property",
+        "add_volume": "_add_volume",
+        "rename_volume": "_rename_volume",
+        "update_volume": "_update_volume",
+        "drop_volume": "_drop_volume",
+        "add_function": "_add_function",
+        "rename_function": "_rename_function",
+        "update_function": "_update_function",
+        "drop_function": "_drop_function",
+        "set_function_comment": "_set_function_comment",
+        "add_materialized_view": "_add_materialized_view",
+        "rename_materialized_view": "_rename_materialized_view",
+        "update_materialized_view": "_update_materialized_view",
+        "drop_materialized_view": "_drop_materialized_view",
+        "set_materialized_view_comment": "_set_materialized_view_comment",
+        "add_column": "_add_column",
+        "rename_column": "_rename_column",
+        "drop_column": "_drop_column",
+        "reorder_columns": "_reorder_columns",
+        "change_column_type": "_change_column_type",
+        "set_nullable": "_set_nullable",
+        "set_column_comment": "_set_column_comment",
+        "set_column_tag": "_set_column_tag",
+        "unset_column_tag": "_unset_column_tag",
+        "add_constraint": "_add_constraint",
+        "drop_constraint": "_drop_constraint",
+        "add_row_filter": "_add_row_filter",
+        "update_row_filter": "_update_row_filter",
+        "remove_row_filter": "_remove_row_filter",
+        "add_column_mask": "_add_column_mask",
+        "update_column_mask": "_update_column_mask",
+        "remove_column_mask": "_remove_column_mask",
+        "add_grant": "_add_grant",
+        "revoke_grant": "_revoke_grant",
+    }
+
     def __init__(
         self,
         state: UnityState,
@@ -57,6 +123,55 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Base now provides self.batcher and self.optimizer
         self.id_name_map = self._build_id_name_map()
 
+    def _add_catalog_to_id_name_map(self, catalog: Any, id_map: dict[str, str]) -> None:
+        """Populate id_map with entries for one catalog and its schemas/tables/views/volumes/etc."""
+        catalog_name = self._logical_to_physical_catalog_name(self._obj_name(catalog))
+        id_map[self._obj_id(catalog)] = catalog_name
+
+        for schema in self._schema_items(catalog, "schemas"):
+            schema_name = self._obj_name(schema)
+            schema_prefix = f"{catalog_name}.{schema_name}"
+            id_map[self._obj_id(schema)] = schema_prefix
+            self._add_table_entries_to_id_map(schema, schema_prefix, id_map)
+            self._add_named_object_entries_to_id_map(schema, "views", schema_prefix, id_map)
+            for attr in ("volumes", "functions", "materialized_views"):
+                self._add_named_object_entries_to_id_map(schema, attr, schema_prefix, id_map)
+
+    def _add_table_entries_to_id_map(
+        self, schema: Any, schema_prefix: str, id_map: dict[str, str]
+    ) -> None:
+        """Add table + column entries for one schema."""
+        for table in self._schema_items(schema, "tables"):
+            table_name = self._obj_name(table)
+            id_map[self._obj_id(table)] = f"{schema_prefix}.{table_name}"
+            for column in self._schema_items(table, "columns"):
+                id_map[self._obj_id(column)] = self._obj_name(column)
+
+    def _add_named_object_entries_to_id_map(
+        self, schema: Any, attr: str, schema_prefix: str, id_map: dict[str, str]
+    ) -> None:
+        """Add entries for view/volume/function/materialized_view style objects."""
+        for item in self._schema_items(schema, attr):
+            id_map[self._obj_id(item)] = f"{schema_prefix}.{self._obj_name(item)}"
+
+    @staticmethod
+    def _obj_name(obj: Any) -> str:
+        """Return object name from model or dict."""
+        if isinstance(obj, dict):
+            return str(obj.get("name", ""))
+        return str(getattr(obj, "name", ""))
+
+    @staticmethod
+    def _obj_id(obj: Any) -> str:
+        """Return object id from model or dict."""
+        if isinstance(obj, dict):
+            return str(obj.get("id", ""))
+        return str(getattr(obj, "id", ""))
+
+    def _logical_to_physical_catalog_name(self, catalog_name: str) -> str:
+        """Map logical catalog names to physical names using environment mapping."""
+        return self.catalog_name_mapping.get(catalog_name, catalog_name)
+
     def _build_id_name_map(self) -> dict[str, str]:
         """
         Build a mapping from IDs to fully-qualified names.
@@ -64,65 +179,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
         Uses catalog_name_mapping to replace logical catalog names with physical names
         when generating environment-specific SQL.
         """
-        id_map = {}
-
-        # Handle both dict and Pydantic model state
+        id_map: dict[str, str] = {}
         catalogs = (
             self.state.catalogs
             if hasattr(self.state, "catalogs")
             else self.state.get("catalogs", [])
         )
-
         for catalog in catalogs:
-            # Handle both dict and Pydantic model
-            cat_name = catalog.name if hasattr(catalog, "name") else catalog["name"]
-            cat_id = catalog.id if hasattr(catalog, "id") else catalog["id"]
-            # Apply catalog name mapping if present (for environment-specific SQL)
-            catalog_name = self.catalog_name_mapping.get(cat_name, cat_name)
-            id_map[cat_id] = catalog_name
-
-            schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
-            for schema in schemas:
-                schema_name = schema.name if hasattr(schema, "name") else schema["name"]
-                schema_id = schema.id if hasattr(schema, "id") else schema["id"]
-                id_map[schema_id] = f"{catalog_name}.{schema_name}"
-
-                tables = schema.tables if hasattr(schema, "tables") else schema.get("tables", [])
-                for table in tables:
-                    table_name = table.name if hasattr(table, "name") else table["name"]
-                    table_id = table.id if hasattr(table, "id") else table["id"]
-                    table_fqn = f"{catalog_name}.{schema_name}.{table_name}"
-                    id_map[table_id] = table_fqn
-
-                    columns = (
-                        table.columns if hasattr(table, "columns") else table.get("columns", [])
-                    )
-                    for column in columns:
-                        col_name = column.name if hasattr(column, "name") else column["name"]
-                        col_id = column.id if hasattr(column, "id") else column["id"]
-                        id_map[col_id] = col_name
-
-                # Process views in this schema
-                views = schema.views if hasattr(schema, "views") else schema.get("views", [])
-                for view in views:
-                    view_name = view.name if hasattr(view, "name") else view["name"]
-                    view_id = view.id if hasattr(view, "id") else view["id"]
-                    view_fqn = f"{catalog_name}.{schema_name}.{view_name}"
-                    id_map[view_id] = view_fqn
-
-                # Process volumes, functions, materialized views in this schema
-                for attr in ("volumes", "functions", "materialized_views"):
-                    items = (
-                        schema.get(attr, [])
-                        if isinstance(schema, dict)
-                        else getattr(schema, attr, [])
-                    )
-                    for item in items:
-                        item_name = item.name if hasattr(item, "name") else item["name"]
-                        item_id = item.id if hasattr(item, "id") else item["id"]
-                        item_fqn = f"{catalog_name}.{schema_name}.{item_name}"
-                        id_map[item_id] = item_fqn
-
+            self._add_catalog_to_id_name_map(catalog, id_map)
         return id_map
 
     def _resolve_table_location(
@@ -280,19 +344,19 @@ class UnitySQLGenerator(BaseSQLGenerator):
         op_type = operation.op.replace("unity.", "")
 
         # Catalog-level operations
-        if op_type in ["add_catalog", "rename_catalog", "update_catalog", "drop_catalog"]:
+        if op_type in {"add_catalog", "rename_catalog", "update_catalog", "drop_catalog"}:
             return f"catalog:{operation.target}"  # Prefix to avoid ID collisions
 
         # Schema-level operations
-        if op_type in ["add_schema", "rename_schema", "update_schema", "drop_schema"]:
+        if op_type in {"add_schema", "rename_schema", "update_schema", "drop_schema"}:
             return f"schema:{operation.target}"  # Prefix to avoid ID collisions
 
         # Table-level operations
-        if op_type in ["add_table", "rename_table", "drop_table", "set_table_comment"]:
+        if op_type in {"add_table", "rename_table", "drop_table", "set_table_comment"}:
             return f"table:{operation.target}"  # Add prefix for consistency
 
         # View-level operations
-        if op_type in [
+        if op_type in {
             "add_view",
             "rename_view",
             "drop_view",
@@ -300,40 +364,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "set_view_comment",
             "set_view_property",
             "unset_view_property",
-        ]:
+        }:
             return f"view:{operation.target}"  # Prefix to avoid ID collisions
 
         # Volume-level operations
-        if op_type in [
-            "add_volume",
-            "rename_volume",
-            "update_volume",
-            "drop_volume",
-        ]:
+        if op_type in {"add_volume", "rename_volume", "update_volume", "drop_volume"}:
             return f"volume:{operation.target}"
 
         # Function-level operations
-        if op_type in [
+        if op_type in {
             "add_function",
             "rename_function",
             "update_function",
             "drop_function",
             "set_function_comment",
-        ]:
+        }:
             return f"function:{operation.target}"
 
         # Materialized view-level operations
-        if op_type in [
+        if op_type in {
             "add_materialized_view",
             "rename_materialized_view",
             "update_materialized_view",
             "drop_materialized_view",
             "set_materialized_view_comment",
-        ]:
+        }:
             return f"materialized_view:{operation.target}"
 
         # Column and table property operations
-        if op_type in [
+        if op_type in {
             "add_column",
             "rename_column",
             "drop_column",
@@ -355,7 +414,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "add_column_mask",
             "update_column_mask",
             "remove_column_mask",
-        ]:
+        }:
             table_id = operation.payload.get("tableId")
             return f"table:{table_id}" if table_id else None
 
@@ -367,7 +426,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         Implements abstract method from BaseSQLGenerator.
         """
-        return operation.op in [
+        return operation.op in {
             "unity.add_catalog",
             "unity.add_schema",
             "unity.add_table",
@@ -375,7 +434,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "unity.add_volume",
             "unity.add_function",
             "unity.add_materialized_view",
-        ]
+        }
 
     def _is_drop_operation(self, operation: Operation) -> bool:
         """
@@ -387,7 +446,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         Note: drop_column and drop_constraint are NOT included here because they are
         table modifications (processed in order with other table operations), not object drops.
         """
-        return operation.op in [
+        return operation.op in {
             "unity.drop_catalog",
             "unity.drop_schema",
             "unity.drop_table",
@@ -395,7 +454,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "unity.drop_volume",
             "unity.drop_function",
             "unity.drop_materialized_view",
-        ]
+        }
 
     def _generate_batched_create_sql(self, object_id: str, batch_info: BatchInfo) -> str:
         """
@@ -426,7 +485,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
             for operation in batch_info.modify_ops:
                 op_type = operation.op.replace("unity.", "")
-                if op_type in [
+                if op_type in {
                     "add_column",
                     "rename_column",
                     "drop_column",
@@ -435,22 +494,22 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     "set_column_comment",
                     "set_column_tag",
                     "unset_column_tag",
-                ]:
+                }:
                     column_ops.append(operation)
-                elif op_type in ["set_table_property", "unset_table_property"]:
+                elif op_type in {"set_table_property", "unset_table_property"}:
                     property_ops.append(operation)
-                elif op_type in ["add_constraint", "drop_constraint"]:
+                elif op_type in {"add_constraint", "drop_constraint"}:
                     constraint_ops.append(operation)
                 if op_type == "reorder_columns":
                     reorder_ops.append(operation)
-                elif op_type in [
+                elif op_type in {
                     "add_row_filter",
                     "update_row_filter",
                     "remove_row_filter",
                     "add_column_mask",
                     "update_column_mask",
                     "remove_column_mask",
-                ]:
+                }:
                     governance_ops.append(operation)
                 else:
                     # Everything else goes to other_ops (includes set_table_tag, set_table_comment, etc.)
@@ -469,9 +528,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 "operation_types": list(batch_info.operation_types),
             }
             return self._generate_create_table_with_columns(object_id, batch_dict)
-        else:
-            # Fallback for objects without prefix (shouldn't happen after refactor)
-            return ""
+        # Fallback for objects without prefix (shouldn't happen after refactor)
+        return ""
 
     def _generate_batched_alter_sql(self, object_id: str, batch_info: BatchInfo) -> str:
         """
@@ -491,7 +549,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_tag_ops = []
         for operation in batch_info.modify_ops:
             op_type = operation.op.replace("unity.", "")
-            if op_type in [
+            if op_type in {
                 "add_column",
                 "rename_column",
                 "drop_column",
@@ -500,24 +558,24 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 "set_column_comment",
                 "set_column_tag",
                 "unset_column_tag",
-            ]:
+            }:
                 column_ops.append(operation)
-            elif op_type in ["set_table_property", "unset_table_property"]:
+            elif op_type in {"set_table_property", "unset_table_property"}:
                 property_ops.append(operation)
-            elif op_type in ["add_constraint", "drop_constraint"]:
+            elif op_type in {"add_constraint", "drop_constraint"}:
                 constraint_ops.append(operation)
             if op_type == "reorder_columns":
                 reorder_ops.append(operation)
-            elif op_type in [
+            elif op_type in {
                 "add_row_filter",
                 "update_row_filter",
                 "remove_row_filter",
                 "add_column_mask",
                 "update_column_mask",
                 "remove_column_mask",
-            ]:
+            }:
                 governance_ops.append(operation)
-            elif op_type in ["set_table_tag", "unset_table_tag"]:
+            elif op_type in {"set_table_tag", "unset_table_tag"}:
                 table_tag_ops.append(operation)
             else:
                 # Everything else goes to other_ops (set_table_comment, etc.)
@@ -540,6 +598,50 @@ class UnitySQLGenerator(BaseSQLGenerator):
     # END ABSTRACT METHOD IMPLEMENTATIONS
     # ========================================
 
+    _CANCEL_PAIRS: list[tuple[str, str]] = [
+        ("unity.add_catalog", "unity.drop_catalog"),
+        ("unity.add_schema", "unity.drop_schema"),
+        ("unity.add_table", "unity.drop_table"),
+        ("unity.add_view", "unity.drop_view"),
+        ("unity.add_volume", "unity.drop_volume"),
+        ("unity.add_function", "unity.drop_function"),
+        ("unity.add_materialized_view", "unity.drop_materialized_view"),
+        ("unity.add_column", "unity.drop_column"),
+    ]
+
+    def _group_ops_by_target(self, ops: list[Operation]) -> dict[str, list[Operation]]:
+        """Group operations by target object ID (or __global__)."""
+        by_target: dict[str, list[Operation]] = {}
+        for operation in ops:
+            target_id = self._get_target_object_id(operation)
+            key = target_id if target_id else "__global__"
+            by_target.setdefault(key, []).append(operation)
+        return by_target
+
+    def _is_target_cancelled(self, target_ops: list[Operation]) -> bool:
+        """Return True if this target's ops are a cancelled create+drop pair."""
+        if len(target_ops) < 2:
+            return False
+        create_op: Operation | None = None
+        drop_op: Operation | None = None
+        for operation in target_ops:
+            for create_type, drop_type in self._CANCEL_PAIRS:
+                if operation.op == create_type:
+                    create_op = operation
+                elif operation.op == drop_type:
+                    drop_op = operation
+        if create_op and drop_op and create_op.ts < drop_op.ts:
+            return True
+        if len(target_ops) == 2:
+            if (
+                target_ops[0].op == "unity.add_column"
+                and target_ops[1].op == "unity.drop_column"
+                and target_ops[0].target == target_ops[1].target
+                and target_ops[0].ts < target_ops[1].ts
+            ):
+                return True
+        return False
+
     def _filter_cancelled_operations(self, ops: list[Operation]) -> list[Operation]:
         """
         Filter out create+drop pairs that cancel each other.
@@ -550,85 +652,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         This is timestamp-aware: cancellation only occurs if CREATE timestamp < DROP timestamp
         (chronological order). If DROP comes before CREATE, they don't cancel.
 
-        Examples:
-        - add_table (T1) + drop_table (T2 where T2 > T1) → skip both
-        - drop_table (T1) + add_table (T2 where T2 > T1) → keep both (recreate)
-        - add_catalog + drop_catalog → skip both
-        - add_schema + drop_schema → skip both
-        Examples:
-        - add_table + drop_table → skip both (and any operations in between)
-        - add_catalog + drop_catalog → skip both
-        - add_schema + drop_schema → skip both
-        - add_column + drop_column → skip both
-
         This prevents errors when trying to drop objects that were never
         created in the database (e.g., table in non-existent schema).
         """
-        # Group operations by target object
-        by_target: dict[str, list[Operation]] = {}
-        for operation in ops:
-            target_id = self._get_target_object_id(operation)
-            if target_id:
-                by_target.setdefault(target_id, []).append(operation)
-            else:
-                # Keep operations without specific target (global operations)
-                by_target.setdefault("__global__", []).append(operation)
-
-        # Filter each group
-        filtered = []
-        for target_id, target_ops in by_target.items():
-            # Skip empty groups
+        filtered: list[Operation] = []
+        for _target_id, target_ops in self._group_ops_by_target(ops).items():
             if not target_ops:
                 continue
-
-            # Find CREATE and DROP operations (timestamp-aware)
-            if len(target_ops) >= 2:
-                # Define create/drop pairs
-                cancel_pairs = [
-                    ("unity.add_catalog", "unity.drop_catalog"),
-                    ("unity.add_schema", "unity.drop_schema"),
-                    ("unity.add_table", "unity.drop_table"),
-                    ("unity.add_view", "unity.drop_view"),
-                    ("unity.add_volume", "unity.drop_volume"),
-                    ("unity.add_function", "unity.drop_function"),
-                    ("unity.add_materialized_view", "unity.drop_materialized_view"),
-                    ("unity.add_column", "unity.drop_column"),
-                ]
-
-                # Find the CREATE and DROP operations
-                create_op = None
-                drop_op = None
-                for operation in target_ops:
-                    for create_type, drop_type in cancel_pairs:
-                        if operation.op == create_type:
-                            create_op = operation
-                        elif operation.op == drop_type:
-                            drop_op = operation
-
-                # Check if cancellation occurs (CREATE must come before DROP chronologically)
-                cancelled = False
-                if create_op and drop_op and create_op.ts < drop_op.ts:
-                    # Cancel out: skip ALL operations for this object
-                    cancelled = True
-
-                # Special handling for columns: only cancel if adding and dropping THE SAME column
-                if not cancelled and len(target_ops) == 2:
-                    if (
-                        target_ops[0].op == "unity.add_column"
-                        and target_ops[1].op == "unity.drop_column"
-                        and target_ops[0].target == target_ops[1].target
-                        and target_ops[0].ts < target_ops[1].ts  # Chronological
-                    ):
-                        # Same column ID, chronological order - cancel it
-                        cancelled = True
-
-                if not cancelled:
-                    # Not cancelled - keep all operations
-                    filtered.extend(target_ops)
-            else:
-                # Single operation or global - keep it
+            if not self._is_target_cancelled(target_ops):
                 filtered.extend(target_ops)
-
         return filtered
 
     def _build_name_to_node_id_map(self) -> dict[str, str]:
@@ -650,25 +682,37 @@ class UnitySQLGenerator(BaseSQLGenerator):
             schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
             for schema in schemas:
                 schema_name = schema.name if hasattr(schema, "name") else schema["name"]
-                for attr, prefix in (
-                    ("tables", "table"),
-                    ("views", "view"),
-                    ("materialized_views", "materialized_view"),
-                ):
-                    items = (
-                        schema.get(attr, [])
-                        if isinstance(schema, dict)
-                        else getattr(schema, attr, [])
-                    )
-                    for item in items:
-                        item_name = item.name if hasattr(item, "name") else item["name"]
-                        item_id = item.id if hasattr(item, "id") else item["id"]
-                        node_id = f"{prefix}:{item_id}"
-                        name_to_node[item_id] = node_id
-                        name_to_node[item_name] = node_id
-                        name_to_node[f"{schema_name}.{item_name}"] = node_id
-                        name_to_node[f"{catalog_name}.{schema_name}.{item_name}"] = node_id
+                self._add_schema_name_to_node_entries(
+                    name_to_node, schema, catalog_name, schema_name
+                )
         return name_to_node
+
+    @staticmethod
+    def _schema_items(schema: Any, attr: str) -> list[Any]:
+        """Return schema child items for model or dict schemas."""
+        return schema.get(attr, []) if isinstance(schema, dict) else getattr(schema, attr, [])
+
+    def _add_schema_name_to_node_entries(
+        self,
+        name_to_node: dict[str, str],
+        schema: Any,
+        catalog_name: str,
+        schema_name: str,
+    ) -> None:
+        """Add table/view/materialized-view node aliases for one schema."""
+        for attr, prefix in (
+            ("tables", "table"),
+            ("views", "view"),
+            ("materialized_views", "materialized_view"),
+        ):
+            for item in self._schema_items(schema, attr):
+                item_name = item.name if hasattr(item, "name") else item["name"]
+                item_id = item.id if hasattr(item, "id") else item["id"]
+                node_id = f"{prefix}:{item_id}"
+                name_to_node[item_id] = node_id
+                name_to_node[item_name] = node_id
+                name_to_node[f"{schema_name}.{item_name}"] = node_id
+                name_to_node[f"{catalog_name}.{schema_name}.{item_name}"] = node_id
 
     def _resolve_dependency_to_node_id(self, name_or_id: str) -> str | None:
         """Resolve a dependency name or object ID to a graph node ID (e.g. table:xyz)."""
@@ -687,156 +731,193 @@ class UnitySQLGenerator(BaseSQLGenerator):
             return name_or_id
         return None
 
+    def _resolve_view_dep(
+        self, name_or_id: str
+    ) -> tuple[str, DependencyType, DependencyEnforcement] | None:
+        """Resolve a name or ID to a view/table dependency tuple, or None."""
+        node_id = self._resolve_dependency_to_node_id(name_or_id)
+        if node_id:
+            return (node_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
+        return None
+
+    def _extract_view_dependencies(
+        self, operation: Operation
+    ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
+        """Extract view dependencies from add_view payload (dependencies + extractedDependencies)."""
+        out: list[tuple[str, DependencyType, DependencyEnforcement]] = []
+        dep = operation.payload.get("dependencies", [])
+        extracted = operation.payload.get("extractedDependencies", {})
+        if isinstance(dep, list):
+            for name_or_id in dep:
+                resolved_dep = self._resolve_view_dep(name_or_id)
+                if resolved_dep:
+                    out.append(resolved_dep)
+        if isinstance(extracted, dict):
+            for name_or_id in extracted.get("tables", []) + extracted.get("views", []):
+                resolved_dep = self._resolve_view_dep(name_or_id)
+                if resolved_dep:
+                    out.append(resolved_dep)
+        return out
+
+    def _extract_mv_dependencies(
+        self, operation: Operation
+    ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
+        """Extract materialized view dependencies from add_materialized_view payload."""
+        out: list[tuple[str, DependencyType, DependencyEnforcement]] = []
+        dep_ids = operation.payload.get("dependencies", []) or operation.payload.get(
+            "extractedDependencies", {}
+        )
+        if isinstance(dep_ids, list):
+            for name_or_id in dep_ids:
+                resolved_dep = self._resolve_view_dep(name_or_id)
+                if resolved_dep:
+                    out.append(resolved_dep)
+        elif isinstance(dep_ids, dict):
+            for name_or_id in dep_ids.get("tables", []) + dep_ids.get("views", []):
+                resolved_dep = self._resolve_view_dep(name_or_id)
+                if resolved_dep:
+                    out.append(resolved_dep)
+        return out
+
+    def _extract_fk_dependencies(
+        self, operation: Operation
+    ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
+        """Extract foreign key parent-table dependency from add_constraint payload."""
+        out: list[tuple[str, DependencyType, DependencyEnforcement]] = []
+        if operation.payload.get("type") != "foreign_key":
+            return out
+        parent_table_id = operation.payload.get("parentTable")
+        if parent_table_id:
+            parent_table_node_id = f"table:{parent_table_id}"
+            out.append(
+                (
+                    parent_table_node_id,
+                    DependencyType.FOREIGN_KEY,
+                    DependencyEnforcement.ENFORCED,
+                )
+            )
+        return out
+
     def _extract_operation_dependencies(
         self, operation: Operation
     ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
         """
         Extract dependencies from Unity Catalog operations.
 
-        Supports:
-        - View/MV dependencies on tables/views: from dependencies (IDs) or
-          extractedDependencies (names from UI); resolved to node IDs so tables are created first.
-        - Foreign key dependencies (from add_constraint).
+        Supports view/MV dependencies on tables/views and foreign key dependencies.
         """
-        dependencies: list[tuple[str, DependencyType, DependencyEnforcement]] = []
-
-        def add_resolved(name_or_id: str) -> None:
-            node_id = self._resolve_dependency_to_node_id(name_or_id)
-            if node_id:
-                dependencies.append(
-                    (node_id, DependencyType.VIEW_TO_TABLE, DependencyEnforcement.ENFORCED)
-                )
-
-        # View dependencies (IDs or names from extractedDependencies)
         if operation.op == "unity.add_view":
-            dep = operation.payload.get("dependencies", [])
-            extracted = operation.payload.get("extractedDependencies", {})
-            if isinstance(dep, list):
-                for name_or_id in dep:
-                    add_resolved(name_or_id)
-            if isinstance(extracted, dict):
-                for name_or_id in extracted.get("tables", []) + extracted.get("views", []):
-                    add_resolved(name_or_id)
-
-        # Materialized view dependencies (same as views: tables/views must be created first)
+            return self._extract_view_dependencies(operation)
         if operation.op == "unity.add_materialized_view":
-            dep_ids = operation.payload.get("dependencies", []) or operation.payload.get(
-                "extractedDependencies", {}
-            )
-            if isinstance(dep_ids, list):
-                for name_or_id in dep_ids:
-                    add_resolved(name_or_id)
-            elif isinstance(dep_ids, dict):
-                for name_or_id in dep_ids.get("tables", []) + dep_ids.get("views", []):
-                    add_resolved(name_or_id)
+            return self._extract_mv_dependencies(operation)
+        if operation.op == "unity.add_constraint":
+            return self._extract_fk_dependencies(operation)
+        return []
 
-        # Extract foreign key dependencies
-        elif operation.op == "unity.add_constraint":
-            constraint_type = operation.payload.get("type")
-            if constraint_type == "foreign_key":
-                # Foreign key creates a dependency on the parent table
-                parent_table_id = operation.payload.get("parentTable")
-                if parent_table_id:
-                    # Add table: prefix to match the format used by _get_target_object_id
-                    parent_table_node_id = f"table:{parent_table_id}"
-                    dependencies.append(
-                        (
-                            parent_table_node_id,
-                            DependencyType.FOREIGN_KEY,
-                            DependencyEnforcement.ENFORCED,
-                        )
-                    )
-
-        return dependencies
-
-    def _build_dependency_graph(self, ops: list[Operation]) -> DependencyGraph:
-        """
-        Build a dependency graph from operations, including constraint ordering.
-
-        Overrides base class to add special handling for constraint modifications:
-        - When add_constraint follows drop_constraint on the same table,
-          create a dependency so DROP executes before ADD.
-        - Graph nodes are object IDs (e.g. table:xyz); we add per-operation nodes
-          for constraint ops so we can order DROP before ADD.
-        """
-        # Call parent implementation
-        graph = super()._build_dependency_graph(ops)
+    def _add_constraint_ordering_edges(self, graph: DependencyGraph, ops: list[Operation]) -> None:
+        """Add per-constraint-op nodes and edges so DROP executes before ADD on same table."""
         ops_by_target = graph.metadata.get("ops_by_target", {})
-
-        # Group constraint operations by table (use same target ID format as base)
         table_ops: dict[str, list[Operation]] = {}
         for operation in ops:
-            if operation.op in ("unity.add_constraint", "unity.drop_constraint"):
+            if operation.op in {"unity.add_constraint", "unity.drop_constraint"}:
                 table_id = operation.payload.get("tableId")
                 if table_id:
                     target_id = f"table:{table_id}"
-                    if target_id not in table_ops:
-                        table_ops[target_id] = []
-                    table_ops[target_id].append(operation)
+                    table_ops.setdefault(target_id, []).append(operation)
 
-        # For each table with both drop and add constraint ops, add per-op nodes
-        # and edges so DROP executes before ADD (graph uses object IDs as nodes).
         for table_node_id, table_constraint_ops in table_ops.items():
-            drop_ops = [
-                operation
-                for operation in table_constraint_ops
-                if operation.op == "unity.drop_constraint"
-            ]
-            add_ops = [
-                operation
-                for operation in table_constraint_ops
-                if operation.op == "unity.add_constraint"
-            ]
+            drop_ops = [op for op in table_constraint_ops if op.op == "unity.drop_constraint"]
+            add_ops = [op for op in table_constraint_ops if op.op == "unity.add_constraint"]
             if not drop_ops or not add_ops:
                 continue
-
-            # Remove these ops from the table node so we don't duplicate them
-            if table_node_id in ops_by_target:
-                remaining = [
-                    o
-                    for o in ops_by_target[table_node_id]
-                    if o not in drop_ops and o not in add_ops
-                ]
-                ops_by_target[table_node_id] = remaining
-
+            self._prune_constraint_ops_from_table_target(
+                ops_by_target, table_node_id, drop_ops, add_ops
+            )
             level = self._get_dependency_level(drop_ops[0])
-            # Add a node per constraint operation so we can order drop before add
-            for drop_op in drop_ops:
-                if drop_op.id not in graph.nodes:
-                    node = DependencyNode(
+            self._add_drop_constraint_nodes(graph, ops_by_target, table_node_id, drop_ops, level)
+            self._add_add_constraint_nodes(graph, ops_by_target, drop_ops, add_ops, level)
+
+    def _prune_constraint_ops_from_table_target(
+        self,
+        ops_by_target: dict[str, list[Operation]],
+        table_node_id: str,
+        drop_ops: list[Operation],
+        add_ops: list[Operation],
+    ) -> None:
+        """Remove table-level constraint ops once dedicated constraint nodes are introduced."""
+        if table_node_id not in ops_by_target:
+            return
+        drop_set = set(drop_ops)
+        add_set = set(add_ops)
+        ops_by_target[table_node_id] = [
+            op for op in ops_by_target[table_node_id] if op not in drop_set and op not in add_set
+        ]
+
+    def _add_drop_constraint_nodes(
+        self,
+        graph: DependencyGraph,
+        ops_by_target: dict[str, list[Operation]],
+        table_node_id: str,
+        drop_ops: list[Operation],
+        level: int,
+    ) -> None:
+        """Create drop-constraint nodes and connect table -> drop edges."""
+        for drop_op in drop_ops:
+            if drop_op.id not in graph.nodes:
+                graph.add_node(
+                    DependencyNode(
                         id=drop_op.id,
                         type="constraint",
                         hierarchy_level=level,
                         operation=drop_op,
                         metadata={"op_type": drop_op.op},
                     )
-                    graph.add_node(node)
-                    ops_by_target[drop_op.id] = [drop_op]
-                graph.add_edge(
-                    table_node_id,
-                    drop_op.id,
-                    DependencyType.CONSTRAINT_ORDERING,
-                    DependencyEnforcement.ENFORCED,
                 )
-            for add_op in add_ops:
-                if add_op.id not in graph.nodes:
-                    node = DependencyNode(
+                ops_by_target[drop_op.id] = [drop_op]
+            graph.add_edge(
+                table_node_id,
+                drop_op.id,
+                DependencyType.CONSTRAINT_ORDERING,
+                DependencyEnforcement.ENFORCED,
+            )
+
+    def _add_add_constraint_nodes(
+        self,
+        graph: DependencyGraph,
+        ops_by_target: dict[str, list[Operation]],
+        drop_ops: list[Operation],
+        add_ops: list[Operation],
+        level: int,
+    ) -> None:
+        """Create add-constraint nodes and connect drop -> add edges."""
+        for add_op in add_ops:
+            if add_op.id not in graph.nodes:
+                graph.add_node(
+                    DependencyNode(
                         id=add_op.id,
                         type="constraint",
                         hierarchy_level=level,
                         operation=add_op,
                         metadata={"op_type": add_op.op},
                     )
-                    graph.add_node(node)
-                    ops_by_target[add_op.id] = [add_op]
-                for drop_op in drop_ops:
-                    graph.add_edge(
-                        drop_op.id,
-                        add_op.id,
-                        DependencyType.CONSTRAINT_ORDERING,
-                        DependencyEnforcement.ENFORCED,
-                    )
+                )
+                ops_by_target[add_op.id] = [add_op]
+            for drop_op in drop_ops:
+                graph.add_edge(
+                    drop_op.id,
+                    add_op.id,
+                    DependencyType.CONSTRAINT_ORDERING,
+                    DependencyEnforcement.ENFORCED,
+                )
 
+    def _build_dependency_graph(self, ops: list[Operation]) -> DependencyGraph:
+        """
+        Build a dependency graph from operations, including constraint ordering.
+
+        Overrides base class to add special handling: DROP constraint before ADD on same table.
+        """
+        graph = super()._build_dependency_graph(ops)
+        self._add_constraint_ordering_edges(graph, ops)
         return graph
 
     def generate_sql(self, ops: list[Operation]) -> str:
@@ -870,49 +951,43 @@ class UnitySQLGenerator(BaseSQLGenerator):
         Returns:
             Tuple of (sorted operations, list of warning messages)
         """
-        from ..base.exceptions import CircularDependencyError
-
         warnings: list[str] = []
 
         try:
-            # Build dependency graph
             graph = self._build_dependency_graph(ops)
-
-            # Check for cycles
-            cycles = graph.detect_cycles()
-            if cycles:
-                # Format cycles for error message
-                cycle_paths: list[list[str]] = []
-                for cycle in cycles:
-                    # Get names from id_name_map
-                    cycle_names: list[str] = []
-                    for node_id in cycle:
-                        name = self.id_name_map.get(node_id, node_id)
-                        cycle_names.append(name)
-                    cycle_paths.append(cycle_names)  # Append list, not string
-
-                raise CircularDependencyError(cycle_paths)
-
-            # Use topological sort (only includes ops with a target object in the graph)
+            self._raise_on_dependency_cycles(graph)
             sorted_ops = graph.topological_sort()
-            # Include ops without a target (e.g. add_grant, revoke_grant) - append after CREATEs
-            op_ids_in_result = {operation.id for operation in sorted_ops}
-            for operation in ops:
-                if operation.id not in op_ids_in_result:
-                    sorted_ops.append(operation)
+            self._append_ops_missing_from_topological_result(sorted_ops, ops)
             return sorted_ops, warnings
-
         except CircularDependencyError:
-            # Re-raise to be handled by caller
             raise
         except Exception as e:
-            # Unexpected error - warn and fall back
             warnings.append(
                 f"Dependency analysis failed: {e}. Falling back to level-based sorting."
             )
             return sorted(
                 ops, key=lambda operation: (self._get_dependency_level(operation), operation.ts)
             ), warnings
+
+    def _raise_on_dependency_cycles(self, graph: DependencyGraph) -> None:
+        """Raise CircularDependencyError when graph contains cycles."""
+        cycles = graph.detect_cycles()
+        if not cycles:
+            return
+        cycle_paths: list[list[str]] = []
+        for cycle in cycles:
+            cycle_paths.append([self.id_name_map.get(node_id, node_id) for node_id in cycle])
+        raise CircularDependencyError(cycle_paths)
+
+    @staticmethod
+    def _append_ops_missing_from_topological_result(
+        sorted_ops: list[Operation], original_ops: list[Operation]
+    ) -> None:
+        """Append operations that are not represented in the dependency graph ordering."""
+        op_ids_in_result = {operation.id for operation in sorted_ops}
+        for operation in original_ops:
+            if operation.id not in op_ids_in_result:
+                sorted_ops.append(operation)
 
     @staticmethod
     def _split_sql_statements(sql: str) -> list[str]:
@@ -927,6 +1002,246 @@ class UnitySQLGenerator(BaseSQLGenerator):
         parts = [p.strip() for p in sql.split(";\n") if p.strip()]
         return parts if parts else [sql.strip()]
 
+    def _sort_ops_with_fallback(self, ops: list[Operation]) -> tuple[list[Operation], list[str]]:
+        """Sort ops with topological sort; on CircularDependencyError, fallback to level sort."""
+        try:
+            return self._topological_sort_with_fallback(ops)
+        except CircularDependencyError as e:
+            warning_msg = (
+                "\n" + "=" * 70 + "\n"
+                "⚠️  CRITICAL WARNING: CIRCULAR DEPENDENCIES DETECTED\n"
+                "=" * 70 + "\n"
+                f"{e}\n"
+                "→ Falling back to level-based sorting (dependencies IGNORED)\n"
+                "→ Run 'schemax validate' to see full details\n"
+                "→ SQL execution may FAIL if dependencies are not met\n"
+                "=" * 70
+            )
+            print(warning_msg)
+            fallback = sorted(
+                ops, key=lambda operation: (self._get_dependency_level(operation), operation.ts)
+            )
+            return fallback, ["Circular dependencies detected - dependencies ignored"]
+        except Exception as e:
+            print(f"Warning: Dependency analysis failed ({e}), using level-based sort")
+            fallback = sorted(
+                ops, key=lambda operation: (self._get_dependency_level(operation), operation.ts)
+            )
+            return fallback, [f"Dependency analysis failed: {e}"]
+
+    def _collect_batched_sql_by_type(
+        self,
+        batches: dict[str, Any],
+        processed_op_ids: set[str],
+    ) -> tuple[
+        list[tuple[str, list[str]]],
+        list[tuple[str, list[str]]],
+        list[tuple[str, list[str]]],
+        list[tuple[str, list[str]]],
+        list[tuple[str, list[str]]],
+        list[tuple[str, list[str]]],
+        list[tuple[str, list[str]]],
+    ]:
+        """Process batches and return seven statement lists (catalog, schema, table, view, mv, volume, function)."""
+        catalog_stmts: list[tuple[str, list[str]]] = []
+        schema_stmts: list[tuple[str, list[str]]] = []
+        table_stmts: list[tuple[str, list[str]]] = []
+        view_stmts: list[tuple[str, list[str]]] = []
+        materialized_view_stmts: list[tuple[str, list[str]]] = []
+        volume_stmts: list[tuple[str, list[str]]] = []
+        function_stmts: list[tuple[str, list[str]]] = []
+
+        prefix_to_type = {
+            "catalog:": "catalog",
+            "schema:": "schema",
+            "table:": "table",
+            "view:": "view",
+            "materialized_view:": "materialized_view",
+            "volume:": "volume",
+            "function:": "function",
+        }
+
+        for object_id, batch_info in batches.items():
+            object_type = None
+            for prefix, typ in prefix_to_type.items():
+                if object_id.startswith(prefix):
+                    object_type = typ
+                    break
+            if object_type is None:
+                continue
+            op_ids = batch_info.op_ids
+            processed_op_ids.update(op_ids)
+            collectors = {
+                "catalog": catalog_stmts,
+                "schema": schema_stmts,
+                "table": table_stmts,
+                "view": view_stmts,
+                "materialized_view": materialized_view_stmts,
+                "volume": volume_stmts,
+                "function": function_stmts,
+            }
+            self._append_batched_statements_for_type(
+                object_type=object_type,
+                object_id=object_id,
+                batch_info=batch_info,
+                op_ids=op_ids,
+                collectors=collectors,
+            )
+
+        return (
+            catalog_stmts,
+            schema_stmts,
+            table_stmts,
+            view_stmts,
+            materialized_view_stmts,
+            volume_stmts,
+            function_stmts,
+        )
+
+    def _append_batched_statements_for_type(
+        self,
+        object_type: str,
+        object_id: str,
+        batch_info: Any,
+        op_ids: list[str],
+        collectors: dict[str, list[tuple[str, list[str]]]],
+    ) -> None:
+        """Dispatch one batched object to the correct SQL collector list."""
+        if object_type == "catalog":
+            sql = self._generate_create_catalog_batched(object_id, batch_info)
+            if sql and not sql.startswith("--"):
+                collectors["catalog"].append((sql, op_ids))
+            return
+        if object_type == "schema":
+            sql = self._generate_create_schema_batched(object_id, batch_info)
+            if sql and not sql.startswith("--"):
+                collectors["schema"].append((sql, op_ids))
+            return
+        if object_type == "table":
+            collectors["table"].extend(self._generate_table_sql_with_mapping(object_id, batch_info))
+            return
+        if object_type == "view":
+            collectors["view"].extend(self._generate_view_sql_with_mapping(object_id, batch_info))
+            return
+        if object_type == "materialized_view":
+            collectors["materialized_view"].extend(
+                self._generate_materialized_view_sql_with_mapping(object_id, batch_info)
+            )
+            return
+        if object_type == "volume":
+            collectors["volume"].extend(
+                self._generate_volume_sql_with_mapping(object_id, batch_info)
+            )
+            return
+        if object_type == "function":
+            collectors["function"].extend(
+                self._generate_function_sql_with_mapping(object_id, batch_info)
+            )
+
+    def _build_statement_infos_from_batched(
+        self,
+        catalog_stmts: list[tuple[str, list[str]]],
+        schema_stmts: list[tuple[str, list[str]]],
+        table_stmts: list[tuple[str, list[str]]],
+        view_stmts: list[tuple[str, list[str]]],
+        materialized_view_stmts: list[tuple[str, list[str]]],
+        volume_stmts: list[tuple[str, list[str]]],
+        function_stmts: list[tuple[str, list[str]]],
+        execution_order_start: int,
+    ) -> tuple[list[StatementInfo], int]:
+        """Build StatementInfo list from the seven batched statement lists; return (infos, next_order)."""
+        statement_infos: list[StatementInfo] = []
+        order = execution_order_start
+        for sql, op_ids in catalog_stmts:
+            for sql_part in self._split_sql_statements(sql):
+                order += 1
+                statement_infos.append(
+                    StatementInfo(sql=sql_part, operation_ids=op_ids, execution_order=order)
+                )
+        for sql, op_ids in schema_stmts:
+            for sql_part in self._split_sql_statements(sql):
+                order += 1
+                statement_infos.append(
+                    StatementInfo(sql=sql_part, operation_ids=op_ids, execution_order=order)
+                )
+        for sql, op_ids in table_stmts:
+            order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=order)
+            )
+        for sql, op_ids in view_stmts:
+            order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=order)
+            )
+        for sql, op_ids in materialized_view_stmts:
+            order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=order)
+            )
+        for sql, op_ids in volume_stmts:
+            order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=order)
+            )
+        for sql, op_ids in function_stmts:
+            order += 1
+            statement_infos.append(
+                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=order)
+            )
+        return statement_infos, order
+
+    def _append_statement_infos_for_other_ops(
+        self,
+        other_ops: list[Operation],
+        statement_infos: list[StatementInfo],
+        execution_order: int,
+    ) -> int:
+        """Append StatementInfos for unbatched non-DROP ops; return next execution_order."""
+        order = execution_order
+        for operation in other_ops:
+            result = self.generate_sql_for_operation(operation)
+            if not result.sql:
+                continue
+            sql_stripped = result.sql.strip()
+            if sql_stripped.startswith("-- Error") or sql_stripped.startswith("-- No "):
+                raise SchemaXProviderError(sql_stripped)
+            if not sql_stripped.startswith("--"):
+                for sql_part in self._split_sql_statements(result.sql):
+                    order += 1
+                    statement_infos.append(
+                        StatementInfo(
+                            sql=sql_part,
+                            operation_ids=[operation.id],
+                            execution_order=order,
+                        )
+                    )
+        return order
+
+    def _append_statement_infos_for_drops(
+        self,
+        drop_ops: list[Operation],
+        statement_infos: list[StatementInfo],
+        execution_order: int,
+    ) -> int:
+        """Append StatementInfos for DROP ops (reverse dependency order); return next order."""
+        order = execution_order
+        for operation in sorted(
+            drop_ops, key=lambda operation: -self._get_dependency_level(operation)
+        ):
+            result = self.generate_sql_for_operation(operation)
+            if result.sql and not result.sql.startswith("--"):
+                for sql_part in self._split_sql_statements(result.sql):
+                    order += 1
+                    statement_infos.append(
+                        StatementInfo(
+                            sql=sql_part,
+                            operation_ids=[operation.id],
+                            execution_order=order,
+                        )
+                    )
+        return order
+
     def generate_sql_with_mapping(self, ops: list[Operation]) -> "SQLGenerationResult":
         """
         Generate SQL with explicit operation-to-statement mapping.
@@ -935,220 +1250,59 @@ class UnitySQLGenerator(BaseSQLGenerator):
         - sql: Combined SQL script
         - statements: List of StatementInfo (sql + operation_ids + execution_order)
         """
-        from ..base.sql_generator import StatementInfo
+        global_warnings: list[str] = []
+        sorted_ops, sort_warnings = self._sort_ops_with_fallback(ops)
+        global_warnings.extend(sort_warnings)
 
-        # Use dependency-aware topological sorting for correct execution order
-        # This handles view dependencies, foreign keys, and hierarchy
-        global_warnings = []
-
-        try:
-            # Build dependency graph and get topologically sorted operations
-            sorted_ops, sort_warnings = self._topological_sort_with_fallback(ops)
-            global_warnings.extend(sort_warnings)
-        except Exception as e:
-            # Handle circular dependencies with loud warning
-            from ..base.exceptions import CircularDependencyError
-
-            if isinstance(e, CircularDependencyError):
-                # Format critical warning
-                warning_msg = "\n" + "=" * 70 + "\n"
-                warning_msg += "⚠️  CRITICAL WARNING: CIRCULAR DEPENDENCIES DETECTED\n"
-                warning_msg += "=" * 70 + "\n"
-                warning_msg += str(e)
-                warning_msg += "\n→ Falling back to level-based sorting (dependencies IGNORED)"
-                warning_msg += "\n→ Run 'schemax validate' to see full details"
-                warning_msg += "\n→ SQL execution may FAIL if dependencies are not met"
-                warning_msg += "\n" + "=" * 70
-                print(warning_msg)
-                global_warnings.append("Circular dependencies detected - dependencies ignored")
-            else:
-                print(f"Warning: Dependency analysis failed ({e}), using level-based sort")
-                global_warnings.append(f"Dependency analysis failed: {e}")
-
-            sorted_ops = sorted(
-                ops, key=lambda operation: (self._get_dependency_level(operation), operation.ts)
-            )
-
-        # Filter out cancelled operations (CREATE + DROP for same object)
         sorted_ops = self._filter_cancelled_operations(sorted_ops)
-
-        # Separate DROP operations from CREATE/ALTER operations
-        # DROP operations cannot be batched and must be processed individually
         drop_ops = [operation for operation in sorted_ops if self._is_drop_operation(operation)]
         non_drop_ops = [
             operation for operation in sorted_ops if not self._is_drop_operation(operation)
         ]
-
-        # Use base class's generic batcher (no duplication!)
-        # Only batch non-DROP operations
         batches = self.batcher.batch_operations(
             non_drop_ops, self._get_target_object_id, self._is_create_operation
         )
-        processed_op_ids = set()
+        processed_op_ids: set[str] = set()
 
-        # Track statements with their operations
-        statement_infos: list[StatementInfo] = []
-        execution_order = 0
+        (
+            catalog_stmts,
+            schema_stmts,
+            table_stmts,
+            view_stmts,
+            materialized_view_stmts,
+            volume_stmts,
+            function_stmts,
+        ) = self._collect_batched_sql_by_type(batches, processed_op_ids)
 
-        # Separate batches by object type for proper ordering
-        catalog_stmts = []
-        schema_stmts = []
-        table_stmts = []
-        view_stmts = []
-        materialized_view_stmts = []
-        volume_stmts = []
-        function_stmts = []
-        other_ops = []
-
-        # Process batched operations (CREATE and ALTER only)
-        for object_id, batch_info in batches.items():
-            op_ids = batch_info.op_ids
-            processed_op_ids.update(op_ids)
-
-            # Determine object type from ID prefix
-            if object_id.startswith("catalog:"):
-                object_type = "catalog"
-            elif object_id.startswith("schema:"):
-                object_type = "schema"
-            elif object_id.startswith("table:"):
-                object_type = "table"
-            elif object_id.startswith("view:"):
-                object_type = "view"
-            elif object_id.startswith("materialized_view:"):
-                object_type = "materialized_view"
-            elif object_id.startswith("volume:"):
-                object_type = "volume"
-            elif object_id.startswith("function:"):
-                object_type = "function"
-            else:
-                # Skip unknown object types
-                continue
-
-            if object_type == "catalog":
-                sql = self._generate_create_catalog_batched(object_id, batch_info)
-                if sql and not sql.startswith("--"):
-                    catalog_stmts.append((sql, op_ids))
-            elif object_type == "schema":
-                sql = self._generate_create_schema_batched(object_id, batch_info)
-                if sql and not sql.startswith("--"):
-                    schema_stmts.append((sql, op_ids))
-            elif object_type == "table":
-                # Table operations can produce multiple statements
-                table_result = self._generate_table_sql_with_mapping(object_id, batch_info)
-                table_stmts.extend(table_result)  # List of (sql, op_ids) tuples
-            elif object_type == "view":
-                # View operations - simpler than tables
-                view_result = self._generate_view_sql_with_mapping(object_id, batch_info)
-                view_stmts.extend(view_result)  # List of (sql, op_ids) tuples
-            elif object_type == "materialized_view":
-                mv_result = self._generate_materialized_view_sql_with_mapping(object_id, batch_info)
-                materialized_view_stmts.extend(mv_result)
-            elif object_type == "volume":
-                vol_result = self._generate_volume_sql_with_mapping(object_id, batch_info)
-                volume_stmts.extend(vol_result)
-            elif object_type == "function":
-                func_result = self._generate_function_sql_with_mapping(object_id, batch_info)
-                function_stmts.extend(func_result)
-
-        # Process unbatched non-DROP operations
+        other_ops: list[Operation] = []
         for operation in non_drop_ops:
             if operation.id in processed_op_ids:
                 continue
-
             if not self.can_generate_sql(operation):
                 print(f"Warning: Cannot generate SQL for operation: {operation.op}")
                 continue
-
             other_ops.append(operation)
 
-        # Build statement infos in dependency order (split CREATE+ALTER so each runs as one statement)
-        for sql, op_ids in catalog_stmts:
-            for sql_part in self._split_sql_statements(sql):
-                execution_order += 1
-                statement_infos.append(
-                    StatementInfo(
-                        sql=sql_part, operation_ids=op_ids, execution_order=execution_order
-                    )
-                )
+        statement_infos, execution_order = self._build_statement_infos_from_batched(
+            catalog_stmts,
+            schema_stmts,
+            table_stmts,
+            view_stmts,
+            materialized_view_stmts,
+            volume_stmts,
+            function_stmts,
+            0,
+        )
+        execution_order = self._append_statement_infos_for_other_ops(
+            other_ops, statement_infos, execution_order
+        )
+        execution_order = self._append_statement_infos_for_drops(
+            drop_ops, statement_infos, execution_order
+        )
 
-        for sql, op_ids in schema_stmts:
-            for sql_part in self._split_sql_statements(sql):
-                execution_order += 1
-                statement_infos.append(
-                    StatementInfo(
-                        sql=sql_part, operation_ids=op_ids, execution_order=execution_order
-                    )
-                )
-
-        for sql, op_ids in table_stmts:
-            execution_order += 1
-            statement_infos.append(
-                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
-            )
-
-        for sql, op_ids in view_stmts:
-            execution_order += 1
-            statement_infos.append(
-                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
-            )
-
-        for sql, op_ids in materialized_view_stmts:
-            execution_order += 1
-            statement_infos.append(
-                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
-            )
-
-        for sql, op_ids in volume_stmts:
-            execution_order += 1
-            statement_infos.append(
-                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
-            )
-
-        for sql, op_ids in function_stmts:
-            execution_order += 1
-            statement_infos.append(
-                StatementInfo(sql=sql, operation_ids=op_ids, execution_order=execution_order)
-            )
-
-        for operation in other_ops:
-            result = self.generate_sql_for_operation(operation)
-            if result.sql:
-                sql_stripped = result.sql.strip()
-                if sql_stripped.startswith("-- Error") or sql_stripped.startswith("-- No "):
-                    raise SchemaXProviderError(sql_stripped)
-                if not sql_stripped.startswith("--"):
-                    for sql_part in self._split_sql_statements(result.sql):
-                        execution_order += 1
-                        statement_infos.append(
-                            StatementInfo(
-                                sql=sql_part,
-                                operation_ids=[operation.id],
-                                execution_order=execution_order,
-                            )
-                        )
-
-        # Process DROP operations last (in reverse dependency order: table → schema → catalog)
-        # This ensures we drop dependent objects before their parents
-        for operation in sorted(
-            drop_ops, key=lambda operation: -self._get_dependency_level(operation)
-        ):
-            result = self.generate_sql_for_operation(operation)
-            if result.sql and not result.sql.startswith("--"):
-                for sql_part in self._split_sql_statements(result.sql):
-                    execution_order += 1
-                    statement_infos.append(
-                        StatementInfo(
-                            sql=sql_part,
-                            operation_ids=[operation.id],
-                            execution_order=execution_order,
-                        )
-                    )
-
-        # Build combined SQL script
         combined_sql = ";\n\n".join(stmt.sql for stmt in statement_infos)
         if combined_sql:
             combined_sql += ";"
-
         return SQLGenerationResult(
             sql=combined_sql,
             statements=statement_infos,
@@ -1172,146 +1326,11 @@ class UnitySQLGenerator(BaseSQLGenerator):
             )
 
     def _generate_sql_for_op_type(self, op_type: str, operation: Operation) -> str:
-        """Generate SQL based on operation type"""
-        # Catalog operations
-        if op_type == "add_catalog":
-            return self._add_catalog(operation)
-        if op_type == "rename_catalog":
-            return self._rename_catalog(operation)
-        if op_type == "update_catalog":
-            return self._update_catalog(operation)
-        if op_type == "drop_catalog":
-            return self._drop_catalog(operation)
-
-        # Schema operations
-        if op_type == "add_schema":
-            return self._add_schema(operation)
-        if op_type == "rename_schema":
-            return self._rename_schema(operation)
-        if op_type == "update_schema":
-            return self._update_schema(operation)
-        if op_type == "drop_schema":
-            return self._drop_schema(operation)
-
-        # Table operations
-        if op_type == "add_table":
-            return self._add_table(operation)
-        if op_type == "rename_table":
-            return self._rename_table(operation)
-        if op_type == "drop_table":
-            return self._drop_table(operation)
-        if op_type == "set_table_comment":
-            return self._set_table_comment(operation)
-        if op_type == "set_table_property":
-            return self._set_table_property(operation)
-        if op_type == "unset_table_property":
-            return self._unset_table_property(operation)
-        if op_type == "set_table_tag":
-            return self._set_table_tag(operation)
-        if op_type == "unset_table_tag":
-            return self._unset_table_tag(operation)
-
-        # View operations
-        if op_type == "add_view":
-            return self._add_view(operation)
-        if op_type == "rename_view":
-            return self._rename_view(operation)
-        if op_type == "drop_view":
-            return self._drop_view(operation)
-        if op_type == "update_view":
-            return self._update_view(operation)
-        if op_type == "set_view_comment":
-            return self._set_view_comment(operation)
-        if op_type == "set_view_property":
-            return self._set_view_property(operation)
-        if op_type == "unset_view_property":
-            return self._unset_view_property(operation)
-
-        # Volume operations
-        if op_type == "add_volume":
-            return self._add_volume(operation)
-        if op_type == "rename_volume":
-            return self._rename_volume(operation)
-        if op_type == "update_volume":
-            return self._update_volume(operation)
-        if op_type == "drop_volume":
-            return self._drop_volume(operation)
-
-        # Function operations
-        if op_type == "add_function":
-            return self._add_function(operation)
-        if op_type == "rename_function":
-            return self._rename_function(operation)
-        if op_type == "update_function":
-            return self._update_function(operation)
-        if op_type == "drop_function":
-            return self._drop_function(operation)
-        if op_type == "set_function_comment":
-            return self._set_function_comment(operation)
-
-        # Materialized view operations
-        if op_type == "add_materialized_view":
-            return self._add_materialized_view(operation)
-        if op_type == "rename_materialized_view":
-            return self._rename_materialized_view(operation)
-        if op_type == "update_materialized_view":
-            return self._update_materialized_view(operation)
-        if op_type == "drop_materialized_view":
-            return self._drop_materialized_view(operation)
-        if op_type == "set_materialized_view_comment":
-            return self._set_materialized_view_comment(operation)
-
-        # Column operations
-        if op_type == "add_column":
-            return self._add_column(operation)
-        if op_type == "rename_column":
-            return self._rename_column(operation)
-        if op_type == "drop_column":
-            return self._drop_column(operation)
-        if op_type == "reorder_columns":
-            return self._reorder_columns(operation)
-        if op_type == "change_column_type":
-            return self._change_column_type(operation)
-        if op_type == "set_nullable":
-            return self._set_nullable(operation)
-        if op_type == "set_column_comment":
-            return self._set_column_comment(operation)
-
-        # Column tag operations
-        if op_type == "set_column_tag":
-            return self._set_column_tag(operation)
-        if op_type == "unset_column_tag":
-            return self._unset_column_tag(operation)
-
-        # Constraint operations
-        if op_type == "add_constraint":
-            return self._add_constraint(operation)
-        if op_type == "drop_constraint":
-            return self._drop_constraint(operation)
-
-        # Row filter operations
-        if op_type == "add_row_filter":
-            return self._add_row_filter(operation)
-        if op_type == "update_row_filter":
-            return self._update_row_filter(operation)
-        if op_type == "remove_row_filter":
-            return self._remove_row_filter(operation)
-
-        # Column mask operations
-        if op_type == "add_column_mask":
-            return self._add_column_mask(operation)
-        if op_type == "update_column_mask":
-            return self._update_column_mask(operation)
-        if op_type == "remove_column_mask":
-            return self._remove_column_mask(operation)
-
-        # Grant operations
-        if op_type == "add_grant":
-            return self._add_grant(operation)
-        if op_type == "revoke_grant":
-            return self._revoke_grant(operation)
-
-        raise ValueError(f"Unsupported operation type: {op_type}")
+        """Generate SQL based on operation type via dispatch map."""
+        handler_name = self._OP_HANDLERS.get(op_type)
+        if handler_name is None:
+            raise ValueError(f"Unsupported operation type: {op_type}")
+        return cast(str, getattr(self, handler_name)(operation))
 
     # Catalog operations
     def _add_catalog(self, operation: Operation) -> str:
@@ -1397,11 +1416,16 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         if statements:
             return ";\n".join(statements)
-        else:
-            return "-- Warning: No updates specified for catalog"
+        return "-- Warning: No updates specified for catalog"
 
     def _drop_catalog(self, operation: Operation) -> str:
-        name = self.id_name_map.get(operation.target, operation.target)
+        # Resolve catalog name: for diff-generated drops the payload has "name" (logical);
+        # id_name_map may not contain the catalog when desired state is empty (e.g. drop-only snapshot).
+        logical_name = (operation.payload or {}).get("name")
+        if logical_name is not None and str(logical_name).strip():
+            name = self.catalog_name_mapping.get(logical_name, logical_name)
+        else:
+            name = self.id_name_map.get(operation.target, operation.target)
         # Use CASCADE to ensure catalog drops even if it contains schemas/tables
         # This handles drift scenarios where catalog may have objects we don't track
         # CASCADE is safe for rollback: we're reverting to a previous known state
@@ -1439,7 +1463,41 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return result
 
-    def _generate_create_catalog_batched(self, object_id: str, batch_info: BatchInfo) -> str:
+    def _squash_managed_location_from_modify_ops(
+        self, batch_info: BatchInfo, update_op_type: str
+    ) -> str | None:
+        """Return managed location from create_op or first matching modify_op."""
+        value = (
+            batch_info.create_op.payload.get("managedLocationName")
+            if batch_info.create_op
+            else None
+        )
+        for operation in batch_info.modify_ops:
+            if operation.op == update_op_type and "managedLocationName" in operation.payload:
+                return operation.payload.get("managedLocationName")
+        return value
+
+    def _squash_comment_from_modify_ops(
+        self, batch_info: BatchInfo, update_op_type: str
+    ) -> str | None:
+        """Return comment from create_op or first matching modify_op."""
+        value = batch_info.create_op.payload.get("comment") if batch_info.create_op else None
+        for operation in batch_info.modify_ops:
+            if operation.op == update_op_type and "comment" in operation.payload:
+                return operation.payload.get("comment")
+        return value
+
+    def _squash_tags_from_modify_ops(
+        self, batch_info: BatchInfo, update_op_type: str
+    ) -> dict[str, str] | None:
+        """Return tags from create_op or first matching modify_op."""
+        value = batch_info.create_op.payload.get("tags") if batch_info.create_op else None
+        for operation in batch_info.modify_ops:
+            if operation.op == update_op_type and "tags" in operation.payload:
+                return operation.payload.get("tags")
+        return value
+
+    def _generate_create_catalog_batched(self, _object_id: str, batch_info: BatchInfo) -> str:
         """
         Generate CREATE CATALOG with batched updates (e.g., managed location from update_catalog).
 
@@ -1447,53 +1505,30 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """
         if not batch_info.create_op:
             return ""
-
         create_op = batch_info.create_op
         name = self.id_name_map.get(create_op.target, create_op.payload["name"])
-
-        # Check for update_catalog operations in modify_ops
-        managed_location_name = create_op.payload.get("managedLocationName")
-        for operation in batch_info.modify_ops:
-            if (
-                operation.op == "unity.update_catalog"
-                and "managedLocationName" in operation.payload
-            ):
-                # Squash: Use the updated value instead
-                managed_location_name = operation.payload.get("managedLocationName")
-                break
+        managed_location_name = self._squash_managed_location_from_modify_ops(
+            batch_info, "unity.update_catalog"
+        )
+        comment = self._squash_comment_from_modify_ops(batch_info, "unity.update_catalog")
+        tags = self._squash_tags_from_modify_ops(batch_info, "unity.update_catalog")
 
         sql = f"CREATE CATALOG IF NOT EXISTS {self.escape_identifier(name)}"
-
         if managed_location_name:
             location = self._resolve_managed_location(managed_location_name)
             if location:
                 sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
-
-        # Comment from create_op or squashed update_catalog
-        comment = create_op.payload.get("comment")
-        for operation in batch_info.modify_ops:
-            if operation.op == "unity.update_catalog" and "comment" in operation.payload:
-                comment = operation.payload.get("comment")
-                break
         if comment:
             sql += f" COMMENT '{self.escape_string(comment)}'"
-
-        # Tags: set via ALTER after creation (create_op or squashed update_catalog)
-        tags = create_op.payload.get("tags")
-        for operation in batch_info.modify_ops:
-            if operation.op == "unity.update_catalog" and "tags" in operation.payload:
-                tags = operation.payload.get("tags")
-                break
         result = sql
         if tags and isinstance(tags, dict) and len(tags) > 0:
             tag_entries = ", ".join(
                 f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
             )
             result += f";\nALTER CATALOG {self.escape_identifier(name)} SET TAGS ({tag_entries})"
-
         return result
 
-    def _generate_create_schema_batched(self, object_id: str, batch_info: BatchInfo) -> str:
+    def _generate_create_schema_batched(self, _object_id: str, batch_info: BatchInfo) -> str:
         """
         Generate CREATE SCHEMA with batched updates (e.g., managed location from update_schema).
 
@@ -1501,50 +1536,30 @@ class UnitySQLGenerator(BaseSQLGenerator):
         """
         if not batch_info.create_op:
             return ""
-
         create_op = batch_info.create_op
         catalog_name = self.id_name_map.get(create_op.payload["catalogId"], "unknown")
         schema_name = create_op.payload["name"]
-
-        # Check for update_schema operations in modify_ops
-        managed_location_name = create_op.payload.get("managedLocationName")
-        for operation in batch_info.modify_ops:
-            if operation.op == "unity.update_schema" and "managedLocationName" in operation.payload:
-                # Squash: Use the updated value instead
-                managed_location_name = operation.payload.get("managedLocationName")
-                break
+        managed_location_name = self._squash_managed_location_from_modify_ops(
+            batch_info, "unity.update_schema"
+        )
+        comment = self._squash_comment_from_modify_ops(batch_info, "unity.update_schema")
+        tags = self._squash_tags_from_modify_ops(batch_info, "unity.update_schema")
 
         catalog_esc = self.escape_identifier(catalog_name)
         schema_esc = self.escape_identifier(schema_name)
         sql = f"CREATE SCHEMA IF NOT EXISTS {catalog_esc}.{schema_esc}"
-
         if managed_location_name:
             location = self._resolve_managed_location(managed_location_name)
             if location:
                 sql += f" MANAGED LOCATION '{self.escape_string(location['resolved'])}'"
-
-        # Comment from create_op or squashed update_schema
-        comment = create_op.payload.get("comment")
-        for operation in batch_info.modify_ops:
-            if operation.op == "unity.update_schema" and "comment" in operation.payload:
-                comment = operation.payload.get("comment")
-                break
         if comment:
             sql += f" COMMENT '{self.escape_string(comment)}'"
-
-        # Tags: set via ALTER after creation
-        tags = create_op.payload.get("tags")
-        for operation in batch_info.modify_ops:
-            if operation.op == "unity.update_schema" and "tags" in operation.payload:
-                tags = operation.payload.get("tags")
-                break
         result = sql
         if tags and isinstance(tags, dict) and len(tags) > 0:
             tag_entries = ", ".join(
                 f"'{self.escape_string(k)}' = '{self.escape_string(v)}'" for k, v in tags.items()
             )
             result += f";\nALTER SCHEMA {catalog_esc}.{schema_esc} SET TAGS ({tag_entries})"
-
         return result
 
     def _rename_schema(self, operation: Operation) -> str:
@@ -1599,8 +1614,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         if statements:
             return ";\n".join(statements)
-        else:
-            return "-- Warning: No updates specified for schema"
+        return "-- Warning: No updates specified for schema"
 
     def _drop_schema(self, operation: Operation) -> str:
         fqn = self.id_name_map.get(operation.target, "unknown.unknown")
@@ -1696,21 +1710,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER TABLE {old_esc} RENAME TO {new_esc}"
 
     def _drop_table(self, operation: Operation) -> str:
-        # Get table FQN from id_name_map
-        # SQL generator MUST be created with state containing objects to be dropped
-        # (e.g., use current_state during rollback, not target_state)
-        table_fqn = self.id_name_map.get(operation.target)
-
-        if not table_fqn or "." not in table_fqn:
-            # This should never happen if SQL generator is used correctly
-            # If it does, it indicates a bug in the calling code
-            raise ValueError(
-                f"Cannot generate DROP TABLE for {operation.target}: table not found in state.\n"
-                f"Hint: SQL generator must be created with state containing objects to be dropped.\n"
-                f"For rollback operations, use current_state (not target_state)."
-            )
-
-        fqn_esc = self._build_fqn(*table_fqn.split("."))
+        fqn_esc = self._resolve_fqn_for_drop(operation)
         return f"DROP TABLE IF EXISTS {fqn_esc}"
 
     def _set_table_comment(self, operation: Operation) -> str:
@@ -1732,47 +1732,59 @@ class UnitySQLGenerator(BaseSQLGenerator):
         key = operation.payload["key"]
         return f"ALTER TABLE {fqn_esc} UNSET TBLPROPERTIES ('{key}')"
 
-    def _generate_batched_table_tag_sql(self, table_tag_ops: list[Operation]) -> str:
-        """Batch table tag ops by table_id: one SET TAGS and one UNSET TAGS per table."""
-        if not table_tag_ops:
-            return ""
-
+    @staticmethod
+    def _aggregate_table_tag_ops(
+        table_tag_ops: list[Operation],
+    ) -> tuple[dict[str, dict[str, str]], dict[str, set[str]]]:
+        """Aggregate set/unset table tag ops by table_id. Returns (set_by_table, unset_by_table)."""
         set_by_table: dict[str, dict[str, str]] = {}
         unset_by_table: dict[str, set[str]] = {}
-
         for operation in table_tag_ops:
             table_id = operation.payload.get("tableId", "")
             op_type = operation.op.replace("unity.", "")
             if op_type == "set_table_tag":
                 tag_name = operation.payload["tagName"]
-                tag_value = self.escape_string(operation.payload["tagValue"])
-                if table_id not in set_by_table:
-                    set_by_table[table_id] = {}
-                set_by_table[table_id][tag_name] = tag_value
+                tag_value = operation.payload["tagValue"]
+                set_by_table.setdefault(table_id, {})[tag_name] = tag_value
                 if table_id in unset_by_table:
                     unset_by_table[table_id].discard(tag_name)
             if op_type == "unset_table_tag":
                 tag_name = operation.payload["tagName"]
-                if table_id not in unset_by_table:
-                    unset_by_table[table_id] = set()
-                unset_by_table[table_id].add(tag_name)
+                unset_by_table.setdefault(table_id, set()).add(tag_name)
                 if table_id in set_by_table:
                     set_by_table[table_id].pop(tag_name, None)
+        return set_by_table, unset_by_table
 
+    def _emit_table_tag_alter_sql(
+        self,
+        set_by_table: dict[str, dict[str, str]],
+        unset_by_table: dict[str, set[str]],
+    ) -> list[str]:
+        """Emit ALTER TABLE ... SET TAGS / UNSET TAGS statements from aggregated tag maps."""
         parts: list[str] = []
-        for tid in set(set_by_table.keys()) | set(unset_by_table.keys()):
+        for tid in set(set_by_table) | set(unset_by_table):
             table_fqn = self.id_name_map.get(tid, "unknown")
             table_esc = self._build_fqn(*table_fqn.split("."))
-            unset_tags = unset_by_table.get(tid)
-            if unset_tags:
-                tag_list = ", ".join(f"'{self.escape_string(t)}'" for t in unset_tags)
+            if tid in unset_by_table and unset_by_table[tid]:
+                tag_list = ", ".join(f"'{self.escape_string(t)}'" for t in unset_by_table[tid])
                 parts.append(f"ALTER TABLE {table_esc} UNSET TAGS ({tag_list})")
-            set_tags = set_by_table.get(tid)
-            if set_tags:
+            if tid in set_by_table and set_by_table[tid]:
                 tag_list = ", ".join(
-                    f"'{self.escape_string(k)}' = '{v}'" for k, v in set_tags.items()
+                    f"'{self.escape_string(k)}' = '{v}'" for k, v in set_by_table[tid].items()
                 )
                 parts.append(f"ALTER TABLE {table_esc} SET TAGS ({tag_list})")
+        return parts
+
+    def _generate_batched_table_tag_sql(self, table_tag_ops: list[Operation]) -> str:
+        """Batch table tag ops by table_id: one SET TAGS and one UNSET TAGS per table."""
+        if not table_tag_ops:
+            return ""
+        set_by_table, unset_by_table = self._aggregate_table_tag_ops(table_tag_ops)
+        # Escape tag values when emitting (aggregate stores raw)
+        set_escaped: dict[str, dict[str, str]] = {}
+        for tid, tags in set_by_table.items():
+            set_escaped[tid] = {k: self.escape_string(v) for k, v in tags.items()}
+        parts = self._emit_table_tag_alter_sql(set_escaped, unset_by_table)
         return ";\n".join(parts) if parts else ""
 
     def _set_table_tag(self, operation: Operation) -> str:
@@ -1789,95 +1801,95 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER TABLE {fqn_esc} UNSET TAGS ('{tag_name}')"
 
     # View operations
+    def _build_name_to_fqn_map(self) -> dict[str, str]:
+        """Build mapping from unqualified/partially qualified names to FQN from id_name_map."""
+        name_to_fqn: dict[str, str] = {}
+        for _oid, fqn in self.id_name_map.items():
+            if not fqn or "." not in fqn:
+                continue
+            parts = fqn.split(".")
+            if len(parts) == 3:
+                _cat, schema, name = parts
+                name_to_fqn[name] = fqn
+                name_to_fqn[f"{schema}.{name}"] = fqn
+        return name_to_fqn
+
+    def _apply_fqn_to_parsed(self, parsed: Any, name_to_fqn: dict[str, str]) -> None:
+        """Mutate parsed SQL tree: qualify each Table node using name_to_fqn or catalog mapping."""
+        for table_node in parsed.find_all(exp.Table):
+            current_ref = self._table_node_reference(table_node)
+            if self._apply_known_fqn_mapping(table_node, current_ref, name_to_fqn):
+                continue
+            self._apply_catalog_mapping_qualification(table_node)
+
+    @staticmethod
+    def _table_node_reference(table_node: Any) -> str:
+        """Build current table reference text from catalog/db/name pieces."""
+        current_ref_parts = []
+        if table_node.catalog:
+            current_ref_parts.append(table_node.catalog)
+        if table_node.db:
+            current_ref_parts.append(table_node.db)
+        if table_node.name:
+            current_ref_parts.append(table_node.name)
+        return ".".join(current_ref_parts)
+
+    def _apply_known_fqn_mapping(
+        self, table_node: Any, current_ref: str, name_to_fqn: dict[str, str]
+    ) -> bool:
+        """Apply explicit FQN mapping when current_ref is known."""
+        if current_ref not in name_to_fqn:
+            return False
+        parts = name_to_fqn[current_ref].split(".")
+        if len(parts) != 3:
+            return False
+        table_node.set("catalog", exp.to_identifier(parts[0], quoted=True))
+        table_node.set("db", exp.to_identifier(parts[1], quoted=True))
+        table_node.set("this", exp.to_identifier(parts[2], quoted=True))
+        return True
+
+    def _apply_catalog_mapping_qualification(self, table_node: Any) -> None:
+        """Qualify a table node using catalog-name mapping when catalog is present."""
+        if not table_node.catalog:
+            return
+        logical_catalog = table_node.catalog
+        physical_catalog = self.catalog_name_mapping.get(logical_catalog, logical_catalog)
+        table_node.set("catalog", exp.to_identifier(physical_catalog, quoted=True))
+        if table_node.db:
+            table_node.set("db", exp.to_identifier(table_node.db, quoted=True))
+        if table_node.name:
+            table_node.set("this", exp.to_identifier(table_node.name, quoted=True))
+
     def _qualify_view_definition(
-        self, definition: str, extracted_deps: dict[str, list[str]]
+        self, definition: str, _extracted_deps: dict[str, list[str]]
     ) -> str:
         """
         Qualify unqualified table/view references in view SQL with fully-qualified names.
 
-        This ensures views work correctly even when the current catalog/schema context
-        is not set, which is the case with SQL Statement Execution API.
-
-        Args:
-            definition: Raw view SQL (may contain unqualified table names)
-            extracted_deps: Extracted dependencies with table/view names (from frontend)
-
-        Returns:
-            SQL with all table/view references fully qualified
+        This ensures views work correctly when the current catalog/schema context
+        is not set (e.g. SQL Statement Execution API).
         """
-        import sqlglot
-        from sqlglot import expressions as exp
-
         try:
-            # Parse the SQL
             parsed = sqlglot.parse_one(definition, dialect="databricks")
         except Exception:
-            # If parsing fails, return original (let Databricks handle the error)
             return definition
+        name_to_fqn = self._build_name_to_fqn_map()
+        self._apply_fqn_to_parsed(parsed, name_to_fqn)
+        return parsed.sql(dialect="databricks", pretty=True)
 
-        # Build mapping from unqualified names to FQNs
-        # Note: extracted_deps contains table/view NAMES (not IDs) from frontend parsing
-        name_to_fqn: dict[str, str] = {}
-
-        # Build reverse map: name -> FQN from id_name_map
-        # id_name_map is like: {"tbl1": "catalog.schema.table1", ...}
-        for object_id, fqn in self.id_name_map.items():
-            if not fqn or "." not in fqn:
-                continue
-
-            parts = fqn.split(".")
-            if len(parts) == 3:
-                catalog, schema, name = parts
-                # Map: name -> catalog.schema.name (for unqualified refs)
-                name_to_fqn[name] = fqn
-                # Map: schema.name -> catalog.schema.name (for partially qualified refs)
-                name_to_fqn[f"{schema}.{name}"] = fqn
-
-        # Note: We don't need to filter by extracted_deps anymore since we built
-        # a comprehensive name->FQN map from all objects in id_name_map
-
-        # Replace table references with FQNs
-        for table_node in parsed.find_all(exp.Table):
-            # Build current reference string
-            current_ref_parts = []
-            if table_node.catalog:
-                current_ref_parts.append(table_node.catalog)
-            if table_node.db:  # schema
-                current_ref_parts.append(table_node.db)
-            if table_node.name:
-                current_ref_parts.append(table_node.name)
-
-            current_ref = ".".join(current_ref_parts)
-
-            # Look up FQN
-            if current_ref in name_to_fqn:
-                fqn = name_to_fqn[current_ref]
-                parts = fqn.split(".")
-                if len(parts) == 3:
-                    # Update the table node with qualified names (quoted for Databricks)
-                    table_node.set("catalog", exp.to_identifier(parts[0], quoted=True))
-                    table_node.set("db", exp.to_identifier(parts[1], quoted=True))  # schema
-                    table_node.set("this", exp.to_identifier(parts[2], quoted=True))  # table name
-            elif table_node.catalog:
-                # If catalog is explicitly specified but not in our map,
-                # check if it's a logical catalog name and map it to physical name
-                logical_catalog = table_node.catalog
-                if logical_catalog in self.catalog_name_mapping:
-                    physical_catalog = self.catalog_name_mapping[logical_catalog]
-                    table_node.set("catalog", exp.to_identifier(physical_catalog, quoted=True))
-                else:
-                    # External catalog - preserve name but add backticks
-                    table_node.set("catalog", exp.to_identifier(logical_catalog, quoted=True))
-
-                # Always add backticks to schema and table (even for external refs)
-                if table_node.db:
-                    table_node.set("db", exp.to_identifier(table_node.db, quoted=True))
-                if table_node.name:
-                    table_node.set("this", exp.to_identifier(table_node.name, quoted=True))
-
-        # Generate SQL with qualified names
-        qualified_sql = parsed.sql(dialect="databricks", pretty=True)
-        return qualified_sql
+    @staticmethod
+    def _normalize_extracted_dependencies(value: Any) -> dict[str, list[str]]:
+        """Normalize extractedDependencies payload to a stable dict shape."""
+        if not isinstance(value, dict):
+            return {}
+        normalized: dict[str, list[str]] = {}
+        for key in ("tables", "views"):
+            raw = value.get(key, [])
+            if isinstance(raw, list):
+                normalized[key] = [str(item) for item in raw]
+            else:
+                normalized[key] = []
+        return normalized
 
     def _add_view(self, operation: Operation) -> str:
         """Generate CREATE VIEW statement"""
@@ -1898,7 +1910,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         # Always qualify table/view references in the definition
         # (even if extractedDependencies is missing, we use all objects from id_name_map)
-        extracted_deps = operation.payload.get("extractedDependencies", {})
+        extracted_deps = self._normalize_extracted_dependencies(
+            operation.payload.get("extractedDependencies")
+        )
         definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Build CREATE VIEW statement
@@ -1951,7 +1965,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         definition = update_op.payload.get("definition", "")
 
         # Always qualify table/view references in the definition
-        extracted_deps = update_op.payload.get("extractedDependencies", {})
+        extracted_deps = self._normalize_extracted_dependencies(
+            update_op.payload.get("extractedDependencies")
+        )
         definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Use comment from create_op (if any)
@@ -2045,7 +2061,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         definition = operation.payload.get("definition", "")
 
         # Always qualify table/view references in the definition
-        extracted_deps = operation.payload.get("extractedDependencies", {})
+        extracted_deps = self._normalize_extracted_dependencies(
+            operation.payload.get("extractedDependencies")
+        )
         definition = self._qualify_view_definition(definition, extracted_deps)
 
         # Use CREATE OR REPLACE for updates
@@ -2244,12 +2262,23 @@ class UnitySQLGenerator(BaseSQLGenerator):
         mv_name = operation.payload["name"]
         mv_esc = self._build_fqn(*parts, mv_name)
         definition = operation.payload.get("definition") or "SELECT 1"
-        extracted_deps = operation.payload.get("extractedDependencies", {})
+        extracted_deps = self._normalize_extracted_dependencies(
+            operation.payload.get("extractedDependencies")
+        )
         definition = self._qualify_view_definition(definition, extracted_deps)
         comment_clause = ""
         if operation.payload.get("comment"):
             comment_clause = f" COMMENT '{self.escape_string(operation.payload['comment'])}'"
-        sql = f"CREATE MATERIALIZED VIEW IF NOT EXISTS {mv_esc}{comment_clause} AS\n{definition}"
+        partition_cols = operation.payload.get("partitionColumns", [])
+        cluster_cols = operation.payload.get("clusterColumns", [])
+        # Databricks: liquid clustering cannot be combined with PARTITIONED BY; prefer CLUSTER BY
+        if cluster_cols:
+            mv_clause = f" CLUSTER BY ({', '.join(cluster_cols)})"
+        elif partition_cols:
+            mv_clause = f" PARTITIONED BY ({', '.join(partition_cols)})"
+        else:
+            mv_clause = ""
+        sql = f"CREATE MATERIALIZED VIEW IF NOT EXISTS {mv_esc}{comment_clause}{mv_clause} AS\n{definition}"
         schedule = operation.payload.get("refreshSchedule")
         if schedule:
             sql += f"\nSCHEDULE {schedule}"
@@ -2276,12 +2305,22 @@ class UnitySQLGenerator(BaseSQLGenerator):
             catalog_physical = self.catalog_name_mapping.get(parts[0], parts[0])
             parts[0] = catalog_physical
             mv_esc = self._build_fqn(*parts)
-            extracted_deps = operation.payload.get("extractedDependencies", {})
+            extracted_deps = self._normalize_extracted_dependencies(
+                operation.payload.get("extractedDependencies")
+            )
             definition = self._qualify_view_definition(definition, extracted_deps)
             comment_clause = ""
             if operation.payload.get("comment"):
                 comment_clause = f" COMMENT '{self.escape_string(operation.payload['comment'])}'"
-            sql = f"CREATE OR REPLACE MATERIALIZED VIEW {mv_esc}{comment_clause} AS\n{definition}"
+            partition_cols = operation.payload.get("partitionColumns", [])
+            cluster_cols = operation.payload.get("clusterColumns", [])
+            if cluster_cols:
+                mv_clause = f" CLUSTER BY ({', '.join(cluster_cols)})"
+            elif partition_cols:
+                mv_clause = f" PARTITIONED BY ({', '.join(partition_cols)})"
+            else:
+                mv_clause = ""
+            sql = f"CREATE OR REPLACE MATERIALIZED VIEW {mv_esc}{comment_clause}{mv_clause} AS\n{definition}"
             if operation.payload.get("refreshSchedule"):
                 sql += f"\nSCHEDULE {operation.payload['refreshSchedule']}"
             return sql
@@ -2292,9 +2331,9 @@ class UnitySQLGenerator(BaseSQLGenerator):
         parts[0] = catalog_physical
         mv_esc = self._build_fqn(*parts)
         if "refreshSchedule" in operation.payload:
-            s = operation.payload.get("refreshSchedule")
-            if s:
-                stmts.append(f"ALTER MATERIALIZED VIEW {mv_esc} SET SCHEDULE {s}")
+            refresh_schedule = operation.payload.get("refreshSchedule")
+            if refresh_schedule:
+                stmts.append(f"ALTER MATERIALIZED VIEW {mv_esc} SET SCHEDULE {refresh_schedule}")
             else:
                 stmts.append(f"ALTER MATERIALIZED VIEW {mv_esc} UNSET SCHEDULE")
         if "comment" in operation.payload:
@@ -2362,7 +2401,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} DROP COLUMN {col_esc}"
 
-    def _reorder_columns(self, operation: Operation) -> str:
+    def _reorder_columns(self, _operation: Operation) -> str:
         # Databricks doesn't support direct column reordering
         return "-- Column reordering not directly supported in Databricks SQL"
 
@@ -2403,15 +2442,27 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _get_table_column_order(self, table_id: str) -> list[str]:
         """Get current column order for a table from state"""
-        for catalog in self.state["catalogs"]:
-            for schema in catalog.get("schemas", []):
-                for table in schema.get("tables", []):
-                    if table["id"] == table_id:
-                        return [col["id"] for col in table.get("columns", [])]
+        for table in self._iter_state_tables():
+            if table["id"] == table_id:
+                return [col["id"] for col in table.get("columns", [])]
         return []
 
+    def _iter_state_tables(self) -> list[dict[str, Any]]:
+        """Flatten state into a list of table dicts (supports model or dict state)."""
+        catalogs = (
+            self.state.catalogs
+            if hasattr(self.state, "catalogs")
+            else self.state.get("catalogs", [])
+        )
+        return [
+            table
+            if isinstance(table, dict)
+            else cast(dict[str, Any], table.model_dump(by_alias=True))
+            for table in self._iter_catalog_tables(catalogs)
+        ]
+
     def _generate_optimized_reorder_sql(
-        self, table_id: str, original_order: list[str], final_order: list[str], op_ids: list[str]
+        self, table_id: str, original_order: list[str], final_order: list[str], _op_ids: list[str]
     ) -> str:
         """Generate minimal SQL to reorder columns from original to final order"""
 
@@ -2431,19 +2482,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         # If we detected a single column drag, generate optimal SQL (1 statement)
         if single_move:
-            col_id, orig_pos, new_pos = single_move
+            col_id, _original_pos, new_pos = single_move
             col_name = self.id_name_map.get(col_id, col_id)
             col_esc = self.escape_identifier(col_name)
 
             if new_pos == 0:
                 # Column moved to first position
                 return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} FIRST"
-            else:
-                # Column moved after another column
-                prev_col_id = final_order[new_pos - 1]
-                prev_col_name = self.id_name_map.get(prev_col_id, prev_col_id)
-                prev_col_esc = self.escape_identifier(prev_col_name)
-                return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} AFTER {prev_col_esc}"
+            # Column moved after another column
+            prev_col_id = final_order[new_pos - 1]
+            prev_col_name = self.id_name_map.get(prev_col_id, prev_col_id)
+            prev_col_esc = self.escape_identifier(prev_col_name)
+            return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} AFTER {prev_col_esc}"
 
         # Multiple columns moved - use general algorithm
         statements = []
@@ -2485,56 +2535,85 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         return ";\n".join(statements)
 
+    def _get_table_id_for_operation(self, operation: Operation) -> str | None:
+        """Return table_id for a table-related operation, or None."""
+        op_type = operation.op.replace("unity.", "")
+        if op_type in {"add_table", "rename_table", "drop_table", "set_table_comment"}:
+            return operation.target
+        if op_type in {
+            "add_column",
+            "rename_column",
+            "drop_column",
+            "reorder_columns",
+            "change_column_type",
+            "set_nullable",
+            "set_column_comment",
+            "set_column_tag",
+            "unset_column_tag",
+            "set_table_property",
+            "unset_table_property",
+            "set_table_tag",
+            "unset_table_tag",
+        }:
+            return operation.payload.get("tableId")
+        if op_type in {
+            "add_constraint",
+            "drop_constraint",
+            "add_row_filter",
+            "update_row_filter",
+            "remove_row_filter",
+            "add_column_mask",
+            "update_column_mask",
+            "remove_column_mask",
+        }:
+            return operation.payload.get("tableId")
+        return None
+
+    def _categorize_table_op(
+        self, op_type: str, operation: Operation, batch: dict[str, Any]
+    ) -> None:
+        """Place operation into the correct list in batch by op_type."""
+        if op_type == "add_table":
+            batch["is_new_table"] = True
+            batch["table_op"] = operation
+        if op_type == "add_column":
+            batch["column_ops"].append(operation)
+        elif op_type in {"set_table_property", "unset_table_property"}:
+            batch["property_ops"].append(operation)
+        elif op_type in {"set_table_tag", "unset_table_tag"}:
+            batch["other_ops"].append(operation)
+        if op_type == "set_table_comment":
+            batch["other_ops"].append(operation)
+        if op_type == "reorder_columns":
+            batch["reorder_ops"].append(operation)
+        elif op_type in {"add_constraint", "drop_constraint"}:
+            batch["constraint_ops"].append(operation)
+        elif op_type in {
+            "add_row_filter",
+            "update_row_filter",
+            "remove_row_filter",
+            "add_column_mask",
+            "update_column_mask",
+            "remove_column_mask",
+        }:
+            batch["governance_ops"].append(operation)
+        else:
+            batch["other_ops"].append(operation)
+
     def _batch_table_operations(self, ops: list[Operation]) -> dict[str, Any]:
         """
         Batch operations by table to generate optimal DDL.
 
-        Groups table-related operations (add_table, add_column, reorder_columns,
-        set_table_property, etc.) to generate complete CREATE TABLE statements
+        Groups table-related operations to generate complete CREATE TABLE statements
         for new tables or efficient ALTER statements for existing tables.
 
         Returns dict mapping table_id to batch info.
         """
         table_batches: dict[str, Any] = {}
-
         for operation in ops:
-            op_type = operation.op.replace("unity.", "")
-
-            # Identify table-related operations
-            table_id = None
-            if op_type in ["add_table", "rename_table", "drop_table", "set_table_comment"]:
-                table_id = operation.target
-            elif op_type in [
-                "add_column",
-                "rename_column",
-                "drop_column",
-                "reorder_columns",
-                "change_column_type",
-                "set_nullable",
-                "set_column_comment",
-                "set_column_tag",
-                "unset_column_tag",
-                "set_table_property",
-                "unset_table_property",
-                "set_table_tag",
-                "unset_table_tag",
-            ]:
-                table_id = operation.payload.get("tableId")
-            elif op_type in [
-                "add_constraint",
-                "drop_constraint",
-                "add_row_filter",
-                "update_row_filter",
-                "remove_row_filter",
-                "add_column_mask",
-                "update_column_mask",
-                "remove_column_mask",
-            ]:
-                table_id = operation.payload.get("tableId")
-
+            table_id = self._get_table_id_for_operation(operation)
             if not table_id:
-                continue  # Not a table operation
-
+                continue
             if table_id not in table_batches:
                 table_batches[table_id] = {
                     "is_new_table": False,
@@ -2548,41 +2627,10 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     "op_ids": [],
                     "operation_types": [],
                 }
-
             batch = table_batches[table_id]
             batch["op_ids"].append(operation.id)
             batch["operation_types"].append(operation.op)
-
-            # Categorize operation
-            if op_type == "add_table":
-                batch["is_new_table"] = True
-                batch["table_op"] = operation
-            if op_type == "add_column":
-                batch["column_ops"].append(operation)
-            elif op_type in ["set_table_property", "unset_table_property"]:
-                batch["property_ops"].append(operation)
-            elif op_type in ["set_table_tag", "unset_table_tag"]:
-                # Table tags must be set AFTER table creation
-                batch["other_ops"].append(operation)
-            if op_type == "set_table_comment":
-                # Table comments can be included in CREATE TABLE
-                batch["other_ops"].append(operation)
-            if op_type == "reorder_columns":
-                batch["reorder_ops"].append(operation)
-            elif op_type in ["add_constraint", "drop_constraint"]:
-                batch["constraint_ops"].append(operation)
-            elif op_type in [
-                "add_row_filter",
-                "update_row_filter",
-                "remove_row_filter",
-                "add_column_mask",
-                "update_column_mask",
-                "remove_column_mask",
-            ]:
-                batch["governance_ops"].append(operation)
-            else:
-                batch["other_ops"].append(operation)
-
+            self._categorize_table_op(operation.op.replace("unity.", ""), operation, batch)
         return table_batches
 
     def _generate_table_sql_with_mapping(
@@ -2615,7 +2663,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return statements
 
     def _generate_view_sql_with_mapping(
-        self, view_id: str, batch_info: BatchInfo
+        self, _view_id: str, batch_info: BatchInfo
     ) -> list[tuple[str, list[str]]]:
         """Generate SQL for view operations with explicit operation mapping.
 
@@ -2677,7 +2725,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return statements
 
     def _generate_volume_sql_with_mapping(
-        self, object_id: str, batch_info: BatchInfo
+        self, _object_id: str, batch_info: BatchInfo
     ) -> list[tuple[str, list[str]]]:
         """Generate SQL for volume operations. Returns list of (sql, op_ids)."""
         statements = []
@@ -2698,7 +2746,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return statements
 
     def _generate_function_sql_with_mapping(
-        self, object_id: str, batch_info: BatchInfo
+        self, _object_id: str, batch_info: BatchInfo
     ) -> list[tuple[str, list[str]]]:
         """Generate SQL for function operations. Returns list of (sql, op_ids)."""
         statements = []
@@ -2719,7 +2767,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return statements
 
     def _generate_materialized_view_sql_with_mapping(
-        self, object_id: str, batch_info: BatchInfo
+        self, _object_id: str, batch_info: BatchInfo
     ) -> list[tuple[str, list[str]]]:
         """Generate SQL for materialized view operations. Returns list of (sql, op_ids)."""
         statements = []
@@ -2754,22 +2802,20 @@ class UnitySQLGenerator(BaseSQLGenerator):
             other_ops = []
             for operation in batch_info.modify_ops:
                 op_type = operation.op.replace("unity.", "")
-                if op_type in [
+                if op_type in {
                     "add_column",
                     "rename_column",
                     "drop_column",
                     "change_column_type",
                     "set_nullable",
                     "set_column_comment",
-                ]:
+                }:
                     column_ops.append(operation)
-                elif op_type in ["set_column_tag", "unset_column_tag"]:
+                elif op_type in {"set_column_tag", "unset_column_tag"}:
                     tag_ops.append(operation)
-                elif op_type in ["set_table_tag", "unset_table_tag"]:
+                elif op_type in {"set_table_tag", "unset_table_tag"}:
                     table_tag_ops.append(operation)
-                # Exclude operations that will be handled by dedicated lists below
-                # (property_ops, constraint_ops, reorder_ops, governance_ops)
-                elif op_type not in [
+                elif op_type not in {
                     "set_table_property",
                     "unset_table_property",
                     "add_constraint",
@@ -2781,7 +2827,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                     "add_column_mask",
                     "update_column_mask",
                     "remove_column_mask",
-                ]:
+                }:
                     other_ops.append(operation)
 
             # Sort constraint operations to ensure DROP comes before ADD
@@ -2824,23 +2870,141 @@ class UnitySQLGenerator(BaseSQLGenerator):
         if batch_dict["is_new_table"]:
             # Generate complete CREATE TABLE statement
             return self._generate_create_table_with_columns(table_id, batch_dict)
-        else:
-            # Generate optimized ALTER statements for existing table
-            return self._generate_alter_statements_for_table(table_id, batch_dict)
+        # Generate optimized ALTER statements for existing table
+        return self._generate_alter_statements_for_table(table_id, batch_dict)
 
-    def _generate_create_table_with_columns(self, table_id: str, batch_info: dict[str, Any]) -> str:
+    def _append_post_create_alter_statements(
+        self,
+        batch_info: dict[str, Any],
+        table_fqn: str,
+        add_column_ops: list[Operation],
+        column_ops: list[Operation],
+        other_column_ops: list[Operation],
+        constraint_ops: list[Operation],
+        other_ops: list[Operation],
+        statements: list[str],
+    ) -> None:
+        """Append ALTER statements after CREATE TABLE: id_name_map update, tags, constraints, governance, other."""
+        self._update_id_map_for_created_table(batch_info, table_fqn, add_column_ops)
+        self._append_post_create_tag_statements(batch_info, column_ops, statements)
+        self._append_generated_sql_for_ops(other_column_ops, statements)
+        self._append_generated_sql_for_ops(constraint_ops, statements)
+        self._append_generated_sql_for_ops(batch_info.get("governance_ops", []), statements)
+        self._append_generated_sql_for_ops(
+            other_ops,
+            statements,
+            skip_op_types={"set_table_comment", "set_table_tag", "unset_table_tag"},
+        )
+
+    def _update_id_map_for_created_table(
+        self, batch_info: dict[str, Any], table_fqn: str, add_column_ops: list[Operation]
+    ) -> None:
+        """Update id_name_map for created table and newly-added columns."""
+        table_operation = batch_info["table_op"]
+        table_id_from_op = (
+            table_operation.payload.get("tableId") or table_operation.target
+            if table_operation
+            else None
+        )
+        if not table_id_from_op:
+            return
+        self.id_name_map[table_id_from_op] = table_fqn
+        for col_op in add_column_ops:
+            col_id = col_op.target
+            col_name = col_op.payload.get("name", col_id)
+            self.id_name_map[col_id] = col_name
+
+    def _append_post_create_tag_statements(
+        self, batch_info: dict[str, Any], column_ops: list[Operation], statements: list[str]
+    ) -> None:
+        """Append batched column/table tag SQL for post-create flow."""
+        tag_ops = batch_info.get("tag_ops") or [
+            op
+            for op in column_ops
+            if op.op.endswith("set_column_tag") or op.op.endswith("unset_column_tag")
+        ]
+        self._append_batched_sql_statements(
+            self._generate_batched_column_tag_sql(tag_ops), statements
+        )
+
+        table_tag_ops = batch_info.get("table_tag_ops") or [
+            op
+            for op in batch_info.get("other_ops", [])
+            if op.op.endswith("set_table_tag") or op.op.endswith("unset_table_tag")
+        ]
+        self._append_batched_sql_statements(
+            self._generate_batched_table_tag_sql(table_tag_ops), statements
+        )
+
+    @staticmethod
+    def _append_batched_sql_statements(sql_text: str, statements: list[str]) -> None:
+        """Split `;\\n` batched SQL into individual statements and append them."""
+        if not sql_text:
+            return
+        for stmt in sql_text.split(";\n"):
+            if stmt.strip():
+                statements.append(stmt.strip())
+
+    def _append_generated_sql_for_ops(
+        self,
+        operations: list[Operation],
+        statements: list[str],
+        skip_op_types: set[str] | None = None,
+    ) -> None:
+        """Generate SQL for operations and append non-comment statements."""
+        skip_op_types = skip_op_types or set()
+        for operation in operations:
+            op_type = operation.op.replace("unity.", "")
+            if op_type in skip_op_types:
+                continue
+            try:
+                sql = self._generate_sql_for_op_type(op_type, operation)
+                if sql and not sql.startswith("--"):
+                    statements.append(sql)
+            except Exception as err:
+                statements.append(f"-- Error generating SQL for {operation.id}: {err}")
+
+    def _generate_create_table_with_columns(
+        self, _table_id: str, batch_info: dict[str, Any]
+    ) -> str:
         """Generate complete CREATE TABLE with columns and ALTER statements for constraints/tags"""
         table_operation = batch_info["table_op"]
-        column_ops = batch_info["column_ops"]
-        property_ops = batch_info["property_ops"]
-        constraint_ops = batch_info.get("constraint_ops", [])
-        reorder_ops = batch_info.get("reorder_ops", [])
-        other_ops = batch_info.get("other_ops", [])
-
         if not table_operation:
             return "-- Error: No table creation operation found"
 
-        # Get table name and schema info
+        table_name, table_fqn, table_esc = self._created_table_identifiers(table_operation)
+        add_column_ops, other_column_ops = self._split_create_table_column_ops(
+            batch_info["column_ops"]
+        )
+        columns_dict = self._create_table_column_sql_map(add_column_ops)
+        columns = self._ordered_create_table_columns(
+            columns_dict, batch_info.get("reorder_ops", [])
+        )
+        properties = self._create_table_properties(batch_info["property_ops"])
+        table_comment = self._create_table_comment(table_operation, batch_info.get("other_ops", []))
+        create_sql = self._compose_create_table_sql(
+            table_operation=table_operation,
+            table_name=table_name,
+            table_esc=table_esc,
+            columns=columns,
+            properties=properties,
+            table_comment=table_comment,
+        )
+        statements = [create_sql]
+        self._append_post_create_alter_statements(
+            batch_info,
+            table_fqn,
+            add_column_ops,
+            batch_info["column_ops"],
+            other_column_ops,
+            batch_info.get("constraint_ops", []),
+            batch_info.get("other_ops", []),
+            statements,
+        )
+        return ";\n".join(statements)
+
+    def _created_table_identifiers(self, table_operation: Operation) -> tuple[str, str, str]:
+        """Resolve table name/FQN/escaped-FQN for create-table SQL generation."""
         table_name = table_operation.payload.get("name", "unknown")
         schema_id = table_operation.payload.get("schemaId")
         schema_fqn = (
@@ -2848,8 +3012,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
         )
         table_fqn = f"{schema_fqn}.{table_name}"
         table_esc = self._build_fqn(*table_fqn.split("."))
+        return table_name, table_fqn, table_esc
 
-        # Separate add_column, tag ops, and other column operations
+    @staticmethod
+    def _split_create_table_column_ops(
+        column_ops: list[Operation],
+    ) -> tuple[list[Operation], list[Operation]]:
+        """Split add_column operations from other non-tag column operations."""
         add_column_ops = [
             operation for operation in column_ops if operation.op.endswith("add_column")
         ]
@@ -2860,13 +3029,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
             and not operation.op.endswith("set_column_tag")
             and not operation.op.endswith("unset_column_tag")
         ]
+        return add_column_ops, other_column_ops
 
-        # Build column definitions as a dictionary (by column ID - use operation.target for add_column)
-        columns_dict = {}
+    def _create_table_column_sql_map(self, add_column_ops: list[Operation]) -> dict[str, str]:
+        """Build {column_id: sql_fragment} map for ADD COLUMN operations."""
+        columns_dict: dict[str, str] = {}
         for col_operation in add_column_ops:
-            col_id = (
-                col_operation.target
-            )  # Column ID is in operation.target for add_column operations
+            col_id = col_operation.target
             col_name = self.escape_identifier(col_operation.payload.get("name", col_id))
             col_type = col_operation.payload.get("type", "STRING")
             nullable = "" if col_operation.payload.get("nullable", True) else " NOT NULL"
@@ -2876,26 +3045,55 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 else ""
             )
             columns_dict[col_id] = f"  {col_name} {col_type}{nullable}{comment}"
+        return columns_dict
 
-        # Apply column reordering if present
-        # Use the final order from the last reorder operation
-        if reorder_ops:
-            final_order = reorder_ops[-1].payload.get("order", [])
-            # Include columns from the reorder in their specified order
-            columns = [columns_dict[col_id] for col_id in final_order if col_id in columns_dict]
-            # Append any columns added AFTER the reorder (not in the reorder list)
-            for col_id in columns_dict.keys():
-                if col_id not in final_order:
-                    columns.append(columns_dict[col_id])
-        else:
-            # No reorder: use the order columns were added
-            columns = [columns_dict[col_id] for col_id in columns_dict.keys()]
+    @staticmethod
+    def _ordered_create_table_columns(
+        columns_dict: dict[str, str], reorder_ops: list[Operation]
+    ) -> list[str]:
+        """Return column SQL list, respecting final reorder op when present."""
+        if not reorder_ops:
+            return list(columns_dict.values())
+        final_order = reorder_ops[-1].payload.get("order", [])
+        columns = [columns_dict[col_id] for col_id in final_order if col_id in columns_dict]
+        for col_id, col_sql in columns_dict.items():
+            if col_id not in final_order:
+                columns.append(col_sql)
+        return columns
 
-        # Build table format
+    def _create_table_properties(self, property_ops: list[Operation]) -> list[str]:
+        """Collect TBLPROPERTIES from set_table_property operations."""
+        properties: list[str] = []
+        for prop_op in property_ops:
+            if prop_op.op.endswith("set_table_property"):
+                key = prop_op.payload["key"]
+                value = prop_op.payload["value"]
+                properties.append(f"'{key}' = '{self.escape_string(value)}'")
+        return properties
+
+    def _create_table_comment(self, table_operation: Operation, other_ops: list[Operation]) -> str:
+        """Return COMMENT clause from table payload or set_table_comment op."""
+        comment_value = table_operation.payload.get("comment")
+        for operation in other_ops:
+            if operation.op.endswith("set_table_comment"):
+                comment_value = operation.payload.get("comment")
+                break
+        if not comment_value:
+            return ""
+        return f"\nCOMMENT '{self.escape_string(comment_value)}'"
+
+    def _compose_create_table_sql(
+        self,
+        table_operation: Operation,
+        table_name: str,
+        table_esc: str,
+        columns: list[str],
+        properties: list[str],
+        table_comment: str,
+    ) -> str:
+        """Compose CREATE TABLE SQL (including external-table warnings/clauses)."""
         table_format = table_operation.payload.get("format", "DELTA").upper()
         is_external = table_operation.payload.get("external", False)
-
-        # Resolve location for external tables
         location_info = (
             self._resolve_table_location(
                 table_operation.payload.get("externalLocationName"),
@@ -2904,11 +3102,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
             if is_external
             else None
         )
-
         partition_cols = table_operation.payload.get("partitionColumns", [])
         cluster_cols = table_operation.payload.get("clusterColumns", [])
-
-        # Build SQL clauses
         external_keyword = "EXTERNAL " if is_external else ""
         location_clause = (
             f" LOCATION '{self.escape_string(location_info['resolved'])}'" if location_info else ""
@@ -2917,313 +3112,150 @@ class UnitySQLGenerator(BaseSQLGenerator):
             f"\nPARTITIONED BY ({', '.join(partition_cols)})" if partition_cols else ""
         )
         cluster_clause = f"\nCLUSTER BY ({', '.join(cluster_cols)})" if cluster_cols else ""
-
-        # Build table properties
-        properties = []
-        for prop_op in property_ops:
-            if prop_op.op.endswith("set_table_property"):
-                key = prop_op.payload["key"]
-                value = prop_op.payload["value"]
-                properties.append(f"'{key}' = '{self.escape_string(value)}'")
-
-        # Build table comment
-        # Check both table_op payload and set_table_comment operations in other_ops
-        table_comment = ""
-        comment_value = table_operation.payload.get("comment")
-
-        # Check if there's a set_table_comment operation
-        for operation in other_ops:
-            if operation.op.endswith("set_table_comment"):
-                comment_value = operation.payload.get("comment")
-                break
-
-        if comment_value:
-            table_comment = f"\nCOMMENT '{self.escape_string(comment_value)}'"
-
-        # Add warnings for external tables
-        warnings = ""
-        if is_external and location_info:
-            warnings = (
-                f"-- External Table: {table_name}\n"
-                f"-- Location Name: {location_info['location_name']}\n"
-            )
-
-            if location_info["relative_path"]:
-                warnings += f"-- Relative Path: {location_info['relative_path']}\n"
-
-            warnings += (
-                f"-- Resolved Location: {location_info['resolved']}\n"
-                "-- WARNING: External tables must reference pre-configured external locations\n"
-                "-- WARNING: Databricks recommends using managed tables for optimal performance\n"
-                "-- Learn more: https://learn.microsoft.com/en-gb/azure/databricks/tables/managed\n"
-            )
-
-        # Assemble CREATE TABLE statement
-        columns_sql = ",\n".join(columns) if columns else ""
         properties_sql = f"\nTBLPROPERTIES ({', '.join(properties)})" if properties else ""
-
+        warnings = (
+            self._external_table_warning_banner(table_name, location_info) if is_external else ""
+        )
+        using_clause = (
+            f"USING {table_format}{table_comment}{partition_clause}"
+            f"{cluster_clause}{properties_sql}{location_clause}"
+        )
+        columns_sql = ",\n".join(columns) if columns else ""
         if columns_sql:
-            # Build using clause
-            using_clause = (
-                f"USING {table_format}{table_comment}{partition_clause}"
-                f"{cluster_clause}{properties_sql}{location_clause}"
-            )
-            create_sql = f"""{warnings}CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} (
+            return f"""{warnings}CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} (
 {columns_sql}
 ) {using_clause}"""
-        else:
-            # No columns yet - create empty table (fallback to original behavior)
-            using_clause = (
-                f"USING {table_format}{table_comment}{partition_clause}"
-                f"{cluster_clause}{properties_sql}{location_clause}"
-            )
-            create_sql = (
-                f"{warnings}"
-                f"CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} () "
-                f"{using_clause}"
-            )
+        return (
+            f"{warnings}CREATE {external_keyword}TABLE IF NOT EXISTS {table_esc} () {using_clause}"
+        )
 
-        # Generate ALTER TABLE statements for operations that must happen after table creation
-        # (e.g., table tags, column tags, constraints)
-        # Skip set_table_comment since it's already included in CREATE TABLE
-        statements = [create_sql]
-
-        # Temporarily add the new table and its columns to id_name_map so constraint operations can find them
-        # This is necessary because constraints reference the table and columns being created
-        table_id_from_op = table_operation.payload.get("tableId") or table_operation.target
-        if table_id_from_op:
-            self.id_name_map[table_id_from_op] = table_fqn
-            # Also add column mappings
-            for col_op in add_column_ops:
-                col_id = col_operation.target
-                col_name = col_operation.payload.get("name", col_id)
-                self.id_name_map[col_id] = col_name
-
-        # Batched column tags after table creation (one SET TAGS / UNSET TAGS per column)
-        tag_ops = batch_info.get("tag_ops") or [
-            operation
-            for operation in column_ops
-            if operation.op.endswith("set_column_tag") or operation.op.endswith("unset_column_tag")
-        ]
-        batched_tag_sql = self._generate_batched_column_tag_sql(tag_ops)
-        if batched_tag_sql:
-            for stmt in batched_tag_sql.split(";\n"):
-                if stmt.strip():
-                    statements.append(stmt.strip())
-
-        # Batched table tags (one SET TAGS / UNSET TAGS per table)
-        table_tag_ops = batch_info.get("table_tag_ops") or [
-            operation
-            for operation in batch_info.get("other_ops", [])
-            if operation.op.endswith("set_table_tag") or operation.op.endswith("unset_table_tag")
-        ]
-        batched_table_tag_sql = self._generate_batched_table_tag_sql(table_tag_ops)
-        if batched_table_tag_sql:
-            for stmt in batched_table_tag_sql.split(";\n"):
-                if stmt.strip():
-                    statements.append(stmt.strip())
-
-        # Process other column operations (non-tag; tags are batched above)
-        for operation in other_column_ops:
-            op_type = operation.op.replace("unity.", "")
-            try:
-                sql = self._generate_sql_for_op_type(op_type, operation)
-                if sql and not sql.startswith("--"):
-                    statements.append(sql)
-            except Exception as e:
-                statements.append(f"-- Error generating SQL for {operation.id}: {e}")
-
-        # Process constraint operations after table creation
-        for operation in constraint_ops:
-            op_type = operation.op.replace("unity.", "")
-            try:
-                sql = self._generate_sql_for_op_type(op_type, operation)
-                if sql and not sql.startswith("--"):
-                    statements.append(sql)
-            except Exception as e:
-                statements.append(f"-- Error generating SQL for {operation.id}: {e}")
-
-        # Process governance operations (row filters, column masks) after table creation
-        governance_ops = batch_info.get("governance_ops", [])
-        for operation in governance_ops:
-            op_type = operation.op.replace("unity.", "")
-            try:
-                sql = self._generate_sql_for_op_type(op_type, operation)
-                if sql and not sql.startswith("--"):
-                    statements.append(sql)
-            except Exception as e:
-                statements.append(f"-- Error generating SQL for {operation.id}: {e}")
-
-        # Process other operations (skip table tags — batched above; skip set_table_comment — in CREATE)
-        for operation in other_ops:
-            op_type = operation.op.replace("unity.", "")
-            if op_type == "set_table_comment":
-                continue
-            if op_type in ["set_table_tag", "unset_table_tag"]:
-                continue
-            try:
-                sql = self._generate_sql_for_op_type(op_type, operation)
-                if sql and not sql.startswith("--"):
-                    statements.append(sql)
-            except Exception as e:
-                statements.append(f"-- Error generating SQL for {operation.id}: {e}")
-
-        return ";\n".join(statements)
-
-    def _generate_alter_statements_for_table(
-        self, table_id: str, batch_info: dict[str, Any]
+    @staticmethod
+    def _external_table_warning_banner(
+        table_name: str, location_info: LocationResolution | None
     ) -> str:
-        """Generate optimized ALTER statements for existing table modifications"""
-        statements = []
+        """Build warning banner comments for external table creation."""
+        if not location_info:
+            return ""
+        warnings = (
+            f"-- External Table: {table_name}\n-- Location Name: {location_info['location_name']}\n"
+        )
+        if location_info["relative_path"]:
+            warnings += f"-- Relative Path: {location_info['relative_path']}\n"
+        warnings += (
+            f"-- Resolved Location: {location_info['resolved']}\n"
+            "-- WARNING: External tables must reference pre-configured external locations\n"
+            "-- WARNING: Databricks recommends using managed tables for optimal performance\n"
+            "-- Learn more: https://learn.microsoft.com/en-gb/azure/databricks/tables/managed\n"
+        )
+        return warnings
 
-        # Strip "table:" prefix if present (from batching algorithm)
-        # The id_name_map uses raw IDs without prefixes
-        actual_table_id = table_id.removeprefix("table:")
+    def _alter_reorder_block(self, batch_info: dict[str, Any], actual_table_id: str) -> list[str]:
+        """Return ALTER statements for column reordering."""
+        out: list[str] = []
+        if not batch_info["reorder_ops"]:
+            return out
+        last_reorder = batch_info["reorder_ops"][-1]
+        original_order = last_reorder.payload.get("previousOrder")
+        if not original_order:
+            original_order = self._get_table_column_order(actual_table_id)
+        final_order = last_reorder.payload["order"]
+        reorder_sql = self._generate_optimized_reorder_sql(
+            actual_table_id,
+            original_order,
+            final_order,
+            [o.id for o in batch_info["reorder_ops"]],
+        )
+        if reorder_sql and not reorder_sql.startswith("--"):
+            out.append(reorder_sql)
+        return out
 
-        # Handle column reordering first (using existing optimization)
-        # For existing tables, reorder_columns generates ALTER statements
-        if batch_info["reorder_ops"]:
-            last_reorder_operation = batch_info["reorder_ops"][-1]
-            # Use previousOrder from operation payload if available
-            # (prevents comparing state with itself)
-            original_order = last_reorder_operation.payload.get("previousOrder")
-            if not original_order:
-                # Fallback: derive from current state
-                # (for backward compatibility with old operations)
-                original_order = self._get_table_column_order(actual_table_id)
-            final_order = last_reorder_operation.payload["order"]
-            reorder_sql = self._generate_optimized_reorder_sql(
-                actual_table_id,
-                original_order,
-                final_order,
-                [operation.id for operation in batch_info["reorder_ops"]],
-            )
-            if reorder_sql and not reorder_sql.startswith("--"):
-                statements.append(reorder_sql)
-
-        # Batch ADD COLUMN operations if multiple exist
-        add_column_ops = [
-            operation
-            for operation in batch_info["column_ops"]
-            if operation.op.endswith("add_column")
-        ]
-
+    def _alter_add_columns_block(self, batch_info: dict[str, Any]) -> list[str]:
+        """Return ALTER statements for batched or single ADD COLUMN."""
+        out: list[str] = []
+        add_column_ops = [o for o in batch_info["column_ops"] if o.op.endswith("add_column")]
         if len(add_column_ops) > 1:
-            # Multiple ADD COLUMN operations - batch them into single ALTER TABLE ADD COLUMNS
             table_fqn = self.id_name_map.get(add_column_ops[0].payload["tableId"], "unknown")
             table_esc = self._build_fqn(*table_fqn.split("."))
             column_defs = []
-            not_null_columns = []  # Track columns that need SET NOT NULL
-
+            not_null_columns = []
             for operation in add_column_ops:
                 col_name = operation.payload.get("name", operation.target)
                 col_type = operation.payload.get("type", "STRING")
                 comment = operation.payload.get("comment", "")
                 nullable = operation.payload.get("nullable", True)
-
-                # Note: NOT NULL is not supported in ALTER TABLE ADD COLUMNS for Delta tables
-                # New columns added to existing tables must be nullable initially
                 comment_clause = f" COMMENT '{self.escape_string(comment)}'" if comment else ""
-                col_esc = self.escape_identifier(col_name)
-
-                column_defs.append(f"    {col_esc} {col_type}{comment_clause}")
-
-                # If column should be NOT NULL, track it for follow-up statements
+                column_defs.append(
+                    f"    {self.escape_identifier(col_name)} {col_type}{comment_clause}"
+                )
                 if not nullable:
                     not_null_columns.append(col_name)
-
-            batched_sql = (
+            out.append(
                 f"ALTER TABLE {table_esc}\nADD COLUMNS (\n" + ",\n".join(column_defs) + "\n)"
             )
-            statements.append(batched_sql)
-
-            # Add ALTER COLUMN SET NOT NULL statements for non-nullable columns
             for col_name in not_null_columns:
-                col_esc = self.escape_identifier(col_name)
-                statements.append(f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} SET NOT NULL")
+                out.append(
+                    f"ALTER TABLE {table_esc} ALTER COLUMN {self.escape_identifier(col_name)} SET NOT NULL"
+                )
         elif len(add_column_ops) == 1:
-            # Single ADD COLUMN - use existing method
             try:
                 sql = self._add_column(add_column_ops[0])
                 if sql and not sql.startswith("--"):
-                    statements.append(sql)
+                    out.append(sql)
             except Exception as e:
-                statements.append(f"-- Error generating SQL for {add_column_ops[0].id}: {e}")
+                out.append(f"-- Error generating SQL for {add_column_ops[0].id}: {e}")
+        return out
 
-        # Batch DROP COLUMN operations if multiple exist
-        drop_column_ops = [
-            operation
-            for operation in batch_info["column_ops"]
-            if operation.op.endswith("drop_column")
-        ]
-
+    def _alter_drop_columns_block(self, batch_info: dict[str, Any]) -> list[str]:
+        """Return ALTER statements for batched or single DROP COLUMN."""
+        out: list[str] = []
+        drop_column_ops = [o for o in batch_info["column_ops"] if o.op.endswith("drop_column")]
         if len(drop_column_ops) > 1:
-            # Multiple DROP COLUMN operations - batch them into single ALTER TABLE DROP COLUMNS
             table_fqn = self.id_name_map.get(drop_column_ops[0].payload["tableId"], "unknown")
             table_esc = self._build_fqn(*table_fqn.split("."))
-
-            column_names = []
-            for operation in drop_column_ops:
-                # Get column name from payload (for dropped columns not in current state)
-                col_name = operation.payload.get(
-                    "name", self.id_name_map.get(operation.target, "unknown")
+            column_names = [
+                self.escape_identifier(
+                    o.payload.get("name", self.id_name_map.get(o.target, "unknown"))
                 )
-                col_esc = self.escape_identifier(col_name)
-                column_names.append(col_esc)
-
-            batched_sql = f"ALTER TABLE {table_esc}\nDROP COLUMNS (" + ", ".join(column_names) + ")"
-            statements.append(batched_sql)
+                for o in drop_column_ops
+            ]
+            out.append(f"ALTER TABLE {table_esc}\nDROP COLUMNS (" + ", ".join(column_names) + ")")
         elif len(drop_column_ops) == 1:
-            # Single DROP COLUMN - use existing method
             try:
                 sql = self._drop_column(drop_column_ops[0])
                 if sql and not sql.startswith("--"):
-                    statements.append(sql)
+                    out.append(sql)
             except Exception as e:
-                statements.append(f"-- Error generating SQL for {drop_column_ops[0].id}: {e}")
+                out.append(f"-- Error generating SQL for {drop_column_ops[0].id}: {e}")
+        return out
 
-        # Batched column tags (one SET TAGS / UNSET TAGS per column)
+    def _alter_tags_and_rest_block(self, batch_info: dict[str, Any]) -> list[str]:
+        """Return ALTER statements for column tags, table tags, and other ops (property, constraint, governance)."""
+        out: list[str] = []
         tag_ops = batch_info.get("tag_ops") or [
-            operation
-            for operation in batch_info["column_ops"]
-            if operation.op.endswith("set_column_tag") or operation.op.endswith("unset_column_tag")
+            o
+            for o in batch_info["column_ops"]
+            if o.op.endswith("set_column_tag") or o.op.endswith("unset_column_tag")
         ]
-        batched_tag_sql = self._generate_batched_column_tag_sql(tag_ops)
-        if batched_tag_sql:
-            for stmt in batched_tag_sql.split(";\n"):
-                if stmt.strip():
-                    statements.append(stmt.strip())
-
-        # Batched table tags (one SET TAGS / UNSET TAGS per table)
-        table_tag_ops = batch_info.get("table_tag_ops", [])
-        batched_table_tag_sql = self._generate_batched_table_tag_sql(table_tag_ops)
-        if batched_table_tag_sql:
-            for stmt in batched_table_tag_sql.split(";\n"):
-                if stmt.strip():
-                    statements.append(stmt.strip())
-
-        # Handle other column operations (non-ADD/DROP, non-tag; tags are batched above)
+        for stmt in (self._generate_batched_column_tag_sql(tag_ops) or "").split(";\n"):
+            if stmt.strip():
+                out.append(stmt.strip())
+        for stmt in (
+            self._generate_batched_table_tag_sql(batch_info.get("table_tag_ops", [])) or ""
+        ).split(";\n"):
+            if stmt.strip():
+                out.append(stmt.strip())
         other_column_ops = [
-            operation
-            for operation in batch_info["column_ops"]
-            if not operation.op.endswith("add_column")
-            and not operation.op.endswith("drop_column")
-            and not operation.op.endswith("set_column_tag")
-            and not operation.op.endswith("unset_column_tag")
+            o
+            for o in batch_info["column_ops"]
+            if not o.op.endswith("add_column")
+            and not o.op.endswith("drop_column")
+            and not o.op.endswith("set_column_tag")
+            and not o.op.endswith("unset_column_tag")
         ]
-
-        # Sort constraint operations to ensure DROP comes before ADD
-        # This is necessary because operations batched to the same table
-        # are processed together, and we need to ensure correct order within the batch
         constraint_ops_sorted = sorted(
             batch_info["constraint_ops"],
-            key=lambda operation: (
-                0 if operation.op == "unity.drop_constraint" else 1,
-                operation.ts,
-            ),
+            key=lambda o: (0 if o.op == "unity.drop_constraint" else 1, o.ts),
         )
-
-        # Handle all other operations normally (tag_ops already emitted above)
         for operation in (
             other_column_ops
             + batch_info["property_ops"]
@@ -3232,22 +3264,26 @@ class UnitySQLGenerator(BaseSQLGenerator):
             + batch_info["other_ops"]
         ):
             op_type = operation.op.replace("unity.", "")
-
-            # Skip reorder operations (already handled)
-            if op_type == "reorder_columns":
+            if op_type == "reorder_columns" or op_type in {"set_table_tag", "unset_table_tag"}:
                 continue
-            # Skip table tag operations (batched above)
-            if op_type in ["set_table_tag", "unset_table_tag"]:
-                continue
-
-            # Generate SQL for individual operation
             try:
                 sql = self._generate_sql_for_op_type(op_type, operation)
                 if sql and not sql.startswith("--"):
-                    statements.append(sql)
+                    out.append(sql)
             except Exception as e:
-                statements.append(f"-- Error generating SQL for {operation.id}: {e}")
+                out.append(f"-- Error generating SQL for {operation.id}: {e}")
+        return out
 
+    def _generate_alter_statements_for_table(
+        self, table_id: str, batch_info: dict[str, Any]
+    ) -> str:
+        """Generate optimized ALTER statements for existing table modifications."""
+        actual_table_id = table_id.removeprefix("table:")
+        statements: list[str] = []
+        statements.extend(self._alter_reorder_block(batch_info, actual_table_id))
+        statements.extend(self._alter_add_columns_block(batch_info))
+        statements.extend(self._alter_drop_columns_block(batch_info))
+        statements.extend(self._alter_tags_and_rest_block(batch_info))
         return ";\n".join(statements) if statements else "-- No ALTER statements needed"
 
     def _change_column_type(self, operation: Operation) -> str:
@@ -3267,8 +3303,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
         if nullable:
             return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} DROP NOT NULL"
-        else:
-            return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} SET NOT NULL"
+        return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} SET NOT NULL"
 
     def _set_column_comment(self, operation: Operation) -> str:
         table_fqn = self.id_name_map.get(operation.payload["tableId"], "unknown")
@@ -3278,16 +3313,13 @@ class UnitySQLGenerator(BaseSQLGenerator):
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} COMMENT '{comment}'"
 
-    def _generate_batched_column_tag_sql(self, tag_ops: list[Operation]) -> str:
-        """Batch column tag ops by (table_id, col_id): one SET TAGS and one UNSET TAGS per column.
-        Databricks supports multiple tags: SET TAGS ('k1'='v1', 'k2'='v2'), UNSET TAGS ('k1', 'k2').
-        """
-        if not tag_ops:
-            return ""
-
+    @staticmethod
+    def _aggregate_column_tag_ops(
+        tag_ops: list[Operation],
+    ) -> tuple[dict[str, dict[str, str]], dict[str, set[str]]]:
+        """Aggregate set/unset column tag ops by (table_id, col_id). Returns (set_by_col, unset_by_col)."""
         set_by_col: dict[str, dict[str, str]] = {}
         unset_by_col: dict[str, set[str]] = {}
-
         for operation in tag_ops:
             table_id = operation.payload.get("tableId", "")
             col_id = operation.target
@@ -3295,42 +3327,53 @@ class UnitySQLGenerator(BaseSQLGenerator):
             op_type = operation.op.replace("unity.", "")
             if op_type == "set_column_tag":
                 tag_name = operation.payload["tagName"]
-                tag_value = self.escape_string(operation.payload["tagValue"])
-                if key not in set_by_col:
-                    set_by_col[key] = {}
-                set_by_col[key][tag_name] = tag_value
+                tag_value = operation.payload["tagValue"]
+                set_by_col.setdefault(key, {})[tag_name] = tag_value
                 if key in unset_by_col:
                     unset_by_col[key].discard(tag_name)
             if op_type == "unset_column_tag":
                 tag_name = operation.payload["tagName"]
-                if key not in unset_by_col:
-                    unset_by_col[key] = set()
-                unset_by_col[key].add(tag_name)
+                unset_by_col.setdefault(key, set()).add(tag_name)
                 if key in set_by_col:
                     set_by_col[key].pop(tag_name, None)
+        return set_by_col, unset_by_col
 
+    def _emit_column_tag_alter_sql(
+        self,
+        set_by_col: dict[str, dict[str, str]],
+        unset_by_col: dict[str, set[str]],
+    ) -> list[str]:
+        """Emit ALTER TABLE ... ALTER COLUMN ... SET TAGS / UNSET TAGS from aggregated maps."""
         parts: list[str] = []
-        for key in set(set_by_col.keys()) | set(unset_by_col.keys()):
+        for key in set(set_by_col) | set(unset_by_col):
             table_id, col_id = key.split(":", 1)
             table_fqn = self.id_name_map.get(table_id, "unknown")
             table_esc = self._build_fqn(*table_fqn.split("."))
             col_name = self.id_name_map.get(col_id, col_id)
             col_esc = self.escape_identifier(col_name)
-
-            unset_tags = unset_by_col.get(key)
-            if unset_tags:
-                tag_list = ", ".join(f"'{self.escape_string(t)}'" for t in unset_tags)
+            if key in unset_by_col and unset_by_col[key]:
+                tag_list = ", ".join(f"'{self.escape_string(t)}'" for t in unset_by_col[key])
                 parts.append(
                     f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} UNSET TAGS ({tag_list})"
                 )
-            set_tags = set_by_col.get(key)
-            if set_tags:
+            if key in set_by_col and set_by_col[key]:
                 tag_list = ", ".join(
-                    f"'{self.escape_string(k)}' = '{v}'" for k, v in set_tags.items()
+                    f"'{self.escape_string(k)}' = '{v}'" for k, v in set_by_col[key].items()
                 )
                 parts.append(
                     f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} SET TAGS ({tag_list})"
                 )
+        return parts
+
+    def _generate_batched_column_tag_sql(self, tag_ops: list[Operation]) -> str:
+        """Batch column tag ops by (table_id, col_id): one SET TAGS and one UNSET TAGS per column."""
+        if not tag_ops:
+            return ""
+        set_by_col, unset_by_col = self._aggregate_column_tag_ops(tag_ops)
+        set_escaped: dict[str, dict[str, str]] = {
+            k: {tk: self.escape_string(tv) for tk, tv in v.items()} for k, v in set_by_col.items()
+        }
+        parts = self._emit_column_tag_alter_sql(set_escaped, unset_by_col)
         return ";\n".join(parts) if parts else ""
 
     # Column tag operations
@@ -3383,16 +3426,15 @@ class UnitySQLGenerator(BaseSQLGenerator):
         if constraint_type == "primary_key":
             # Databricks: TIMESERIES is per-column: PRIMARY KEY ( col1 [ TIMESERIES ] [, ...] )
             col_parts = []
-            for i, c in enumerate(columns):
-                esc = self.escape_identifier(c)
-                if i == 0 and operation.payload.get("timeseries"):
-                    col_parts.append(f"{esc} TIMESERIES")
+            for index, column_name in enumerate(columns):
+                escaped_column = self.escape_identifier(column_name)
+                if index == 0 and operation.payload.get("timeseries"):
+                    col_parts.append(f"{escaped_column} TIMESERIES")
                 else:
-                    col_parts.append(esc)
+                    col_parts.append(escaped_column)
             cols = ", ".join(col_parts)
             return f"ALTER TABLE {table_esc} ADD {name_clause}PRIMARY KEY({cols}){opts}"
-
-        elif constraint_type == "foreign_key":
+        if constraint_type == "foreign_key":
             parent_table = self.id_name_map.get(operation.payload.get("parentTable", ""), "unknown")
             parent_esc = self._build_fqn(*parent_table.split("."))
             parent_columns = [
@@ -3404,8 +3446,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
                 f"ALTER TABLE {table_esc} ADD {name_clause}"
                 f"FOREIGN KEY({cols}) REFERENCES {parent_esc}({parent_cols}){opts}"
             )
-
-        elif constraint_type == "check":
+        if constraint_type == "check":
             expression = operation.payload.get("expression", "TRUE")
             return f"ALTER TABLE {table_esc} ADD {name_clause}CHECK ({expression}){opts}"
 
@@ -3451,29 +3492,40 @@ class UnitySQLGenerator(BaseSQLGenerator):
             else self.state.get("catalogs", [])
         )
 
+        for table in self._iter_catalog_tables(catalogs):
+            table_id_check = table.id if hasattr(table, "id") else table.get("id")
+            if table_id_check != table_id:
+                continue
+            return self._constraint_name_from_table(table, constraint_id)
+        return None
+
+    @staticmethod
+    def _iter_catalog_tables(catalogs: list[Any]) -> list[Any]:
+        """Flatten catalogs->schemas->tables."""
+        tables: list[Any] = []
         for catalog in catalogs:
             schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
             for schema in schemas:
-                tables = schema.tables if hasattr(schema, "tables") else schema.get("tables", [])
-                for table in tables:
-                    table_id_check = table.id if hasattr(table, "id") else table.get("id")
-                    if table_id_check == table_id:
-                        constraints = (
-                            table.constraints
-                            if hasattr(table, "constraints")
-                            else table.get("constraints", [])
-                        )
-                        for constraint in constraints:
-                            constraint_id_check = (
-                                constraint.id if hasattr(constraint, "id") else constraint.get("id")
-                            )
-                            if constraint_id_check == constraint_id:
-                                name = (
-                                    constraint.name
-                                    if hasattr(constraint, "name")
-                                    else constraint.get("name")
-                                )
-                                return str(name) if name else None
+                table_items = (
+                    schema.tables if hasattr(schema, "tables") else schema.get("tables", [])
+                )
+                tables.extend(table_items)
+        return tables
+
+    @staticmethod
+    def _constraint_name_from_table(table: Any, constraint_id: str) -> str | None:
+        """Find constraint name by id in a table model/dict."""
+        constraints = (
+            table.constraints if hasattr(table, "constraints") else table.get("constraints", [])
+        )
+        for constraint in constraints:
+            constraint_id_check = (
+                constraint.id if hasattr(constraint, "id") else constraint.get("id")
+            )
+            if constraint_id_check != constraint_id:
+                continue
+            name = constraint.name if hasattr(constraint, "name") else constraint.get("name")
+            return str(name) if name else None
         return None
 
     # Row filter operations (Unity: ALTER TABLE ... SET ROW FILTER func ON (cols) | DROP ROW FILTER)
@@ -3556,6 +3608,54 @@ class UnitySQLGenerator(BaseSQLGenerator):
         # Fallback: resolve from state when id_name_map misses (e.g. CLI without --target)
         return self._grant_fqn_from_state(target_type, target_id)
 
+    def _resolve_grant_fqn_in_schema(
+        self,
+        schema: Any,
+        catalog_name: str,
+        schema_name: str,
+        target_type: str,
+        target_id: str,
+    ) -> str | None:
+        """Resolve FQN for table/view/volume/function/materialized_view within one schema."""
+        collection_map = {
+            "table": "tables",
+            "view": "views",
+            "volume": "volumes",
+            "function": "functions",
+            "materialized_view": "materialized_views",
+        }
+        collection_name = collection_map.get(target_type)
+        if collection_name is None:
+            return None
+        collection = self._schema_collection(schema, collection_name)
+        for item in collection:
+            if self._schema_item_id(item) == target_id:
+                return self._build_fqn(catalog_name, schema_name, self._schema_item_name(item))
+        return None
+
+    @staticmethod
+    def _schema_collection(schema: Any, collection_name: str) -> list[Any]:
+        """Return a schema child collection for model or dict schemas."""
+        if isinstance(schema, dict):
+            value = schema.get(collection_name, [])
+            return value if isinstance(value, list) else []
+        value = getattr(schema, collection_name, None)
+        return value if isinstance(value, list) else []
+
+    @staticmethod
+    def _schema_item_id(item: Any) -> str:
+        """Return item id for model/dict items."""
+        if isinstance(item, dict):
+            return str(item.get("id", ""))
+        return str(getattr(item, "id", ""))
+
+    @staticmethod
+    def _schema_item_name(item: Any) -> str:
+        """Return item name for model/dict items."""
+        if isinstance(item, dict):
+            return str(item.get("name", ""))
+        return str(getattr(item, "name", ""))
+
     def _grant_fqn_from_state(self, target_type: str, target_id: str) -> str:
         """Resolve grant target FQN by walking state (catalogs/schemas/tables/views)."""
         catalogs = (
@@ -3569,44 +3669,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
             catalog_name = self.catalog_name_mapping.get(cat_name, cat_name)
             if target_type == "catalog" and cat_id == target_id:
                 return self._build_fqn(catalog_name)
-            schemas = catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
-            for schema in schemas:
+            for schema in (
+                catalog.schemas if hasattr(catalog, "schemas") else catalog.get("schemas", [])
+            ):
                 schema_name = schema.name if hasattr(schema, "name") else schema["name"]
                 schema_id = schema.id if hasattr(schema, "id") else schema["id"]
                 if target_type == "schema" and schema_id == target_id:
                     return self._build_fqn(catalog_name, schema_name)
-                tables = schema.tables if hasattr(schema, "tables") else schema.get("tables", [])
-                for table in tables:
-                    table_id = table.id if hasattr(table, "id") else table["id"]
-                    table_name = table.name if hasattr(table, "name") else table["name"]
-                    if target_type == "table" and table_id == target_id:
-                        return self._build_fqn(catalog_name, schema_name, table_name)
-                views = schema.views if hasattr(schema, "views") else schema.get("views", [])
-                for view in views:
-                    view_id = view.id if hasattr(view, "id") else view["id"]
-                    view_name = view.name if hasattr(view, "name") else view["name"]
-                    if target_type == "view" and view_id == target_id:
-                        return self._build_fqn(catalog_name, schema_name, view_name)
-                volumes = getattr(schema, "volumes", None) or schema.get("volumes", [])
-                for vol in volumes:
-                    vol_id = vol.id if hasattr(vol, "id") else vol["id"]
-                    vol_name = vol.name if hasattr(vol, "name") else vol["name"]
-                    if target_type == "volume" and vol_id == target_id:
-                        return self._build_fqn(catalog_name, schema_name, vol_name)
-                functions = getattr(schema, "functions", None) or schema.get("functions", [])
-                for func in functions:
-                    func_id = func.id if hasattr(func, "id") else func["id"]
-                    func_name = func.name if hasattr(func, "name") else func["name"]
-                    if target_type == "function" and func_id == target_id:
-                        return self._build_fqn(catalog_name, schema_name, func_name)
-                mvs = getattr(schema, "materialized_views", None) or schema.get(
-                    "materialized_views", []
+                fqn = self._resolve_grant_fqn_in_schema(
+                    schema, catalog_name, schema_name, target_type, target_id
                 )
-                for mv in mvs:
-                    mv_id = mv.id if hasattr(mv, "id") else mv["id"]
-                    mv_name = mv.name if hasattr(mv, "name") else mv["name"]
-                    if target_type == "materialized_view" and mv_id == target_id:
-                        return self._build_fqn(catalog_name, schema_name, mv_name)
+                if fqn:
+                    return fqn
         return ""
 
     def _escape_principal(self, principal: str) -> str:

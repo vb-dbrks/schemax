@@ -6,6 +6,7 @@ using profiles from ~/.databrickscfg or environment variables.
 """
 
 import os
+from pathlib import Path
 
 from databricks.sdk import WorkspaceClient
 
@@ -95,17 +96,41 @@ def check_profile_exists(profile: str) -> bool:
     Returns:
         True if profile exists, False otherwise
     """
-    config_path = os.path.expanduser("~/.databrickscfg")
+    config_path = _resolve_databricks_config_path()
 
-    if not os.path.exists(config_path):
+    if not config_path.exists():
         return False
 
     try:
-        with open(config_path, encoding="utf-8") as f:
+        with config_path.open(encoding="utf-8") as f:
             content = f.read()
             return f"[{profile}]" in content
     except Exception:
         return False
+
+
+def _resolve_databricks_config_path() -> Path:
+    """Resolve Databricks config path with cross-platform env precedence.
+
+    Order of precedence:
+    1. DATABRICKS_CONFIG_FILE (explicit override)
+    2. HOME/.databrickscfg (test-friendly and POSIX-conventional)
+    3. USERPROFILE/.databrickscfg (Windows)
+    4. expanduser fallback
+    """
+    config_override = os.getenv("DATABRICKS_CONFIG_FILE")
+    if config_override:
+        return Path(config_override)
+
+    home_dir = os.getenv("HOME")
+    if home_dir:
+        return Path(home_dir) / ".databrickscfg"
+
+    userprofile = os.getenv("USERPROFILE")
+    if userprofile:
+        return Path(userprofile) / ".databrickscfg"
+
+    return Path(os.path.expanduser("~/.databrickscfg"))
 
 
 def get_workspace_url(client: WorkspaceClient) -> str | None:

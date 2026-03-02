@@ -13,6 +13,21 @@ from schemax.providers.base.reverse_generator import SafetyLevel, SafetyReport
 
 from .operations import UNITY_OPERATIONS
 
+# Dispatch map: op_type -> method name (method takes self, operation, catalog_mapping)
+_VALIDATE_HANDLERS: dict[str, str] = {
+    UNITY_OPERATIONS["DROP_CATALOG"]: "_validate_drop_catalog",
+    UNITY_OPERATIONS["DROP_SCHEMA"]: "_validate_drop_schema",
+    UNITY_OPERATIONS["DROP_TABLE"]: "_validate_drop_table",
+    UNITY_OPERATIONS["DROP_VIEW"]: "_safe_operation",
+    UNITY_OPERATIONS["DROP_VOLUME"]: "_safe_operation",
+    UNITY_OPERATIONS["DROP_FUNCTION"]: "_safe_operation",
+    UNITY_OPERATIONS["DROP_MATERIALIZED_VIEW"]: "_safe_operation",
+    UNITY_OPERATIONS["DROP_COLUMN"]: "_validate_drop_column",
+    UNITY_OPERATIONS["CHANGE_COLUMN_TYPE"]: "_validate_change_column_type",
+    UNITY_OPERATIONS["ADD_GRANT"]: "_safe_operation",
+    UNITY_OPERATIONS["REVOKE_GRANT"]: "_safe_operation",
+}
+
 
 class SafetyValidator:
     """Validates safety of rollback operations by querying actual data
@@ -38,61 +53,43 @@ class SafetyValidator:
         self.config = config
 
     def validate(
-        self, op: Operation, catalog_mapping: dict[str, str] | None = None
+        self, operation: Operation, catalog_mapping: dict[str, str] | None = None
     ) -> SafetyReport:
         """Validate safety of a reverse operation
 
         Args:
-            op: Reverse operation to validate
+            operation: Reverse operation to validate
             catalog_mapping: Mapping of logical to physical catalog names
 
         Returns:
             SafetyReport with safety level and details
         """
-        op_type = op.op
+        op_type = operation.op
+        method_name = _VALIDATE_HANDLERS.get(op_type, "_safe_operation")
+        return cast(SafetyReport, getattr(self, method_name)(operation, catalog_mapping))
 
-        # Dispatch to operation-specific validation
-        if op_type == UNITY_OPERATIONS["DROP_CATALOG"]:
-            return self._validate_drop_catalog(op, catalog_mapping)
-        if op_type == UNITY_OPERATIONS["DROP_SCHEMA"]:
-            return self._validate_drop_schema(op, catalog_mapping)
-        if op_type == UNITY_OPERATIONS["DROP_TABLE"]:
-            return self._validate_drop_table(op, catalog_mapping)
-        if op_type == UNITY_OPERATIONS["DROP_VIEW"]:
-            return self._safe_operation(op)
-        if op_type == UNITY_OPERATIONS["DROP_VOLUME"]:
-            return self._safe_operation(op)
-        if op_type == UNITY_OPERATIONS["DROP_FUNCTION"]:
-            return self._safe_operation(op)
-        if op_type == UNITY_OPERATIONS["DROP_MATERIALIZED_VIEW"]:
-            return self._safe_operation(op)
-        if op_type == UNITY_OPERATIONS["DROP_COLUMN"]:
-            return self._validate_drop_column(op, catalog_mapping)
-        if op_type == UNITY_OPERATIONS["CHANGE_COLUMN_TYPE"]:
-            return self._validate_change_column_type(op, catalog_mapping)
-        if op_type in (UNITY_OPERATIONS["ADD_GRANT"], UNITY_OPERATIONS["REVOKE_GRANT"]):
-            # Grant operations are non-destructive (permission changes only)
-            return self._safe_operation(op)
-        # Non-destructive operations (renames, comments, tags, etc.)
-        return self._safe_operation(op)
-
-    def _safe_operation(self, op: Operation) -> SafetyReport:
+    def _safe_operation(
+        self,
+        operation: Operation,
+        catalog_mapping: dict[str, str] | None = None,
+    ) -> SafetyReport:
         """Mark operation as safe (no data loss)"""
+        _ = catalog_mapping
         return SafetyReport(
             level=SafetyLevel.SAFE,
-            reason=f"{op.op} is a non-destructive operation",
+            reason=f"{operation.op} is a non-destructive operation",
             data_at_risk=0,
         )
 
     def _validate_drop_catalog(
-        self, op: Operation, catalog_mapping: dict[str, str] | None
+        self, operation: Operation, catalog_mapping: dict[str, str] | None
     ) -> SafetyReport:
         """Validate DROP_CATALOG operation
 
         Catalogs should generally never be dropped during rollback unless they
         were just created and are empty.
         """
-        catalog_id = op.target
+        catalog_id = operation.target
         catalog_name = self._get_physical_name(catalog_id, catalog_mapping)
 
         try:
@@ -122,14 +119,14 @@ class SafetyValidator:
             )
 
     def _validate_drop_schema(
-        self, op: Operation, catalog_mapping: dict[str, str] | None
+        self, operation: Operation, catalog_mapping: dict[str, str] | None
     ) -> SafetyReport:
         """Validate DROP_SCHEMA operation
 
         Checks if schema contains any tables.
         """
         # Extract catalog and schema from target (format: "catalog_id.schema_id")
-        parts = op.target.split(".")
+        parts = operation.target.split(".")
         if len(parts) != 2:
             return SafetyReport(
                 level=SafetyLevel.SAFE,
@@ -174,8 +171,32 @@ class SafetyValidator:
                 data_at_risk=0,
             )
 
+    def _report_for_row_count(self, fully_qualified: str, row_count: int) -> SafetyReport:
+        """Classify row count into SAFE/RISKY/DESTRUCTIVE report."""
+        if row_count == 0:
+            return SafetyReport(
+                level=SafetyLevel.SAFE,
+                reason=f"Table {fully_qualified} is empty (0 rows)",
+                data_at_risk=0,
+            )
+        if row_count < self.RISKY_THRESHOLD:
+            sample = self._query_sample(fully_qualified, limit=3)
+            return SafetyReport(
+                level=SafetyLevel.RISKY,
+                reason=f"Table {fully_qualified} has {row_count:,} rows",
+                data_at_risk=row_count,
+                sample_data=sample,
+            )
+        sample = self._query_sample(fully_qualified, limit=5)
+        return SafetyReport(
+            level=SafetyLevel.DESTRUCTIVE,
+            reason=f"Table {fully_qualified} has {row_count:,} rows",
+            data_at_risk=row_count,
+            sample_data=sample,
+        )
+
     def _validate_drop_table(
-        self, op: Operation, catalog_mapping: dict[str, str] | None
+        self, operation: Operation, catalog_mapping: dict[str, str] | None
     ) -> SafetyReport:
         """Validate DROP_TABLE operation
 
@@ -183,7 +204,7 @@ class SafetyValidator:
         """
         # Extract fully qualified table name from target
         # Target format: "catalog_id.schema_id.table_id"
-        parts = op.target.split(".")
+        parts = operation.target.split(".")
         if len(parts) != 3:
             return SafetyReport(
                 level=SafetyLevel.SAFE,
@@ -193,56 +214,60 @@ class SafetyValidator:
 
         catalog_id, schema_id, table_id = parts
         catalog_name = self._get_physical_name(catalog_id, catalog_mapping)
-        # TODO: Proper schema/table name lookup from state
         schema_name = schema_id
         table_name = table_id
-
         fully_qualified = f"`{catalog_name}`.`{schema_name}`.`{table_name}`"
 
         try:
-            # Query row count
             row_count = self._query_count(f"SELECT COUNT(*) as cnt FROM {fully_qualified}")
-
-            if row_count == 0:
-                return SafetyReport(
-                    level=SafetyLevel.SAFE,
-                    reason=f"Table {fully_qualified} is empty (0 rows)",
-                    data_at_risk=0,
-                )
-            if row_count < self.RISKY_THRESHOLD:
-                # Get sample data for small tables
-                sample = self._query_sample(fully_qualified, limit=3)
-                return SafetyReport(
-                    level=SafetyLevel.RISKY,
-                    reason=f"Table {fully_qualified} has {row_count:,} rows",
-                    data_at_risk=row_count,
-                    sample_data=sample,
-                )
-            # Get sample data for large tables
-            sample = self._query_sample(fully_qualified, limit=5)
-            return SafetyReport(
-                level=SafetyLevel.DESTRUCTIVE,
-                reason=f"Table {fully_qualified} has {row_count:,} rows",
-                data_at_risk=row_count,
-                sample_data=sample,
-            )
+            return self._report_for_row_count(fully_qualified, row_count)
         except Exception as e:
-            # Table doesn't exist or can't be queried - safe to "drop"
             return SafetyReport(
                 level=SafetyLevel.SAFE,
                 reason=f"Table {fully_qualified} does not exist or is inaccessible: {e}",
                 data_at_risk=0,
             )
 
+    def _report_for_non_null_count(
+        self, fully_qualified: str, column_name: str, non_null_count: int
+    ) -> SafetyReport:
+        """Classify non-NULL column count into SAFE/RISKY/DESTRUCTIVE report."""
+        if non_null_count == 0:
+            return SafetyReport(
+                level=SafetyLevel.SAFE,
+                reason=f"Column `{column_name}` has all NULL values (no data loss)",
+                data_at_risk=0,
+            )
+        if non_null_count < self.RISKY_THRESHOLD:
+            sample = self._query(
+                f"SELECT `{column_name}` FROM {fully_qualified} "
+                f"WHERE `{column_name}` IS NOT NULL LIMIT 3"
+            )
+            return SafetyReport(
+                level=SafetyLevel.RISKY,
+                reason=f"Column `{column_name}` has {non_null_count:,} non-NULL values",
+                data_at_risk=non_null_count,
+                sample_data=sample,
+            )
+        sample = self._query(
+            f"SELECT `{column_name}` FROM {fully_qualified} "
+            f"WHERE `{column_name}` IS NOT NULL LIMIT 5"
+        )
+        return SafetyReport(
+            level=SafetyLevel.DESTRUCTIVE,
+            reason=f"Column `{column_name}` has {non_null_count:,} non-NULL values",
+            data_at_risk=non_null_count,
+            sample_data=sample,
+        )
+
     def _validate_drop_column(
-        self, op: Operation, catalog_mapping: dict[str, str] | None
+        self, operation: Operation, catalog_mapping: dict[str, str] | None
     ) -> SafetyReport:
         """Validate DROP_COLUMN operation
 
         Checks if column has non-NULL data that would be lost.
         """
-        # Extract table and column info from payload
-        payload = op.payload
+        payload = operation.payload
         table_parts = payload.get("tableId", "").split(".")
         column_name = payload.get("name", "")
 
@@ -258,39 +283,10 @@ class SafetyValidator:
         fully_qualified = f"`{catalog_name}`.`{schema_id}`.`{table_id}`"
 
         try:
-            # Count non-NULL values in column
             non_null_count = self._query_count(
                 f"SELECT COUNT(*) as cnt FROM {fully_qualified} WHERE `{column_name}` IS NOT NULL"
             )
-
-            if non_null_count == 0:
-                return SafetyReport(
-                    level=SafetyLevel.SAFE,
-                    reason=f"Column `{column_name}` has all NULL values (no data loss)",
-                    data_at_risk=0,
-                )
-            if non_null_count < self.RISKY_THRESHOLD:
-                # Sample non-NULL values
-                sample = self._query(
-                    f"SELECT `{column_name}` FROM {fully_qualified} "
-                    f"WHERE `{column_name}` IS NOT NULL LIMIT 3"
-                )
-                return SafetyReport(
-                    level=SafetyLevel.RISKY,
-                    reason=f"Column `{column_name}` has {non_null_count:,} non-NULL values",
-                    data_at_risk=non_null_count,
-                    sample_data=sample,
-                )
-            sample = self._query(
-                f"SELECT `{column_name}` FROM {fully_qualified} "
-                f"WHERE `{column_name}` IS NOT NULL LIMIT 5"
-            )
-            return SafetyReport(
-                level=SafetyLevel.DESTRUCTIVE,
-                reason=f"Column `{column_name}` has {non_null_count:,} non-NULL values",
-                data_at_risk=non_null_count,
-                sample_data=sample,
-            )
+            return self._report_for_non_null_count(fully_qualified, column_name, non_null_count)
         except Exception as e:
             return SafetyReport(
                 level=SafetyLevel.SAFE,
@@ -299,18 +295,19 @@ class SafetyValidator:
             )
 
     def _validate_change_column_type(
-        self, _op: Operation, _catalog_mapping: dict[str, str] | None
+        self,
+        operation: Operation,
+        catalog_mapping: dict[str, str] | None,
     ) -> SafetyReport:
         """Validate CHANGE_COLUMN_TYPE operation
 
         Type changes can cause data loss if the new type is narrower than the old type.
         For rollback, we're reverting to the old type, which is generally safer.
         """
-        # Changing type back during rollback is generally RISKY but not DESTRUCTIVE
-        # since we're restoring the original type
+        _ = catalog_mapping
         return SafetyReport(
             level=SafetyLevel.RISKY,
-            reason="Type change during rollback may cause compatibility issues",
+            reason=f"{operation.op}: type change during rollback may cause compatibility issues",
             data_at_risk=0,
         )
 

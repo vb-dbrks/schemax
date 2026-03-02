@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1",
+  "command": "diff",
+  "status": "success",
+  "data": {
+    "operations": []
+  },
+  "warnings": [],
+  "errors": [],
+  "meta": {
+    "durationMs": 1,
+    "executedCommand": "schemax diff --json --from v0.1.0 --to v0.2.0",
+    "exitCode": 0
+  }
+}

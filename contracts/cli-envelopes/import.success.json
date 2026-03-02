@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1",
+  "command": "import",
+  "status": "success",
+  "data": {
+    "summary": {
+      "operations_generated": 1,
+      "dry_run": true,
+      "warnings": []
+    }
+  },
+  "warnings": [],
+  "errors": [],
+  "meta": {
+    "durationMs": 1,
+    "executedCommand": "schemax import --json --from-sql ddl.sql --mode diff --dry-run",
+    "exitCode": 0
+  }
+}

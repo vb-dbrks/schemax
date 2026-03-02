@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.6] - 2026-03-02
+
+### Added
+
+- **Python backend transport layer** — Added unified `PythonBackendClient` command envelope transport for extension workflows.
+- **Runtime compatibility checks** — Added CLI/runtime compatibility validation before workflow execution.
+- **Architecture fitness tests** — Added test coverage to enforce Python-first semantic boundaries.
+
+### Changed
+
+- **Semantic de-duplication** — Removed extension-side provider runtime semantics from active command paths; Python SDK is now authoritative for diff/sql/import/apply/rollback/snapshot checks.
+- **Designer/runtime integration** — Updated workspace and command flows to consume typed backend envelopes.
+- **Lint/type stabilization** — Completed extension lint/typecheck stabilization for the migration baseline.
+
+### Removed
+
+- **Legacy TS provider runtime modules** — Removed duplicate provider/base semantic runtime implementations from the extension package.
+
 ## [0.2.5] - 2026-02-24
 
 ### Added

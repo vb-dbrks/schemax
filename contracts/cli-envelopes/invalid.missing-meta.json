@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "1",
+  "command": "validate",
+  "status": "success",
+  "data": {
+    "valid": true
+  },
+  "warnings": [],
+  "errors": []
+}

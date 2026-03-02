@@ -80,8 +80,8 @@ class OperationBatcher:
         """
         batches: dict[str, BatchInfo] = {}
 
-        for op in ops:
-            target_id = get_target_func(op)
+        for operation in ops:
+            target_id = get_target_func(operation)
 
             if not target_id:
                 # Operation has no target (e.g., global settings)
@@ -94,17 +94,17 @@ class OperationBatcher:
             batch = batches[target_id]
 
             # Track operation
-            batch.op_ids.append(op.id)
-            batch.operation_types.add(op.op)
+            batch.op_ids.append(operation.id)
+            batch.operation_types.add(operation.op)
 
             # Categorize operation
-            if is_create_func(op):
+            if is_create_func(operation):
                 # This is a CREATE operation (e.g., add_table)
                 batch.is_new = True
-                batch.create_op = op
+                batch.create_op = operation
             else:
                 # This is a modification operation (e.g., add_column, set_property)
-                batch.modify_ops.append(op)
+                batch.modify_ops.append(operation)
 
         return batches
 
@@ -137,19 +137,19 @@ class OperationBatcher:
         """
         batches: dict[str, dict[str, list[Operation]]] = {}
 
-        for op in ops:
-            target_id = get_target_func(op)
+        for operation in ops:
+            target_id = get_target_func(operation)
             if not target_id:
                 continue
 
             if target_id not in batches:
                 batches[target_id] = {}
 
-            category = categorize_func(op)
+            category = categorize_func(operation)
             if category not in batches[target_id]:
                 batches[target_id][category] = []
 
-            batches[target_id][category].append(op)
+            batches[target_id][category].append(operation)
 
         return batches
 

@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useDesignerStore } from '../state/useDesignerStore';
-import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
-import { validateUnityCatalogObjectName } from '../utils/unityNames';
-import { parsePrivileges } from '../utils/grants';
-import { RichComment } from './RichComment';
-import { BulkOperationsPanel } from './BulkOperationsPanel';
+import React, { useState, useEffect } from "react";
+import { useDesignerStore } from "../state/useDesignerStore";
+import {
+  VSCodeButton,
+  VSCodeTextField,
+  VSCodeDropdown,
+  VSCodeOption,
+} from "@vscode/webview-ui-toolkit/react";
+import { validateUnityCatalogObjectName } from "../utils/unityNames";
+import { parsePrivileges } from "../utils/grants";
+import { RichComment } from "./RichComment";
+import { BulkOperationsPanel } from "./BulkOperationsPanel";
 
 // Codicon icons - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -23,38 +28,51 @@ interface SchemaDetailsProps {
   schemaId: string;
 }
 
+interface NamedLocation {
+  description?: string;
+  paths: Record<string, string>;
+}
+
 export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
-  const { project, findSchema, updateSchema, renameSchema, addGrant, revokeGrant } = useDesignerStore();
+  const { project, findSchema, updateSchema, renameSchema, addGrant, revokeGrant } =
+    useDesignerStore();
   const schemaInfo = findSchema(schemaId);
   const schema = schemaInfo?.schema;
   const catalog = schemaInfo?.catalog;
 
-  const MANAGED_LOCATION_DEFAULT = '__default__';
+  const MANAGED_LOCATION_DEFAULT = "__default__";
   const [managedLocationName, setManagedLocationName] = useState(
     schema?.managedLocationName ? schema.managedLocationName : MANAGED_LOCATION_DEFAULT
   );
   const [tags, setTags] = useState<Record<string, string>>(schema?.tags || {});
   const [copySuccess, setCopySuccess] = useState(false);
   const [renameDialog, setRenameDialog] = useState(false);
-  const [newName, setNewName] = useState('');
+  const [newName, setNewName] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
-  const [commentDialog, setCommentDialog] = useState<{schemaId: string, comment: string} | null>(null);
+  const [commentDialog, setCommentDialog] = useState<{ schemaId: string; comment: string } | null>(
+    null
+  );
   const [editingTag, setEditingTag] = useState<string | null>(null);
-  const [editTagValue, setEditTagValue] = useState('');
+  const [editTagValue, setEditTagValue] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-  const [newTagName, setNewTagName] = useState('');
-  const [newTagValue, setNewTagValue] = useState('');
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagValue, setNewTagValue] = useState("");
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [addGrantDialog, setAddGrantDialog] = useState(false);
-  const [editingGrant, setEditingGrant] = useState<{ principal: string; privileges: string[] } | null>(null);
+  const [editingGrant, setEditingGrant] = useState<{
+    principal: string;
+    privileges: string[];
+  } | null>(null);
   const [revokeGrantDialog, setRevokeGrantDialog] = useState<{ principal: string } | null>(null);
-  const [grantForm, setGrantForm] = useState({ principal: '', privileges: '' });
+  const [grantForm, setGrantForm] = useState({ principal: "", privileges: "" });
   const [showBulkPanel, setShowBulkPanel] = useState(false);
 
   // Update local state when schema changes
   useEffect(() => {
     if (schema) {
-      setManagedLocationName(schema.managedLocationName ? schema.managedLocationName : MANAGED_LOCATION_DEFAULT);
+      setManagedLocationName(
+        schema.managedLocationName ? schema.managedLocationName : MANAGED_LOCATION_DEFAULT
+      );
       setTags(schema.tags || {});
     }
   }, [schema]);
@@ -71,14 +89,14 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   }
 
   const handleManagedLocationChange = (newLocation: string) => {
-    const isDefault = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === '';
+    const isDefault = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === "";
     const value = isDefault ? null : newLocation; // null survives JSON so reducer can clear
     setManagedLocationName(isDefault ? MANAGED_LOCATION_DEFAULT : newLocation);
     updateSchema(schemaId, { managedLocationName: value });
   };
 
   const handleSetComment = () => {
-    setCommentDialog({schemaId: schema.id, comment: schema.comment || ''});
+    setCommentDialog({ schemaId: schema.id, comment: schema.comment || "" });
   };
 
   const handleAddTag = () => {
@@ -87,16 +105,16 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
       const updatedTags = { ...tags, [newTagName]: newTagValue };
       updateSchema(schemaId, { tags: updatedTags });
       setTags(updatedTags);
-      setNewTagName('');
-      setNewTagValue('');
+      setNewTagName("");
+      setNewTagValue("");
       setIsAdding(false);
     }
   };
 
   const handleCancelAdd = () => {
     setIsAdding(false);
-    setNewTagName('');
-    setNewTagValue('');
+    setNewTagName("");
+    setNewTagValue("");
   };
 
   const handleRemoveTag = (tagName: string) => {
@@ -121,12 +139,12 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
     updateSchema(schemaId, { tags: newTags });
     setTags(newTags);
     setEditingTag(null);
-    setEditTagValue('');
+    setEditTagValue("");
   };
 
   const handleCancelEditTag = () => {
     setEditingTag(null);
-    setEditTagValue('');
+    setEditTagValue("");
   };
 
   const handleCopySchemaName = () => {
@@ -142,9 +160,11 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
     setRenameDialog(true);
     // Auto-focus the input field after a short delay
     setTimeout(() => {
-      const input = document.getElementById('rename-schema-input') as any;
+      const input = document.getElementById("rename-schema-input") as {
+        shadowRoot?: ShadowRoot;
+      } | null;
       if (input && input.shadowRoot) {
-        const inputElement = input.shadowRoot.querySelector('input');
+        const inputElement = input.shadowRoot.querySelector("input");
         if (inputElement) inputElement.focus();
       }
     }, 100);
@@ -152,7 +172,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
 
   const handleCloseRenameDialog = () => {
     setRenameDialog(false);
-    setNewName('');
+    setNewName("");
     setRenameError(null);
   };
 
@@ -173,46 +193,53 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
   return (
     <div className="table-designer">
       <div className="table-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <h2 style={{ marginBottom: 0 }}>{catalog.name}.{schema.name}</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <h2 style={{ marginBottom: 0 }}>
+              {catalog.name}.{schema.name}
+            </h2>
             <button
               onClick={handleCopySchemaName}
-              title={copySuccess ? 'Copied!' : 'Copy schema name'}
+              title={copySuccess ? "Copied!" : "Copy schema name"}
               style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '2px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: copySuccess ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-foreground)',
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "2px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: copySuccess
+                  ? "var(--vscode-testing-iconPassed)"
+                  : "var(--vscode-foreground)",
                 opacity: copySuccess ? 1 : 0.6,
-                height: '20px',
-                width: '20px',
+                height: "20px",
+                width: "20px",
               }}
             >
-              <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '14px' }}></i>
+              <i
+                className={`codicon ${copySuccess ? "codicon-check" : "codicon-copy"}`}
+                style={{ fontSize: "14px" }}
+              ></i>
             </button>
             <button
               onClick={handleOpenRenameDialog}
               title="Edit schema name"
               style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '2px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--vscode-foreground)',
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "2px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--vscode-foreground)",
                 opacity: 0.6,
-                height: '20px',
-                width: '20px',
+                height: "20px",
+                width: "20px",
               }}
             >
-              <i className="codicon codicon-edit" style={{ fontSize: '14px' }}></i>
+              <i className="codicon codicon-edit" style={{ fontSize: "14px" }}></i>
             </button>
           </div>
           <VSCodeButton
@@ -253,47 +280,69 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
         <div className="property-row">
           <label>
             Managed Location
-            <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
+            <span className="info-icon" title="Storage location for managed tables">
+              {" "}
+              ℹ️
+            </span>
           </label>
           <div className="property-value">
             <VSCodeDropdown
               value={managedLocationName}
-              style={{ width: '100%' }}
-              onInput={(e: Event) => {
+              style={{ width: "100%" }}
+              onInput={(e) => {
                 const target = e.target as HTMLSelectElement;
                 handleManagedLocationChange(target.value);
               }}
             >
               <VSCodeOption value={MANAGED_LOCATION_DEFAULT}>— Default —</VSCodeOption>
-              {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, any]) => (
-                <VSCodeOption key={name} value={name}>
-                  {name} {location.description && `(${location.description})`}
-                </VSCodeOption>
-              ))}
+              {Object.entries(project?.managedLocations || {}).map(
+                ([name, location]: [string, NamedLocation]) => (
+                  <VSCodeOption key={name} value={name}>
+                    {name} {location.description && `(${location.description})`}
+                  </VSCodeOption>
+                )
+              )}
             </VSCodeDropdown>
           </div>
         </div>
-        <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
-          Changing managed location may be rejected by Unity Catalog depending on object state and permissions.
+        <div
+          style={{
+            marginTop: "8px",
+            fontSize: "11px",
+            color: "var(--vscode-descriptionForeground)",
+          }}
+        >
+          Changing managed location may be rejected by Unity Catalog depending on object state and
+          permissions.
         </div>
-        {managedLocationName !== MANAGED_LOCATION_DEFAULT && managedLocationName && project?.managedLocations?.[managedLocationName] && (
-          <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
-            <strong>Paths:</strong>
-            <div style={{ marginTop: '4px' }}>
-              {Object.entries(project.managedLocations[managedLocationName].paths || {}).map(([env, path]) => (
-                <div key={env} style={{ marginLeft: '8px' }}>
-                  <span style={{ fontWeight: 500 }}>{env}:</span> <code>{path}</code>
-                </div>
-              ))}
+        {managedLocationName !== MANAGED_LOCATION_DEFAULT &&
+          managedLocationName &&
+          project?.managedLocations?.[managedLocationName] && (
+            <div
+              style={{
+                marginTop: "8px",
+                fontSize: "11px",
+                color: "var(--vscode-descriptionForeground)",
+              }}
+            >
+              <strong>Paths:</strong>
+              <div style={{ marginTop: "4px" }}>
+                {Object.entries(project.managedLocations[managedLocationName].paths || {}).map(
+                  ([env, path]) => (
+                    <div key={env} style={{ marginLeft: "8px" }}>
+                      <span style={{ fontWeight: 500 }}>{env}:</span> <code>{path}</code>
+                    </div>
+                  )
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
       </div>
 
       {/* Tags */}
       <div className="table-properties-section">
         <h3>Schema Tags (Unity Catalog)</h3>
-        
+
         {Object.keys(tags).length === 0 && !isAdding ? (
           <div className="empty-properties">
             <p>No schema tags defined</p>
@@ -310,7 +359,9 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
             <tbody>
               {Object.entries(tags).map(([tagName, tagValue]) => (
                 <tr key={tagName}>
-                  <td><code>{tagName}</code></td>
+                  <td>
+                    <code>{tagName}</code>
+                  </td>
                   <td>
                     {editingTag === tagName ? (
                       <input
@@ -326,14 +377,14 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
                   <td className="actions-cell">
                     {editingTag === tagName ? (
                       <>
-                        <button 
+                        <button
                           className="action-button-save"
                           onClick={() => handleSaveEditTag(tagName)}
                           title="Save"
                         >
                           ✓
                         </button>
-                        <button 
+                        <button
                           className="action-button-cancel"
                           onClick={handleCancelEditTag}
                           title="Cancel"
@@ -362,7 +413,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
                   </td>
                 </tr>
               ))}
-              
+
               {isAdding && (
                 <tr className="adding-row">
                   <td>
@@ -383,14 +434,10 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
                     />
                   </td>
                   <td className="actions-cell">
-                    <button 
-                      className="action-button-save"
-                      onClick={handleAddTag}
-                      title="Add tag"
-                    >
+                    <button className="action-button-save" onClick={handleAddTag} title="Add tag">
                       ✓
                     </button>
-                    <button 
+                    <button
                       className="action-button-cancel"
                       onClick={handleCancelAdd}
                       title="Cancel"
@@ -403,12 +450,9 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
             </tbody>
           </table>
         )}
-        
+
         {!isAdding && (
-          <button 
-            className="add-property-btn"
-            onClick={() => setIsAdding(true)}
-          >
+          <button className="add-property-btn" onClick={() => setIsAdding(true)}>
             + Add Tag
           </button>
         )}
@@ -417,10 +461,15 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
           <div className="modal-overlay" onClick={() => setDeleteDialog(null)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <h3>Delete Schema Tag</h3>
-              <p>Are you sure you want to delete tag <code>{deleteDialog}</code>?</p>
+              <p>
+                Are you sure you want to delete tag <code>{deleteDialog}</code>?
+              </p>
               <p className="warning-text">This will generate an UNSET TAGS operation.</p>
               <div className="modal-buttons">
-                <button onClick={() => handleRemoveTag(deleteDialog)} style={{ backgroundColor: 'var(--vscode-errorForeground)' }}>
+                <button
+                  onClick={() => handleRemoveTag(deleteDialog)}
+                  style={{ backgroundColor: "var(--vscode-errorForeground)" }}
+                >
                   Delete
                 </button>
                 <button onClick={() => setDeleteDialog(null)}>Cancel</button>
@@ -435,7 +484,10 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
         <h3>Grants ({schema.grants?.length ?? 0})</h3>
         {(!schema.grants || schema.grants.length === 0) && !addGrantDialog ? (
           <div className="empty-properties">
-            <p>No grants defined. Grant privileges (e.g. USE SCHEMA, CREATE TABLE) to users or groups.</p>
+            <p>
+              No grants defined. Grant privileges (e.g. USE SCHEMA, CREATE TABLE) to users or
+              groups.
+            </p>
           </div>
         ) : (
           <table className="properties-table">
@@ -450,12 +502,27 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
               {(schema.grants || []).map((g) => (
                 <tr key={g.principal}>
                   <td>{g.principal}</td>
-                  <td>{(g.privileges || []).join(', ')}</td>
+                  <td>{(g.privileges || []).join(", ")}</td>
                   <td>
-                    <VSCodeButton appearance="icon" onClick={() => { setEditingGrant({ principal: g.principal, privileges: g.privileges || [] }); setGrantForm({ principal: g.principal, privileges: (g.privileges || []).join(', ') }); setAddGrantDialog(true); }} title="Edit grant">
+                    <VSCodeButton
+                      appearance="icon"
+                      onClick={() => {
+                        setEditingGrant({ principal: g.principal, privileges: g.privileges || [] });
+                        setGrantForm({
+                          principal: g.principal,
+                          privileges: (g.privileges || []).join(", "),
+                        });
+                        setAddGrantDialog(true);
+                      }}
+                      title="Edit grant"
+                    >
                       <IconEdit />
                     </VSCodeButton>
-                    <VSCodeButton appearance="icon" onClick={() => setRevokeGrantDialog({ principal: g.principal })} title="Revoke all">
+                    <VSCodeButton
+                      appearance="icon"
+                      onClick={() => setRevokeGrantDialog({ principal: g.principal })}
+                      title="Revoke all"
+                    >
                       <IconTrash />
                     </VSCodeButton>
                   </td>
@@ -464,38 +531,70 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
             </tbody>
           </table>
         )}
-        <button className="add-property-btn" onClick={() => { setEditingGrant(null); setGrantForm({ principal: '', privileges: '' }); setAddGrantDialog(true); }}>
+        <button
+          className="add-property-btn"
+          onClick={() => {
+            setEditingGrant(null);
+            setGrantForm({ principal: "", privileges: "" });
+            setAddGrantDialog(true);
+          }}
+        >
           + Add Grant
         </button>
       </div>
 
       {addGrantDialog && (
-        <div className="modal-overlay" onClick={() => { setAddGrantDialog(false); setEditingGrant(null); }}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setAddGrantDialog(false);
+            setEditingGrant(null);
+          }}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>{editingGrant ? 'Edit Grant' : 'Add Grant'}</h3>
+            <h3>{editingGrant ? "Edit Grant" : "Add Grant"}</h3>
             <div className="modal-body">
               <label>Principal</label>
-              <input type="text" value={grantForm.principal} onChange={(e) => setGrantForm({ ...grantForm, principal: e.target.value })} placeholder="e.g. data_engineers" readOnly={!!editingGrant} />
+              <input
+                type="text"
+                value={grantForm.principal}
+                onChange={(e) => setGrantForm({ ...grantForm, principal: e.target.value })}
+                placeholder="e.g. data_engineers"
+                readOnly={!!editingGrant}
+              />
               <label>Privileges (comma-separated, e.g. USE SCHEMA, CREATE TABLE)</label>
-              <input type="text" value={grantForm.privileges} onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })} placeholder="USE SCHEMA, CREATE TABLE" />
+              <input
+                type="text"
+                value={grantForm.privileges}
+                onChange={(e) => setGrantForm({ ...grantForm, privileges: e.target.value })}
+                placeholder="USE SCHEMA, CREATE TABLE"
+              />
             </div>
             <div className="modal-buttons">
-              <button onClick={() => { setAddGrantDialog(false); setEditingGrant(null); setGrantForm({ principal: '', privileges: '' }); }}>Cancel</button>
+              <button
+                onClick={() => {
+                  setAddGrantDialog(false);
+                  setEditingGrant(null);
+                  setGrantForm({ principal: "", privileges: "" });
+                }}
+              >
+                Cancel
+              </button>
               <button
                 onClick={() => {
                   const principal = grantForm.principal.trim();
                   const privs = parsePrivileges(grantForm.privileges);
                   if (principal && privs.length > 0) {
-                    if (editingGrant) revokeGrant('schema', schemaId, editingGrant.principal);
-                    addGrant('schema', schemaId, principal, privs);
+                    if (editingGrant) revokeGrant("schema", schemaId, editingGrant.principal);
+                    addGrant("schema", schemaId, principal, privs);
                     setAddGrantDialog(false);
                     setEditingGrant(null);
-                    setGrantForm({ principal: '', privileges: '' });
+                    setGrantForm({ principal: "", privileges: "" });
                   }
                 }}
                 disabled={!grantForm.principal.trim() || !grantForm.privileges.trim()}
               >
-                {editingGrant ? 'Save' : 'Add Grant'}
+                {editingGrant ? "Save" : "Add Grant"}
               </button>
             </div>
           </div>
@@ -506,9 +605,20 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
         <div className="modal-overlay" onClick={() => setRevokeGrantDialog(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Revoke Grant</h3>
-            <p>Revoke all privileges for <strong>{revokeGrantDialog.principal}</strong> on this schema?</p>
+            <p>
+              Revoke all privileges for <strong>{revokeGrantDialog.principal}</strong> on this
+              schema?
+            </p>
             <div className="modal-buttons">
-              <button onClick={() => { revokeGrant('schema', schemaId, revokeGrantDialog.principal); setRevokeGrantDialog(null); }} style={{ backgroundColor: 'var(--vscode-errorForeground)' }}>Revoke</button>
+              <button
+                onClick={() => {
+                  revokeGrant("schema", schemaId, revokeGrantDialog.principal);
+                  setRevokeGrantDialog(null);
+                }}
+                style={{ backgroundColor: "var(--vscode-errorForeground)" }}
+              >
+                Revoke
+              </button>
               <button onClick={() => setRevokeGrantDialog(null)}>Cancel</button>
             </div>
           </div>
@@ -524,19 +634,19 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
             onSubmit={handleConfirmRename}
           >
             <h3>Rename Schema</h3>
-            
+
             <div className="modal-field-group">
               <label htmlFor="rename-schema-input">Name</label>
               <VSCodeTextField
                 id="rename-schema-input"
                 value={newName}
                 placeholder="Schema name"
-                onInput={(e: Event) => {
+                onInput={(e) => {
                   const target = e.target as HTMLInputElement;
                   setNewName(target.value);
                   setRenameError(null);
                 }}
-                style={{ width: '100%' }}
+                style={{ width: "100%" }}
               />
               {renameError && <p className="form-error">{renameError}</p>}
             </div>
@@ -545,9 +655,7 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
               <VSCodeButton type="button" appearance="secondary" onClick={handleCloseRenameDialog}>
                 Cancel
               </VSCodeButton>
-              <VSCodeButton type="submit">
-                Rename
-              </VSCodeButton>
+              <VSCodeButton type="submit">Rename</VSCodeButton>
             </div>
           </form>
         </div>
@@ -563,21 +671,27 @@ export const SchemaDetails: React.FC<SchemaDetailsProps> = ({ schemaId }) => {
               defaultValue={commentDialog.comment}
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  updateSchema(commentDialog.schemaId, { comment: (e.target as HTMLInputElement).value });
+                if (e.key === "Enter") {
+                  updateSchema(commentDialog.schemaId, {
+                    comment: (e.target as HTMLInputElement).value,
+                  });
                   setCommentDialog(null);
-                } else if (e.key === 'Escape') {
+                } else if (e.key === "Escape") {
                   setCommentDialog(null);
                 }
               }}
               id="schema-comment-input"
             />
             <div className="modal-buttons">
-              <button onClick={() => {
-                const input = document.getElementById('schema-comment-input') as HTMLInputElement;
-                updateSchema(commentDialog.schemaId, { comment: input.value });
-                setCommentDialog(null);
-              }}>Set</button>
+              <button
+                onClick={() => {
+                  const input = document.getElementById("schema-comment-input") as HTMLInputElement;
+                  updateSchema(commentDialog.schemaId, { comment: input.value });
+                  setCommentDialog(null);
+                }}
+              >
+                Set
+              </button>
               <button onClick={() => setCommentDialog(null)}>Cancel</button>
             </div>
           </div>

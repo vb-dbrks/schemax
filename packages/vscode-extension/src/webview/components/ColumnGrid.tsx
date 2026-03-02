@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   VSCodeButton,
   VSCodeDropdown,
   VSCodeOption,
   VSCodeTextField,
-} from '@vscode/webview-ui-toolkit/react';
-import { Column } from '../../providers/unity/models';
-import { useDesignerStore } from '../state/useDesignerStore';
-import { validateUnityCatalogObjectName } from '../utils/unityNames';
+} from "@vscode/webview-ui-toolkit/react";
+import type { Column } from "../models/unity";
+import { useDesignerStore } from "../state/useDesignerStore";
+import { validateUnityCatalogObjectName } from "../utils/unityNames";
 
 interface ColumnGridProps {
   tableId: string;
@@ -50,31 +50,36 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [editingColId, setEditingColId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{name: string, type: string, nullable: boolean, comment: string}>({name: '', type: '', nullable: true, comment: ''});
-  const [dropDialog, setDropDialog] = useState<{colId: string, name: string} | null>(null);
+  const [editValues, setEditValues] = useState<{
+    name: string;
+    type: string;
+    nullable: boolean;
+    comment: string;
+  }>({ name: "", type: "", nullable: true, comment: "" });
+  const [dropDialog, setDropDialog] = useState<{ colId: string; name: string } | null>(null);
   const [addDialog, setAddDialog] = useState(false);
   const [addColForm, setAddColForm] = useState({
-    name: '',
-    type: 'STRING',
+    name: "",
+    type: "STRING",
     nullable: true,
-    comment: '',
+    comment: "",
   });
   const [addColError, setAddColError] = useState<string | null>(null);
   const [columnEditError, setColumnEditError] = useState<string | null>(null);
   const [addColumnTags, setAddColumnTags] = useState<Record<string, string>>({});
-  const [addTagInput, setAddTagInput] = useState({ tagName: '', tagValue: '' });
-  const [tagsDialog, setTagsDialog] = useState<{colId: string, name: string} | null>(null);
+  const [addTagInput, setAddTagInput] = useState({ tagName: "", tagValue: "" });
+  const [tagsDialog, setTagsDialog] = useState<{ colId: string; name: string } | null>(null);
   const [editingColumnTag, setEditingColumnTag] = useState<string | null>(null);
-  const [editColumnTagValue, setEditColumnTagValue] = useState('');
+  const [editColumnTagValue, setEditColumnTagValue] = useState("");
   const [isAddingColumnTag, setIsAddingColumnTag] = useState(false);
-  const [newColumnTagName, setNewColumnTagName] = useState('');
-  const [newColumnTagValue, setNewColumnTagValue] = useState('');
+  const [newColumnTagName, setNewColumnTagName] = useState("");
+  const [newColumnTagValue, setNewColumnTagValue] = useState("");
 
   const handleDragStart = (index: number) => {
     setDraggedIndex(index);
   };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e: React.DragEvent, _index: number) => {
     e.preventDefault();
   };
 
@@ -91,7 +96,10 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     const [draggedCol] = newOrder.splice(draggedIndex, 1);
     newOrder.splice(dropIndex, 0, draggedCol);
 
-    reorderColumns(tableId, newOrder.map(c => c.id));
+    reorderColumns(
+      tableId,
+      newOrder.map((c) => c.id)
+    );
     setDraggedIndex(null);
   };
 
@@ -102,12 +110,12 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
       name: col.name,
       type: col.type,
       nullable: col.nullable,
-      comment: col.comment || ''
+      comment: col.comment || "",
     });
   };
 
   const handleSaveColumn = (colId: string) => {
-    const col = columns.find(c => c.id === colId);
+    const col = columns.find((c) => c.id === colId);
     if (!col) return;
 
     setColumnEditError(null);
@@ -118,9 +126,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
         setColumnEditError(nameErr);
         return;
       }
-      const isDuplicate = columns.some(
-        c => c.id !== colId && c.name === trimmedName
-      );
+      const isDuplicate = columns.some((c) => c.id !== colId && c.name === trimmedName);
       if (isDuplicate) {
         setColumnEditError(`A column named "${trimmedName}" already exists.`);
         return;
@@ -133,7 +139,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     if (editValues.nullable !== col.nullable) {
       setColumnNullable(tableId, colId, editValues.nullable);
     }
-    if (editValues.comment !== (col.comment || '')) {
+    if (editValues.comment !== (col.comment || "")) {
       setColumnComment(tableId, colId, editValues.comment);
     }
 
@@ -146,7 +152,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
   };
 
   const handleDropColumn = (colId: string, name: string) => {
-    setDropDialog({colId, name});
+    setDropDialog({ colId, name });
   };
 
   const handleAddColumn = (name: string, type: string, nullable: boolean, comment: string) => {
@@ -158,35 +164,35 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
       setAddColError(nameErr);
       return;
     }
-    const isDuplicate = columns.some(c => c.name === trimmedName);
+    const isDuplicate = columns.some((c) => c.name === trimmedName);
     if (isDuplicate) {
       setAddColError(`A column named "${trimmedName}" already exists.`);
       return;
     }
     addColumn(tableId, trimmedName, type, nullable, comment || undefined, addColumnTags);
     setAddDialog(false);
-    setAddColForm({ name: '', type: 'STRING', nullable: true, comment: '' });
+    setAddColForm({ name: "", type: "STRING", nullable: true, comment: "" });
     setAddColumnTags({});
-    setAddTagInput({ tagName: '', tagValue: '' });
+    setAddTagInput({ tagName: "", tagValue: "" });
   };
 
   const closeAddColumnDialog = () => {
     setAddDialog(false);
     setAddColError(null);
-    setAddColForm({ name: '', type: 'STRING', nullable: true, comment: '' });
+    setAddColForm({ name: "", type: "STRING", nullable: true, comment: "" });
     setAddColumnTags({});
-    setAddTagInput({ tagName: '', tagValue: '' });
+    setAddTagInput({ tagName: "", tagValue: "" });
   };
-  
+
   const handleAddTagToNewColumn = () => {
     if (addTagInput.tagName && addTagInput.tagValue) {
-      setAddColumnTags({...addColumnTags, [addTagInput.tagName]: addTagInput.tagValue});
-      setAddTagInput({tagName: '', tagValue: ''});
+      setAddColumnTags({ ...addColumnTags, [addTagInput.tagName]: addTagInput.tagValue });
+      setAddTagInput({ tagName: "", tagValue: "" });
     }
   };
-  
+
   const handleRemoveTagFromNewColumn = (tagName: string) => {
-    const newTags = {...addColumnTags};
+    const newTags = { ...addColumnTags };
     delete newTags[tagName];
     setAddColumnTags(newTags);
   };
@@ -196,13 +202,13 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
       <table>
         <thead>
           <tr>
-            <th style={{width: '30px'}}></th>
+            <th style={{ width: "30px" }}></th>
             <th>Name</th>
             <th>Type</th>
-            <th style={{width: '80px'}}>Nullable</th>
-            <th style={{width: '100px'}}>Tags</th>
+            <th style={{ width: "80px" }}>Nullable</th>
+            <th style={{ width: "100px" }}>Tags</th>
             <th>Comment</th>
-            <th style={{width: '180px'}}>Actions</th>
+            <th style={{ width: "180px" }}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -216,7 +222,11 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                       Start by adding your first column. You can always reorder or refine it later.
                     </span>
                   </div>
-                  <VSCodeButton appearance="primary" type="button" onClick={() => setAddDialog(true)}>
+                  <VSCodeButton
+                    appearance="primary"
+                    type="button"
+                    onClick={() => setAddDialog(true)}
+                  >
                     <IconPlusSmall />
                     Add column
                   </VSCodeButton>
@@ -226,7 +236,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
           ) : (
             columns.map((col, index) => {
               const isEditing = editingColId === col.id;
-              
+
               return (
                 <tr
                   key={col.id}
@@ -235,10 +245,10 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDrop={(e) => handleDrop(e, index)}
                   onDragEnd={handleDragEnd}
-                  className={draggedIndex === index ? 'dragging' : ''}
+                  className={draggedIndex === index ? "dragging" : ""}
                 >
-                  <td className="drag-handle">{!isEditing && '⋮⋮'}</td>
-                  
+                  <td className="drag-handle">{!isEditing && "⋮⋮"}</td>
+
                   <td>
                     {isEditing ? (
                       <>
@@ -250,10 +260,18 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                             setColumnEditError(null);
                           }}
                           autoFocus
-                          style={{ width: '100%' }}
+                          style={{ width: "100%" }}
                         />
                         {columnEditError && (
-                          <p className="column-name-error" style={{ fontSize: '11px', color: 'var(--vscode-errorForeground)', marginTop: '4px', marginBottom: 0 }}>
+                          <p
+                            className="column-name-error"
+                            style={{
+                              fontSize: "11px",
+                              color: "var(--vscode-errorForeground)",
+                              marginTop: "4px",
+                              marginBottom: 0,
+                            }}
+                          >
                             {columnEditError}
                           </p>
                         )}
@@ -262,13 +280,13 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                       col.name
                     )}
                   </td>
-                  
+
                   <td>
                     {isEditing ? (
                       <select
                         value={editValues.type}
-                        onChange={(e) => setEditValues({...editValues, type: e.target.value})}
-                        style={{width: '100%'}}
+                        onChange={(e) => setEditValues({ ...editValues, type: e.target.value })}
+                        style={{ width: "100%" }}
                       >
                         <option value="STRING">STRING</option>
                         <option value="INT">INT</option>
@@ -285,31 +303,39 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                       col.type
                     )}
                   </td>
-                  
-                  <td style={{textAlign: 'center'}}>
+
+                  <td style={{ textAlign: "center" }}>
                     <input
                       type="checkbox"
                       checked={isEditing ? editValues.nullable : col.nullable}
                       onChange={() => {
                         if (isEditing) {
-                          setEditValues({...editValues, nullable: !editValues.nullable});
+                          setEditValues({ ...editValues, nullable: !editValues.nullable });
                         }
                       }}
                       disabled={!isEditing}
                       title={isEditing ? "Toggle nullable" : "Click Edit to change nullable"}
                     />
                   </td>
-                  
+
                   <td>
-                    <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       {col.tags && Object.keys(col.tags).length > 0 ? (
                         <div className="column-tags">
-                          {Object.keys(col.tags).slice(0, 2).map(tagName => (
-                            <span key={tagName} className="tag-badge" title={`${tagName}: ${col.tags![tagName]}`}>
-                              {tagName}
-                            </span>
-                          ))}
-                          {Object.keys(col.tags).length > 2 && <span className="tag-more">+{Object.keys(col.tags).length - 2}</span>}
+                          {Object.keys(col.tags)
+                            .slice(0, 2)
+                            .map((tagName) => (
+                              <span
+                                key={tagName}
+                                className="tag-badge"
+                                title={`${tagName}: ${col.tags![tagName]}`}
+                              >
+                                {tagName}
+                              </span>
+                            ))}
+                          {Object.keys(col.tags).length > 2 && (
+                            <span className="tag-more">+{Object.keys(col.tags).length - 2}</span>
+                          )}
                         </div>
                       ) : (
                         <span className="no-tags">—</span>
@@ -317,7 +343,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                       {isEditing && (
                         <VSCodeButton
                           appearance="icon"
-                          onClick={() => setTagsDialog({colId: col.id, name: col.name})}
+                          onClick={() => setTagsDialog({ colId: col.id, name: col.name })}
                           title="Manage tags"
                         >
                           <IconEdit />
@@ -325,21 +351,21 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                       )}
                     </div>
                   </td>
-                  
+
                   <td>
                     {isEditing ? (
                       <input
                         type="text"
                         value={editValues.comment}
-                        onChange={(e) => setEditValues({...editValues, comment: e.target.value})}
+                        onChange={(e) => setEditValues({ ...editValues, comment: e.target.value })}
                         placeholder="Optional comment"
-                        style={{width: '100%'}}
+                        style={{ width: "100%" }}
                       />
                     ) : (
                       col.comment || <span className="empty">—</span>
                     )}
                   </td>
-                  
+
                   <td className="actions-cell">
                     {isEditing ? (
                       <>
@@ -350,11 +376,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                         >
                           <IconCheck />
                         </VSCodeButton>
-                        <VSCodeButton
-                          appearance="icon"
-                          onClick={handleCancelEdit}
-                          title="Cancel"
-                        >
+                        <VSCodeButton appearance="icon" onClick={handleCancelEdit} title="Cancel">
                           <IconClose />
                         </VSCodeButton>
                       </>
@@ -385,7 +407,12 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
       </table>
 
       {columns.length > 0 && (
-        <VSCodeButton appearance="secondary" type="button" onClick={() => setAddDialog(true)} className="add-column-button">
+        <VSCodeButton
+          appearance="secondary"
+          type="button"
+          onClick={() => setAddDialog(true)}
+          className="add-column-button"
+        >
           <IconPlusSmall />
           Add column
         </VSCodeButton>
@@ -397,16 +424,23 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
             <h3>Confirm Drop Column</h3>
             <p>Are you sure you want to drop column "{dropDialog.name}"?</p>
             <div className="modal-buttons">
-              <button onClick={() => {
-                try {
-                  dropColumn(tableId, dropDialog.colId);
-                  setDropDialog(null);
-                } catch (error) {
-                  console.error('Failed to drop column:', error);
-                  alert(`Failed to drop column: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                  setDropDialog(null);
-                }
-              }} style={{backgroundColor: 'var(--vscode-errorForeground)'}}>Drop</button>
+              <button
+                onClick={() => {
+                  try {
+                    dropColumn(tableId, dropDialog.colId);
+                    setDropDialog(null);
+                  } catch (error) {
+                    console.error("Failed to drop column:", error);
+                    alert(
+                      `Failed to drop column: ${error instanceof Error ? error.message : "Unknown error"}`
+                    );
+                    setDropDialog(null);
+                  }
+                }}
+                style={{ backgroundColor: "var(--vscode-errorForeground)" }}
+              >
+                Drop
+              </button>
               <button onClick={() => setDropDialog(null)}>Cancel</button>
             </div>
           </div>
@@ -425,14 +459,17 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                 <VSCodeTextField
                   value={addColForm.name}
                   placeholder="Enter column name"
-                  style={{ width: '100%' }}
+                  style={{ width: "100%" }}
                   onInput={(e) => {
                     setAddColForm({ ...addColForm, name: (e.target as HTMLInputElement).value });
                     setAddColError(null);
                   }}
                 />
                 {addColError && (
-                  <p className="hint column-name-error" style={{ color: 'var(--vscode-errorForeground)', marginTop: '4px' }}>
+                  <p
+                    className="hint column-name-error"
+                    style={{ color: "var(--vscode-errorForeground)", marginTop: "4px" }}
+                  >
                     {addColError}
                   </p>
                 )}
@@ -442,7 +479,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                 <label className="constraint-form-label">Type</label>
                 <VSCodeDropdown
                   value={addColForm.type}
-                  style={{ width: '100%' }}
+                  style={{ width: "100%" }}
                   onInput={(e) =>
                     setAddColForm({
                       ...addColForm,
@@ -469,9 +506,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                 <input
                   type="checkbox"
                   checked={addColForm.nullable}
-                  onChange={(e) =>
-                    setAddColForm({ ...addColForm, nullable: e.target.checked })
-                  }
+                  onChange={(e) => setAddColForm({ ...addColForm, nullable: e.target.checked })}
                 />
                 <span>Nullable</span>
               </label>
@@ -481,7 +516,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                 <VSCodeTextField
                   value={addColForm.comment}
                   placeholder="Column description"
-                  style={{ width: '100%' }}
+                  style={{ width: "100%" }}
                   onInput={(e) =>
                     setAddColForm({
                       ...addColForm,
@@ -494,9 +529,9 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
               <div
                 className="constraint-form-field"
                 style={{
-                  borderTop: '1px solid var(--vscode-panel-border)',
-                  paddingTop: '14px',
-                  marginTop: '4px',
+                  borderTop: "1px solid var(--vscode-panel-border)",
+                  paddingTop: "14px",
+                  marginTop: "4px",
                 }}
               >
                 <label className="constraint-form-label">Tags (optional)</label>
@@ -504,7 +539,9 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                   <ul className="add-column-tags-list">
                     {Object.entries(addColumnTags).map(([tagName, tagValue]) => (
                       <li key={tagName} className="add-column-tag-item">
-                        <code>{tagName}: {tagValue}</code>
+                        <code>
+                          {tagName}: {tagValue}
+                        </code>
                         <button
                           type="button"
                           className="constraint-list-link add-column-tag-remove"
@@ -573,185 +610,216 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
       )}
 
       {/* Tags Dialog */}
-      {tagsDialog && (() => {
-        const col = columns.find(c => c.id === tagsDialog.colId);
-        const tags = col?.tags || {};
-        return (
-          <div className="modal-overlay" onClick={() => {
-            setTagsDialog(null);
-            setIsAddingColumnTag(false);
-            setNewColumnTagName('');
-            setNewColumnTagValue('');
-            setEditingColumnTag(null);
-          }}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ minWidth: '600px' }}>
-              <h2>Column Tags: {tagsDialog.name}</h2>
-              <p style={{ color: 'var(--vscode-descriptionForeground)', fontSize: '12px', marginBottom: '16px' }}>
-                Tags are used for governance, discovery, and attribute-based access control (ABAC)
-              </p>
-              
-              <div className="modal-body">
-                {Object.entries(tags).length === 0 && !isAddingColumnTag ? (
-                  <div className="empty-properties" style={{ padding: '20px', textAlign: 'center' }}>
-                    <p>No column tags defined</p>
-                  </div>
-                ) : (
-                  <table className="properties-table">
-                    <thead>
-                      <tr>
-                        <th>Tag Name</th>
-                        <th>Value</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(tags).map(([tagName, tagValue]) => (
-                        <tr key={tagName}>
-                          <td><code>{tagName}</code></td>
-                          <td>
-                            {editingColumnTag === tagName ? (
+      {tagsDialog &&
+        (() => {
+          const col = columns.find((c) => c.id === tagsDialog.colId);
+          const tags = col?.tags || {};
+          return (
+            <div
+              className="modal-overlay"
+              onClick={() => {
+                setTagsDialog(null);
+                setIsAddingColumnTag(false);
+                setNewColumnTagName("");
+                setNewColumnTagValue("");
+                setEditingColumnTag(null);
+              }}
+            >
+              <div
+                className="modal-content"
+                onClick={(e) => e.stopPropagation()}
+                style={{ minWidth: "600px" }}
+              >
+                <h2>Column Tags: {tagsDialog.name}</h2>
+                <p
+                  style={{
+                    color: "var(--vscode-descriptionForeground)",
+                    fontSize: "12px",
+                    marginBottom: "16px",
+                  }}
+                >
+                  Tags are used for governance, discovery, and attribute-based access control (ABAC)
+                </p>
+
+                <div className="modal-body">
+                  {Object.entries(tags).length === 0 && !isAddingColumnTag ? (
+                    <div
+                      className="empty-properties"
+                      style={{ padding: "20px", textAlign: "center" }}
+                    >
+                      <p>No column tags defined</p>
+                    </div>
+                  ) : (
+                    <table className="properties-table">
+                      <thead>
+                        <tr>
+                          <th>Tag Name</th>
+                          <th>Value</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(tags).map(([tagName, tagValue]) => (
+                          <tr key={tagName}>
+                            <td>
+                              <code>{tagName}</code>
+                            </td>
+                            <td>
+                              {editingColumnTag === tagName ? (
+                                <input
+                                  type="text"
+                                  value={editColumnTagValue}
+                                  onChange={(e) => setEditColumnTagValue(e.target.value)}
+                                  autoFocus
+                                />
+                              ) : (
+                                String(tagValue)
+                              )}
+                            </td>
+                            <td className="actions-cell">
+                              {editingColumnTag === tagName ? (
+                                <>
+                                  <VSCodeButton
+                                    appearance="icon"
+                                    onClick={() => {
+                                      if (editColumnTagValue.trim()) {
+                                        setColumnTag(
+                                          tableId,
+                                          tagsDialog.colId,
+                                          tagName,
+                                          editColumnTagValue
+                                        );
+                                        setEditingColumnTag(null);
+                                        setEditColumnTagValue("");
+                                      }
+                                    }}
+                                    title="Save"
+                                  >
+                                    <IconCheck />
+                                  </VSCodeButton>
+                                  <VSCodeButton
+                                    appearance="icon"
+                                    onClick={() => {
+                                      setEditingColumnTag(null);
+                                      setEditColumnTagValue("");
+                                    }}
+                                    title="Cancel"
+                                  >
+                                    <IconClose />
+                                  </VSCodeButton>
+                                </>
+                              ) : (
+                                <>
+                                  <VSCodeButton
+                                    appearance="icon"
+                                    onClick={() => {
+                                      setEditingColumnTag(tagName);
+                                      setEditColumnTagValue(String(tagValue));
+                                    }}
+                                    title="Edit tag"
+                                  >
+                                    <IconEdit />
+                                  </VSCodeButton>
+                                  <VSCodeButton
+                                    appearance="icon"
+                                    onClick={() => {
+                                      unsetColumnTag(tableId, tagsDialog.colId, tagName);
+                                    }}
+                                    title="Remove tag"
+                                  >
+                                    <IconTrash />
+                                  </VSCodeButton>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+
+                        {isAddingColumnTag && (
+                          <tr className="adding-row">
+                            <td>
                               <input
                                 type="text"
-                                value={editColumnTagValue}
-                                onChange={(e) => setEditColumnTagValue(e.target.value)}
+                                value={newColumnTagName}
+                                onChange={(e) => setNewColumnTagName(e.target.value)}
+                                placeholder="e.g., PII"
                                 autoFocus
                               />
-                            ) : (
-                              String(tagValue)
-                            )}
-                          </td>
-                          <td className="actions-cell">
-                            {editingColumnTag === tagName ? (
-                              <>
-                                <VSCodeButton
-                                  appearance="icon"
-                                  onClick={() => {
-                                    if (editColumnTagValue.trim()) {
-                                      setColumnTag(tableId, tagsDialog.colId, tagName, editColumnTagValue);
-                                      setEditingColumnTag(null);
-                                      setEditColumnTagValue('');
-                                    }
-                                  }}
-                                  title="Save"
-                                >
-                                  <IconCheck />
-                                </VSCodeButton>
-                                <VSCodeButton
-                                  appearance="icon"
-                                  onClick={() => {
-                                    setEditingColumnTag(null);
-                                    setEditColumnTagValue('');
-                                  }}
-                                  title="Cancel"
-                                >
-                                  <IconClose />
-                                </VSCodeButton>
-                              </>
-                            ) : (
-                              <>
-                                <VSCodeButton
-                                  appearance="icon"
-                                  onClick={() => {
-                                    setEditingColumnTag(tagName);
-                                    setEditColumnTagValue(String(tagValue));
-                                  }}
-                                  title="Edit tag"
-                                >
-                                  <IconEdit />
-                                </VSCodeButton>
-                                <VSCodeButton
-                                  appearance="icon"
-                                  onClick={() => {
-                                    unsetColumnTag(tableId, tagsDialog.colId, tagName);
-                                  }}
-                                  title="Remove tag"
-                                >
-                                  <IconTrash />
-                                </VSCodeButton>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                      
-                      {isAddingColumnTag && (
-                        <tr className="adding-row">
-                          <td>
-                            <input
-                              type="text"
-                              value={newColumnTagName}
-                              onChange={(e) => setNewColumnTagName(e.target.value)}
-                              placeholder="e.g., PII"
-                              autoFocus
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="text"
-                              value={newColumnTagValue}
-                              onChange={(e) => setNewColumnTagValue(e.target.value)}
-                              placeholder="e.g., sensitive"
-                            />
-                          </td>
-                          <td className="actions-cell">
-                            <VSCodeButton
-                              appearance="icon"
-                              onClick={() => {
-                                if (newColumnTagName.trim() && newColumnTagValue.trim()) {
-                                  setColumnTag(tableId, tagsDialog.colId, newColumnTagName, newColumnTagValue);
-                                  setNewColumnTagName('');
-                                  setNewColumnTagValue('');
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                value={newColumnTagValue}
+                                onChange={(e) => setNewColumnTagValue(e.target.value)}
+                                placeholder="e.g., sensitive"
+                              />
+                            </td>
+                            <td className="actions-cell">
+                              <VSCodeButton
+                                appearance="icon"
+                                onClick={() => {
+                                  if (newColumnTagName.trim() && newColumnTagValue.trim()) {
+                                    setColumnTag(
+                                      tableId,
+                                      tagsDialog.colId,
+                                      newColumnTagName,
+                                      newColumnTagValue
+                                    );
+                                    setNewColumnTagName("");
+                                    setNewColumnTagValue("");
+                                    setIsAddingColumnTag(false);
+                                  }
+                                }}
+                                title="Add tag"
+                              >
+                                <IconCheck />
+                              </VSCodeButton>
+                              <VSCodeButton
+                                appearance="icon"
+                                onClick={() => {
                                   setIsAddingColumnTag(false);
-                                }
-                              }}
-                              title="Add tag"
-                            >
-                              <IconCheck />
-                            </VSCodeButton>
-                            <VSCodeButton
-                              appearance="icon"
-                              onClick={() => {
-                                setIsAddingColumnTag(false);
-                                setNewColumnTagName('');
-                                setNewColumnTagValue('');
-                              }}
-                              title="Cancel"
-                            >
-                              <IconClose />
-                            </VSCodeButton>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                )}
-                
-                {!isAddingColumnTag && (
-                  <button 
-                    className="add-property-btn"
-                    onClick={() => setIsAddingColumnTag(true)}
-                    style={{ marginTop: '12px' }}
+                                  setNewColumnTagName("");
+                                  setNewColumnTagValue("");
+                                }}
+                                title="Cancel"
+                              >
+                                <IconClose />
+                              </VSCodeButton>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {!isAddingColumnTag && (
+                    <button
+                      className="add-property-btn"
+                      onClick={() => setIsAddingColumnTag(true)}
+                      style={{ marginTop: "12px" }}
+                    >
+                      + Add Tag
+                    </button>
+                  )}
+                </div>
+
+                <div className="modal-actions">
+                  <VSCodeButton
+                    onClick={() => {
+                      setTagsDialog(null);
+                      setIsAddingColumnTag(false);
+                      setNewColumnTagName("");
+                      setNewColumnTagValue("");
+                      setEditingColumnTag(null);
+                    }}
                   >
-                    + Add Tag
-                  </button>
-                )}
-              </div>
-              
-              <div className="modal-actions">
-                <VSCodeButton onClick={() => {
-                  setTagsDialog(null);
-                  setIsAddingColumnTag(false);
-                  setNewColumnTagName('');
-                  setNewColumnTagValue('');
-                  setEditingColumnTag(null);
-                }}>
-                  Close
-                </VSCodeButton>
+                    Close
+                  </VSCodeButton>
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
     </div>
   );
 };

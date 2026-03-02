@@ -1,4 +1,6 @@
-.PHONY: format fmt lint typecheck pylint test integration all check ci pre-commit install clean help
+.PHONY: format fmt lint typecheck pylint test integration integration-coverage-upload coverage-gate-ddl-parser all check ci pre-commit install clean help
+
+PYTEST_WORKERS ?= auto
 
 help:
 	@echo "SchemaX Python SDK - Development Commands"
@@ -13,6 +15,8 @@ help:
 	@echo "  pylint      - Pylint (complexity, design, Databricks/Unity checks)"
 	@echo "  test        - Run tests with pytest"
 	@echo "  integration - Run all integration tests (including live Databricks; set env for live)"
+	@echo "  integration-coverage-upload - Run integration coverage locally and upload to Codecov"
+	@echo "  coverage-gate-ddl-parser - Enforce >=90% coverage for unity ddl_parser.py"
 	@echo "  all         - Run all checks (format, lint, typecheck, test)"
 	@echo "  check       - Run format/lint checks without modifying files (like CI)"
 	@echo "  ci          - Run exact CI checks (format check + lint check + typecheck + test)"
@@ -42,14 +46,52 @@ pylint:
 
 test:
 	@echo "🧪 Running tests..."
-	uv run pytest tests/ -v
+	uv run pytest tests/ -v -n $(PYTEST_WORKERS)
 
 # Run all integration tests including live ones (Databricks).
 # Live tests run only when SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 (and optionally
 # SCHEMAX_RUN_LIVE_IMPORT_TESTS=1). They still require profile, warehouse-id, etc.
 integration:
-	@echo "🧪 Running integration tests (including live when env is set)..."
-	SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 SCHEMAX_RUN_LIVE_IMPORT_TESTS=1 uv run pytest tests/integration/ -v
+	@echo "🧪 Running integration tests with coverage (including live when env is set)..."
+	SCHEMAX_RUN_LIVE_COMMAND_TESTS=1 SCHEMAX_RUN_LIVE_IMPORT_TESTS=1 uv run pytest tests/integration/ -v -n $(PYTEST_WORKERS) \
+		--cov=src/schemax \
+		--cov-report=xml:coverage-integration.xml \
+		--cov-report=term-missing
+	@$(MAKE) coverage-gate-ddl-parser
+	@if [ -n "$$CODECOV_TOKEN" ]; then \
+		echo "📤 Uploading integration coverage to Codecov..."; \
+		curl -s https://codecov.io/bash | bash -s -- \
+			-t "$$CODECOV_TOKEN" \
+			-f coverage-integration.xml \
+			-F integration \
+			-n "local-integration" \
+			-C "$$(git rev-parse HEAD)" \
+			-B "$$(git rev-parse --abbrev-ref HEAD)"; \
+	else \
+		echo "ℹ️  CODECOV_TOKEN not set; skipped coverage upload."; \
+	fi
+
+integration-coverage-upload:
+	@echo "📊 Running integration coverage and uploading to Codecov..."
+	@test -n "$$CODECOV_TOKEN" || (echo "❌ CODECOV_TOKEN is required"; exit 1)
+	uv run pytest tests/integration -n $(PYTEST_WORKERS) \
+		--cov=src/schemax \
+		--cov-report=xml:coverage-integration.xml \
+		--cov-report=term-missing
+	@$(MAKE) coverage-gate-ddl-parser
+	@curl -s https://codecov.io/bash | bash -s -- \
+		-t "$$CODECOV_TOKEN" \
+		-f coverage-integration.xml \
+		-F integration \
+		-n "local-integration" \
+		-C "$$(git rev-parse HEAD)" \
+		-B "$$(git rev-parse --abbrev-ref HEAD)"
+
+coverage-gate-ddl-parser:
+	@echo "🎯 Enforcing module coverage gate for unity ddl_parser.py (>=90%)..."
+	uv run coverage report \
+		--include=src/schemax/providers/unity/ddl_parser.py \
+		--fail-under=90
 
 all: format lint typecheck pylint test
 	@echo ""
@@ -85,4 +127,3 @@ clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
-

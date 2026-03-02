@@ -144,7 +144,8 @@ class TestTableOperations:
 
         new_state = apply_operation(sample_unity_state, op)
 
-        assert len(new_state.catalogs[0].schemas[0].tables) == 0
+        # Rich fixture has 3 tables; after dropping table_789, 2 remain (table_ice, table_pc)
+        assert len(new_state.catalogs[0].schemas[0].tables) == 2
 
     def test_set_table_comment(self, sample_unity_state):
         """Test setting table comment"""
@@ -250,7 +251,7 @@ class TestColumnOperations:
         """Test adding a column"""
         builder = OperationBuilder()
         op = builder.column.add_column(
-            "col_003",
+            "col_created_at",
             "table_789",
             "created_at",
             "TIMESTAMP",
@@ -262,9 +263,10 @@ class TestColumnOperations:
         new_state = apply_operation(sample_unity_state, op)
 
         table = new_state.catalogs[0].schemas[0].tables[0]
-        assert len(table.columns) == 3
-        new_col = table.columns[2]
-        assert new_col.id == "col_003"
+        # Rich fixture has 22 columns; after add one we have 23
+        assert len(table.columns) == 23
+        new_col = next((c for c in table.columns if c.id == "col_created_at"), None)
+        assert new_col is not None
         assert new_col.name == "created_at"
         assert new_col.type == "TIMESTAMP"
         assert not new_col.nullable
@@ -288,7 +290,8 @@ class TestColumnOperations:
         new_state = apply_operation(sample_unity_state, op)
 
         table = new_state.catalogs[0].schemas[0].tables[0]
-        assert len(table.columns) == 1
+        # Rich fixture has 22 columns; after dropping col_002 we have 21
+        assert len(table.columns) == 21
         assert table.columns[0].id == "col_001"
 
     def test_reorder_columns(self, sample_unity_state):
@@ -747,12 +750,14 @@ class TestOperationSequences:
         """Test applying multiple operations in batch"""
         new_state = apply_operations(empty_unity_state, sample_operations)
 
-        # Verify all operations were applied
+        # Rich fixture: 1 catalog, 1 schema, 3 tables (users, events_iceberg, events_partitioned)
         assert len(new_state.catalogs) == 1
         assert new_state.catalogs[0].name == "bronze"
         assert len(new_state.catalogs[0].schemas) == 1
-        assert len(new_state.catalogs[0].schemas[0].tables) == 1
-        assert len(new_state.catalogs[0].schemas[0].tables[0].columns) == 1
+        tables = new_state.catalogs[0].schemas[0].tables
+        assert len(tables) == 3
+        # First table (users) has all data type columns
+        assert len(tables[0].columns) == 22
 
     def test_complex_workflow(self, empty_unity_state):
         """Test a complex workflow with multiple operations"""
@@ -830,12 +835,19 @@ class TestVolumeOperations:
         """Test adding a volume"""
         builder = OperationBuilder()
         op = builder.volume.add_volume(
-            "vol_001", "my_volume", "schema_456", "managed", comment="Data volume", op_id="op_v1"
+            "vol_test_001",
+            "my_volume",
+            "schema_456",
+            "managed",
+            comment="Data volume",
+            op_id="op_v1",
         )
         new_state = apply_operation(sample_unity_state, op)
-        assert len(new_state.catalogs[0].schemas[0].volumes) == 1
-        vol = new_state.catalogs[0].schemas[0].volumes[0]
-        assert vol.id == "vol_001"
+        # Rich fixture has 2 volumes; after add we have 3
+        volumes = new_state.catalogs[0].schemas[0].volumes
+        assert len(volumes) == 3
+        vol = next((v for v in volumes if v.id == "vol_test_001"), None)
+        assert vol is not None
         assert vol.name == "my_volume"
         assert vol.volume_type == "managed"
         assert vol.comment == "Data volume"
@@ -843,31 +855,40 @@ class TestVolumeOperations:
     def test_rename_volume(self, sample_unity_state):
         """Test renaming a volume"""
         builder = OperationBuilder()
-        add_op = builder.volume.add_volume("vol_001", "old_vol", "schema_456", op_id="op_v1")
+        add_op = builder.volume.add_volume("vol_rename_me", "old_vol", "schema_456", op_id="op_v1")
         state = apply_operation(sample_unity_state, add_op)
-        rename_op = builder.volume.rename_volume("vol_001", "new_vol", "old_vol", op_id="op_v2")
+        rename_op = builder.volume.rename_volume(
+            "vol_rename_me", "new_vol", "old_vol", op_id="op_v2"
+        )
         new_state = apply_operation(state, rename_op)
-        assert new_state.catalogs[0].schemas[0].volumes[0].name == "new_vol"
+        vol = next(
+            (v for v in new_state.catalogs[0].schemas[0].volumes if v.id == "vol_rename_me"), None
+        )
+        assert vol is not None and vol.name == "new_vol"
 
     def test_update_volume(self, sample_unity_state):
         """Test updating a volume"""
         builder = OperationBuilder()
-        add_op = builder.volume.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
+        add_op = builder.volume.add_volume("vol_update_me", "my_vol", "schema_456", op_id="op_v1")
         state = apply_operation(sample_unity_state, add_op)
         update_op = builder.volume.update_volume(
-            "vol_001", comment="Updated comment", op_id="op_v2"
+            "vol_update_me", comment="Updated comment", op_id="op_v2"
         )
         new_state = apply_operation(state, update_op)
-        assert new_state.catalogs[0].schemas[0].volumes[0].comment == "Updated comment"
+        vol = next(
+            (v for v in new_state.catalogs[0].schemas[0].volumes if v.id == "vol_update_me"), None
+        )
+        assert vol is not None and vol.comment == "Updated comment"
 
     def test_drop_volume(self, sample_unity_state):
         """Test dropping a volume"""
         builder = OperationBuilder()
-        add_op = builder.volume.add_volume("vol_001", "my_vol", "schema_456", op_id="op_v1")
+        add_op = builder.volume.add_volume("vol_drop_me", "my_vol", "schema_456", op_id="op_v1")
         state = apply_operation(sample_unity_state, add_op)
-        drop_op = builder.volume.drop_volume("vol_001", op_id="op_v2")
+        drop_op = builder.volume.drop_volume("vol_drop_me", op_id="op_v2")
         new_state = apply_operation(state, drop_op)
-        assert len(new_state.catalogs[0].schemas[0].volumes) == 0
+        # Rich fixture had 2 volumes; we added one and dropped it, so 2 remain
+        assert len(new_state.catalogs[0].schemas[0].volumes) == 2
 
 
 class TestFunctionOperations:
@@ -887,9 +908,11 @@ class TestFunctionOperations:
             op_id="op_f1",
         )
         new_state = apply_operation(sample_unity_state, op)
-        assert len(new_state.catalogs[0].schemas[0].functions) == 1
-        fn = new_state.catalogs[0].schemas[0].functions[0]
-        assert fn.id == "func_001"
+        # Rich fixture has 2 functions; after add we have 3
+        functions = new_state.catalogs[0].schemas[0].functions
+        assert len(functions) == 3
+        fn = next((f for f in functions if f.id == "func_001"), None)
+        assert fn is not None
         assert fn.name == "my_func"
         assert fn.language == "SQL"
         assert fn.body == "RETURN 1"
@@ -904,7 +927,10 @@ class TestFunctionOperations:
         state = apply_operation(sample_unity_state, add_op)
         rename_op = builder.function.rename_function("func_001", "new_fn", "old_fn", op_id="op_f2")
         new_state = apply_operation(state, rename_op)
-        assert new_state.catalogs[0].schemas[0].functions[0].name == "new_fn"
+        fn = next(
+            (f for f in new_state.catalogs[0].schemas[0].functions if f.id == "func_001"), None
+        )
+        assert fn is not None and fn.name == "new_fn"
 
     def test_drop_function(self, sample_unity_state):
         """Test dropping a function"""
@@ -915,7 +941,8 @@ class TestFunctionOperations:
         state = apply_operation(sample_unity_state, add_op)
         drop_op = builder.function.drop_function("func_001", op_id="op_f2")
         new_state = apply_operation(state, drop_op)
-        assert len(new_state.catalogs[0].schemas[0].functions) == 0
+        # Rich fixture has 2 functions; we added and dropped one, so 2 remain
+        assert len(new_state.catalogs[0].schemas[0].functions) == 2
 
 
 class TestMaterializedViewOperations:
@@ -925,7 +952,7 @@ class TestMaterializedViewOperations:
         """Test adding a materialized view"""
         builder = OperationBuilder()
         op = builder.materialized_view.add_materialized_view(
-            "mv_001",
+            "mv_test_001",
             "my_mv",
             "schema_456",
             "SELECT id, name FROM t",
@@ -933,9 +960,11 @@ class TestMaterializedViewOperations:
             op_id="op_mv1",
         )
         new_state = apply_operation(sample_unity_state, op)
-        assert len(new_state.catalogs[0].schemas[0].materialized_views) == 1
-        mv = new_state.catalogs[0].schemas[0].materialized_views[0]
-        assert mv.id == "mv_001"
+        # Rich fixture has 2 MVs; after add we have 3
+        mvs = new_state.catalogs[0].schemas[0].materialized_views
+        assert len(mvs) == 3
+        mv = next((m for m in mvs if m.id == "mv_test_001"), None)
+        assert mv is not None
         assert mv.name == "my_mv"
         assert mv.definition == "SELECT id, name FROM t"
         assert mv.comment == "Summary MV"
@@ -944,22 +973,31 @@ class TestMaterializedViewOperations:
         """Test renaming a materialized view"""
         builder = OperationBuilder()
         add_op = builder.materialized_view.add_materialized_view(
-            "mv_001", "old_mv", "schema_456", "SELECT 1", op_id="op_mv1"
+            "mv_rename_me", "old_mv", "schema_456", "SELECT 1", op_id="op_mv1"
         )
         state = apply_operation(sample_unity_state, add_op)
         rename_op = builder.materialized_view.rename_materialized_view(
-            "mv_001", "new_mv", "old_mv", op_id="op_mv2"
+            "mv_rename_me", "new_mv", "old_mv", op_id="op_mv2"
         )
         new_state = apply_operation(state, rename_op)
-        assert new_state.catalogs[0].schemas[0].materialized_views[0].name == "new_mv"
+        mv = next(
+            (
+                m
+                for m in new_state.catalogs[0].schemas[0].materialized_views
+                if m.id == "mv_rename_me"
+            ),
+            None,
+        )
+        assert mv is not None and mv.name == "new_mv"
 
     def test_drop_materialized_view(self, sample_unity_state):
         """Test dropping a materialized view"""
         builder = OperationBuilder()
         add_op = builder.materialized_view.add_materialized_view(
-            "mv_001", "my_mv", "schema_456", "SELECT 1", op_id="op_mv1"
+            "mv_drop_me", "my_mv", "schema_456", "SELECT 1", op_id="op_mv1"
         )
         state = apply_operation(sample_unity_state, add_op)
-        drop_op = builder.materialized_view.drop_materialized_view("mv_001", op_id="op_mv2")
+        drop_op = builder.materialized_view.drop_materialized_view("mv_drop_me", op_id="op_mv2")
         new_state = apply_operation(state, drop_op)
-        assert len(new_state.catalogs[0].schemas[0].materialized_views) == 0
+        # Rich fixture has 2 MVs; we added and dropped one, so 2 remain
+        assert len(new_state.catalogs[0].schemas[0].materialized_views) == 2

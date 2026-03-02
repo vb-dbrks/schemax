@@ -9,21 +9,12 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from rich.console import Console
 
-from schemax.core.storage import (
-    get_snapshot_file_path,
-    load_current_state,
-    read_changelog,
-    read_project,
-    read_snapshot,
-    write_changelog,
-    write_project,
-    write_snapshot,
-)
 from schemax.core.version import get_versions_between
+from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.operations import Operation
 
 console = Console()
@@ -69,19 +60,69 @@ class ReplayResult:
     conflicting_ops: list[dict[str, Any]]
 
 
+class _WorkspaceRepoPort(Protocol):
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]: ...
+
+    def read_project(self, *, workspace: Path) -> dict[str, Any]: ...
+
+    def write_snapshot(self, *, workspace: Path, snapshot: dict[str, Any]) -> None: ...
+
+    def write_project(self, *, workspace: Path, project: dict[str, Any]) -> None: ...
+
+    def read_changelog(self, *, workspace: Path) -> dict[str, Any]: ...
+
+    def write_changelog(self, *, workspace: Path, changelog: dict[str, Any]) -> None: ...
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]: ...
+
+    def snapshot_file_path(self, *, workspace: Path, version: str) -> Path: ...
+
+
+class _SnapshotRebaseWorkspaceRepository:
+    """Repository adapter for snapshot-rebase workflow."""
+
+    def __init__(self) -> None:
+        self._repository = WorkspaceRepository()
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]:
+        return self._repository.read_snapshot(workspace=workspace, version=version)
+
+    def read_project(self, *, workspace: Path) -> dict[str, Any]:
+        return self._repository.read_project(workspace=workspace)
+
+    def write_snapshot(self, *, workspace: Path, snapshot: dict[str, Any]) -> None:
+        self._repository.write_snapshot(workspace=workspace, snapshot=snapshot)
+
+    def write_project(self, *, workspace: Path, project: dict[str, Any]) -> None:
+        self._repository.write_project(workspace=workspace, project=project)
+
+    def read_changelog(self, *, workspace: Path) -> dict[str, Any]:
+        return self._repository.read_changelog(workspace=workspace)
+
+    def write_changelog(self, *, workspace: Path, changelog: dict[str, Any]) -> None:
+        self._repository.write_changelog(workspace=workspace, changelog=changelog)
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
+        return self._repository.load_current_state(workspace=workspace, validate=validate)
+
+    def snapshot_file_path(self, *, workspace: Path, version: str) -> Path:
+        return self._repository.snapshot_file_path(workspace=workspace, version=version)
+
+
 def _load_rebase_context(
     workspace: Path,
     snapshot_version: str,
     new_base_version: str | None,
+    workspace_repo: _WorkspaceRepoPort,
 ) -> RebaseContext:
     """Load snapshot and resolve new base. Raises RebaseError if invalid."""
-    snapshot = read_snapshot(workspace, snapshot_version)
+    snapshot = workspace_repo.read_snapshot(workspace=workspace, version=snapshot_version)
     old_base = snapshot.get("previousSnapshot")
     if not old_base:
         raise RebaseError(f"Snapshot {snapshot_version} has no previousSnapshot")
 
     if not new_base_version:
-        project = read_project(workspace)
+        project = workspace_repo.read_project(workspace=workspace)
         new_base_version = project.get("latestSnapshot")
         if not new_base_version:
             raise RebaseError("No snapshots available to use as new base")
@@ -162,12 +203,20 @@ def _persist_conflict_result(
     new_base_version: str,
     snapshot_version: str,
     old_base: str,
+    workspace_repo: _WorkspaceRepoPort,
 ) -> str:
     """Write changelog and conflict log; return conflict log path."""
     if applied_ops:
-        _save_applied_ops_to_changelog(workspace, applied_ops, new_base_version)
+        _save_applied_ops_to_changelog(
+            workspace=workspace,
+            operations=applied_ops,
+            based_on=new_base_version,
+            workspace_repo=workspace_repo,
+        )
     else:
-        _clear_changelog(workspace, new_base_version)
+        _clear_changelog(
+            workspace=workspace, based_on=new_base_version, workspace_repo=workspace_repo
+        )
     return _save_conflict_log(
         workspace, snapshot_version, old_base, new_base_version, applied_ops, conflicting_ops
     )
@@ -180,6 +229,7 @@ def _persist_success_snapshot(
     new_base_version: str,
     current_state: dict[str, Any],
     feature_ops: list[dict],
+    workspace_repo: _WorkspaceRepoPort,
 ) -> None:
     """Write rebased snapshot file and update project.json."""
     new_snapshot = {
@@ -190,8 +240,8 @@ def _persist_success_snapshot(
         "rebasedFrom": snapshot.get("previousSnapshot"),
         "rebasedAt": datetime.now(UTC).isoformat(),
     }
-    write_snapshot(workspace, new_snapshot)
-    project = read_project(workspace)
+    workspace_repo.write_snapshot(workspace=workspace, snapshot=new_snapshot)
+    project = workspace_repo.read_project(workspace=workspace)
     project["snapshots"].append(
         {
             "id": snapshot["id"],
@@ -207,7 +257,7 @@ def _persist_success_snapshot(
             "comment": snapshot.get("comment", ""),
         }
     )
-    write_project(workspace, project)
+    workspace_repo.write_project(workspace=workspace, project=project)
 
 
 def _print_conflict_summary(
@@ -244,9 +294,10 @@ def _run_rebase_steps(
     workspace: Path,
     snapshot_version: str,
     new_base_version: str | None,
+    workspace_repo: _WorkspaceRepoPort,
 ) -> RebaseResult:
     """Perform rebase: load context, replay ops, persist result. Raises RebaseError on failure."""
-    context = _load_rebase_context(workspace, snapshot_version, new_base_version)
+    context = _load_rebase_context(workspace, snapshot_version, new_base_version, workspace_repo)
     if not context.rebase_needed:
         console.print(
             f"[yellow]No rebase needed - already based on {context.new_base_version}[/yellow]"
@@ -269,20 +320,24 @@ def _run_rebase_steps(
     console.print(f"Unpacking {snapshot_version}...")
     console.print(f"  ✓ Extracted {len(feature_ops)} operations")
 
-    get_snapshot_file_path(workspace, snapshot_version).unlink()
+    workspace_repo.snapshot_file_path(workspace=workspace, version=snapshot_version).unlink()
     console.print(f"  ✓ Deleted snapshot file {snapshot_version}.json")
-    _remove_snapshot_from_project(workspace, snapshot_version)
+    _remove_snapshot_from_project(
+        workspace=workspace,
+        snapshot_version=snapshot_version,
+        workspace_repo=workspace_repo,
+    )
     console.print("  ✓ Removed from project.json")
     console.print("  ✓ Moved operations to temporary changelog")
 
     console.print()
     console.print(f"Loading new base state ([cyan]{new_base_version}[/cyan])...")
-    new_base_snapshot = read_snapshot(workspace, new_base_version)
+    new_base_snapshot = workspace_repo.read_snapshot(workspace=workspace, version=new_base_version)
     new_base_state = new_base_snapshot["state"]
     new_base_ops = new_base_snapshot.get("operations", [])
     console.print("  ✓ Loaded state")
 
-    _, _, provider, _ = load_current_state(workspace, validate=False)
+    _, _, provider, _ = workspace_repo.load_current_state(workspace=workspace, validate=False)
     console.print()
     console.print(f"Replaying operations on [cyan]{new_base_version}[/cyan]...")
     replay_result = _replay_operations_on_base(
@@ -304,6 +359,7 @@ def _run_rebase_steps(
             new_base_version,
             snapshot_version,
             old_base,
+            workspace_repo,
         )
         _print_conflict_summary(
             replay_result.conflicting_ops,
@@ -330,6 +386,7 @@ def _run_rebase_steps(
         new_base_version,
         replay_result.current_state,
         feature_ops,
+        workspace_repo,
     )
     console.print(f"[green]✓ Rebased {snapshot_version} onto {new_base_version}[/green]")
     return RebaseResult(
@@ -343,6 +400,7 @@ def rebase_snapshot(
     workspace: Path,
     snapshot_version: str,
     new_base_version: str | None = None,
+    workspace_repo: _WorkspaceRepoPort | None = None,
 ) -> RebaseResult:
     """Rebase snapshot onto new base version
 
@@ -354,6 +412,7 @@ def rebase_snapshot(
         workspace: Project workspace path
         snapshot_version: Version of snapshot to rebase (e.g., "v0.4.0")
         new_base_version: New base version (auto-detects latest if not provided)
+        workspace_repo: Optional repository override for tests/injection
 
     Returns:
         RebaseResult with success status and details
@@ -366,9 +425,10 @@ def rebase_snapshot(
     """
     console.print(f"[bold cyan]Rebasing snapshot {snapshot_version}[/bold cyan]")
     console.print()
+    repository: _WorkspaceRepoPort = workspace_repo or _SnapshotRebaseWorkspaceRepository()
 
     try:
-        return _run_rebase_steps(workspace, snapshot_version, new_base_version)
+        return _run_rebase_steps(workspace, snapshot_version, new_base_version, repository)
     except RebaseError:
         raise
     except Exception as e:
@@ -390,9 +450,13 @@ def _has_conflict(operation: Operation, base_operations: list[dict]) -> bool:
     return False
 
 
-def _remove_snapshot_from_project(workspace: Path, snapshot_version: str) -> None:
+def _remove_snapshot_from_project(
+    workspace: Path,
+    snapshot_version: str,
+    workspace_repo: _WorkspaceRepoPort,
+) -> None:
     """Remove snapshot from project.json snapshots array"""
-    project = read_project(workspace)
+    project = workspace_repo.read_project(workspace=workspace)
 
     project["snapshots"] = [s for s in project["snapshots"] if s["version"] != snapshot_version]
 
@@ -403,12 +467,12 @@ def _remove_snapshot_from_project(workspace: Path, snapshot_version: str) -> Non
         else:
             project["latestSnapshot"] = None
 
-    write_project(workspace, project)
+    workspace_repo.write_project(workspace=workspace, project=project)
 
 
-def _clear_changelog(workspace: Path, based_on: str) -> None:
+def _clear_changelog(workspace: Path, based_on: str, workspace_repo: _WorkspaceRepoPort) -> None:
     """Clear changelog after rebase conflict - user will manually resolve in UI"""
-    changelog = read_changelog(workspace)
+    changelog = workspace_repo.read_changelog(workspace=workspace)
 
     # Clear operations - user will manually apply changes in UI
     changelog["ops"] = []
@@ -419,16 +483,21 @@ def _clear_changelog(workspace: Path, based_on: str) -> None:
     changelog.pop("_rebase_temp", None)
     changelog.pop("_rebase_message", None)
 
-    write_changelog(workspace, changelog)
+    workspace_repo.write_changelog(workspace=workspace, changelog=changelog)
 
 
-def _save_applied_ops_to_changelog(workspace: Path, operations: list[dict], based_on: str) -> None:
+def _save_applied_ops_to_changelog(
+    workspace: Path,
+    operations: list[dict],
+    based_on: str,
+    workspace_repo: _WorkspaceRepoPort,
+) -> None:
     """Save successfully applied operations to changelog (clean, no temp flags)
 
     This preserves work that succeeded before a conflict occurred.
     User can continue from here in the UI.
     """
-    changelog = read_changelog(workspace)
+    changelog = workspace_repo.read_changelog(workspace=workspace)
 
     # Save operations WITHOUT temp flags - this is now a normal changelog
     changelog["ops"] = operations
@@ -439,12 +508,17 @@ def _save_applied_ops_to_changelog(workspace: Path, operations: list[dict], base
     changelog.pop("_rebase_temp", None)
     changelog.pop("_rebase_message", None)
 
-    write_changelog(workspace, changelog)
+    workspace_repo.write_changelog(workspace=workspace, changelog=changelog)
 
 
-def _save_to_temp_changelog(workspace: Path, operations: list[dict], based_on: str) -> None:
+def _save_to_temp_changelog(
+    workspace: Path,
+    operations: list[dict],
+    based_on: str,
+    workspace_repo: _WorkspaceRepoPort,
+) -> None:
     """Save operations to temporary changelog"""
-    changelog = read_changelog(workspace)
+    changelog = workspace_repo.read_changelog(workspace=workspace)
 
     # Mark as temporary rebase operations
     changelog["ops"] = operations
@@ -453,7 +527,7 @@ def _save_to_temp_changelog(workspace: Path, operations: list[dict], based_on: s
     changelog["_rebase_message"] = "Temporary operations from snapshot rebase"
     changelog["lastModified"] = datetime.now(UTC).isoformat()
 
-    write_changelog(workspace, changelog)
+    workspace_repo.write_changelog(workspace=workspace, changelog=changelog)
 
 
 def _save_conflict_log(
@@ -498,16 +572,23 @@ def _show_conflict_details(conflict: dict, new_base_version: str) -> None:
     console.print("└─────────────────────────────────────────────┘")
 
 
-def detect_stale_snapshots(workspace: Path, _json_output: bool = False) -> list[dict]:
+def detect_stale_snapshots(
+    workspace: Path,
+    _json_output: bool = False,
+    workspace_repo: _WorkspaceRepoPort | None = None,
+) -> list[dict]:
     """Detect snapshots that need rebasing after git rebase.
 
     Args:
         workspace: Path to workspace
+        workspace_repo: Optional repository override for tests/injection
 
     Returns:
         List of stale snapshots with details about what's missing
     """
-    project = read_project(workspace)
+    del _json_output
+    repository: _WorkspaceRepoPort = workspace_repo or _SnapshotRebaseWorkspaceRepository()
+    project = repository.read_project(workspace=workspace)
     all_versions = [s["version"] for s in project.get("snapshots", [])]
 
     stale_snapshots = []

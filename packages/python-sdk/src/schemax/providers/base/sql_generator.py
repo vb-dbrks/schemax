@@ -264,27 +264,8 @@ class BaseSQLGenerator(SQLGenerator):
 
         # Build dependency graph
         try:
-            graph = self._build_dependency_graph(ops)
-
-            # Detect breaking changes (warn about dropping objects with dependents)
-            breaking_warnings = self._detect_breaking_changes(ops, graph)
-            warnings.extend(breaking_warnings)
-
-            # Detect cycles (will raise ValueError if found)
-            cycles = graph.detect_cycles()
-            if cycles:
-                cycle_str = "\n".join(" → ".join(str(nid) for nid in cycle) for cycle in cycles)
-                warnings.append(f"Circular dependencies detected:\n{cycle_str}")
-                # Fall back to level-based sorting
-                sorted_ops = self._sort_operations_by_level(ops)
-            else:
-                # Use topological sort for optimal ordering
-                sorted_ops = graph.topological_sort()
-
-            # Validate dependencies
-            dep_warnings = graph.validate_dependencies()
-            warnings.extend(dep_warnings)
-
+            sorted_ops, dependency_warnings = self._order_operations_with_dependencies(ops)
+            warnings.extend(dependency_warnings)
         except Exception as e:
             # If dependency analysis fails, fall back to level-based sorting
             warnings.append(f"Dependency analysis failed: {e}. Using level-based sorting.")
@@ -322,6 +303,22 @@ class BaseSQLGenerator(SQLGenerator):
         return SQLGenerationResult(
             sql=combined_sql, statements=statements, warnings=warnings, is_idempotent=True
         )
+
+    def _order_operations_with_dependencies(
+        self, ops: list[Operation]
+    ) -> tuple[list[Operation], list[str]]:
+        """Order operations with dependency analysis and collect warnings."""
+        warnings: list[str] = []
+        graph = self._build_dependency_graph(ops)
+        warnings.extend(self._detect_breaking_changes(ops, graph))
+        cycles = graph.detect_cycles()
+        if cycles:
+            cycle_str = "\n".join(" → ".join(str(node_id) for node_id in cycle) for cycle in cycles)
+            warnings.append(f"Circular dependencies detected:\n{cycle_str}")
+            return self._sort_operations_by_level(ops), warnings
+        sorted_ops = graph.topological_sort()
+        warnings.extend(graph.validate_dependencies())
+        return sorted_ops, warnings
 
     def _sort_operations_by_level(self, ops: list[Operation]) -> list[Operation]:
         """
@@ -362,36 +359,28 @@ class BaseSQLGenerator(SQLGenerator):
 
         # Check each drop operation for breaking changes
         for operation in ops:
-            op_type = operation.op
+            op_type = operation.op.lower()
+            if not any(term in op_type for term in ("drop", "remove", "delete")):
+                continue
 
-            # Detect drop operations
-            is_drop = (
-                "drop" in op_type.lower()
-                or "remove" in op_type.lower()
-                or "delete" in op_type.lower()
+            target_id = self._get_target_object_id(operation)
+            if not target_id or graph is None:
+                continue
+
+            dependents = graph.get_breaking_changes(target_id)
+            if not dependents:
+                continue
+
+            object_name = self._get_object_display_name_from_op(operation)
+            dependent_names = [graph.get_node_display_name(dep_id) for dep_id in dependents]
+
+            warning = (
+                f"⚠️  Breaking change: Dropping {object_name} will affect "
+                f"{len(dependents)} dependent object(s):\n"
             )
-
-            if is_drop:
-                target_id = self._get_target_object_id(operation)
-                if target_id and graph:
-                    # Get dependents
-                    dependents = graph.get_breaking_changes(target_id)
-
-                    if dependents:
-                        # Create warning message
-                        object_name = self._get_object_display_name_from_op(operation)
-                        dependent_names = [
-                            graph.get_node_display_name(dep_id) for dep_id in dependents
-                        ]
-
-                        warning = (
-                            f"⚠️  Breaking change: Dropping {object_name} will affect "
-                            f"{len(dependents)} dependent object(s):\n"
-                        )
-                        for dep_name in dependent_names:
-                            warning += f"  • {dep_name}\n"
-
-                        warnings.append(warning.rstrip())
+            for dep_name in dependent_names:
+                warning += f"  • {dep_name}\n"
+            warnings.append(warning.rstrip())
 
         return warnings
 
@@ -548,7 +537,7 @@ class BaseSQLGenerator(SQLGenerator):
         """
 
     def _extract_operation_dependencies(
-        self, _operation: Operation
+        self, operation: Operation
     ) -> list[tuple[str, DependencyType, DependencyEnforcement]]:
         """
         Extract dependencies from an operation.
@@ -575,6 +564,7 @@ class BaseSQLGenerator(SQLGenerator):
         """
         # Default: no dependencies
         # Providers should override for view operations, foreign keys, etc.
+        _ = operation
         return []
 
     @abstractmethod

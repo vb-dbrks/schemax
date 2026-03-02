@@ -242,6 +242,27 @@ def materialized_view_exists(
     return False
 
 
+def preseed_tracking_only(
+    executor: Any,
+    config: LiveDatabricksConfig,
+    *,
+    tracking_catalog: str,
+    managed_root: str,
+) -> Any:
+    """Create only the tracking catalog so apply can record deployments.
+
+    Returns the result of execute_statements so callers can assert status.
+    """
+    statements = [
+        f"CREATE CATALOG IF NOT EXISTS {tracking_catalog} "
+        f"MANAGED LOCATION '{managed_root.rstrip('/')}/tracking'",
+    ]
+    return executor.execute_statements(
+        statements=statements,
+        config=build_execution_config(config),
+    )
+
+
 def preseed_catalog_schema(
     executor: Any,
     config: LiveDatabricksConfig,

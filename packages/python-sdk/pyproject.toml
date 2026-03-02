@@ -1,6 +1,6 @@
 [project]
 name = "schemaxpy"
-version = "0.2.5"
+version = "0.2.6"
 description = "Python SDK and CLI for Databricks Unity Catalog schema management"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,6 +39,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "types-networkx>=3.0.0",  # Type stubs for networkx (mypy)
@@ -118,7 +119,8 @@ jobs = 0
 limit-inference-results = 100
 persistent = true
 py-version = "3.11"
-fail-under = 9.0
+# Minimum score required (10.0 = perfect). Defined only here to avoid duplicate keys.
+fail-under = 10.0
 suggestion-mode = true
 load-plugins = [
     "databricks.labs.pylint.all",
@@ -289,4 +291,3 @@ callbacks = ["cb_", "_cb"]
 dummy-variables-rgx = "_+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy|^ignored_|^unused_"
 ignored-argument-names = "_.*|^ignored_|^unused_"
 redefining-builtins-modules = ["six.moves", "past.builtins", "future.builtins", "builtins", "io"]
-

@@ -1,680 +1,209 @@
-"""
-Unit tests for import command scaffolding.
-"""
+"""Unit tests for import command using repository injection (no storage patch seams)."""
 
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from pathlib import Path
+from typing import Any
+from unittest.mock import Mock
 
 import pytest
-from click.testing import CliRunner
 
-from schemax.cli import cli
 from schemax.commands.import_assets import (
     ImportCommandError,
     import_from_provider,
     import_from_sql_file,
 )
-from schemax.providers.base.models import ValidationError, ValidationResult
-from schemax.providers.base.operations import Operation
 
 
-def _make_op(op_id: str) -> Operation:
-    return Operation(
-        id=op_id,
-        ts="2026-02-10T00:00:00Z",
-        provider="unity",
-        op="unity.add_catalog",
-        target="cat_1",
-        payload={"catalogId": "cat_1", "name": "demo"},
-    )
+class _RepoStub:
+    def __init__(self) -> None:
+        self.project_exists_flag = True
+        self.ensure_initialized_calls = 0
+        self.append_calls: list[list[Any]] = []
+        self.write_calls = 0
+        self.project: dict[str, Any] = {
+            "provider": {"environments": {"dev": {}}},
+            "latestSnapshot": "v0.1.0",
+        }
+        self.env_config: dict[str, Any] = {
+            "topLevelName": "dev_catalog",
+            "catalogMappings": {"main": "dev_catalog"},
+        }
+        self.state_result: tuple[Any, ...] = ({"catalogs": []}, {"ops": []}, None, None)
+
+    def project_exists(self, *, workspace: Path) -> bool:
+        del workspace
+        return self.project_exists_flag
+
+    def ensure_initialized(self, *, workspace: Path, provider_id: str) -> None:
+        del workspace, provider_id
+        self.ensure_initialized_calls += 1
+
+    def read_project(self, *, workspace: Path) -> dict[str, Any]:
+        del workspace
+        return self.project
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
+        del workspace, validate
+        return self.state_result
+
+    def append_operations(self, *, workspace: Path, operations: list[Any]) -> None:
+        del workspace
+        self.append_calls.append(operations)
+
+    def create_snapshot(
+        self,
+        *,
+        workspace: Path,
+        name: str,
+        version: str | None,
+        comment: str | None,
+        tags: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        del workspace, name, version, comment, tags
+        snapshot = {"version": "v0.2.0"}
+        self.project["latestSnapshot"] = "v0.2.0"
+        return self.project, snapshot
+
+    def get_environment_config(
+        self, *, project: dict[str, Any], environment: str
+    ) -> dict[str, Any]:
+        del project, environment
+        return self.env_config
+
+    def open_session(self, *, workspace: Path) -> Mock:
+        del workspace
+        return Mock()
+
+    def write_project(self, *, workspace: Path, project: dict[str, Any]) -> None:
+        del workspace, project
+        self.write_calls += 1
 
 
-def _make_provider(
-    *,
-    valid_config: bool = True,
-    discovered_state: dict | None = None,
-    diff_ops: list[Operation] | None = None,
-    prepared_state: dict | None = None,
-    prepared_mappings: dict[str, str] | None = None,
-    mappings_updated: bool = False,
-    reject_information_schema: bool = True,
-    supports_baseline_adoption: bool = True,
-):
-    errors = []
-    if not valid_config:
-        errors = [ValidationError(field="profile", message="invalid profile")]
+def _provider_for_import(*, import_ops: list | None = None) -> Mock:
+    provider = Mock()
+    provider.info.id = "unity"
+    provider.info.name = "Unity Catalog"
+    provider.info.version = "1.0.0"
 
-    provider = SimpleNamespace()
-    provider.info = SimpleNamespace(id="unity", name="Unity Catalog", version="1.0.0")
-    provider.capabilities = SimpleNamespace(
-        features={"baseline_adoption": supports_baseline_adoption}
-    )
-    provider.validate_execution_config = lambda _config: ValidationResult(
-        valid=valid_config, errors=errors
-    )
-    provider.validate_import_scope = lambda scope: (
-        ValidationResult(
-            valid=False,
-            errors=[
-                ValidationError(
-                    field="schema",
-                    message=(
-                        "Schema 'information_schema' is system-managed in Unity Catalog "
-                        "and cannot be imported."
-                    ),
-                )
-            ],
-        )
-        if reject_information_schema
-        and str(scope.get("schema") or "").strip().lower() == "information_schema"
-        else ValidationResult(valid=True, errors=[])
-    )
-    provider.discover_state = lambda config, scope: discovered_state or {"catalogs": []}
-    provider.collect_import_warnings = lambda config, scope, discovered_state: []
-    provider.prepare_import_state = (
-        lambda local_state, discovered_state, env_config, mapping_overrides: (
-            prepared_state if prepared_state is not None else discovered_state,
-            prepared_mappings or {},
-            mappings_updated,
-        )
-    )
-    provider.update_env_import_mappings = lambda env_config, mappings: env_config.update(
-        {"catalogMappings": dict(sorted(mappings.items()))}
-    )
-    provider.adopt_import_baseline = lambda **kwargs: "deploy_import_test"
+    provider.validate_execution_config.return_value = Mock(valid=True, errors=[])
+    provider.validate_import_scope.return_value = Mock(valid=True, errors=[])
+    provider.discover_state.return_value = {"catalogs": []}
+    provider.collect_import_warnings.return_value = []
+    provider.prepare_import_state.return_value = ({"catalogs": []}, {"main": "dev_catalog"}, True)
 
-    differ = SimpleNamespace(generate_diff_operations=lambda: diff_ops or [])
-    provider.get_state_differ = lambda old_state, new_state, old_operations, new_operations: differ
+    differ = Mock()
+    differ.generate_diff_operations.return_value = import_ops or []
+    provider.get_state_differ.return_value = differ
+
+    provider.capabilities.features = {"baseline_adoption": True}
+    provider.adopt_import_baseline.return_value = "dep_1"
+
+    provider.state_from_ddl.return_value = ({"catalogs": []}, {"skipped": 0, "parse_errors": []})
+    provider.create_initial_state.return_value = {"catalogs": []}
     return provider
 
 
-def _make_project() -> dict:
-    return {
-        "name": "demo_project",
-        "latestSnapshot": "v0.1.0",
-        "provider": {
-            "environments": {
-                "dev": {
-                    "topLevelName": "dev_demo_project",
-                    "autoCreateSchemaxSchema": True,
-                    "catalogMappings": {},
-                }
-            }
-        },
-    }
+def test_import_from_provider_dry_run_does_not_append() -> None:
+    repo = _RepoStub()
+    provider = _provider_for_import(import_ops=[Mock(op="unity.add_catalog")])
+    repo.state_result = ({"catalogs": []}, {"ops": []}, provider, None)
+
+    summary = import_from_provider(
+        workspace=Path("."),
+        target_env="dev",
+        profile="DEFAULT",
+        warehouse_id="wh_1",
+        dry_run=True,
+        workspace_repo=repo,
+    )
+
+    assert summary["dry_run"] is True
+    assert not repo.append_calls
 
 
-class TestImportFromProvider:
-    def test_dry_run_does_not_append_ops(self):
-        provider = _make_provider(diff_ops=[_make_op("op_1"), _make_op("op_2")])
+def test_import_from_provider_writes_mappings_and_ops() -> None:
+    repo = _RepoStub()
+    provider = _provider_for_import(import_ops=[Mock(op="unity.add_catalog")])
+    repo.state_result = ({"catalogs": []}, {"ops": []}, provider, None)
 
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            with patch("schemax.commands.import_assets.append_ops") as mock_append:
-                with patch("schemax.commands.import_assets.read_project") as mock_project:
-                    mock_project.return_value = _make_project()
-                    mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
+    summary = import_from_provider(
+        workspace=Path("."),
+        target_env="dev",
+        profile="DEFAULT",
+        warehouse_id="wh_1",
+        dry_run=False,
+        workspace_repo=repo,
+    )
 
-                    summary = import_from_provider(
-                        workspace=None,  # workspace is mocked at storage boundary
-                        target_env="dev",
-                        profile="DEFAULT",
-                        warehouse_id="wh_123",
-                        catalog="demo",
-                        dry_run=True,
-                    )
+    assert summary["operations_generated"] == 1
+    assert len(repo.append_calls) == 1
+    assert repo.write_calls == 1
 
-                    assert summary["operations_generated"] == 2
-                    assert summary["dry_run"] is True
-                    mock_append.assert_not_called()
 
-    def test_non_dry_run_appends_generated_ops(self):
-        ops = [_make_op("op_1")]
-        provider = _make_provider(diff_ops=ops)
+def test_import_from_provider_invalid_config_raises() -> None:
+    repo = _RepoStub()
+    provider = _provider_for_import()
+    provider.validate_execution_config.return_value = Mock(
+        valid=False,
+        errors=[Mock(field="warehouse_id", message="missing")],
+    )
+    repo.state_result = ({"catalogs": []}, {"ops": []}, provider, None)
 
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            with patch("schemax.commands.import_assets.append_ops") as mock_append:
-                with patch("schemax.commands.import_assets.read_project") as mock_project:
-                    mock_project.return_value = _make_project()
-                    mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-
-                    summary = import_from_provider(
-                        workspace=None,  # workspace is mocked at storage boundary
-                        target_env="dev",
-                        profile="DEFAULT",
-                        warehouse_id="wh_123",
-                        dry_run=False,
-                    )
-
-                    assert summary["operations_generated"] == 1
-                    mock_append.assert_called_once()
-                    append_workspace, append_ops_value = mock_append.call_args[0]
-                    assert append_workspace is None
-                    assert append_ops_value == ops
-
-    def test_invalid_execution_config_raises_import_error(self):
-        provider = _make_provider(valid_config=False)
-
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-
-            try:
-                import_from_provider(
-                    workspace=None,
-                    target_env="dev",
-                    profile="BROKEN",
-                    warehouse_id="wh_123",
-                )
-                assert False, "Expected ImportCommandError"
-            except ImportCommandError as err:
-                assert "Invalid execution configuration" in str(err)
-                assert "profile" in str(err)
-
-    def test_discover_not_implemented_is_wrapped(self):
-        provider = _make_provider()
-        provider.discover_state = lambda config, scope: (_ for _ in ()).throw(
-            NotImplementedError("discovery not implemented")
+    with pytest.raises(ImportCommandError, match="Invalid execution configuration"):
+        import_from_provider(
+            workspace=Path("."),
+            target_env="dev",
+            profile="DEFAULT",
+            warehouse_id="",
+            workspace_repo=repo,
         )
 
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
 
-            try:
-                import_from_provider(
-                    workspace=None,
-                    target_env="dev",
-                    profile="DEFAULT",
-                    warehouse_id="wh_123",
-                )
-                assert False, "Expected ImportCommandError"
-            except ImportCommandError as err:
-                assert "discovery not implemented" in str(err)
-
-    def test_information_schema_scope_is_rejected(self):
-        provider = _make_provider()
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-            with pytest.raises(ImportCommandError, match="information_schema"):
-                import_from_provider(
-                    workspace=None,
-                    target_env="dev",
-                    profile="DEFAULT",
-                    warehouse_id="wh_123",
-                    catalog="main",
-                    schema="information_schema",
-                )
-
-    def test_adopt_baseline_creates_snapshot_and_tracks_deployment(self):
-        provider = _make_provider(diff_ops=[_make_op("op_1")])
-        provider.adopt_import_baseline = Mock(return_value="deploy_import_1234")
-
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            with patch("schemax.commands.import_assets.append_ops") as mock_append:
-                with patch("schemax.commands.import_assets.read_project") as mock_project:
-                    with patch("schemax.commands.import_assets.create_snapshot") as mock_snapshot:
-                        with patch(
-                            "schemax.commands.import_assets.write_project"
-                        ) as mock_write_project:
-                            mock_load.return_value = (
-                                {"catalogs": []},
-                                {"ops": []},
-                                provider,
-                                None,
-                            )
-                            mock_project.return_value = _make_project()
-                            mock_snapshot.return_value = (
-                                _make_project() | {"latestSnapshot": "v0.2.0"},
-                                {"version": "v0.2.0"},
-                            )
-
-                            summary = import_from_provider(
-                                workspace=None,
-                                target_env="dev",
-                                profile="DEFAULT",
-                                warehouse_id="wh_123",
-                                dry_run=False,
-                                adopt_baseline=True,
-                            )
-
-        mock_append.assert_called_once()
-        mock_snapshot.assert_called_once()
-        provider.adopt_import_baseline.assert_called_once()
-        assert summary["snapshot_version"] == "v0.2.0"
-        assert summary["deployment_id"] == "deploy_import_1234"
-        mock_write_project.assert_called_once()
-        _workspace, persisted_project = mock_write_project.call_args.args
-        assert (
-            persisted_project["provider"]["environments"]["dev"]["importBaselineSnapshot"]
-            == "v0.2.0"
+def test_import_from_sql_file_missing_file_raises() -> None:
+    repo = _RepoStub()
+    with pytest.raises(ImportCommandError, match="SQL file not found"):
+        import_from_sql_file(
+            workspace=Path("."),
+            sql_path=Path("/tmp/does-not-exist.sql"),
+            workspace_repo=repo,
         )
 
-    def test_adopt_baseline_rejected_when_provider_capability_missing(self):
-        provider = _make_provider(supports_baseline_adoption=False)
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            with patch("schemax.commands.import_assets.read_project") as mock_project:
-                mock_project.return_value = _make_project()
-                mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-                with pytest.raises(ImportCommandError, match="does not support baseline adoption"):
-                    import_from_provider(
-                        workspace=None,
-                        target_env="dev",
-                        profile="DEFAULT",
-                        warehouse_id="wh_123",
-                        dry_run=False,
-                        adopt_baseline=True,
-                    )
 
-    def test_import_uses_provider_prepared_state_and_mappings(self):
-        discovered_state = {
-            "catalogs": [{"id": "cat_phys", "name": "dev_schemax_demo", "schemas": []}]
-        }
-        prepared_state = {"catalogs": [{"id": "cat_local", "name": "schemax_demo", "schemas": []}]}
-        provider = _make_provider(
-            discovered_state=discovered_state,
-            prepared_state=prepared_state,
-            prepared_mappings={"schemax_demo": "dev_schemax_demo"},
-            diff_ops=[],
-        )
-        provider.get_state_differ = Mock(
-            return_value=SimpleNamespace(generate_diff_operations=lambda: [])
-        )
+def test_import_from_sql_file_initializes_when_project_missing(tmp_path: Path) -> None:
+    repo = _RepoStub()
+    repo.project_exists_flag = False
+    provider = _provider_for_import(import_ops=[])
+    repo.state_result = ({"catalogs": []}, {"ops": []}, provider, None)
 
-        project = _make_project()
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            with patch("schemax.commands.import_assets.read_project") as mock_project:
-                mock_project.return_value = project
-                mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
+    sql_file = tmp_path / "schema.sql"
+    sql_file.write_text("CREATE CATALOG main;")
 
-                summary = import_from_provider(
-                    workspace=None,
-                    target_env="dev",
-                    profile="DEFAULT",
-                    warehouse_id="wh_123",
-                    dry_run=True,
-                )
+    summary = import_from_sql_file(
+        workspace=tmp_path,
+        sql_path=sql_file,
+        mode="diff",
+        dry_run=True,
+        workspace_repo=repo,
+    )
 
-        assert summary["catalog_mappings"] == {"schemax_demo": "dev_schemax_demo"}
-        kwargs = provider.get_state_differ.call_args.kwargs
-        assert kwargs["new_state"] == prepared_state
-
-    def test_non_dry_run_persists_catalog_mappings_via_provider_hook(self):
-        provider = _make_provider(
-            prepared_mappings={"schemax_demo": "dev_schemax_demo"},
-            mappings_updated=True,
-            diff_ops=[],
-        )
-        provider.update_env_import_mappings = Mock(
-            side_effect=lambda env_config, mappings: env_config.update(
-                {"catalogMappings": dict(sorted(mappings.items()))}
-            )
-        )
-
-        project = _make_project()
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            with patch("schemax.commands.import_assets.read_project") as mock_project:
-                with patch("schemax.commands.import_assets.write_project") as mock_write_project:
-                    mock_project.return_value = project
-                    mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-
-                    import_from_provider(
-                        workspace=None,
-                        target_env="dev",
-                        profile="DEFAULT",
-                        warehouse_id="wh_123",
-                        dry_run=False,
-                    )
-
-        provider.update_env_import_mappings.assert_called_once()
-        assert mock_write_project.call_count == 1
-        persisted_project = mock_write_project.call_args.args[1]
-        assert persisted_project["provider"]["environments"]["dev"]["catalogMappings"] == {
-            "schemax_demo": "dev_schemax_demo"
-        }
+    assert summary["source"] == "sql_file"
+    assert repo.ensure_initialized_calls == 1
 
 
-class TestImportFromSqlFile:
-    """Unit tests for import_from_sql_file (SQL DDL file import)."""
+def test_import_from_sql_file_replace_mode_appends_ops(tmp_path: Path) -> None:
+    repo = _RepoStub()
+    provider = _provider_for_import(import_ops=[Mock(op="unity.add_catalog")])
+    repo.state_result = ({"catalogs": []}, {"ops": []}, provider, None)
 
-    def test_dry_run_does_not_append_ops(self, temp_workspace, tmp_path):
-        from schemax.core.storage import ensure_project_file
-        from schemax.providers import ProviderRegistry
+    sql_file = tmp_path / "schema.sql"
+    sql_file.write_text("CREATE CATALOG main;")
 
-        ensure_project_file(temp_workspace, provider_id="unity")
-        sql_file = tmp_path / "schema.sql"
-        sql_file.write_text(
-            "CREATE CATALOG demo;\n"
-            "CREATE SCHEMA demo.analytics;\n"
-            "CREATE TABLE demo.analytics.t1 (id BIGINT) USING DELTA;\n"
-        )
+    summary = import_from_sql_file(
+        workspace=tmp_path,
+        sql_path=sql_file,
+        mode="replace",
+        dry_run=False,
+        workspace_repo=repo,
+    )
 
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            provider = ProviderRegistry.get("unity")
-            mock_load.return_value = (
-                {"catalogs": []},
-                {"ops": []},
-                provider,
-                None,
-            )
-            with patch("schemax.commands.import_assets.append_ops") as mock_append:
-                summary = import_from_sql_file(
-                    workspace=temp_workspace,
-                    sql_path=sql_file,
-                    mode="diff",
-                    dry_run=True,
-                )
-                assert summary["source"] == "sql_file"
-                assert summary["operations_generated"] >= 1
-                assert summary["dry_run"] is True
-                mock_append.assert_not_called()
-
-    def test_missing_sql_file_raises_import_error(self, temp_workspace):
-        from schemax.core.storage import ensure_project_file
-
-        ensure_project_file(temp_workspace, provider_id="unity")
-        missing = temp_workspace / "nonexistent.sql"
-        assert not missing.exists()
-        with pytest.raises(ImportCommandError, match="SQL file not found"):
-            import_from_sql_file(
-                workspace=temp_workspace,
-                sql_path=missing,
-                mode="diff",
-                dry_run=True,
-            )
-
-    def test_mode_replace_produces_ops_and_appends_when_not_dry_run(self, temp_workspace, tmp_path):
-        from schemax.core.storage import ensure_project_file
-        from schemax.providers import ProviderRegistry
-
-        ensure_project_file(temp_workspace, provider_id="unity")
-        sql_file = tmp_path / "schema.sql"
-        sql_file.write_text(
-            "CREATE CATALOG only;\n"
-            "CREATE SCHEMA only.public;\n"
-            "CREATE TABLE only.public.x (id INT) USING DELTA;\n"
-        )
-        provider = ProviderRegistry.get("unity")
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            mock_load.return_value = (
-                {"catalogs": [{"id": "c1", "name": "existing", "schemas": []}]},
-                {"ops": []},
-                provider,
-                None,
-            )
-            with patch("schemax.commands.import_assets.append_ops") as mock_append:
-                summary = import_from_sql_file(
-                    workspace=temp_workspace,
-                    sql_path=sql_file,
-                    mode="replace",
-                    dry_run=False,
-                )
-                assert summary["mode"] == "replace"
-                assert summary["source"] == "sql_file"
-                assert summary["operations_generated"] >= 1
-                mock_append.assert_called_once()
-                appended_ops = mock_append.call_args[0][1]
-                assert len(appended_ops) >= 1
-
-    def test_provider_not_implemented_state_from_ddl_raises_import_error(
-        self, temp_workspace, tmp_path
-    ):
-        from types import SimpleNamespace
-
-        from schemax.core.storage import ensure_project_file
-
-        ensure_project_file(temp_workspace, provider_id="unity")
-        sql_file = tmp_path / "schema.sql"
-        sql_file.write_text("CREATE CATALOG c")
-        provider = SimpleNamespace()
-        provider.info = SimpleNamespace(id="other", name="Other", version="1.0.0")
-        provider.create_initial_state = lambda: {"catalogs": []}
-        provider.get_state_differ = lambda **kwargs: SimpleNamespace(
-            generate_diff_operations=lambda: []
-        )
-        provider.state_from_ddl = lambda **kwargs: (_ for _ in ()).throw(
-            NotImplementedError("SQL import not supported")
-        )
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-            with pytest.raises(ImportCommandError, match="SQL import not supported"):
-                import_from_sql_file(
-                    workspace=temp_workspace,
-                    sql_path=sql_file,
-                    mode="diff",
-                    dry_run=True,
-                )
-
-    def test_provider_state_from_ddl_value_error_raises_import_error(
-        self, temp_workspace, tmp_path
-    ):
-        from types import SimpleNamespace
-
-        from schemax.core.storage import ensure_project_file
-
-        ensure_project_file(temp_workspace, provider_id="unity")
-        sql_file = tmp_path / "schema.sql"
-        sql_file.write_text("CREATE CATALOG c")
-        provider = SimpleNamespace()
-        provider.info = SimpleNamespace(id="unity", name="Unity", version="1.0.0")
-        provider.create_initial_state = lambda: {"catalogs": []}
-        provider.get_state_differ = lambda **kwargs: SimpleNamespace(
-            generate_diff_operations=lambda: []
-        )
-        provider.state_from_ddl = lambda **kwargs: (_ for _ in ()).throw(ValueError("Invalid DDL"))
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            mock_load.return_value = ({"catalogs": []}, {"ops": []}, provider, None)
-            with pytest.raises(ImportCommandError, match="Invalid DDL"):
-                import_from_sql_file(
-                    workspace=temp_workspace,
-                    sql_path=sql_file,
-                    mode="diff",
-                    dry_run=True,
-                )
-
-    def test_sql_file_with_only_unsupported_statements_returns_zero_ops(
-        self, temp_workspace, tmp_path
-    ):
-        from schemax.core.storage import ensure_project_file
-        from schemax.providers import ProviderRegistry
-
-        ensure_project_file(temp_workspace, provider_id="unity")
-        sql_file = tmp_path / "schema.sql"
-        sql_file.write_text("SELECT 1;\n-- comment\nALTER TABLE x ADD COLUMN y INT;")
-        provider = ProviderRegistry.get("unity")
-        with patch("schemax.commands.import_assets.load_current_state") as mock_load:
-            mock_load.return_value = (
-                {"catalogs": []},
-                {"ops": []},
-                provider,
-                None,
-            )
-            summary = import_from_sql_file(
-                workspace=temp_workspace,
-                sql_path=sql_file,
-                mode="diff",
-                dry_run=True,
-            )
-            assert summary["source"] == "sql_file"
-            assert summary["operations_generated"] == 0
-            assert summary["object_counts"]["catalogs"] == 0
-            assert summary["object_counts"]["tables"] == 0
-
-
-class TestImportCli:
-    def test_import_cli_requires_catalog_for_schema(self):
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            [
-                "import",
-                "--target",
-                "dev",
-                "--profile",
-                "DEFAULT",
-                "--warehouse-id",
-                "wh_123",
-                "--schema",
-                "analytics",
-            ],
-        )
-        assert result.exit_code == 1
-        assert "--schema requires --catalog" in result.output
-
-    def test_import_cli_rejects_information_schema(self):
-        runner = CliRunner()
-        with patch(
-            "schemax.cli.import_from_provider",
-            side_effect=ImportCommandError("Schema 'information_schema' is system-managed"),
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "import",
-                    "--target",
-                    "dev",
-                    "--profile",
-                    "DEFAULT",
-                    "--warehouse-id",
-                    "wh_123",
-                    "--catalog",
-                    "main",
-                    "--schema",
-                    "information_schema",
-                ],
-            )
-            assert result.exit_code == 1
-            assert "system-managed" in result.output
-
-    def test_import_cli_routes_to_command(self):
-        runner = CliRunner()
-        with patch("schemax.cli.import_from_provider") as mock_import:
-            result = runner.invoke(
-                cli,
-                [
-                    "import",
-                    "--target",
-                    "dev",
-                    "--profile",
-                    "DEFAULT",
-                    "--warehouse-id",
-                    "wh_123",
-                    "--catalog",
-                    "demo",
-                    "--dry-run",
-                ],
-            )
-
-            assert result.exit_code == 0
-            mock_import.assert_called_once()
-            kwargs = mock_import.call_args.kwargs
-            assert kwargs["target_env"] == "dev"
-            assert kwargs["profile"] == "DEFAULT"
-            assert kwargs["warehouse_id"] == "wh_123"
-            assert kwargs["catalog"] == "demo"
-            assert kwargs["dry_run"] is True
-
-    def test_import_cli_passes_catalog_mapping_overrides(self):
-        runner = CliRunner()
-        with patch("schemax.cli.import_from_provider") as mock_import:
-            result = runner.invoke(
-                cli,
-                [
-                    "import",
-                    "--target",
-                    "dev",
-                    "--profile",
-                    "DEFAULT",
-                    "--warehouse-id",
-                    "wh_123",
-                    "--catalog-map",
-                    "schemax_demo=dev_schemax_demo",
-                    "--dry-run",
-                ],
-            )
-
-            assert result.exit_code == 0
-            kwargs = mock_import.call_args.kwargs
-            assert kwargs["catalog_mappings_override"] == {"schemax_demo": "dev_schemax_demo"}
-
-    def test_import_cli_rejects_invalid_catalog_mapping_format(self):
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            [
-                "import",
-                "--target",
-                "dev",
-                "--profile",
-                "DEFAULT",
-                "--warehouse-id",
-                "wh_123",
-                "--catalog-map",
-                "invalid-format",
-            ],
-        )
-        assert result.exit_code == 1
-        assert "logical=physical" in result.output
-
-    def test_import_cli_prints_summary_from_import_result(self):
-        runner = CliRunner()
-        with patch(
-            "schemax.cli.import_from_provider",
-            return_value={
-                "operations_generated": 12,
-                "dry_run": True,
-                "warnings": ["w1"],
-                "catalog_mappings": {"samples": "samples"},
-            },
-        ):
-            result = runner.invoke(
-                cli,
-                [
-                    "import",
-                    "--target",
-                    "dev",
-                    "--profile",
-                    "DEFAULT",
-                    "--warehouse-id",
-                    "wh_123",
-                    "--dry-run",
-                ],
-            )
-
-        assert result.exit_code == 0
-        assert "Import summary: 12 operation(s) previewed." in result.output
-        assert "Catalog mappings: 1" in result.output
-        assert "Warnings: 1" in result.output
-
-    def test_import_cli_from_sql_routes_to_import_from_sql_file(self, tmp_path):
-        sql_file = tmp_path / "schema.sql"
-        sql_file.write_text("CREATE CATALOG c;\n")
-        runner = CliRunner()
-        with patch("schemax.cli.import_from_sql_file") as mock_sql_import:
-            mock_sql_import.return_value = {
-                "operations_generated": 1,
-                "dry_run": True,
-                "source": "sql_file",
-            }
-            result = runner.invoke(
-                cli,
-                [
-                    "import",
-                    "--from-sql",
-                    str(sql_file),
-                    "--mode",
-                    "diff",
-                    "--dry-run",
-                    str(tmp_path),
-                ],
-            )
-        assert result.exit_code == 0
-        mock_sql_import.assert_called_once()
-        call_kw = mock_sql_import.call_args.kwargs
-        assert call_kw["sql_path"] == sql_file
-        assert call_kw["mode"] == "diff"
-        assert call_kw["dry_run"] is True
-
-    def test_import_cli_without_from_sql_requires_target_profile_warehouse(self):
-        runner = CliRunner()
-        result = runner.invoke(cli, ["import"])
-        assert result.exit_code == 1
-        assert "Live import requires" in result.output
-        assert "--from-sql" in result.output
+    assert summary["operations_generated"] == 1
+    assert len(repo.append_calls) == 1

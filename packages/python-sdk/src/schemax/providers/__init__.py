@@ -9,9 +9,10 @@ from .base.hierarchy import Hierarchy, HierarchyLevel
 from .base.models import ProviderState, ValidationError, ValidationResult
 from .base.operations import Operation, OperationCategory, OperationMetadata
 from .base.provider import Provider, ProviderCapabilities, ProviderInfo
-from .registry import ProviderRegistry
 
 # Import providers for auto-registration
+from .hive import hive_provider
+from .registry import ProviderRegistry
 from .unity import unity_provider
 
 __all__ = [
@@ -34,8 +35,7 @@ def initialize_providers() -> None:
     """Initialize and register all providers"""
     # Register Unity Catalog provider
     ProviderRegistry.register(unity_provider)
-
-    # Future providers will be registered here when implemented.
+    ProviderRegistry.register(hive_provider)
 
 
 # Auto-initialize on import

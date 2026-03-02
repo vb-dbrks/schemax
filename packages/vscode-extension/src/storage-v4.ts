@@ -1,25 +1,79 @@
 /**
  * Storage Layer V4 - Multi-Environment Support
- * 
+ *
  * Supports environment-specific catalog configurations with logical → physical name mapping.
  * Breaking change from v3: environments are now rich objects instead of simple arrays.
  */
 
-import * as vscode from 'vscode';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import * as crypto from 'crypto';
-import * as os from 'os';
-import { v4 as uuidv4 } from 'uuid';
-import { ProviderRegistry } from './providers/registry';
-import { Provider } from './providers/base/provider';
-import { Operation } from './providers/base/operations';
-import { ProviderState } from './providers/base/models';
+import * as vscode from "vscode";
+import * as path from "path";
+import * as crypto from "crypto";
+import * as os from "os";
+import { v4 as uuidv4 } from "uuid";
+import { PythonBackendClient } from "./backend/pythonBackendClient";
+import type { Operation, ProviderCapabilities } from "./contracts/workspace";
 
-const SCHEMAX_DIR = '.schemax';
-const PROJECT_FILENAME = 'project.json';
-const CHANGELOG_FILENAME = 'changelog.json';
-const SNAPSHOTS_DIR = 'snapshots';
+const SCHEMAX_DIR = ".schemax";
+const PROJECT_FILENAME = "project.json";
+const CHANGELOG_FILENAME = "changelog.json";
+const SNAPSHOTS_DIR = "snapshots";
+const pythonBackend = new PythonBackendClient();
+const DEFAULT_PROVIDER_VERSION = "1.0.0";
+const STATE_CACHE_TTL_MS = 750;
+
+type ProviderState = Record<string, unknown>;
+type WorkspaceStatePayloadMode = "full" | "state-only";
+
+export interface ProviderMetadata {
+  id: string;
+  name: string;
+  version: string;
+  capabilities: ProviderCapabilities;
+}
+
+interface RawProviderMetadata {
+  id: string;
+  name: string;
+  version: string;
+  capabilities?: Record<string, unknown>;
+}
+
+interface RawWorkspaceStatePayload {
+  state?: ProviderState;
+  changelog?: ChangelogFile;
+  provider?: RawProviderMetadata;
+  validation?: {
+    errors?: Array<{ message?: string } | string>;
+    warnings?: Array<{ message?: string } | string>;
+  };
+}
+
+interface LoadStateOptions {
+  payloadMode?: WorkspaceStatePayloadMode;
+}
+
+interface CachedStateEntry {
+  cachedAtMs: number;
+  value: {
+    state: ProviderState;
+    changelog: ChangelogFile;
+    provider: ProviderMetadata;
+    validationResult: ValidationResult | null;
+  };
+}
+
+const workspaceStateCache = new Map<string, CachedStateEntry>();
+const lastWriteHashByPath = new Map<string, string>();
+
+function getProviderDisplayName(providerId: string): string {
+  if (providerId === "unity") {
+    return "Unity Catalog";
+  }
+  if (providerId === "hive") {
+    return "Hive Metastore";
+  }
+  return providerId;
+}
 
 // Location Configuration Types
 export interface LocationDefinition {
@@ -83,23 +137,23 @@ interface Deployment {
   opsApplied: string[];
   schemaVersion: string;
   sqlGenerated?: string;
-  status: 'success' | 'failed' | 'partial' | 'rolled_back';
+  status: "success" | "failed" | "partial" | "rolled_back";
   error?: string;
   driftDetected?: boolean;
-  driftDetails?: any[];
+  driftDetails?: unknown[];
 }
 
 export interface ProjectFileV4 {
   version: 4;
   name: string;
   provider: ProviderConfigV4;
-  
+
   // Physical Isolation (for managed tables) - project-level with per-environment paths
   managedLocations?: Record<string, LocationDefinition>;
-  
+
   // External Locations (for external tables) - project-level with per-environment paths
   externalLocations?: Record<string, LocationDefinition>;
-  
+
   snapshots: SnapshotMetadata[];
   deployments: Deployment[];
   settings: ProjectSettings;
@@ -148,6 +202,42 @@ function getChangelogFilePath(workspaceUri: vscode.Uri): vscode.Uri {
   return vscode.Uri.joinPath(workspaceUri, SCHEMAX_DIR, CHANGELOG_FILENAME);
 }
 
+function getWorkspaceStateCacheKey(
+  workspaceUri: vscode.Uri,
+  validate: boolean,
+  payloadMode: WorkspaceStatePayloadMode
+): string {
+  return `${workspaceUri.fsPath}::${validate ? "validate" : "no-validate"}::${payloadMode}`;
+}
+
+function invalidateWorkspaceStateCache(workspaceUri: vscode.Uri): void {
+  const prefix = `${workspaceUri.fsPath}::`;
+  for (const key of workspaceStateCache.keys()) {
+    if (key.startsWith(prefix)) {
+      workspaceStateCache.delete(key);
+    }
+  }
+}
+
+function cloneStateResult<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function hashText(text: string): string {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}
+
+async function writeJsonFileCoalesced(uri: vscode.Uri, payload: unknown): Promise<void> {
+  const text = JSON.stringify(payload, null, 2);
+  const nextHash = hashText(text);
+  const key = uri.fsPath;
+  if (lastWriteHashByPath.get(key) === nextHash) {
+    return;
+  }
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(text, "utf8"));
+  lastWriteHashByPath.set(key, nextHash);
+}
+
 /**
  * Get snapshots directory path
  */
@@ -162,6 +252,15 @@ function getSnapshotFilePath(workspaceUri: vscode.Uri, version: string): vscode.
   return vscode.Uri.joinPath(workspaceUri, SCHEMAX_DIR, SNAPSHOTS_DIR, `${version}.json`);
 }
 
+function isFileNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "FileNotFound"
+  );
+}
+
 /**
  * Ensure .schemax/ directory structure exists
  */
@@ -172,7 +271,7 @@ export async function ensureSchemaxDir(workspaceUri: vscode.Uri): Promise<void> 
   try {
     await vscode.workspace.fs.createDirectory(schemaxDir);
     await vscode.workspace.fs.createDirectory(snapshotsDir);
-  } catch (error) {
+  } catch (_error) {
     // Directory might already exist, ignore
   }
 }
@@ -183,45 +282,36 @@ export async function ensureSchemaxDir(workspaceUri: vscode.Uri): Promise<void> 
 export async function ensureProjectFile(
   workspaceUri: vscode.Uri,
   outputChannel: vscode.OutputChannel,
-  providerId: string = 'unity'
+  providerId: string = "unity"
 ): Promise<void> {
   const projectPath = getProjectFilePath(workspaceUri);
-  
+
   try {
     // Check if project file already exists
     await vscode.workspace.fs.stat(projectPath);
-    
+
     // File exists, check version
     const content = await vscode.workspace.fs.readFile(projectPath);
     const project = JSON.parse(content.toString()) as ProjectFileV4;
-    
+
     if (project.version === 4) {
-      outputChannel.appendLine('[SchemaX] Project file already exists (v4)');
+      outputChannel.appendLine("[SchemaX] Project file already exists (v4)");
       return;
     } else {
       throw new Error(
         `Project version ${project.version} not supported. ` +
-        'This version of SchemaX requires v4 projects. ' +
-        'Please create a new project or manually migrate to v4.'
+          "This version of SchemaX requires v4 projects. " +
+          "Please create a new project or manually migrate to v4."
       );
     }
-  } catch (error: any) {
-    if (error.code !== 'FileNotFound') {
+  } catch (error: unknown) {
+    if (!isFileNotFoundError(error)) {
       throw error;
     }
   }
 
   // Create new v4 project
   const workspaceName = path.basename(workspaceUri.fsPath);
-  
-  // Get provider
-  const provider = ProviderRegistry.get(providerId);
-  if (!provider) {
-    const available = ProviderRegistry.getAllIds().join(', ');
-    throw new Error(
-      `Provider '${providerId}' not found. Available providers: ${available}`
-    );
-  }
 
   // Create v4 project with environment configuration
   const newProject: ProjectFileV4 = {
@@ -229,12 +319,12 @@ export async function ensureProjectFile(
     name: workspaceName,
     provider: {
       type: providerId,
-      version: provider.info.version,
+      version: DEFAULT_PROVIDER_VERSION,
       environments: {
         dev: {
           topLevelName: `dev_${workspaceName}`,
           catalogMappings: {},
-          description: 'Development environment',
+          description: "Development environment",
           allowDrift: true,
           requireSnapshot: false,
           autoCreateTopLevel: true,
@@ -243,7 +333,7 @@ export async function ensureProjectFile(
         test: {
           topLevelName: `test_${workspaceName}`,
           catalogMappings: {},
-          description: 'Test/staging environment',
+          description: "Test/staging environment",
           allowDrift: false,
           requireSnapshot: true,
           autoCreateTopLevel: true,
@@ -252,7 +342,7 @@ export async function ensureProjectFile(
         prod: {
           topLevelName: `prod_${workspaceName}`,
           catalogMappings: {},
-          description: 'Production environment',
+          description: "Production environment",
           allowDrift: false,
           requireSnapshot: true,
           requireApproval: false,
@@ -265,7 +355,7 @@ export async function ensureProjectFile(
     deployments: [],
     settings: {
       autoIncrementVersion: true,
-      versionPrefix: 'v',
+      versionPrefix: "v",
     },
     latestSnapshot: null,
   };
@@ -280,17 +370,17 @@ export async function ensureProjectFile(
   await ensureSchemaxDir(workspaceUri);
 
   // Write project file
-  const projectContent = Buffer.from(JSON.stringify(newProject, null, 2), 'utf8');
+  const projectContent = Buffer.from(JSON.stringify(newProject, null, 2), "utf8");
   await vscode.workspace.fs.writeFile(projectPath, projectContent);
 
   // Write changelog file
   const changelogPath = getChangelogFilePath(workspaceUri);
-  const changelogContent = Buffer.from(JSON.stringify(newChangelog, null, 2), 'utf8');
+  const changelogContent = Buffer.from(JSON.stringify(newChangelog, null, 2), "utf8");
   await vscode.workspace.fs.writeFile(changelogPath, changelogContent);
 
   outputChannel.appendLine(`[SchemaX] Initialized new v4 project: ${workspaceName}`);
-  outputChannel.appendLine(`[SchemaX] Provider: ${provider.info.name}`);
-  outputChannel.appendLine('[SchemaX] Environments: dev, test, prod');
+  outputChannel.appendLine(`[SchemaX] Provider: ${getProviderDisplayName(providerId)}`);
+  outputChannel.appendLine("[SchemaX] Environments: dev, test, prod");
 }
 
 /**
@@ -307,17 +397,15 @@ export async function readProject(workspaceUri: vscode.Uri): Promise<ProjectFile
     if (project.version !== 4) {
       throw new Error(
         `Project version ${project.version} not supported. ` +
-        'This version of SchemaX requires v4 projects. ' +
-        'Please create a new project or manually migrate to v4.'
+          "This version of SchemaX requires v4 projects. " +
+          "Please create a new project or manually migrate to v4."
       );
     }
 
     return project;
-  } catch (error: any) {
-    if (error.code === 'FileNotFound') {
-      throw new Error(
-        'Project file not found. Please initialize a new project first.'
-      );
+  } catch (error: unknown) {
+    if (isFileNotFoundError(error)) {
+      throw new Error("Project file not found. Please initialize a new project first.");
     }
     throw error;
   }
@@ -331,8 +419,8 @@ export async function writeProject(
   project: ProjectFileV4
 ): Promise<void> {
   const projectPath = getProjectFilePath(workspaceUri);
-  const content = Buffer.from(JSON.stringify(project, null, 2), 'utf8');
-  await vscode.workspace.fs.writeFile(projectPath, content);
+  await writeJsonFileCoalesced(projectPath, project);
+  invalidateWorkspaceStateCache(workspaceUri);
 }
 
 /**
@@ -344,8 +432,8 @@ export async function readChangelog(workspaceUri: vscode.Uri): Promise<Changelog
   try {
     const content = await vscode.workspace.fs.readFile(changelogPath);
     return JSON.parse(content.toString()) as ChangelogFile;
-  } catch (error: any) {
-    if (error.code === 'FileNotFound') {
+  } catch (error: unknown) {
+    if (isFileNotFoundError(error)) {
       // Changelog doesn't exist, create empty one
       const changelog: ChangelogFile = {
         version: 1,
@@ -354,7 +442,7 @@ export async function readChangelog(workspaceUri: vscode.Uri): Promise<Changelog
         lastModified: new Date().toISOString(),
       };
 
-      const content = Buffer.from(JSON.stringify(changelog, null, 2), 'utf8');
+      const content = Buffer.from(JSON.stringify(changelog, null, 2), "utf8");
       await vscode.workspace.fs.writeFile(changelogPath, content);
 
       return changelog;
@@ -372,8 +460,8 @@ export async function writeChangelog(
 ): Promise<void> {
   changelog.lastModified = new Date().toISOString();
   const changelogPath = getChangelogFilePath(workspaceUri);
-  const content = Buffer.from(JSON.stringify(changelog, null, 2), 'utf8');
-  await vscode.workspace.fs.writeFile(changelogPath, content);
+  await writeJsonFileCoalesced(changelogPath, changelog);
+  invalidateWorkspaceStateCache(workspaceUri);
 }
 
 /**
@@ -397,8 +485,8 @@ export async function writeSnapshot(
 ): Promise<void> {
   await ensureSchemaxDir(workspaceUri);
   const snapshotPath = getSnapshotFilePath(workspaceUri, snapshot.version);
-  const content = Buffer.from(JSON.stringify(snapshot, null, 2), 'utf8');
-  await vscode.workspace.fs.writeFile(snapshotPath, content);
+  await writeJsonFileCoalesced(snapshotPath, snapshot);
+  invalidateWorkspaceStateCache(workspaceUri);
 }
 
 /**
@@ -409,116 +497,139 @@ export interface ValidationResult {
   warnings: string[];
 }
 
+export function normalizeProviderCapabilities(
+  capabilities: Record<string, unknown> | undefined
+): ProviderCapabilities {
+  const rawLevels = ((capabilities?.hierarchy as { levels?: unknown[] } | undefined)?.levels ??
+    []) as Array<Record<string, unknown>>;
+  const levels = rawLevels.map((level) => ({
+    name: typeof level.name === "string" ? level.name : undefined,
+    displayName:
+      typeof level.display_name === "string"
+        ? level.display_name
+        : typeof level.displayName === "string"
+          ? level.displayName
+          : undefined,
+    pluralName:
+      typeof level.plural_name === "string"
+        ? level.plural_name
+        : typeof level.pluralName === "string"
+          ? level.pluralName
+          : undefined,
+    icon: typeof level.icon === "string" ? level.icon : undefined,
+    isContainer:
+      typeof level.is_container === "boolean"
+        ? level.is_container
+        : typeof level.isContainer === "boolean"
+          ? level.isContainer
+          : undefined,
+  }));
+  const rawFeatures = capabilities?.features;
+  const features: Record<string, boolean> =
+    typeof rawFeatures === "object" && rawFeatures !== null
+      ? Object.fromEntries(
+          Object.entries(rawFeatures).filter((entry): entry is [string, boolean] => {
+            const [, value] = entry;
+            return typeof value === "boolean";
+          })
+        )
+      : {};
+  return {
+    supportedOperations: Array.isArray(capabilities?.supported_operations)
+      ? (capabilities?.supported_operations as string[])
+      : Array.isArray(capabilities?.supportedOperations)
+        ? (capabilities?.supportedOperations as string[])
+        : [],
+    supportedObjectTypes: Array.isArray(capabilities?.supported_object_types)
+      ? (capabilities?.supported_object_types as string[])
+      : Array.isArray(capabilities?.supportedObjectTypes)
+        ? (capabilities?.supportedObjectTypes as string[])
+        : [],
+    hierarchy: { levels },
+    features,
+  };
+}
+
 export async function loadCurrentState(
   workspaceUri: vscode.Uri,
-  validate: boolean = false
+  validate: boolean = false,
+  options: LoadStateOptions = {}
 ): Promise<{
   state: ProviderState;
   changelog: ChangelogFile;
-  provider: Provider;
+  provider: ProviderMetadata;
   validationResult: ValidationResult | null;
 }> {
-  const project = await readProject(workspaceUri);
-  const changelog = await readChangelog(workspaceUri);
-
-  // Get provider
-  const provider = ProviderRegistry.get(project.provider.type);
-  if (!provider) {
-    throw new Error(
-      `Provider '${project.provider.type}' not found. ` +
-      'Please ensure the provider is installed.'
-    );
+  const payloadMode = options.payloadMode ?? "full";
+  const cacheKey = getWorkspaceStateCacheKey(workspaceUri, validate, payloadMode);
+  const cached = workspaceStateCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAtMs <= STATE_CACHE_TTL_MS) {
+    return cloneStateResult(cached.value);
   }
 
-  // Load state
-  let state: ProviderState;
-  if (project.latestSnapshot) {
-    // Load latest snapshot
-    const snapshot = await readSnapshot(workspaceUri, project.latestSnapshot);
-    state = snapshot.state;
-  } else {
-    // No snapshots yet, start with empty state
-    state = provider.createInitialState();
-  }
-
-  // Apply changelog ops using provider's state reducer
-  state = provider.applyOperations(state, changelog.ops);
-
-  // Optionally validate state and dependencies (calls Python SDK: schemax validate --json)
-  let validationResult: ValidationResult | null = null;
+  const args = ["workspace-state"];
   if (validate) {
-    validationResult = await validateDependenciesInternal(workspaceUri);
+    args.push("--validate-dependencies");
+  }
+  if (payloadMode !== "full") {
+    args.push("--payload-mode", payloadMode);
+  }
+  const envelope = await pythonBackend.runJson<RawWorkspaceStatePayload>(
+    "workspace-state",
+    args,
+    workspaceUri.fsPath
+  );
+  if (
+    envelope.status === "error" ||
+    !envelope.data?.state ||
+    !envelope.data?.changelog ||
+    !envelope.data?.provider
+  ) {
+    const message =
+      envelope.errors[0]?.message || "Could not load workspace state from Python backend";
+    throw new Error(message);
   }
 
-  return { state, changelog, provider, validationResult };
-}
-
-/**
- * Internal dependency validation helper - calls Python SDK
- */
-async function validateDependenciesInternal(
-  workspaceUri: vscode.Uri
-): Promise<ValidationResult> {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  try {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-
-    // Call schemax validate with --json flag
-    const { stdout } = await execAsync('schemax validate --json', {
-      cwd: workspaceUri.fsPath,
-    });
-
-    // Parse JSON output (last non-empty line)
-    const lines = stdout.trim().split('\n').filter((line: string) => line.trim());
-    const jsonLine = lines[lines.length - 1];
-    const result = JSON.parse(jsonLine);
-
-    return {
-      errors: result.errors || [],
-      warnings: result.warnings || [],
-    };
-  } catch (error: any) {
-    // If validation fails, try to parse stdout
-    if (error.stdout) {
-      try {
-        const lines = error.stdout.trim().split('\n').filter((line: string) => line.trim());
-        const jsonLine = lines[lines.length - 1];
-        const result = JSON.parse(jsonLine);
-        return {
-          errors: result.errors || [],
-          warnings: result.warnings || [],
-        };
-      } catch {
-        // Fallback to error message
-        warnings.push(`Could not validate dependencies: ${error.message}`);
-      }
-    } else {
-      // Check if it's just CLI not installed (common case - not an error)
-      const errorMsg = error.message || '';
-      if (errorMsg.includes('command not found') || 
-          errorMsg.includes('schemax: command not found') ||
-          errorMsg.includes('ENOENT')) {
-        // Silently skip - CLI validation is optional
-        // User can install Python SDK later if they want validation features
-      } else {
-        // Actual validation error - show warning
-        warnings.push(`Could not validate dependencies: ${error.message}`);
-      }
-    }
+  const data = envelope.data;
+  const state = data.state;
+  const changelog = data.changelog;
+  const provider = data.provider;
+  if (!state || !changelog || !provider) {
+    throw new Error("Python backend returned incomplete workspace-state payload");
   }
-
-  return { errors, warnings };
+  const validation = data.validation;
+  const result = {
+    state,
+    changelog,
+    provider: {
+      ...provider,
+      capabilities: normalizeProviderCapabilities(provider.capabilities),
+    },
+    validationResult: validation
+      ? {
+          errors: (validation.errors ?? []).map((item) => {
+            if (typeof item === "string") return item;
+            return item.message || "Unknown validation error";
+          }),
+          warnings: (validation.warnings ?? []).map((item) => {
+            if (typeof item === "string") return item;
+            return item.message || "Unknown validation warning";
+          }),
+        }
+      : null,
+  };
+  workspaceStateCache.set(cacheKey, {
+    cachedAtMs: Date.now(),
+    value: cloneStateResult(result),
+  });
+  return result;
 }
 
 /**
  * Sanitize a logical catalog name for use as a physical name segment (alphanumeric + underscore).
  */
 function sanitizeCatalogNameForPhysical(name: string): string {
-  return (name || '').replace(/[^a-zA-Z0-9_]/g, '_');
+  return (name || "").replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
 /**
@@ -532,7 +643,7 @@ export function ensureCatalogMappingsForNewCatalogs(
   ops: Operation[]
 ): { project: ProjectFileV4; updated: boolean } {
   const addCatalogOps = ops.filter(
-    (op) => op.op?.endsWith('add_catalog') && (op.payload as { name?: string })?.name
+    (op) => op.op?.endsWith("add_catalog") && (op.payload as { name?: string })?.name
   );
   const newNames = [...new Set(addCatalogOps.map((op) => (op.payload as { name: string }).name))];
   if (newNames.length === 0 || !project.provider?.environments) {
@@ -570,32 +681,16 @@ export function ensureCatalogMappingsForNewCatalogs(
 /**
  * Append operations to changelog
  */
-export async function appendOps(
-  workspaceUri: vscode.Uri,
-  ops: Operation[]
-): Promise<void> {
+export async function appendOps(workspaceUri: vscode.Uri, ops: Operation[]): Promise<void> {
   const project = await readProject(workspaceUri);
   const changelog = await readChangelog(workspaceUri);
-  const provider = ProviderRegistry.get(project.provider.type);
-
-  if (!provider) {
-    throw new Error(`Provider '${project.provider.type}' not found`);
-  }
-
-  // Validate operations
-  for (const op of ops) {
-    const validation = provider.validateOperation(op);
-    if (!validation.valid) {
-      const errors = validation.errors.map(e => `${e.field}: ${e.message}`).join(', ');
-      throw new Error(`Invalid operation: ${errors}`);
-    }
-  }
+  validateOperationBatch(ops);
 
   // Append ops
   changelog.ops.push(...ops);
 
   // Write back changelog
-  await writeChangelog(workspaceUri, changelog);
+  const writeTasks: Promise<void>[] = [writeChangelog(workspaceUri, changelog)];
 
   // When user adds a new catalog (e.g. after dropping the default), add its logical name to
   // each environment's catalogMappings so apply/sql don't fail with "Missing catalog mapping(s)"
@@ -604,8 +699,9 @@ export async function appendOps(
     ops
   );
   if (updated) {
-    await writeProject(workspaceUri, projectAfterMappings);
+    writeTasks.push(writeProject(workspaceUri, projectAfterMappings));
   }
+  await Promise.all(writeTasks);
 }
 
 /**
@@ -622,7 +718,7 @@ export async function createSnapshot(
   const changelog = await readChangelog(workspaceUri);
 
   // Load current state
-  const { state } = await loadCurrentState(workspaceUri);
+  const { state } = await loadCurrentState(workspaceUri, false, { payloadMode: "state-only" });
 
   // Determine version
   const snapshotVersion = version || getNextVersion(project.latestSnapshot, project.settings);
@@ -639,7 +735,7 @@ export async function createSnapshot(
   const stateHash = calculateStateHash(state, opsWithIds);
 
   // Get username
-  const username = os.userInfo().username || 'unknown';
+  const username = os.userInfo().username || "unknown";
 
   // Create snapshot file
   const snapshotFile: SnapshotFile = {
@@ -707,15 +803,14 @@ export function getEnvironmentConfig(
   environment: string
 ): EnvironmentConfig {
   const envConfig = project.provider.environments[environment];
-  
+
   if (!envConfig) {
-    const available = Object.keys(project.provider.environments).join(', ');
+    const available = Object.keys(project.provider.environments).join(", ");
     throw new Error(
-      `Environment '${environment}' not found in project. ` +
-      `Available environments: ${available}`
+      `Environment '${environment}' not found in project. ` + `Available environments: ${available}`
     );
   }
-  
+
   return envConfig;
 }
 
@@ -724,7 +819,7 @@ export function getEnvironmentConfig(
  */
 function calculateStateHash(state: ProviderState, operations: Operation[]): string {
   const content = JSON.stringify({ state, operations }, null, 0);
-  return crypto.createHash('sha256').update(content).digest('hex');
+  return crypto.createHash("sha256").update(content).digest("hex");
 }
 
 /**
@@ -732,17 +827,30 @@ function calculateStateHash(state: ProviderState, operations: Operation[]): stri
  */
 function getNextVersion(currentVersion: string | null, settings: ProjectSettings): string {
   if (!currentVersion) {
-    return settings.versionPrefix + '0.1.0';
+    return settings.versionPrefix + "0.1.0";
   }
 
   // Parse version (e.g., "v0.1.0" or "0.1.0")
   const match = currentVersion.match(/(\d+)\.(\d+)\.(\d+)/);
   if (!match) {
-    return settings.versionPrefix + '0.1.0';
+    return settings.versionPrefix + "0.1.0";
   }
 
   const [, major, minor] = match;
   const nextMinor = parseInt(minor, 10) + 1;
 
   return `${settings.versionPrefix}${major}.${nextMinor}.0`;
+}
+
+function validateOperationBatch(ops: Operation[]): void {
+  for (const operation of ops) {
+    const missingFields: string[] = [];
+    if (!operation.provider?.trim()) missingFields.push("provider");
+    if (!operation.op?.trim()) missingFields.push("op");
+    if (!operation.target?.trim()) missingFields.push("target");
+    if (!operation.ts?.trim()) missingFields.push("ts");
+    if (missingFields.length > 0) {
+      throw new Error(`Invalid operation: missing required field(s): ${missingFields.join(", ")}`);
+    }
+  }
 }

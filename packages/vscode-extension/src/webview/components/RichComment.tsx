@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 interface RichCommentProps {
   text: string;
@@ -7,18 +7,19 @@ interface RichCommentProps {
 }
 
 type Block =
-  | { type: 'paragraph'; text: string }
-  | { type: 'unordered_list'; items: string[] }
-  | { type: 'ordered_list'; items: string[] };
+  | { type: "paragraph"; text: string }
+  | { type: "unordered_list"; items: string[] }
+  | { type: "ordered_list"; items: string[] };
 
 export const RichComment: React.FC<RichCommentProps> = ({
   text,
   collapsedLines = 7,
   collapseThreshold = 360,
 }) => {
-  const normalized = (text || '').trim();
+  const normalized = (text || "").trim();
   const blocks = React.useMemo(() => parseBlocks(normalized), [normalized]);
-  const shouldCollapse = normalized.length > collapseThreshold || normalized.split('\n').length > collapsedLines + 1;
+  const shouldCollapse =
+    normalized.length > collapseThreshold || normalized.split("\n").length > collapsedLines + 1;
   const [expanded, setExpanded] = React.useState<boolean>(false);
 
   React.useEffect(() => {
@@ -30,11 +31,11 @@ export const RichComment: React.FC<RichCommentProps> = ({
   return (
     <div className="rich-comment">
       <div
-        className={`rich-comment__content ${shouldCollapse && !expanded ? 'is-collapsed' : ''}`}
-        style={{ ['--collapsed-lines' as string]: String(collapsedLines) }}
+        className={`rich-comment__content ${shouldCollapse && !expanded ? "is-collapsed" : ""}`}
+        style={{ ["--collapsed-lines" as string]: String(collapsedLines) }}
       >
         {blocks.map((block, index) => {
-          if (block.type === 'unordered_list') {
+          if (block.type === "unordered_list") {
             return (
               <ul key={`ul-${index}`} className="rich-comment__list">
                 {block.items.map((item, itemIndex) => (
@@ -43,7 +44,7 @@ export const RichComment: React.FC<RichCommentProps> = ({
               </ul>
             );
           }
-          if (block.type === 'ordered_list') {
+          if (block.type === "ordered_list") {
             return (
               <ol key={`ol-${index}`} className="rich-comment__list rich-comment__list--ordered">
                 {block.items.map((item, itemIndex) => (
@@ -65,7 +66,7 @@ export const RichComment: React.FC<RichCommentProps> = ({
           className="rich-comment__toggle"
           onClick={() => setExpanded((current) => !current)}
         >
-          {expanded ? 'Show less' : 'Show more'}
+          {expanded ? "Show less" : "Show more"}
         </button>
       )}
     </div>
@@ -73,7 +74,7 @@ export const RichComment: React.FC<RichCommentProps> = ({
 };
 
 function parseBlocks(raw: string): Block[] {
-  const lines = raw.split('\n');
+  const lines = raw.split("\n");
   const blocks: Block[] = [];
   let i = 0;
 
@@ -93,7 +94,7 @@ function parseBlocks(raw: string): Block[] {
         items.push(match[1].trim());
         i += 1;
       }
-      blocks.push({ type: 'unordered_list', items });
+      blocks.push({ type: "unordered_list", items });
       continue;
     }
 
@@ -106,7 +107,7 @@ function parseBlocks(raw: string): Block[] {
         items.push(match[1].trim());
         i += 1;
       }
-      blocks.push({ type: 'ordered_list', items });
+      blocks.push({ type: "ordered_list", items });
       continue;
     }
 
@@ -118,7 +119,7 @@ function parseBlocks(raw: string): Block[] {
       paragraphLines.push(line);
       i += 1;
     }
-    blocks.push({ type: 'paragraph', text: paragraphLines.join(' ') });
+    blocks.push({ type: "paragraph", text: paragraphLines.join(" ") });
   }
 
   return blocks;
@@ -137,7 +138,7 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
       nodes.push(text.slice(cursor, start));
     }
 
-    if (full.startsWith('[') && match[2]) {
+    if (full.startsWith("[") && match[2]) {
       const labelMatch = full.match(/^\[([^\]]+)\]/);
       const label = labelMatch?.[1] || full;
       const href = match[2];
@@ -150,11 +151,11 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
       } else {
         nodes.push(label);
       }
-    } else if (full.startsWith('`') && full.endsWith('`')) {
+    } else if (full.startsWith("`") && full.endsWith("`")) {
       nodes.push(<code key={`${start}-code`}>{full.slice(1, -1)}</code>);
-    } else if (full.startsWith('**') && full.endsWith('**')) {
+    } else if (full.startsWith("**") && full.endsWith("**")) {
       nodes.push(<strong key={`${start}-bold`}>{full.slice(2, -2)}</strong>);
-    } else if (full.startsWith('*') && full.endsWith('*')) {
+    } else if (full.startsWith("*") && full.endsWith("*")) {
       nodes.push(<em key={`${start}-italic`}>{full.slice(1, -1)}</em>);
     } else if (/^https?:\/\//i.test(full)) {
       nodes.push(

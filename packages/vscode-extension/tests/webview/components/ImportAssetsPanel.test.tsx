@@ -6,7 +6,7 @@ import {
   ImportRunRequest,
   isImportFromSql,
 } from '../../../src/webview/components/ImportAssetsPanel';
-import { ProjectFile } from '../../../src/providers/unity/models';
+import { ProjectFile } from '../../../src/webview/models/unity';
 
 const makeProject = (overrides?: Partial<ProjectFile>): ProjectFile => ({
   version: 4,

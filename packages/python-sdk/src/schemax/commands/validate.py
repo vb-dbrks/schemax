@@ -7,11 +7,11 @@ Validates SchemaX project files and state structure.
 import json
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from rich.console import Console
 
-from schemax.core.storage import load_current_state, read_project
+from schemax.core.workspace_repository import WorkspaceRepository
 
 from .snapshot_rebase import detect_stale_snapshots
 
@@ -20,6 +20,25 @@ console = Console()
 
 class ValidationError(Exception):
     """Raised when validation fails"""
+
+
+class _WorkspaceRepoPort(Protocol):
+    def read_project(self, *, workspace: Path) -> dict[str, Any]: ...
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]: ...
+
+
+class _ValidateWorkspaceRepository:
+    """Repository adapter for validation workflow."""
+
+    def __init__(self) -> None:
+        self._repository = WorkspaceRepository()
+
+    def read_project(self, *, workspace: Path) -> dict[str, Any]:
+        return self._repository.read_project(workspace=workspace)
+
+    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
+        return self._repository.load_current_state(workspace=workspace, validate=validate)
 
 
 def _compute_dependency_errors_and_warnings(
@@ -70,10 +89,15 @@ def validate_dependencies(state: Any, ops: list[Any], provider: Any) -> tuple[li
     return errors, warnings
 
 
-def _load_project_and_state(workspace: Path) -> tuple[dict, Any, dict, Any]:
+def _load_project_and_state(
+    workspace: Path, workspace_repo: _WorkspaceRepoPort
+) -> tuple[dict[str, Any], Any, dict[str, Any], Any]:
     """Load project.json and current state. Raises FileNotFoundError if missing."""
-    project = read_project(workspace)
-    state, changelog, provider, _ = load_current_state(workspace, validate=False)
+    project = workspace_repo.read_project(workspace=workspace)
+    state, changelog, provider, _ = workspace_repo.load_current_state(
+        workspace=workspace,
+        validate=False,
+    )
     return project, state, changelog, provider
 
 
@@ -193,7 +217,11 @@ def _run_validation_steps(
     return True
 
 
-def validate_project(workspace: Path, json_output: bool = False) -> bool:
+def validate_project(
+    workspace: Path,
+    json_output: bool = False,
+    workspace_repo: _WorkspaceRepoPort | None = None,
+) -> bool:
     """Validate SchemaX project files.
 
     Validates project.json, changelog.json, and state structure.
@@ -202,6 +230,7 @@ def validate_project(workspace: Path, json_output: bool = False) -> bool:
     Args:
         workspace: Path to SchemaX workspace
         json_output: If True, output results as JSON instead of rich console
+        workspace_repo: Optional repository override for tests/injection
 
     Returns:
         True if validation passes
@@ -209,13 +238,21 @@ def validate_project(workspace: Path, json_output: bool = False) -> bool:
     Raises:
         ValidationError: If validation fails
     """
+    repository: _WorkspaceRepoPort = workspace_repo or _ValidateWorkspaceRepository()
     try:
-        project, state, changelog, provider = _load_project_and_state(workspace)
+        project, state, changelog, provider = _load_project_and_state(workspace, repository)
     except FileNotFoundError as e:
         raise ValidationError(f"Project files not found: {e}") from e
 
     try:
-        return _run_validation_steps(workspace, project, state, changelog, provider, json_output)
+        return _run_validation_steps(
+            workspace=workspace,
+            project=project,
+            state=state,
+            changelog=changelog,
+            provider=provider,
+            json_output=json_output,
+        )
     except ValidationError:
         raise
     except Exception as e:

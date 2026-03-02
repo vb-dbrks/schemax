@@ -20,6 +20,35 @@ def _make_op(op_id: str = "op_1") -> Operation:
     )
 
 
+class _RepoStub:
+    def __init__(
+        self,
+        *,
+        snapshots: dict[str, dict] | None = None,
+        project: dict | None = None,
+        raise_on_version: str | None = None,
+        env_config: dict | None = None,
+    ) -> None:
+        self._snapshots = snapshots or {}
+        self._project = project or {}
+        self._raise_on_version = raise_on_version
+        self._env_config = env_config or {}
+
+    def read_snapshot(self, *, workspace: Path, version: str) -> dict:
+        del workspace
+        if version == self._raise_on_version:
+            raise FileNotFoundError(f"{version}.json")
+        return self._snapshots[version]
+
+    def read_project(self, *, workspace: Path) -> dict:
+        del workspace
+        return self._project
+
+    def get_environment_config(self, *, project: dict, environment: str) -> dict:
+        del project, environment
+        return self._env_config
+
+
 def test_generate_diff_rejects_same_version() -> None:
     with pytest.raises(DiffError, match="Cannot diff the same version"):
         generate_diff(
@@ -30,24 +59,28 @@ def test_generate_diff_rejects_same_version() -> None:
 
 
 def test_generate_diff_raises_when_provider_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "schemax.commands.diff.read_snapshot",
-        lambda _workspace, _version: {"state": {"catalogs": []}},
-    )
-    monkeypatch.setattr(
-        "schemax.commands.diff.read_project",
-        lambda _workspace: {"provider": {"type": "missing"}},
-    )
     monkeypatch.setattr("schemax.commands.diff.ProviderRegistry.get", lambda _provider_id: None)
+    repo = _RepoStub(
+        snapshots={
+            "v0.1.0": {"state": {"catalogs": []}},
+            "v0.2.0": {"state": {"catalogs": []}},
+        },
+        project={"provider": {"type": "missing"}},
+    )
 
     with pytest.raises(DiffError, match="Provider 'missing' not found"):
-        generate_diff(workspace=Path("."), from_version="v0.1.0", to_version="v0.2.0")
+        generate_diff(
+            workspace=Path("."),
+            from_version="v0.1.0",
+            to_version="v0.2.0",
+            workspace_repo=repo,
+        )
 
 
 def test_generate_diff_with_sql_and_target_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
-    op = _make_op()
+    operation = _make_op()
     differ = Mock()
-    differ.generate_diff_operations.return_value = [op]
+    differ.generate_diff_operations.return_value = [operation]
 
     sql_gen = Mock()
     sql_gen.generate_sql.return_value = "CREATE CATALOG dev_demo;"
@@ -56,24 +89,17 @@ def test_generate_diff_with_sql_and_target_mapping(monkeypatch: pytest.MonkeyPat
     provider.get_state_differ.return_value = differ
     provider.get_sql_generator.return_value = sql_gen
 
-    monkeypatch.setattr(
-        "schemax.commands.diff.read_snapshot",
-        lambda _workspace, _version: {"state": {"catalogs": [{"name": "demo"}]}, "operations": []},
-    )
-    monkeypatch.setattr(
-        "schemax.commands.diff.read_project",
-        lambda _workspace: {
+    monkeypatch.setattr("schemax.commands.diff.ProviderRegistry.get", lambda _provider_id: provider)
+    repo = _RepoStub(
+        snapshots={
+            "v0.1.0": {"state": {"catalogs": [{"name": "demo"}]}, "operations": []},
+            "v0.2.0": {"state": {"catalogs": [{"name": "demo"}]}, "operations": []},
+        },
+        project={
             "provider": {"type": "unity"},
             "environments": {"dev": {"topLevelName": "dev_demo"}},
         },
-    )
-    monkeypatch.setattr("schemax.commands.diff.ProviderRegistry.get", lambda _provider_id: provider)
-    monkeypatch.setattr(
-        "schemax.commands.diff.get_environment_config",
-        lambda _project, _env: {
-            "topLevelName": "dev_demo",
-            "catalogMappings": {"demo": "dev_demo"},
-        },
+        env_config={"topLevelName": "dev_demo", "catalogMappings": {"demo": "dev_demo"}},
     )
 
     operations = generate_diff(
@@ -82,6 +108,7 @@ def test_generate_diff_with_sql_and_target_mapping(monkeypatch: pytest.MonkeyPat
         to_version="v0.2.0",
         show_sql=True,
         target_env="dev",
+        workspace_repo=repo,
     )
 
     assert len(operations) == 1
@@ -90,10 +117,16 @@ def test_generate_diff_with_sql_and_target_mapping(monkeypatch: pytest.MonkeyPat
 
 
 def test_generate_diff_missing_snapshot_error_has_context(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _raise_missing(_workspace: Path, version: str) -> dict:
-        raise FileNotFoundError(f"{version}.json")
-
-    monkeypatch.setattr("schemax.commands.diff.read_snapshot", _raise_missing)
+    repo = _RepoStub(
+        snapshots={"v0.2.0": {"state": {"catalogs": []}, "operations": []}},
+        project={"provider": {"type": "unity"}},
+        raise_on_version="v0.1.0",
+    )
 
     with pytest.raises(DiffError, match="Source snapshot not found"):
-        generate_diff(workspace=Path("."), from_version="v0.1.0", to_version="v0.2.0")
+        generate_diff(
+            workspace=Path("."),
+            from_version="v0.1.0",
+            to_version="v0.2.0",
+            workspace_repo=repo,
+        )

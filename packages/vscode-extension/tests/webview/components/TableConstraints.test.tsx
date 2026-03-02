@@ -6,7 +6,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import { TableConstraints } from '../../../src/webview/components/TableConstraints';
-import { Table } from '../../../src/providers/unity/models';
+import { Table } from '../../../src/webview/models/unity';
 
 // Mock the Zustand store
 const mockAddConstraint = jest.fn();

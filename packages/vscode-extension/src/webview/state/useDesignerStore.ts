@@ -1,11 +1,23 @@
-import { create } from 'zustand';
-import { v4 as uuidv4 } from 'uuid';
-import { ProjectFile, Catalog, Schema, Table, Column, Constraint, RowFilter, ColumnMask, View } from '../../providers/unity/models';
-import { Operation } from '../../providers/base/operations';
-import { ProviderInfo, ProviderCapabilities } from '../../providers/base/provider';
-import { getVsCodeApi } from '../vscode-api';
-import type { ScopeResult, GrantTargetType } from '../utils/bulkUtils';
-import { getObjectsInScope as computeScope } from '../utils/bulkUtils';
+import { create } from "zustand";
+import { v4 as uuidv4 } from "uuid";
+import type {
+  ProjectFile,
+  Catalog,
+  Schema,
+  Table,
+  Constraint,
+  RowFilter,
+  ColumnMask,
+  View,
+  UnityFunction,
+  UnityFunctionParameter,
+  UnityMaterializedView,
+  UnityVolume,
+} from "../models/unity";
+import type { Operation, ProviderCapabilities } from "../../contracts/workspace";
+import { getVsCodeApi } from "../vscode-api";
+import type { ScopeResult, GrantTargetType } from "../utils/bulkUtils";
+import { getObjectsInScope as computeScope } from "../utils/bulkUtils";
 
 const vscode = getVsCodeApi();
 
@@ -23,29 +35,50 @@ interface DesignerState {
   selectedCatalogId: string | null;
   selectedSchemaId: string | null;
   selectedTableId: string | null;
-  
+
   // Actions
   setProject: (project: ProjectFile) => void;
   setProvider: (provider: ProviderMetadata) => void;
   selectCatalog: (catalogId: string | null) => void;
   selectSchema: (schemaId: string | null) => void;
   selectTable: (tableId: string | null) => void;
-  
+
   // Mutations (all emit ops)
-  addCatalog: (name: string, options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;
+  addCatalog: (
+    name: string,
+    options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }
+  ) => void;
   renameCatalog: (catalogId: string, newName: string) => void;
-  updateCatalog: (catalogId: string, updates: { managedLocationName?: string | null; comment?: string; tags?: Record<string, string> }) => void;
+  updateCatalog: (
+    catalogId: string,
+    updates: {
+      managedLocationName?: string | null;
+      comment?: string;
+      tags?: Record<string, string>;
+    }
+  ) => void;
   dropCatalog: (catalogId: string) => void;
-  
-  addSchema: (catalogId: string, name: string, options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }) => void;
+
+  addSchema: (
+    catalogId: string,
+    name: string,
+    options?: { managedLocationName?: string; comment?: string; tags?: Record<string, string> }
+  ) => void;
   renameSchema: (schemaId: string, newName: string) => void;
-  updateSchema: (schemaId: string, updates: { managedLocationName?: string | null; comment?: string; tags?: Record<string, string> }) => void;
+  updateSchema: (
+    schemaId: string,
+    updates: {
+      managedLocationName?: string | null;
+      comment?: string;
+      tags?: Record<string, string>;
+    }
+  ) => void;
   dropSchema: (schemaId: string) => void;
-  
+
   addTable: (
-    schemaId: string, 
-    name: string, 
-    format: 'delta' | 'iceberg',
+    schemaId: string,
+    name: string,
+    format: "delta" | "iceberg",
     options?: {
       external?: boolean;
       externalLocationName?: string;
@@ -58,7 +91,7 @@ interface DesignerState {
   renameTable: (tableId: string, newName: string) => void;
   dropTable: (tableId: string) => void;
   setTableComment: (tableId: string, comment: string) => void;
-  
+
   // View operations
   addView: (
     schemaId: string,
@@ -76,76 +109,184 @@ interface DesignerState {
     }
   ) => void;
   renameView: (viewId: string, newName: string) => void;
-  updateView: (viewId: string, definition: string, extractedDependencies?: any) => void;
+  updateView: (
+    viewId: string,
+    definition: string,
+    extractedDependencies?: {
+      tables: string[];
+      views: string[];
+      catalogs?: string[];
+      schemas?: string[];
+    }
+  ) => void;
   dropView: (viewId: string) => void;
 
   // Volume operations
-  addVolume: (schemaId: string, name: string, volumeType: 'managed' | 'external', options?: { comment?: string; location?: string }) => void;
+  addVolume: (
+    schemaId: string,
+    name: string,
+    volumeType: "managed" | "external",
+    options?: { comment?: string; location?: string }
+  ) => void;
   renameVolume: (volumeId: string, newName: string) => void;
   updateVolume: (volumeId: string, updates: { comment?: string; location?: string }) => void;
   dropVolume: (volumeId: string) => void;
 
   // Function operations
-  addFunction: (schemaId: string, name: string, language: 'SQL' | 'PYTHON', body: string, options?: { returnType?: string; comment?: string; parameters?: any[] }) => void;
+  addFunction: (
+    schemaId: string,
+    name: string,
+    language: "SQL" | "PYTHON",
+    body: string,
+    options?: { returnType?: string; comment?: string; parameters?: UnityFunctionParameter[] }
+  ) => void;
   renameFunction: (functionId: string, newName: string) => void;
-  updateFunction: (functionId: string, updates: { body?: string; returnType?: string; comment?: string; parameters?: any[] }) => void;
+  updateFunction: (
+    functionId: string,
+    updates: {
+      body?: string;
+      returnType?: string;
+      comment?: string;
+      parameters?: UnityFunctionParameter[];
+    }
+  ) => void;
   dropFunction: (functionId: string) => void;
 
   // Materialized view operations
-  addMaterializedView: (schemaId: string, name: string, definition: string, options?: { comment?: string; refreshSchedule?: string; extractedDependencies?: { tables: string[]; views: string[] } }) => void;
+  addMaterializedView: (
+    schemaId: string,
+    name: string,
+    definition: string,
+    options?: {
+      comment?: string;
+      refreshSchedule?: string;
+      extractedDependencies?: { tables: string[]; views: string[] };
+    }
+  ) => void;
   renameMaterializedView: (materializedViewId: string, newName: string) => void;
-  updateMaterializedView: (materializedViewId: string, definition: string, extractedDependencies?: any, options?: { refreshSchedule?: string; comment?: string }) => void;
+  updateMaterializedView: (
+    materializedViewId: string,
+    definition: string,
+    extractedDependencies?: { tables: string[]; views: string[] },
+    options?: { refreshSchedule?: string; comment?: string }
+  ) => void;
   dropMaterializedView: (materializedViewId: string) => void;
-  
-  addColumn: (tableId: string, name: string, type: string, nullable: boolean, comment?: string, tags?: Record<string, string>) => void;
+
+  addColumn: (
+    tableId: string,
+    name: string,
+    type: string,
+    nullable: boolean,
+    comment?: string,
+    tags?: Record<string, string>
+  ) => void;
   renameColumn: (tableId: string, colId: string, newName: string) => void;
   dropColumn: (tableId: string, colId: string) => void;
   reorderColumns: (tableId: string, order: string[]) => void;
   changeColumnType: (tableId: string, colId: string, newType: string) => void;
   setColumnNullable: (tableId: string, colId: string, nullable: boolean) => void;
   setColumnComment: (tableId: string, colId: string, comment: string) => void;
-  
+
   setTableProperty: (tableId: string, key: string, value: string) => void;
   unsetTableProperty: (tableId: string, key: string) => void;
-  
+
   // Table tag operations
   setTableTag: (tableId: string, tagName: string, tagValue: string) => void;
   unsetTableTag: (tableId: string, tagName: string) => void;
-  
+
   // Column tag operations (NEW)
   setColumnTag: (tableId: string, colId: string, tagName: string, tagValue: string) => void;
   unsetColumnTag: (tableId: string, colId: string, tagName: string) => void;
-  
+
   // Constraint operations (NEW)
-  addConstraint: (tableId: string, constraint: Omit<Constraint, 'id'>) => void;
-  updateConstraint: (tableId: string, constraintId: string, constraint: Omit<Constraint, 'id'>) => void;
+  addConstraint: (tableId: string, constraint: Omit<Constraint, "id">) => void;
+  updateConstraint: (
+    tableId: string,
+    constraintId: string,
+    constraint: Omit<Constraint, "id">
+  ) => void;
   dropConstraint: (tableId: string, constraintId: string) => void;
-  
+
   // Row filter operations (NEW)
-  addRowFilter: (tableId: string, name: string, udfExpression: string, enabled?: boolean, description?: string) => void;
-  updateRowFilter: (tableId: string, filterId: string, updates: Partial<Omit<RowFilter, 'id'>>) => void;
+  addRowFilter: (
+    tableId: string,
+    name: string,
+    udfExpression: string,
+    enabled?: boolean,
+    description?: string
+  ) => void;
+  updateRowFilter: (
+    tableId: string,
+    filterId: string,
+    updates: Partial<Omit<RowFilter, "id">>
+  ) => void;
   removeRowFilter: (tableId: string, filterId: string) => void;
-  
+
   // Column mask operations (NEW)
-  addColumnMask: (tableId: string, columnId: string, name: string, maskFunction: string, enabled?: boolean, description?: string) => void;
-  updateColumnMask: (tableId: string, maskId: string, updates: Partial<Omit<ColumnMask, 'id' | 'columnId'>>) => void;
+  addColumnMask: (
+    tableId: string,
+    columnId: string,
+    name: string,
+    maskFunction: string,
+    enabled?: boolean,
+    description?: string
+  ) => void;
+  updateColumnMask: (
+    tableId: string,
+    maskId: string,
+    updates: Partial<Omit<ColumnMask, "id" | "columnId">>
+  ) => void;
   removeColumnMask: (tableId: string, maskId: string) => void;
 
   // Grant operations (catalog, schema, table, view, volume, function, materialized_view)
-  addGrant: (targetType: 'catalog' | 'schema' | 'table' | 'view' | 'volume' | 'function' | 'materialized_view', targetId: string, principal: string, privileges: string[]) => void;
-  revokeGrant: (targetType: 'catalog' | 'schema' | 'table' | 'view' | 'volume' | 'function' | 'materialized_view', targetId: string, principal: string, privileges?: string[]) => void;
+  addGrant: (
+    targetType:
+      | "catalog"
+      | "schema"
+      | "table"
+      | "view"
+      | "volume"
+      | "function"
+      | "materialized_view",
+    targetId: string,
+    principal: string,
+    privileges: string[]
+  ) => void;
+  revokeGrant: (
+    targetType:
+      | "catalog"
+      | "schema"
+      | "table"
+      | "view"
+      | "volume"
+      | "function"
+      | "materialized_view",
+    targetId: string,
+    principal: string,
+    privileges?: string[]
+  ) => void;
 
   // Helper to find objects
   findCatalog: (catalogId: string) => Catalog | undefined;
   findSchema: (schemaId: string) => { catalog: Catalog; schema: Schema } | undefined;
   findTable: (tableId: string) => { catalog: Catalog; schema: Schema; table: Table } | undefined;
   findView: (viewId: string) => { catalog: Catalog; schema: Schema; view: View } | undefined;
-  findVolume: (volumeId: string) => { catalog: Catalog; schema: Schema; volume: any } | undefined;
-  findFunction: (functionId: string) => { catalog: Catalog; schema: Schema; func: any } | undefined;
-  findMaterializedView: (mvId: string) => { catalog: Catalog; schema: Schema; mv: any } | undefined;
+  findVolume: (
+    volumeId: string
+  ) => { catalog: Catalog; schema: Schema; volume: UnityVolume } | undefined;
+  findFunction: (
+    functionId: string
+  ) => { catalog: Catalog; schema: Schema; func: UnityFunction } | undefined;
+  findMaterializedView: (
+    mvId: string
+  ) => { catalog: Catalog; schema: Schema; mv: UnityMaterializedView } | undefined;
 
   // Bulk operations (scope from catalog or schema selection)
-  getObjectsInScope: (scope: 'catalog' | 'schema', catalogId?: string | null, schemaId?: string | null) => ScopeResult;
+  getObjectsInScope: (
+    scope: "catalog" | "schema",
+    catalogId?: string | null,
+    schemaId?: string | null
+  ) => ScopeResult;
   applyBulkOps: (ops: Operation[]) => void;
   buildBulkGrantOps: (
     scopeResult: ScopeResult,
@@ -153,14 +294,26 @@ interface DesignerState {
     privileges: string[],
     targetTypeFilter?: GrantTargetType
   ) => Operation[];
-  buildBulkTableTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
+  buildBulkTableTagOps: (
+    scopeResult: ScopeResult,
+    tagName: string,
+    tagValue: string
+  ) => Operation[];
   buildBulkViewTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
-  buildBulkSchemaTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
-  buildBulkCatalogTagOps: (scopeResult: ScopeResult, tagName: string, tagValue: string) => Operation[];
+  buildBulkSchemaTagOps: (
+    scopeResult: ScopeResult,
+    tagName: string,
+    tagValue: string
+  ) => Operation[];
+  buildBulkCatalogTagOps: (
+    scopeResult: ScopeResult,
+    tagName: string,
+    tagValue: string
+  ) => Operation[];
 }
 
 function emitOps(ops: Operation[]) {
-  vscode.postMessage({ type: 'append-ops', payload: ops });
+  vscode.postMessage({ type: "append-ops", payload: ops });
 }
 
 // Helper to create an operation with provider context
@@ -168,11 +321,11 @@ function createOperation(
   store: DesignerState,
   opType: string,
   target: string,
-  payload: Record<string, any>
+  payload: Record<string, unknown>
 ): Operation {
   const provider = store.provider;
   if (!provider) {
-    throw new Error('Provider not initialized. Cannot create operations.');
+    throw new Error("Provider not initialized. Cannot create operations.");
   }
 
   return {
@@ -200,10 +353,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   addCatalog: (name, options) => {
     const catalogId = `cat_${uuidv4()}`;
-    const op = createOperation(get(), 'add_catalog', catalogId, { 
-      catalogId, 
+    const op = createOperation(get(), "add_catalog", catalogId, {
+      catalogId,
       name,
-      ...options
+      ...options,
     });
     emitOps([op]);
   },
@@ -215,7 +368,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       throw new Error(`Cannot rename catalog: catalog ${catalogId} not found`);
     }
     const oldName = catalog.name;
-    const op = createOperation(state, 'rename_catalog', catalogId, { oldName, newName });
+    const op = createOperation(state, "rename_catalog", catalogId, { oldName, newName });
     emitOps([op]);
   },
 
@@ -225,22 +378,22 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     if (!catalog) {
       throw new Error(`Cannot update catalog: catalog ${catalogId} not found`);
     }
-    const op = createOperation(state, 'update_catalog', catalogId, updates);
+    const op = createOperation(state, "update_catalog", catalogId, updates);
     emitOps([op]);
   },
 
   dropCatalog: (catalogId) => {
-    const op = createOperation(get(), 'drop_catalog', catalogId, {});
+    const op = createOperation(get(), "drop_catalog", catalogId, {});
     emitOps([op]);
   },
 
   addSchema: (catalogId, name, options) => {
     const schemaId = `sch_${uuidv4()}`;
-    const op = createOperation(get(), 'add_schema', schemaId, { 
-      schemaId, 
-      name, 
+    const op = createOperation(get(), "add_schema", schemaId, {
+      schemaId,
+      name,
       catalogId,
-      ...options
+      ...options,
     });
     emitOps([op]);
   },
@@ -252,7 +405,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       throw new Error(`Cannot rename schema: schema ${schemaId} not found`);
     }
     const oldName = schemaInfo.schema.name;
-    const op = createOperation(state, 'rename_schema', schemaId, { oldName, newName });
+    const op = createOperation(state, "rename_schema", schemaId, { oldName, newName });
     emitOps([op]);
   },
 
@@ -262,23 +415,23 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     if (!schemaInfo) {
       throw new Error(`Cannot update schema: schema ${schemaId} not found`);
     }
-    const op = createOperation(state, 'update_schema', schemaId, updates);
+    const op = createOperation(state, "update_schema", schemaId, updates);
     emitOps([op]);
   },
 
   dropSchema: (schemaId) => {
-    const op = createOperation(get(), 'drop_schema', schemaId, {});
+    const op = createOperation(get(), "drop_schema", schemaId, {});
     emitOps([op]);
   },
 
   addTable: (schemaId, name, format, options) => {
     const tableId = `tbl_${uuidv4()}`;
-    const op = createOperation(get(), 'add_table', tableId, { 
-      tableId, 
-      name, 
-      schemaId, 
+    const op = createOperation(get(), "add_table", tableId, {
+      tableId,
+      name,
+      schemaId,
       format,
-      ...options
+      ...options,
     });
     emitOps([op]);
   },
@@ -290,29 +443,29 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       throw new Error(`Cannot rename table: table ${tableId} not found`);
     }
     const oldName = tableInfo.table.name;
-    const op = createOperation(state, 'rename_table', tableId, { oldName, newName });
+    const op = createOperation(state, "rename_table", tableId, { oldName, newName });
     emitOps([op]);
   },
 
   dropTable: (tableId) => {
-    const op = createOperation(get(), 'drop_table', tableId, {});
+    const op = createOperation(get(), "drop_table", tableId, {});
     emitOps([op]);
   },
 
   setTableComment: (tableId, comment) => {
-    const op = createOperation(get(), 'set_table_comment', tableId, { tableId, comment });
+    const op = createOperation(get(), "set_table_comment", tableId, { tableId, comment });
     emitOps([op]);
   },
 
   // View operations
   addView: (schemaId, name, definition, options) => {
     const viewId = `view_${uuidv4()}`;
-    const op = createOperation(get(), 'add_view', viewId, {
+    const op = createOperation(get(), "add_view", viewId, {
       viewId,
       name,
       schemaId,
       definition,
-      ...options
+      ...options,
     });
     emitOps([op]);
   },
@@ -324,26 +477,26 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       throw new Error(`Cannot rename view: view ${viewId} not found`);
     }
     const oldName = viewInfo.view.name;
-    const op = createOperation(state, 'rename_view', viewId, { oldName, newName });
+    const op = createOperation(state, "rename_view", viewId, { oldName, newName });
     emitOps([op]);
   },
 
   updateView: (viewId, definition, extractedDependencies) => {
-    const op = createOperation(get(), 'update_view', viewId, {
+    const op = createOperation(get(), "update_view", viewId, {
       definition,
-      extractedDependencies
+      extractedDependencies,
     });
     emitOps([op]);
   },
 
   dropView: (viewId) => {
-    const op = createOperation(get(), 'drop_view', viewId, {});
+    const op = createOperation(get(), "drop_view", viewId, {});
     emitOps([op]);
   },
 
   addVolume: (schemaId, name, volumeType, options) => {
     const volumeId = `vol_${uuidv4()}`;
-    const op = createOperation(get(), 'add_volume', volumeId, {
+    const op = createOperation(get(), "add_volume", volumeId, {
       volumeId,
       schemaId,
       name,
@@ -358,29 +511,32 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     const state = get();
     const info = state.findVolume(volumeId);
     if (!info) throw new Error(`Volume ${volumeId} not found`);
-    const op = createOperation(state, 'rename_volume', volumeId, { oldName: info.volume.name, newName });
+    const op = createOperation(state, "rename_volume", volumeId, {
+      oldName: info.volume.name,
+      newName,
+    });
     emitOps([op]);
   },
 
   updateVolume: (volumeId, updates) => {
-    const op = createOperation(get(), 'update_volume', volumeId, updates);
+    const op = createOperation(get(), "update_volume", volumeId, updates);
     emitOps([op]);
   },
 
   dropVolume: (volumeId) => {
-    const op = createOperation(get(), 'drop_volume', volumeId, {});
+    const op = createOperation(get(), "drop_volume", volumeId, {});
     emitOps([op]);
   },
 
   addFunction: (schemaId, name, language, body, options) => {
     const functionId = `func_${uuidv4()}`;
-    const op = createOperation(get(), 'add_function', functionId, {
+    const op = createOperation(get(), "add_function", functionId, {
       functionId,
       schemaId,
       name,
       language,
       body,
-      returnType: options?.returnType ?? 'STRING',
+      returnType: options?.returnType ?? "STRING",
       comment: options?.comment,
       parameters: options?.parameters ?? [],
     });
@@ -391,23 +547,26 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     const state = get();
     const info = state.findFunction(functionId);
     if (!info) throw new Error(`Function ${functionId} not found`);
-    const op = createOperation(state, 'rename_function', functionId, { oldName: info.func.name, newName });
+    const op = createOperation(state, "rename_function", functionId, {
+      oldName: info.func.name,
+      newName,
+    });
     emitOps([op]);
   },
 
   updateFunction: (functionId, updates) => {
-    const op = createOperation(get(), 'update_function', functionId, updates);
+    const op = createOperation(get(), "update_function", functionId, updates);
     emitOps([op]);
   },
 
   dropFunction: (functionId) => {
-    const op = createOperation(get(), 'drop_function', functionId, {});
+    const op = createOperation(get(), "drop_function", functionId, {});
     emitOps([op]);
   },
 
   addMaterializedView: (schemaId, name, definition, options) => {
     const materializedViewId = `mv_${uuidv4()}`;
-    const op = createOperation(get(), 'add_materialized_view', materializedViewId, {
+    const op = createOperation(get(), "add_materialized_view", materializedViewId, {
       materializedViewId,
       schemaId,
       name,
@@ -423,7 +582,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     const state = get();
     const info = state.findMaterializedView(materializedViewId);
     if (!info) throw new Error(`Materialized view ${materializedViewId} not found`);
-    const op = createOperation(state, 'rename_materialized_view', materializedViewId, { oldName: info.mv.name, newName });
+    const op = createOperation(state, "rename_materialized_view", materializedViewId, {
+      oldName: info.mv.name,
+      newName,
+    });
     emitOps([op]);
   },
 
@@ -431,31 +593,43 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     const payload: Record<string, unknown> = { definition, extractedDependencies };
     if (options?.refreshSchedule !== undefined) payload.refreshSchedule = options.refreshSchedule;
     if (options?.comment !== undefined) payload.comment = options.comment;
-    const op = createOperation(get(), 'update_materialized_view', materializedViewId, payload);
+    const op = createOperation(get(), "update_materialized_view", materializedViewId, payload);
     emitOps([op]);
   },
 
   dropMaterializedView: (materializedViewId) => {
-    const op = createOperation(get(), 'drop_materialized_view', materializedViewId, {});
+    const op = createOperation(get(), "drop_materialized_view", materializedViewId, {});
     emitOps([op]);
   },
 
   addColumn: (tableId, name, type, nullable, comment, tags) => {
     const colId = `col_${uuidv4()}`;
     const ops = [];
-    
+
     // Add column operation
-    const addOp = createOperation(get(), 'add_column', colId, { tableId, colId, name, type, nullable, comment });
+    const addOp = createOperation(get(), "add_column", colId, {
+      tableId,
+      colId,
+      name,
+      type,
+      nullable,
+      comment,
+    });
     ops.push(addOp);
-    
+
     // Add tag operations if tags provided
     if (tags && Object.keys(tags).length > 0) {
       Object.entries(tags).forEach(([tagName, tagValue]) => {
-        const tagOp = createOperation(get(), 'set_column_tag', colId, { tableId, colId, tagName, tagValue });
+        const tagOp = createOperation(get(), "set_column_tag", colId, {
+          tableId,
+          colId,
+          tagName,
+          tagValue,
+        });
         ops.push(tagOp);
       });
     }
-    
+
     emitOps(ops);
   },
 
@@ -465,12 +639,12 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     if (!tableInfo) {
       throw new Error(`Cannot rename column: table ${tableId} not found`);
     }
-    const column = tableInfo.table.columns.find(c => c.id === colId);
+    const column = tableInfo.table.columns.find((c) => c.id === colId);
     if (!column) {
       throw new Error(`Cannot rename column: column ${colId} not found in table ${tableId}`);
     }
     const oldName = column.name;
-    const op = createOperation(state, 'rename_column', colId, { tableId, oldName, newName });
+    const op = createOperation(state, "rename_column", colId, { tableId, oldName, newName });
     emitOps([op]);
   },
 
@@ -480,18 +654,18 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     if (!tableInfo) {
       throw new Error(`Cannot drop column: table ${tableId} not found`);
     }
-    const column = tableInfo.table.columns.find(c => c.id === colId);
+    const column = tableInfo.table.columns.find((c) => c.id === colId);
     if (!column) {
       throw new Error(`Cannot drop column: column ${colId} not found`);
     }
     const name = column.name;
-    const op = createOperation(state, 'drop_column', colId, { tableId, name });
+    const op = createOperation(state, "drop_column", colId, { tableId, name });
     emitOps([op]);
   },
 
   reorderColumns: (tableId, order) => {
     const state = get();
-    
+
     // Find the current table to capture previous column order
     let previousOrder: string[] = [];
     if (state.project?.state?.catalogs) {
@@ -499,75 +673,75 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
         for (const schema of catalog.schemas || []) {
           for (const table of schema.tables || []) {
             if (table.id === tableId) {
-              previousOrder = table.columns.map(col => col.id);
+              previousOrder = table.columns.map((col) => col.id);
               break;
             }
           }
         }
       }
     }
-    
-    const op = createOperation(state, 'reorder_columns', tableId, { 
-      tableId, 
+
+    const op = createOperation(state, "reorder_columns", tableId, {
+      tableId,
       order,
-      previousOrder // Capture the previous order for ALTER TABLE generation
+      previousOrder, // Capture the previous order for ALTER TABLE generation
     });
     emitOps([op]);
   },
 
   changeColumnType: (tableId, colId, newType) => {
-    const op = createOperation(get(), 'change_column_type', colId, { tableId, newType });
+    const op = createOperation(get(), "change_column_type", colId, { tableId, newType });
     emitOps([op]);
   },
 
   setColumnNullable: (tableId, colId, nullable) => {
-    const op = createOperation(get(), 'set_nullable', colId, { tableId, nullable });
+    const op = createOperation(get(), "set_nullable", colId, { tableId, nullable });
     emitOps([op]);
   },
 
   setColumnComment: (tableId, colId, comment) => {
-    const op = createOperation(get(), 'set_column_comment', colId, { tableId, comment });
+    const op = createOperation(get(), "set_column_comment", colId, { tableId, comment });
     emitOps([op]);
   },
 
   setTableProperty: (tableId, key, value) => {
-    const op = createOperation(get(), 'set_table_property', tableId, { tableId, key, value });
+    const op = createOperation(get(), "set_table_property", tableId, { tableId, key, value });
     emitOps([op]);
   },
 
   unsetTableProperty: (tableId, key) => {
-    const op = createOperation(get(), 'unset_table_property', tableId, { tableId, key });
+    const op = createOperation(get(), "unset_table_property", tableId, { tableId, key });
     emitOps([op]);
   },
 
   setTableTag: (tableId, tagName, tagValue) => {
-    const op = createOperation(get(), 'set_table_tag', tableId, { tableId, tagName, tagValue });
+    const op = createOperation(get(), "set_table_tag", tableId, { tableId, tagName, tagValue });
     emitOps([op]);
   },
 
   unsetTableTag: (tableId, tagName) => {
-    const op = createOperation(get(), 'unset_table_tag', tableId, { tableId, tagName });
+    const op = createOperation(get(), "unset_table_tag", tableId, { tableId, tagName });
     emitOps([op]);
   },
 
   // Column tag operations
   setColumnTag: (tableId, colId, tagName, tagValue) => {
-    const op = createOperation(get(), 'set_column_tag', colId, { tableId, tagName, tagValue });
+    const op = createOperation(get(), "set_column_tag", colId, { tableId, tagName, tagValue });
     emitOps([op]);
   },
 
   unsetColumnTag: (tableId, colId, tagName) => {
-    const op = createOperation(get(), 'unset_column_tag', colId, { tableId, tagName });
+    const op = createOperation(get(), "unset_column_tag", colId, { tableId, tagName });
     emitOps([op]);
   },
 
   // Constraint operations
   addConstraint: (tableId, constraint) => {
     const constraintId = `const_${uuidv4()}`;
-    const op = createOperation(get(), 'add_constraint', constraintId, { 
-      tableId, 
+    const op = createOperation(get(), "add_constraint", constraintId, {
+      tableId,
       constraintId,
-      ...constraint 
+      ...constraint,
     });
     emitOps([op]);
   },
@@ -577,15 +751,15 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     const state = get();
     let insertAt: number | undefined;
     let constraintName: string | undefined;
-    
+
     if (state.project) {
       for (const catalog of state.project.state.catalogs) {
         for (const schema of catalog.schemas) {
-          const table = schema.tables.find(t => t.id === tableId);
+          const table = schema.tables.find((t) => t.id === tableId);
           if (table) {
-            const existingConstraint = table.constraints.find(c => c.id === constraintId);
+            const existingConstraint = table.constraints.find((c) => c.id === constraintId);
             if (existingConstraint) {
-              const index = table.constraints.findIndex(c => c.id === constraintId);
+              const index = table.constraints.findIndex((c) => c.id === constraintId);
               insertAt = index;
               constraintName = existingConstraint.name;
             }
@@ -594,28 +768,28 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
         }
       }
     }
-    
+
     // Batch drop and add operations together to ensure atomic update
     // Include the constraint name in the drop operation payload for SQL generation
     // Create drop operation with an earlier timestamp to ensure correct SQL order
     const now = new Date();
-    const dropOp = createOperation(get(), 'drop_constraint', constraintId, { 
+    const dropOp = createOperation(get(), "drop_constraint", constraintId, {
       tableId,
-      name: constraintName // Include name so SQL generator doesn't need to look it up
+      name: constraintName, // Include name so SQL generator doesn't need to look it up
     });
     // Override timestamp to be 1ms earlier to guarantee sort order
     dropOp.ts = new Date(now.getTime() - 1).toISOString();
-    
+
     const newConstraintId = `const_${uuidv4()}`;
-    const addOp = createOperation(get(), 'add_constraint', newConstraintId, {
+    const addOp = createOperation(get(), "add_constraint", newConstraintId, {
       tableId,
       constraintId: newConstraintId,
       insertAt, // Pass the original position
-      ...constraint
+      ...constraint,
     });
     // Ensure add operation has a later timestamp
     addOp.ts = new Date(now.getTime() + 1).toISOString();
-    
+
     // Emit both operations as a single batch
     emitOps([dropOp, addOp]);
   },
@@ -624,13 +798,13 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     // Find the constraint name for SQL generation
     const state = get();
     let constraintName: string | undefined;
-    
+
     if (state.project) {
       for (const catalog of state.project.state.catalogs) {
         for (const schema of catalog.schemas) {
-          const table = schema.tables.find(t => t.id === tableId);
+          const table = schema.tables.find((t) => t.id === tableId);
           if (table) {
-            const constraint = table.constraints.find(c => c.id === constraintId);
+            const constraint = table.constraints.find((c) => c.id === constraintId);
             if (constraint) {
               constraintName = constraint.name;
             }
@@ -639,10 +813,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
         }
       }
     }
-    
-    const op = createOperation(get(), 'drop_constraint', constraintId, { 
+
+    const op = createOperation(get(), "drop_constraint", constraintId, {
       tableId,
-      name: constraintName // Include name for SQL generation
+      name: constraintName, // Include name for SQL generation
     });
     emitOps([op]);
   },
@@ -650,43 +824,54 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   // Row filter operations
   addRowFilter: (tableId, name, udfExpression, enabled = true, description) => {
     const filterId = `filter_${uuidv4()}`;
-    const op = createOperation(get(), 'add_row_filter', filterId, { 
-      tableId, filterId, name, udfExpression, enabled, description 
+    const op = createOperation(get(), "add_row_filter", filterId, {
+      tableId,
+      filterId,
+      name,
+      udfExpression,
+      enabled,
+      description,
     });
     emitOps([op]);
   },
 
   updateRowFilter: (tableId, filterId, updates) => {
-    const op = createOperation(get(), 'update_row_filter', filterId, { tableId, ...updates });
+    const op = createOperation(get(), "update_row_filter", filterId, { tableId, ...updates });
     emitOps([op]);
   },
 
   removeRowFilter: (tableId, filterId) => {
-    const op = createOperation(get(), 'remove_row_filter', filterId, { tableId });
+    const op = createOperation(get(), "remove_row_filter", filterId, { tableId });
     emitOps([op]);
   },
 
   // Column mask operations
   addColumnMask: (tableId, columnId, name, maskFunction, enabled = true, description) => {
     const maskId = `mask_${uuidv4()}`;
-    const op = createOperation(get(), 'add_column_mask', maskId, { 
-      tableId, maskId, columnId, name, maskFunction, enabled, description 
+    const op = createOperation(get(), "add_column_mask", maskId, {
+      tableId,
+      maskId,
+      columnId,
+      name,
+      maskFunction,
+      enabled,
+      description,
     });
     emitOps([op]);
   },
 
   updateColumnMask: (tableId, maskId, updates) => {
-    const op = createOperation(get(), 'update_column_mask', maskId, { tableId, ...updates });
+    const op = createOperation(get(), "update_column_mask", maskId, { tableId, ...updates });
     emitOps([op]);
   },
 
   removeColumnMask: (tableId, maskId) => {
-    const op = createOperation(get(), 'remove_column_mask', maskId, { tableId });
+    const op = createOperation(get(), "remove_column_mask", maskId, { tableId });
     emitOps([op]);
   },
 
   addGrant: (targetType, targetId, principal, privileges) => {
-    const op = createOperation(get(), 'add_grant', targetId, {
+    const op = createOperation(get(), "add_grant", targetId, {
       targetType,
       targetId,
       principal,
@@ -696,7 +881,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   },
 
   revokeGrant: (targetType, targetId, principal, privileges) => {
-    const op = createOperation(get(), 'revoke_grant', targetId, {
+    const op = createOperation(get(), "revoke_grant", targetId, {
       targetType,
       targetId,
       principal,
@@ -707,13 +892,13 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   findCatalog: (catalogId) => {
     const { project } = get();
-    return (project as any)?.state.catalogs.find((c: Catalog) => c.id === catalogId);
+    return project?.state.catalogs.find((c: Catalog) => c.id === catalogId);
   },
 
   findSchema: (schemaId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       const schema = catalog.schemas.find((s: Schema) => s.id === schemaId);
       if (schema) return { catalog, schema };
     }
@@ -723,7 +908,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findTable: (tableId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
         const table = schema.tables.find((t: Table) => t.id === tableId);
         if (table) return { catalog, schema, table };
@@ -735,7 +920,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findView: (viewId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
         if (schema.views) {
           const view = schema.views.find((v: View) => v.id === viewId);
@@ -749,10 +934,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findVolume: (volumeId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
         const volumes = schema.volumes ?? [];
-        const volume = volumes.find((v: any) => v.id === volumeId);
+        const volume = volumes.find((v: UnityVolume) => v.id === volumeId);
         if (volume) return { catalog, schema, volume };
       }
     }
@@ -762,10 +947,10 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findFunction: (functionId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
         const functions = schema.functions ?? [];
-        const func = functions.find((f: any) => f.id === functionId);
+        const func = functions.find((f: UnityFunction) => f.id === functionId);
         if (func) return { catalog, schema, func };
       }
     }
@@ -775,10 +960,14 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   findMaterializedView: (mvId) => {
     const { project } = get();
     if (!project) return undefined;
-    for (const catalog of (project as any).state.catalogs) {
+    for (const catalog of project.state.catalogs) {
       for (const schema of catalog.schemas) {
-        const mvs = schema.materializedViews ?? schema.materialized_views ?? [];
-        const mv = mvs.find((m: any) => m.id === mvId);
+        const mvs =
+          (schema as Schema & { materialized_views?: UnityMaterializedView[] }).materializedViews ??
+          (schema as Schema & { materialized_views?: UnityMaterializedView[] })
+            .materialized_views ??
+          [];
+        const mv = mvs.find((m: UnityMaterializedView) => m.id === mvId);
         if (mv) return { catalog, schema, mv };
       }
     }
@@ -802,7 +991,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       : scopeResult.grantTargets;
     for (const { targetType, targetId } of targets) {
       ops.push(
-        createOperation(state, 'add_grant', targetId, {
+        createOperation(state, "add_grant", targetId, {
           targetType,
           targetId,
           principal,
@@ -818,7 +1007,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     const ops: Operation[] = [];
     for (const { id } of scopeResult.tables) {
       ops.push(
-        createOperation(state, 'set_table_tag', id, {
+        createOperation(state, "set_table_tag", id, {
           tableId: id,
           tagName,
           tagValue,
@@ -833,7 +1022,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     const ops: Operation[] = [];
     for (const { id } of scopeResult.views) {
       ops.push(
-        createOperation(state, 'set_table_tag', id, {
+        createOperation(state, "set_table_tag", id, {
           tableId: id,
           tagName,
           tagValue,
@@ -849,7 +1038,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     for (const schema of scopeResult.schemas) {
       const mergedTags = { ...(schema.tags ?? {}), [tagName]: tagValue };
       ops.push(
-        createOperation(state, 'update_schema', schema.id, {
+        createOperation(state, "update_schema", schema.id, {
           tags: mergedTags,
         })
       );
@@ -862,7 +1051,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     const state = get();
     const mergedTags = { ...(scopeResult.catalog.tags ?? {}), [tagName]: tagValue };
     return [
-      createOperation(state, 'update_catalog', scopeResult.catalog.id, {
+      createOperation(state, "update_catalog", scopeResult.catalog.id, {
         tags: mergedTags,
       }),
     ];

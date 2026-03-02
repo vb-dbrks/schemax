@@ -6,7 +6,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import { ColumnGrid } from '../../../src/webview/components/ColumnGrid';
-import { Column } from '../../../src/providers/unity/models';
+import { Column } from '../../../src/webview/models/unity';
 
 // Mock the Zustand store
 const mockAddColumn = jest.fn();

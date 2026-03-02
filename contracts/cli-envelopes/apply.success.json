@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1",
+  "command": "apply",
+  "status": "success",
+  "data": {
+    "result": {
+      "status": "dry_run"
+    }
+  },
+  "warnings": [],
+  "errors": [],
+  "meta": {
+    "durationMs": 1,
+    "executedCommand": "schemax apply --json --target dev --dry-run",
+    "exitCode": 0
+  }
+}

@@ -5,6 +5,8 @@ Central registry for all available catalog providers.
 Providers must register themselves here to be available in the system.
 """
 
+import sys
+
 from .base.provider import Provider
 
 
@@ -28,8 +30,6 @@ class ProviderRegistryClass:
             raise ValueError(f"Provider with ID '{provider.info.id}' is already registered")
 
         self.providers[provider.info.id] = provider
-        import sys
-
         print(
             f"[SchemaX] Registered provider: {provider.info.name} ({provider.info.id})",
             file=sys.stderr,

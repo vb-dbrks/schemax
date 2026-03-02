@@ -31,16 +31,21 @@ Use this when validating multi-command live workflows (`import`, `sql`, `validat
 
 ### `unity_uc_objects_fixture.sql`
 
-Unity Catalog fixture for schema-level objects (volume, function, materialized view).
+Unity Catalog fixture for schema-level objects (volume, function, materialized view, view, partitioned table).
 
 It creates:
 
-- catalog + schema + base table
+- catalog + schema
+- base table (`base_fact`) with varied column types (BIGINT, STRING, DATE, DECIMAL, VARIANT) and PK
+- second table (`events_partitioned`) with PARTITIONED BY (dt) (Databricks does not allow both PARTITIONED BY and CLUSTER BY on the same table)
+- permanent view (`base_fact_view`) over base_fact
 - managed volume
 - SQL function (returns INT)
+- Python UDF (live_e2e_py_udf)
 - materialized view (depends on base table)
+- materialized view with REFRESH EVERY 1 DAY
 
-Use this for live E2E tests that verify import discovers volumes/functions/MVs and that validate/sql work. Tokens: `test_uc_objects` → catalog name, `__MANAGED_ROOT__` → managed location path.
+Use this for live E2E tests that verify import discovers volumes/functions/MVs/views and that validate/sql work. Tokens: `test_uc_objects` → catalog name, `__MANAGED_ROOT__` → managed location path. Optional: `__EXTERNAL_LOCATION__` for external volume (commented out by default).
 
 ### Optional live integration tests
 

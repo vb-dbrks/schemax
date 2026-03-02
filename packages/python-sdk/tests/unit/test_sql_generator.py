@@ -322,7 +322,7 @@ class TestTableSQL:
             "events",
             "schema_456",
             "delta",
-            comment="Table for storing event data",
+            options={"comment": "Table for storing event data"},
             op_id="op_007",
         )
 
@@ -1173,6 +1173,44 @@ class TestViewSQL:
         # Validate SQL syntax
         assert_sql(sql)
 
+    def test_add_view_with_null_extracted_dependencies(self, empty_unity_state, assert_sql):
+        """Null extractedDependencies must not crash SQL generation."""
+        state = empty_unity_state.model_dump(by_alias=True)
+        state["catalogs"] = [
+            {
+                "id": "cat1",
+                "name": "production",
+                "schemas": [
+                    {
+                        "id": "schema1",
+                        "name": "sales",
+                        "tables": [
+                            {"id": "table1", "name": "customers", "format": "delta", "columns": []}
+                        ],
+                        "views": [],
+                    }
+                ],
+            }
+        ]
+        generator = UnitySQLGenerator(state)
+        op = Operation(
+            id="op_v_null",
+            provider="unity",
+            op="unity.add_view",
+            target="view1",
+            payload={
+                "viewId": "view1",
+                "name": "customer_summary",
+                "schemaId": "schema1",
+                "definition": "SELECT * FROM customers",
+                "extractedDependencies": None,
+            },
+            ts="2024-01-01T00:00:00Z",
+        )
+        sql = generator.generate_sql([op])
+        assert "CREATE VIEW IF NOT EXISTS" in sql
+        assert_sql(sql)
+
     def test_view_dependencies_ordered_correctly(self, empty_unity_state, assert_sql):
         """Test that views depending on other views are created in correct order"""
         # Create empty state with one catalog and schema
@@ -1592,6 +1630,29 @@ class TestVolumeFunctionMaterializedViewSQL:
         assert "SELECT" in result.sql
         assert_sql(result.sql)
 
+    def test_add_materialized_view_with_null_extracted_dependencies(
+        self, sample_unity_state, assert_sql
+    ):
+        """Null extractedDependencies must not crash MV SQL generation."""
+        op = Operation(
+            id="op_mv_null",
+            provider="unity",
+            op="unity.add_materialized_view",
+            target="mv_001",
+            payload={
+                "materializedViewId": "mv_001",
+                "name": "my_mv",
+                "schemaId": "schema_456",
+                "definition": "SELECT id, name FROM users",
+                "extractedDependencies": None,
+            },
+            ts="2024-01-01T00:00:00Z",
+        )
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        result = generator.generate_sql_for_operation(op)
+        assert "MATERIALIZED VIEW" in result.sql
+        assert_sql(result.sql)
+
     def test_add_materialized_view_comment_before_as(self, sample_unity_state, assert_sql):
         """COMMENT must appear before AS (Databricks syntax); after SELECT is invalid."""
         builder = OperationBuilder()
@@ -1613,6 +1674,34 @@ class TestVolumeFunctionMaterializedViewSQL:
             "COMMENT must appear before AS clause for materialized views; "
             "got COMMENT after AS (Databricks parse error)."
         )
+
+    def test_add_materialized_view_partitioned_and_cluster_by(self, sample_unity_state, assert_sql):
+        """MV with PARTITIONED BY or CLUSTER BY is emitted (Databricks supports both)."""
+        builder = OperationBuilder()
+        generator = UnitySQLGenerator(sample_unity_state.model_dump(by_alias=True))
+        op_part = builder.materialized_view.add_materialized_view(
+            "mv_p",
+            "mv_partitioned",
+            "schema_456",
+            "SELECT id, dt FROM events",
+            partition_columns=["dt"],
+            op_id="op_mvp",
+        )
+        result_p = generator.generate_sql_for_operation(op_part)
+        assert "PARTITIONED BY (dt)" in result_p.sql
+        assert_sql(result_p.sql)
+
+        op_cluster = builder.materialized_view.add_materialized_view(
+            "mv_c",
+            "mv_clustered",
+            "schema_456",
+            "SELECT id, name FROM users",
+            cluster_columns=["id"],
+            op_id="op_mvc",
+        )
+        result_c = generator.generate_sql_for_operation(op_cluster)
+        assert "CLUSTER BY (id)" in result_c.sql
+        assert_sql(result_c.sql)
 
     def test_drop_materialized_view(self, sample_unity_state, assert_sql):
         """Test DROP MATERIALIZED VIEW SQL generation"""
@@ -1868,7 +1957,7 @@ class TestSQLOptimization:
                 "test",
                 "schema_456",
                 "delta",
-                comment="Table for test data",
+                options={"comment": "Table for test data"},
                 op_id="table_001",
             ),
             builder.column.add_column(

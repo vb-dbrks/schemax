@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.6] - 2026-03-02
+
+### Added
+
+- **Provider-contract architecture baseline** — Added explicit domain/provider contracts and registry surfaces to support multi-provider execution paths.
+- **Hive MVP provider** — Added first non-Unity provider implementation scaffold (`hive`) for breadth validation.
+- **CLI JSON envelope contracts** — Added/expanded machine-readable envelope fixtures and contract tests for extension-facing workflows.
+- **Architecture fitness tests** — Added guardrails to prevent provider-runtime leakage across layers.
+
+### Changed
+
+- **Python-first semantics** — Consolidated schema semantics into the Python SDK and aligned extension workflows to backend envelope transport.
+- **Storage/session layer** — Introduced repository/session abstractions for cleaner workspace mutation boundaries.
+- **Unity internals refactor** — Decomposed Unity parser/differ/reducer/sql-generator paths for lint/type compliance and maintainability.
+- **Cross-platform auth profile lookup** — Databricks profile detection now resolves config paths consistently across macOS/Linux/Windows.
+
+### Fixed
+
+- **CLI envelope correctness** — Fixed `apply` and `snapshot validate` JSON status/exit-code mismatches on failure/stale paths.
+- **Snapshot rebase service contract** — `SnapshotService.rebase()` now propagates success/failure from the underlying rebase result.
+- **Parser/test parity** — Updated DDL parser + tests for `ALTER ... SET TAGS` behavior and branch coverage.
+
 ## [0.2.5] - 2026-02-24
 
 ### Changed

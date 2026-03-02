@@ -3,16 +3,16 @@
  * Pure helpers over project.state for use by BulkOperationsPanel and store.
  */
 
-import type { ProjectFile, UnityCatalog, UnitySchema } from '../../providers/unity/models';
+import type { ProjectFile, UnityCatalog, UnitySchema } from "../models/unity";
 
 export type GrantTargetType =
-  | 'catalog'
-  | 'schema'
-  | 'table'
-  | 'view'
-  | 'volume'
-  | 'function'
-  | 'materialized_view';
+  | "catalog"
+  | "schema"
+  | "table"
+  | "view"
+  | "volume"
+  | "function"
+  | "materialized_view";
 
 export interface GrantTarget {
   targetType: GrantTargetType;
@@ -33,12 +33,12 @@ export interface ScopeResult {
   grantTargets: GrantTarget[];
 }
 
-function isUnityCatalog(c: any): c is UnityCatalog {
-  return c && Array.isArray(c.schemas);
+function isUnityCatalog(c: unknown): c is UnityCatalog {
+  return typeof c === "object" && c !== null && Array.isArray((c as UnityCatalog).schemas);
 }
 
-function isUnitySchema(s: any): s is UnitySchema {
-  return s && Array.isArray(s.tables);
+function isUnitySchema(s: unknown): s is UnitySchema {
+  return typeof s === "object" && s !== null && Array.isArray((s as UnitySchema).tables);
 }
 
 /**
@@ -47,7 +47,7 @@ function isUnitySchema(s: any): s is UnitySchema {
  */
 export function getObjectsInScope(
   project: ProjectFile | null,
-  scope: 'catalog' | 'schema',
+  scope: "catalog" | "schema",
   catalogId?: string | null,
   schemaId?: string | null
 ): ScopeResult {
@@ -65,20 +65,20 @@ export function getObjectsInScope(
 
   const catalogs = project.state.catalogs as UnityCatalog[];
 
-  if (scope === 'catalog') {
+  if (scope === "catalog") {
     if (!catalogId) return empty;
     const catalog = catalogs.find((c) => c.id === catalogId);
     if (!catalog || !isUnityCatalog(catalog)) return empty;
 
-    const schemas: ScopeResult['schemas'] = [];
-    const tables: ScopeResult['tables'] = [];
-    const views: ScopeResult['views'] = [];
-    const volumes: ScopeResult['volumes'] = [];
-    const functions: ScopeResult['functions'] = [];
-    const materializedViews: ScopeResult['materializedViews'] = [];
+    const schemas: ScopeResult["schemas"] = [];
+    const tables: ScopeResult["tables"] = [];
+    const views: ScopeResult["views"] = [];
+    const volumes: ScopeResult["volumes"] = [];
+    const functions: ScopeResult["functions"] = [];
+    const materializedViews: ScopeResult["materializedViews"] = [];
     const grantTargets: GrantTarget[] = [];
 
-    grantTargets.push({ targetType: 'catalog', targetId: catalog.id });
+    grantTargets.push({ targetType: "catalog", targetId: catalog.id });
 
     for (const schema of catalog.schemas || []) {
       if (!isUnitySchema(schema)) continue;
@@ -87,27 +87,27 @@ export function getObjectsInScope(
         name: schema.name,
         tags: schema.tags,
       });
-      grantTargets.push({ targetType: 'schema', targetId: schema.id });
+      grantTargets.push({ targetType: "schema", targetId: schema.id });
 
       for (const t of schema.tables || []) {
         tables.push({ id: t.id, name: t.name });
-        grantTargets.push({ targetType: 'table', targetId: t.id });
+        grantTargets.push({ targetType: "table", targetId: t.id });
       }
       for (const v of schema.views || []) {
         views.push({ id: v.id, name: v.name });
-        grantTargets.push({ targetType: 'view', targetId: v.id });
+        grantTargets.push({ targetType: "view", targetId: v.id });
       }
       for (const v of schema.volumes || []) {
         volumes.push({ id: v.id, name: v.name });
-        grantTargets.push({ targetType: 'volume', targetId: v.id });
+        grantTargets.push({ targetType: "volume", targetId: v.id });
       }
       for (const f of schema.functions || []) {
         functions.push({ id: f.id, name: f.name });
-        grantTargets.push({ targetType: 'function', targetId: f.id });
+        grantTargets.push({ targetType: "function", targetId: f.id });
       }
       for (const mv of schema.materializedViews || []) {
         materializedViews.push({ id: mv.id, name: mv.name });
-        grantTargets.push({ targetType: 'materialized_view', targetId: mv.id });
+        grantTargets.push({ targetType: "materialized_view", targetId: mv.id });
       }
     }
 
@@ -134,33 +134,33 @@ export function getObjectsInScope(
     if (!schema || !isUnitySchema(schema)) continue;
 
     const grantTargets: GrantTarget[] = [];
-    grantTargets.push({ targetType: 'schema', targetId: schema.id });
+    grantTargets.push({ targetType: "schema", targetId: schema.id });
 
-    const tables: ScopeResult['tables'] = [];
-    const views: ScopeResult['views'] = [];
-    const volumes: ScopeResult['volumes'] = [];
-    const functions: ScopeResult['functions'] = [];
-    const materializedViews: ScopeResult['materializedViews'] = [];
+    const tables: ScopeResult["tables"] = [];
+    const views: ScopeResult["views"] = [];
+    const volumes: ScopeResult["volumes"] = [];
+    const functions: ScopeResult["functions"] = [];
+    const materializedViews: ScopeResult["materializedViews"] = [];
 
     for (const t of schema.tables || []) {
       tables.push({ id: t.id, name: t.name });
-      grantTargets.push({ targetType: 'table', targetId: t.id });
+      grantTargets.push({ targetType: "table", targetId: t.id });
     }
     for (const v of schema.views || []) {
       views.push({ id: v.id, name: v.name });
-      grantTargets.push({ targetType: 'view', targetId: v.id });
+      grantTargets.push({ targetType: "view", targetId: v.id });
     }
     for (const v of schema.volumes || []) {
       volumes.push({ id: v.id, name: v.name });
-      grantTargets.push({ targetType: 'volume', targetId: v.id });
+      grantTargets.push({ targetType: "volume", targetId: v.id });
     }
     for (const f of schema.functions || []) {
       functions.push({ id: f.id, name: f.name });
-      grantTargets.push({ targetType: 'function', targetId: f.id });
+      grantTargets.push({ targetType: "function", targetId: f.id });
     }
     for (const mv of schema.materializedViews || []) {
       materializedViews.push({ id: mv.id, name: mv.name });
-      grantTargets.push({ targetType: 'materialized_view', targetId: mv.id });
+      grantTargets.push({ targetType: "materialized_view", targetId: mv.id });
     }
 
     return {
@@ -186,16 +186,14 @@ function plural(n: number, singular: string, pluralForm: string): string {
  */
 export function formatScopePreview(result: ScopeResult): string {
   const parts: string[] = [];
-  if (result.catalog) parts.push('1 catalog');
-  if (result.schemas.length) parts.push(plural(result.schemas.length, 'schema', 'schemas'));
-  if (result.tables.length) parts.push(plural(result.tables.length, 'table', 'tables'));
-  if (result.views.length) parts.push(plural(result.views.length, 'view', 'views'));
-  if (result.volumes.length) parts.push(plural(result.volumes.length, 'volume', 'volumes'));
-  if (result.functions.length) parts.push(plural(result.functions.length, 'function', 'functions'));
+  if (result.catalog) parts.push("1 catalog");
+  if (result.schemas.length) parts.push(plural(result.schemas.length, "schema", "schemas"));
+  if (result.tables.length) parts.push(plural(result.tables.length, "table", "tables"));
+  if (result.views.length) parts.push(plural(result.views.length, "view", "views"));
+  if (result.volumes.length) parts.push(plural(result.volumes.length, "volume", "volumes"));
+  if (result.functions.length) parts.push(plural(result.functions.length, "function", "functions"));
   if (result.materializedViews.length) {
-    parts.push(
-      plural(result.materializedViews.length, 'materialized view', 'materialized views')
-    );
+    parts.push(plural(result.materializedViews.length, "materialized view", "materialized views"));
   }
-  return parts.length ? parts.join(', ') : 'No objects in scope';
+  return parts.length ? parts.join(", ") : "No objects in scope";
 }

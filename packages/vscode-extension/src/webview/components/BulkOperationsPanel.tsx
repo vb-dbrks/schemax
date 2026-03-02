@@ -1,34 +1,42 @@
-import React, { useMemo, useState } from 'react';
-import { VSCodeButton, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
-import type { Operation } from '../../providers/base/operations';
-import { useDesignerStore } from '../state/useDesignerStore';
-import { formatScopePreview } from '../utils/bulkUtils';
-import type { GrantTargetType } from '../utils/bulkUtils';
-import { parsePrivileges } from '../utils/grants';
+import React, { useMemo, useState } from "react";
+import {
+  VSCodeButton,
+  VSCodeDropdown,
+  VSCodeOption,
+  VSCodeTextField,
+} from "@vscode/webview-ui-toolkit/react";
+import type { Operation } from "../../contracts/workspace";
+import { useDesignerStore } from "../state/useDesignerStore";
+import { formatScopePreview } from "../utils/bulkUtils";
+import type { GrantTargetType } from "../utils/bulkUtils";
+import { parsePrivileges } from "../utils/grants";
 
 const GRANT_OP_TYPES = [
-  'add_catalog_grant',
-  'add_schema_grants',
-  'add_table_grants',
-  'add_view_grants',
-  'add_volume_grants',
-  'add_function_grants',
-  'add_materialized_view_grants',
+  "add_catalog_grant",
+  "add_schema_grants",
+  "add_table_grants",
+  "add_view_grants",
+  "add_volume_grants",
+  "add_function_grants",
+  "add_materialized_view_grants",
 ] as const;
-const TAG_OP_TYPES = ['add_table_tag', 'add_view_tag', 'add_schema_tag', 'add_catalog_tag'] as const;
+const TAG_OP_TYPES = [
+  "add_table_tag",
+  "add_view_tag",
+  "add_schema_tag",
+  "add_catalog_tag",
+] as const;
 
-export type BulkOperationType =
-  | (typeof GRANT_OP_TYPES)[number]
-  | (typeof TAG_OP_TYPES)[number];
+export type BulkOperationType = (typeof GRANT_OP_TYPES)[number] | (typeof TAG_OP_TYPES)[number];
 
 const GRANT_OP_TO_TARGET: Record<(typeof GRANT_OP_TYPES)[number], GrantTargetType> = {
-  add_catalog_grant: 'catalog',
-  add_schema_grants: 'schema',
-  add_table_grants: 'table',
-  add_view_grants: 'view',
-  add_volume_grants: 'volume',
-  add_function_grants: 'function',
-  add_materialized_view_grants: 'materialized_view',
+  add_catalog_grant: "catalog",
+  add_schema_grants: "schema",
+  add_table_grants: "table",
+  add_view_grants: "view",
+  add_volume_grants: "volume",
+  add_function_grants: "function",
+  add_materialized_view_grants: "materialized_view",
 };
 
 function isGrantOp(op: BulkOperationType): op is (typeof GRANT_OP_TYPES)[number] {
@@ -39,7 +47,7 @@ function isTagOp(op: BulkOperationType): op is (typeof TAG_OP_TYPES)[number] {
 }
 
 interface BulkOperationsPanelProps {
-  scope: 'catalog' | 'schema';
+  scope: "catalog" | "schema";
   catalogId?: string | null;
   schemaId?: string | null;
   onClose: () => void;
@@ -67,11 +75,11 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
     [getObjectsInScope, scope, catalogId, schemaId]
   );
 
-  const [operationType, setOperationType] = useState<BulkOperationType>('add_table_grants');
-  const [principal, setPrincipal] = useState('');
-  const [privilegesStr, setPrivilegesStr] = useState('');
-  const [tagName, setTagName] = useState('');
-  const [tagValue, setTagValue] = useState('');
+  const [operationType, setOperationType] = useState<BulkOperationType>("add_table_grants");
+  const [principal, setPrincipal] = useState("");
+  const [privilegesStr, setPrivilegesStr] = useState("");
+  const [tagName, setTagName] = useState("");
+  const [tagValue, setTagValue] = useState("");
 
   const previewText = formatScopePreview(scopeResult);
 
@@ -81,13 +89,13 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
       return scopeResult.grantTargets.filter((g) => g.targetType === targetType).length;
     }
     switch (operationType) {
-      case 'add_table_tag':
+      case "add_table_tag":
         return scopeResult.tables.length;
-      case 'add_view_tag':
+      case "add_view_tag":
         return scopeResult.views.length;
-      case 'add_schema_tag':
+      case "add_schema_tag":
         return scopeResult.schemas.length;
-      case 'add_catalog_tag':
+      case "add_catalog_tag":
         return scopeResult.catalog ? 1 : 0;
       default:
         return 0;
@@ -97,10 +105,10 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
   const canApply = useMemo(() => {
     if (opCount === 0) return false;
     if (isGrantOp(operationType)) {
-      return principal.trim() !== '' && parsePrivileges(privilegesStr).length > 0;
+      return principal.trim() !== "" && parsePrivileges(privilegesStr).length > 0;
     }
     if (isTagOp(operationType)) {
-      return tagName.trim() !== '' && tagValue.trim() !== '';
+      return tagName.trim() !== "" && tagValue.trim() !== "";
     }
     return false;
   }, [operationType, opCount, principal, privilegesStr, tagName, tagValue]);
@@ -118,14 +126,14 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
           GRANT_OP_TO_TARGET[operationType]
         );
       }
-    } else if (operationType === 'add_table_tag' && tagName.trim() && tagValue.trim()) {
+    } else if (operationType === "add_table_tag" && tagName.trim() && tagValue.trim()) {
       ops = buildBulkTableTagOps(scopeResult, tagName.trim(), tagValue.trim());
-    } else if (operationType === 'add_view_tag' && tagName.trim() && tagValue.trim()) {
+    } else if (operationType === "add_view_tag" && tagName.trim() && tagValue.trim()) {
       ops = buildBulkViewTagOps(scopeResult, tagName.trim(), tagValue.trim());
-    } else if (operationType === 'add_schema_tag' && tagName.trim() && tagValue.trim()) {
+    } else if (operationType === "add_schema_tag" && tagName.trim() && tagValue.trim()) {
       ops = buildBulkSchemaTagOps(scopeResult, tagName.trim(), tagValue.trim());
     } else if (
-      operationType === 'add_catalog_tag' &&
+      operationType === "add_catalog_tag" &&
       tagName.trim() &&
       tagValue.trim() &&
       scopeResult.catalog
@@ -138,7 +146,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
     }
   };
 
-  const showCatalogTagOption = scope === 'catalog' && scopeResult.catalog != null;
+  const showCatalogTagOption = scope === "catalog" && scopeResult.catalog != null;
 
   if (!project) {
     return null;
@@ -168,9 +176,9 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
             <VSCodeDropdown
               id="bulk-op-type"
               value={operationType}
-              onInput={(e: React.FormEvent<HTMLSelectElement>) => {
+              onInput={(e) => {
                 const value = (e.target as HTMLSelectElement).value as BulkOperationType;
-                setOperationType(value || 'add_table_grants');
+                setOperationType(value || "add_table_grants");
               }}
               aria-label="Operation type"
             >
@@ -180,7 +188,9 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
               <VSCodeOption value="add_view_grants">Add view grants</VSCodeOption>
               <VSCodeOption value="add_volume_grants">Add volume grants</VSCodeOption>
               <VSCodeOption value="add_function_grants">Add function grants</VSCodeOption>
-              <VSCodeOption value="add_materialized_view_grants">Add materialized view grants</VSCodeOption>
+              <VSCodeOption value="add_materialized_view_grants">
+                Add materialized view grants
+              </VSCodeOption>
               <VSCodeOption value="add_table_tag">Add table tag</VSCodeOption>
               <VSCodeOption value="add_view_tag">Add view tag</VSCodeOption>
               <VSCodeOption value="add_schema_tag">Add schema tag</VSCodeOption>
@@ -193,13 +203,15 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
           {isGrantOp(operationType) && (
             <>
               <div className="modal-field-group">
-                <label htmlFor="bulk-grant-principal">Principal (user, group, or service principal)</label>
+                <label htmlFor="bulk-grant-principal">
+                  Principal (user, group, or service principal)
+                </label>
                 <VSCodeTextField
                   id="bulk-grant-principal"
                   value={principal}
-                  onInput={(e: Event) => {
+                  onInput={(e) => {
                     const target = e.target as HTMLInputElement;
-                    setPrincipal(target.value ?? '');
+                    setPrincipal(target.value ?? "");
                   }}
                   placeholder="e.g. data_engineers"
                   aria-label="Principal"
@@ -207,15 +219,15 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
               </div>
               <div className="modal-field-group">
                 <label htmlFor="bulk-grant-privileges">
-                  Privileges (comma-separated; use valid privileges for each object type, e.g. SELECT, MODIFY,
-                  USE CATALOG)
+                  Privileges (comma-separated; use valid privileges for each object type, e.g.
+                  SELECT, MODIFY, USE CATALOG)
                 </label>
                 <VSCodeTextField
                   id="bulk-grant-privileges"
                   value={privilegesStr}
-                  onInput={(e: Event) => {
+                  onInput={(e) => {
                     const target = e.target as HTMLInputElement;
-                    setPrivilegesStr(target.value ?? '');
+                    setPrivilegesStr(target.value ?? "");
                   }}
                   placeholder="e.g. SELECT, MODIFY"
                   aria-label="Privileges"
@@ -231,9 +243,9 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
                 <VSCodeTextField
                   id="bulk-tag-name"
                   value={tagName}
-                  onInput={(e: Event) => {
+                  onInput={(e) => {
                     const target = e.target as HTMLInputElement;
-                    setTagName(target.value ?? '');
+                    setTagName(target.value ?? "");
                   }}
                   placeholder="e.g. domain"
                   aria-label="Tag name"
@@ -244,9 +256,9 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
                 <VSCodeTextField
                   id="bulk-tag-value"
                   value={tagValue}
-                  onInput={(e: Event) => {
+                  onInput={(e) => {
                     const target = e.target as HTMLInputElement;
-                    setTagValue(target.value ?? '');
+                    setTagValue(target.value ?? "");
                   }}
                   placeholder="e.g. sales"
                   aria-label="Tag value"
@@ -262,7 +274,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
           )}
           {opCount > 0 && (
             <p className="bulk-ops-count" role="status">
-              {opCount} operation{opCount === 1 ? '' : 's'} will be applied.
+              {opCount} operation{opCount === 1 ? "" : "s"} will be applied.
             </p>
           )}
         </div>

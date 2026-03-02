@@ -5,7 +5,9 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell",
+    sans-serif;
   font-size: 13px;
   color: var(--vscode-foreground);
   background-color: var(--vscode-editor-background);
@@ -98,20 +100,20 @@ body {
   flex: 0 0 auto;
 }
 
-.app-header__status[data-state='dirty'] {
+.app-header__status[data-state="dirty"] {
   color: var(--vscode-list-warningForeground, #ffab00);
   background-color: var(--vscode-list-warningBackground, rgba(255, 171, 0, 0.18));
   border-color: rgba(255, 171, 0, 0.25);
 }
 
-.app-header__status[data-state='conflict'] {
+.app-header__status[data-state="conflict"] {
   color: var(--vscode-errorForeground, #f48771);
   background-color: var(--vscode-inputValidation-errorBackground, rgba(244, 135, 113, 0.18));
   border-color: rgba(244, 135, 113, 0.35);
   cursor: pointer;
 }
 
-.app-header__status[data-state='conflict']:hover {
+.app-header__status[data-state="conflict"]:hover {
   background-color: rgba(244, 135, 113, 0.25);
 }
 
@@ -123,36 +125,37 @@ body {
   box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.18);
 }
 
-.app-header__status[data-state='dirty'] .status-dot {
+.app-header__status[data-state="dirty"] .status-dot {
   background: var(--vscode-notificationsWarningIcon-foreground, #ffab00);
   box-shadow: 0 0 0 4px rgba(255, 171, 0, 0.25);
 }
 
-.app-header__status[data-state='conflict'] .status-dot {
+.app-header__status[data-state="conflict"] .status-dot {
   background: var(--vscode-errorForeground, #f48771);
   box-shadow: 0 0 0 4px rgba(244, 135, 113, 0.3);
   animation: pulse 2s infinite;
 }
 
-.app-header__status[data-state='stale'] {
+.app-header__status[data-state="stale"] {
   color: var(--vscode-editorWarning-foreground, #cca700);
   background-color: var(--vscode-inputValidation-warningBackground, rgba(204, 167, 0, 0.18));
   border-color: rgba(204, 167, 0, 0.35);
   cursor: pointer;
 }
 
-.app-header__status[data-state='stale']:hover {
+.app-header__status[data-state="stale"]:hover {
   background-color: rgba(204, 167, 0, 0.25);
 }
 
-.app-header__status[data-state='stale'] .status-dot {
+.app-header__status[data-state="stale"] .status-dot {
   background: var(--vscode-editorWarning-foreground, #cca700);
   box-shadow: 0 0 0 4px rgba(204, 167, 0, 0.3);
   animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -356,7 +359,6 @@ body {
 .environment-summary--modal .environment-summary__list {
   margin-top: 8px;
 }
-
 
 .project-settings {
   display: flex;
@@ -1533,8 +1535,13 @@ body {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .uncommitted-content {
@@ -2506,7 +2513,7 @@ body {
 }
 
 .isolation-section h4::before {
-  content: '';
+  content: "";
   display: inline-block;
   width: 3px;
   height: 14px;

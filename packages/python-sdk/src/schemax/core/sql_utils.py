@@ -6,6 +6,38 @@ import or future "run SQL file" features). No provider or dialect dependency.
 """
 
 
+def _process_line(
+    line: str,
+    current: list[str],
+    in_single_quote: bool,
+    in_double_quote: bool,
+) -> tuple[list[str], bool, bool, list[str], bool]:
+    """Process one line; update quote state and collect any completed statements.
+
+    Returns:
+        (updated_current, new_in_single, new_in_double, completed_statements, saw_statement_end)
+    """
+    completed: list[str] = []
+    new_single = in_single_quote
+    new_double = in_double_quote
+    new_current = list(current)
+
+    for char in line:
+        if char == "'" and not new_double:
+            new_single = not new_single
+        elif char == '"' and not new_single:
+            new_double = not new_double
+
+        if char == ";" and not new_single and not new_double:
+            statement = "".join(new_current).strip()
+            if statement:
+                completed.append(statement)
+            return ([], new_single, new_double, completed, True)
+        new_current.append(char)
+
+    return (new_current, new_single, new_double, completed, False)
+
+
 def split_sql_statements(sql_text: str) -> list[str]:
     """Split SQL script into statements while preserving quoted semicolons.
 
@@ -26,27 +58,15 @@ def split_sql_statements(sql_text: str) -> list[str]:
 
     for line in sql_text.splitlines():
         stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("--"):
+        if not stripped or stripped.startswith("--"):
             continue
 
-        saw_statement_end = False
-        for char in line:
-            if char == "'" and not in_double_quote:
-                in_single_quote = not in_single_quote
-            elif char == '"' and not in_single_quote:
-                in_double_quote = not in_double_quote
-
-            if char == ";" and not in_single_quote and not in_double_quote:
-                statement = "".join(current).strip()
-                if statement:
-                    statements.append(statement)
-                current = []
-                saw_statement_end = True
-                break  # rest of line is trailing comment/whitespace; skip
-            current.append(char)
-        if not saw_statement_end:
+        new_current, in_single_quote, in_double_quote, completed, saw_end = _process_line(
+            line, current, in_single_quote, in_double_quote
+        )
+        current = new_current
+        statements.extend(completed)
+        if not saw_end:
             current.append("\n")
 
     tail = "".join(current).strip()

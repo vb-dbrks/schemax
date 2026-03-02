@@ -1,13 +1,13 @@
-import React from 'react';
-import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
-import { useDesignerStore } from '../state/useDesignerStore';
-import { validateUnityCatalogObjectName } from '../utils/unityNames';
-import { ColumnGrid } from './ColumnGrid';
-import { TableProperties } from './TableProperties';
-import { TableTags } from './TableTags';
-import { TableConstraints } from './TableConstraints';
-import { SecurityGovernance } from './SecurityGovernance';
-import { RichComment } from './RichComment';
+import React from "react";
+import { VSCodeButton } from "@vscode/webview-ui-toolkit/react";
+import { useDesignerStore } from "../state/useDesignerStore";
+import { validateUnityCatalogObjectName } from "../utils/unityNames";
+import { ColumnGrid } from "./ColumnGrid";
+import { TableProperties } from "./TableProperties";
+import { TableTags } from "./TableTags";
+import { TableConstraints } from "./TableConstraints";
+import { SecurityGovernance } from "./SecurityGovernance";
+import { RichComment } from "./RichComment";
 
 // Codicon icon - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -15,11 +15,14 @@ const IconEditInline: React.FC = () => (
 );
 
 export const TableDesigner: React.FC = () => {
-  const { selectedTableId, findTable, setTableComment, renameTable } = useDesignerStore();
-  const [commentDialog, setCommentDialog] = React.useState<{tableId: string, comment: string} | null>(null);
+  const { project, selectedTableId, findTable, setTableComment, renameTable } = useDesignerStore();
+  const [commentDialog, setCommentDialog] = React.useState<{
+    tableId: string;
+    comment: string;
+  } | null>(null);
   const [copySuccess, setCopySuccess] = React.useState(false);
   const [renameDialog, setRenameDialog] = React.useState(false);
-  const [newName, setNewName] = React.useState('');
+  const [newName, setNewName] = React.useState("");
   const [renameError, setRenameError] = React.useState<string | null>(null);
 
   if (!selectedTableId) {
@@ -47,7 +50,7 @@ export const TableDesigner: React.FC = () => {
   const { catalog, schema, table } = result;
 
   const handleSetComment = () => {
-    setCommentDialog({tableId: table.id, comment: table.comment || ''});
+    setCommentDialog({ tableId: table.id, comment: table.comment || "" });
   };
 
   const handleCopyTableName = () => {
@@ -63,9 +66,11 @@ export const TableDesigner: React.FC = () => {
     setRenameDialog(true);
     // Auto-focus the input field after a short delay
     setTimeout(() => {
-      const input = document.getElementById('rename-table-input') as any;
+      const input = document.getElementById("rename-table-input") as {
+        shadowRoot?: ShadowRoot;
+      } | null;
       if (input && input.shadowRoot) {
-        const inputElement = input.shadowRoot.querySelector('input');
+        const inputElement = input.shadowRoot.querySelector("input");
         if (inputElement) inputElement.focus();
       }
     }, 100);
@@ -73,7 +78,7 @@ export const TableDesigner: React.FC = () => {
 
   const handleCloseRenameDialog = () => {
     setRenameDialog(false);
-    setNewName('');
+    setNewName("");
     setRenameError(null);
   };
 
@@ -94,87 +99,94 @@ export const TableDesigner: React.FC = () => {
   return (
     <div className="table-designer">
       <div className="table-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
           <h2 style={{ marginBottom: 0 }}>
             {catalog.name}.{schema.name}.{table.name}
           </h2>
           <button
             onClick={handleCopyTableName}
-            title={copySuccess ? 'Copied!' : 'Copy table name'}
+            title={copySuccess ? "Copied!" : "Copy table name"}
             style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '2px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: copySuccess ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-foreground)',
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: copySuccess ? "var(--vscode-testing-iconPassed)" : "var(--vscode-foreground)",
               opacity: copySuccess ? 1 : 0.6,
-              height: '20px',
-              width: '20px',
+              height: "20px",
+              width: "20px",
             }}
           >
-            <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '14px' }}></i>
+            <i
+              className={`codicon ${copySuccess ? "codicon-check" : "codicon-copy"}`}
+              style={{ fontSize: "14px" }}
+            ></i>
           </button>
           <button
             onClick={handleOpenRenameDialog}
             title="Edit table name"
             style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '2px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--vscode-foreground)',
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--vscode-foreground)",
               opacity: 0.6,
-              height: '20px',
-              width: '20px',
+              height: "20px",
+              width: "20px",
             }}
           >
-            <i className="codicon codicon-edit" style={{ fontSize: '14px' }}></i>
+            <i className="codicon codicon-edit" style={{ fontSize: "14px" }}></i>
           </button>
         </div>
         <div className="table-metadata">
           <span className="badge">{table.format.toUpperCase()}</span>
-          <span className="badge">{table.external ? 'External' : 'Managed'}</span>
-          
+          <span className="badge">{table.external ? "External" : "Managed"}</span>
+
           {table.external && table.externalLocationName && (
             <>
               <span className="badge-info">📁 Location: {table.externalLocationName}</span>
-              {table.path && (
-                <span className="badge-info">Path: {table.path}</span>
-              )}
+              {table.path && <span className="badge-info">Path: {table.path}</span>}
             </>
           )}
-          
+
           {table.partitionColumns && table.partitionColumns.length > 0 && (
-            <span className="badge-info">⚡ Partitioned: {table.partitionColumns.join(', ')}</span>
+            <span className="badge-info">⚡ Partitioned: {table.partitionColumns.join(", ")}</span>
           )}
-          
+
           {table.clusterColumns && table.clusterColumns.length > 0 && (
-            <span className="badge-info">🔷 Clustered: {table.clusterColumns.join(', ')}</span>
+            <span className="badge-info">🔷 Clustered: {table.clusterColumns.join(", ")}</span>
           )}
-          
-          {table.columnMapping && <span className="badge">Column Mapping: {table.columnMapping}</span>}
+
+          {table.columnMapping && (
+            <span className="badge">Column Mapping: {table.columnMapping}</span>
+          )}
         </div>
       </div>
 
       {/* Show resolved location for external tables */}
-      {table.external && table.externalLocationName && project?.environments?.[project?.activeEnvironment || ''] && (
+      {table.external && table.externalLocationName && project && (
         <div className="table-properties">
           <div className="property-row">
-            <label>Resolved Location ({project.activeEnvironment || 'default'}):</label>
+            <label>Resolved Location ({project.activeEnvironment || "default"}):</label>
             <div className="property-value">
               {(() => {
-                const envConfig = project.environments[project.activeEnvironment || ''];
-                const extLoc = envConfig?.externalLocations?.[table.externalLocationName];
-                if (!extLoc) {
-                  return <code style={{color: 'var(--vscode-errorForeground)'}}>Location "{table.externalLocationName}" not found</code>;
+                const activeEnv = project.activeEnvironment || "dev";
+                const externalLocation = project.externalLocations?.[table.externalLocationName];
+                const basePath = externalLocation?.paths?.[activeEnv];
+                if (!basePath) {
+                  return (
+                    <code style={{ color: "var(--vscode-errorForeground)" }}>
+                      Location "{table.externalLocationName}" not found
+                    </code>
+                  );
                 }
-                const basePath = extLoc.path;
                 const fullPath = table.path ? `${basePath}/${table.path}` : basePath;
                 return <code>{fullPath}</code>;
               })()}
@@ -232,21 +244,25 @@ export const TableDesigner: React.FC = () => {
               defaultValue={commentDialog.comment}
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === "Enter") {
                   setTableComment(commentDialog.tableId, (e.target as HTMLInputElement).value);
                   setCommentDialog(null);
-                } else if (e.key === 'Escape') {
+                } else if (e.key === "Escape") {
                   setCommentDialog(null);
                 }
               }}
               id="table-comment-input"
             />
             <div className="modal-buttons">
-              <button onClick={() => {
-                const input = document.getElementById('table-comment-input') as HTMLInputElement;
-                setTableComment(commentDialog.tableId, input.value);
-                setCommentDialog(null);
-              }}>Set</button>
+              <button
+                onClick={() => {
+                  const input = document.getElementById("table-comment-input") as HTMLInputElement;
+                  setTableComment(commentDialog.tableId, input.value);
+                  setCommentDialog(null);
+                }}
+              >
+                Set
+              </button>
               <button onClick={() => setCommentDialog(null)}>Cancel</button>
             </div>
           </div>
@@ -275,7 +291,9 @@ export const TableDesigner: React.FC = () => {
               </div>
               <div className="modal-buttons">
                 <button type="submit">Rename</button>
-                <button type="button" onClick={handleCloseRenameDialog}>Cancel</button>
+                <button type="button" onClick={handleCloseRenameDialog}>
+                  Cancel
+                </button>
               </div>
             </form>
           </div>

@@ -68,9 +68,9 @@ class StateDiffer(ABC):
             return False
 
         # Check new_operations for rename_* operation matching the ID
-        for op in self.new_operations:
+        for operation in self.new_operations:
             # Handle both Operation objects and dicts
-            op_dict = op if isinstance(op, dict) else op.model_dump()
+            op_dict = operation if isinstance(operation, dict) else operation.model_dump()
             target = op_dict.get("target")
             op_name = op_dict.get("op", "")
             payload = op_dict.get("payload", {})

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1",
+  "command": "workspace-state",
+  "status": "success",
+  "data": {
+    "state": {},
+    "changelog": {
+      "ops": []
+    },
+    "provider": {
+      "id": "unity"
+    },
+    "project": {
+      "name": "demo"
+    },
+    "validation": {
+      "errors": [],
+      "warnings": []
+    }
+  },
+  "warnings": [],
+  "errors": [],
+  "meta": {
+    "durationMs": 1,
+    "executedCommand": "schemax workspace-state --json",
+    "exitCode": 0
+  }
+}
