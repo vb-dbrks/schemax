@@ -6,29 +6,32 @@
     "version": "1.0.0",
     "environments": {
       "dev": {
-        "catalog": "dev_example",
+        "topLevelName": "dev_example",
         "description": "Development environment",
         "allowDrift": true,
         "requireSnapshot": false,
-        "autoCreateCatalog": true,
-        "autoCreateSchemaxSchema": true
+        "autoCreateTopLevel": true,
+        "autoCreateSchemaxSchema": true,
+        "catalogMappings": {}
       },
       "test": {
-        "catalog": "test_example",
+        "topLevelName": "test_example",
         "description": "Test/staging environment",
         "allowDrift": false,
         "requireSnapshot": true,
-        "autoCreateCatalog": true,
-        "autoCreateSchemaxSchema": true
+        "autoCreateTopLevel": true,
+        "autoCreateSchemaxSchema": true,
+        "catalogMappings": {}
       },
       "prod": {
-        "catalog": "prod_example",
+        "topLevelName": "prod_example",
         "description": "Production environment",
         "allowDrift": false,
         "requireSnapshot": true,
         "requireApproval": false,
-        "autoCreateCatalog": false,
-        "autoCreateSchemaxSchema": true
+        "autoCreateTopLevel": false,
+        "autoCreateSchemaxSchema": true,
+        "catalogMappings": {}
       }
     }
   },
@@ -37,7 +40,7 @@
   "settings": {
     "autoIncrementVersion": true,
     "versionPrefix": "v",
-    "catalogMode": "single"
+    "catalogMode": "multi"
   },
   "latestSnapshot": null
 }
