@@ -67,8 +67,8 @@ describe('Architecture fitness', () => {
     const source = readSource('extension.ts');
     const execMatches = source.match(/execAsync\(/g) ?? [];
     expect(execMatches.length).toBe(2);
-    expect(source).toContain("execAsync('schemax --version'");
-    expect(source).toContain('execAsync(`"${py}" -m pip install schemaxpy`');
+    expect(source).toMatch(/execAsync\(\s*['"`]schemax --version['"`]/);
+    expect(source).toMatch(/execAsync\(\s*`"\$\{py\}" -m pip install schemaxpy`/);
   });
 
   test('child process usage is confined to approved runtime adapters', () => {
@@ -86,11 +86,11 @@ describe('Architecture fitness', () => {
     const extensionSource = readSource('extension.ts');
     const storageSource = readSource('storage-v4.ts');
 
-    expect(extensionSource).toMatch(/runJson<[\s\S]*?>\(\s*'import'/);
-    expect(extensionSource).toMatch(/runJson<[\s\S]*?>\(\s*'sql'/);
-    expect(extensionSource).toMatch(/runJson<[\s\S]*?>\(\s*'runtime-info'/);
-    expect(extensionSource).toMatch(/runJson<[\s\S]*?>\(\s*'snapshot\.validate'/);
-    expect(storageSource).toMatch(/runJson<[\s\S]*?>\(\s*'workspace-state'/);
+    expect(extensionSource).toMatch(/runJson<[\s\S]*?>\(\s*['"]import['"]/);
+    expect(extensionSource).toMatch(/runJson<[\s\S]*?>\(\s*['"]sql['"]/);
+    expect(extensionSource).toMatch(/runJson<[\s\S]*?>\(\s*['"]runtime-info['"]/);
+    expect(extensionSource).toMatch(/runJson<[\s\S]*?>\(\s*['"]snapshot\.validate['"]/);
+    expect(storageSource).toMatch(/runJson<[\s\S]*?>\(\s*['"]workspace-state['"]/);
     expect(extensionSource).not.toMatch(/pythonBackend\.run\(/);
     expect(storageSource).not.toMatch(/pythonBackend\.run\(/);
   });

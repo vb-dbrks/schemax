@@ -1382,14 +1382,24 @@ def _run_snapshot_validate(workspace_path: Path, json_output: bool) -> None:
     stale = result.data["stale_snapshots"] if result.data else []
     if json_output:
         output = {"stale": stale, "count": len(stale)}
+        if stale:
+            _emit_json_error(
+                command="snapshot.validate",
+                code="SNAPSHOT_STALE",
+                message=f"Found {len(stale)} stale snapshot(s)",
+                started_at=started_at,
+                exit_code=1,
+                data=output,
+            )
+            sys.exit(1)
         _emit_json_success(
             command="snapshot.validate",
             data=output,
             warnings=[],
             started_at=started_at,
-            exit_code=1 if stale else 0,
+            exit_code=0,
         )
-        sys.exit(1 if stale else 0)
+        sys.exit(0)
     if not stale:
         console.print("[green]✓ All snapshots are up to date[/green]")
         sys.exit(0)

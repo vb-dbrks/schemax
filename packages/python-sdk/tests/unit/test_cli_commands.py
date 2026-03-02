@@ -544,6 +544,42 @@ def test_snapshot_validate_json_output(monkeypatch, temp_workspace: Path) -> Non
     assert parsed["data"] == {"stale": [], "count": 0}
 
 
+def test_snapshot_validate_json_stale_returns_error_envelope(
+    monkeypatch, temp_workspace: Path
+) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr(
+        "schemax.cli.SnapshotService.validate",
+        lambda _self, **kwargs: SimpleNamespace(
+            success=True,
+            data={
+                "stale_snapshots": [
+                    {
+                        "version": "v0.2.0",
+                        "currentBase": "v0.1.0",
+                        "shouldBeBase": "v0.1.1",
+                        "missing": ["v0.1.1"],
+                    }
+                ]
+            },
+        ),
+    )
+
+    result = runner.invoke(
+        cli,
+        ["snapshot", "validate", "--json", str(temp_workspace)],
+    )
+
+    assert result.exit_code == 1
+    parsed = json.loads(result.output)
+    assert parsed["schemaVersion"] == "1"
+    assert parsed["command"] == "snapshot.validate"
+    assert parsed["status"] == "error"
+    assert parsed["errors"][0]["code"] == "SNAPSHOT_STALE"
+    assert parsed["data"]["count"] == 1
+    assert len(parsed["data"]["stale"]) == 1
+
+
 def test_workspace_state_json_output(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
 
