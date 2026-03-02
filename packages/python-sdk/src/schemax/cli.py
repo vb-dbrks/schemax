@@ -879,7 +879,9 @@ def _run_apply_command(
 
         apply_data: Mapping[str, Any] = result.data if isinstance(result.data, Mapping) else {}
         result_value = apply_data.get("result")
-        result_payload: Mapping[str, Any] = result_value if isinstance(result_value, Mapping) else {}
+        result_payload: Mapping[str, Any] = (
+            result_value if isinstance(result_value, Mapping) else {}
+        )
         error_message = str(
             result_payload.get("error_message")
             or getattr(result, "message", "")
