@@ -13,6 +13,8 @@ import pytest
 
 from schemax.providers.unity.ddl_parser import (
     DDL_STATEMENT_LIMIT,
+    AlterCatalogSetTags,
+    AlterSchemaSetTags,
     AlterTableAddColumn,
     AlterTableAlterColumn,
     AlterTableDropColumn,
@@ -214,8 +216,8 @@ class TestParseDdlStatementAlter:
     """Parse: ALTER statements (Unity Catalog).
 
     ALTER TABLE ADD/DROP/RENAME COLUMN, RENAME TO, SET TBLPROPERTIES, ALTER COLUMN
-    are parsed and applied in file order. ALTER CATALOG/SCHEMA SET TAGS/OWNER
-    are still Unsupported.
+    and ALTER CATALOG/SCHEMA SET TAGS are parsed and applied in file order.
+    ALTER CATALOG/SCHEMA SET OWNER remains Unsupported.
     """
 
     def _assert_alter_unsupported(self, sql: str, index: int = 0) -> None:
@@ -228,7 +230,10 @@ class TestParseDdlStatementAlter:
         )
 
     def test_alter_catalog_set_tags(self) -> None:
-        self._assert_alter_unsupported("ALTER CATALOG my_cat SET TAGS ('env' = 'prod');")
+        result = parse_ddl_statement("ALTER CATALOG my_cat SET TAGS ('env' = 'prod');", index=0)
+        assert isinstance(result, AlterCatalogSetTags)
+        assert result.name == "my_cat"
+        assert result.tags == {"env": "prod"}
 
     def test_alter_catalog_owner(self) -> None:
         self._assert_alter_unsupported("ALTER CATALOG my_cat SET OWNER TO `account users`;")
@@ -237,7 +242,14 @@ class TestParseDdlStatementAlter:
         self._assert_alter_unsupported("ALTER SCHEMA main.analytics SET OWNER TO `data-engineers`;")
 
     def test_alter_schema_set_tags(self) -> None:
-        self._assert_alter_unsupported("ALTER SCHEMA main.analytics SET TAGS ('pii' = 'true');")
+        result = parse_ddl_statement(
+            "ALTER SCHEMA main.analytics SET TAGS ('pii' = 'true');",
+            index=0,
+        )
+        assert isinstance(result, AlterSchemaSetTags)
+        assert result.catalog == "main"
+        assert result.schema_name == "analytics"
+        assert result.tags == {"pii": "true"}
 
     def test_alter_table_add_column(self) -> None:
         result = parse_ddl_statement("ALTER TABLE cat.sch.t ADD COLUMN c STRING", index=0)
