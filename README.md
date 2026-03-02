@@ -3,7 +3,7 @@
 **SchemaX is a Git-friendly schema management platform for data catalogs, with a VS Code designer and a Python CLI/SDK.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Integration Coverage](https://codecov.io/gh/vb-dbrks/schemax-vscode/graph/badge.svg?flag=integration)](https://codecov.io/gh/vb-dbrks/schemax-vscode)
+[![codecov](https://codecov.io/gh/vb-dbrks/schemax/graph/badge.svg?token=Z5FWGAXEXS)](https://codecov.io/gh/vb-dbrks/schemax)
 [![Python SDK CI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/python-sdk-ci.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/python-sdk-ci.yml)
 [![Extension CI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/extension-ci.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/extension-ci.yml)
 [![Docs CI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/docs-ci.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/docs-ci.yml)
