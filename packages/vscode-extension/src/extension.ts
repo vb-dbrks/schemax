@@ -1737,9 +1737,11 @@ async function openDesigner(context: vscode.ExtensionContext) {
           try {
             const envelope = await runChangelogUndo(workspaceFolder.uri.fsPath, payload);
             if (envelope.status === "error" || !envelope.data) {
+              const firstError = envelope.errors[0];
+              const errorCode = firstError?.code || "PYTHON_COMMAND_FAILED";
               const errorMessage =
                 envelope.errors[0]?.message || "Undo failed because backend returned an error.";
-              throw new Error(errorMessage);
+              throw new Error(`[${errorCode}] ${errorMessage}`);
             }
 
             await reloadProject(workspaceFolder, currentPanel);
