@@ -20,7 +20,7 @@ export function extractDependenciesFromView(viewSql: string): ExtractedDependenc
   };
 
   try {
-    const normalizedSql = viewSql.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const normalizedSql = viewSql.replace(/\n/g, " ").replace(/\s+/g, " ").trim();
     const tablePattern = /(?:FROM|JOIN)\s+(?:(\w+)\.)?(?:(\w+)\.)?(\w+)/gi;
     let match: RegExpExecArray | null;
 
@@ -44,7 +44,7 @@ export function extractDependenciesFromView(viewSql: string): ExtractedDependenc
       if (table) {
         parts.push(table);
       }
-      const fqn = parts.join('.');
+      const fqn = parts.join(".");
       if (fqn && !dependencies.tables.includes(fqn)) {
         dependencies.tables.push(fqn);
       }
@@ -60,10 +60,10 @@ export function extractDependenciesFromView(viewSql: string): ExtractedDependenc
     }
 
     dependencies.tables = dependencies.tables.filter(
-      (table) => !cteNames.includes(table.toLowerCase().split('.').pop() || '')
+      (table) => !cteNames.includes(table.toLowerCase().split(".").pop() || "")
     );
   } catch (error) {
-    console.warn('Failed to parse view SQL for dependencies:', error);
+    console.warn("Failed to parse view SQL for dependencies:", error);
   }
 
   return dependencies;
@@ -71,7 +71,7 @@ export function extractDependenciesFromView(viewSql: string): ExtractedDependenc
 
 export function isValidSelectStatement(sql: string): boolean {
   const normalized = sql.trim().toLowerCase();
-  return normalized.startsWith('select') || normalized.startsWith('with');
+  return normalized.startsWith("select") || normalized.startsWith("with");
 }
 
 export function extractTableNames(sql: string): string[] {

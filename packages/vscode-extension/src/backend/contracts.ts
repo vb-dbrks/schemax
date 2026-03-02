@@ -1,7 +1,7 @@
 export interface CommandEnvelope<T = unknown> {
-  schemaVersion: '1';
+  schemaVersion: "1";
   command: string;
-  status: 'success' | 'error';
+  status: "success" | "error";
   data: T;
   warnings: string[];
   errors: Array<{

@@ -23,27 +23,27 @@ export function getVsCodeApi(): VsCodeApi {
 
   // Store in window to persist across hot reloads
   const windowWithBridge = window as Window & { vsCodeApi?: VsCodeApi };
-  if (typeof windowWithBridge.vsCodeApi !== 'undefined') {
+  if (typeof windowWithBridge.vsCodeApi !== "undefined") {
     vsCodeApi = windowWithBridge.vsCodeApi;
     return vsCodeApi!;
   }
 
   try {
-    if (typeof acquireVsCodeApi !== 'undefined') {
+    if (typeof acquireVsCodeApi !== "undefined") {
       vsCodeApi = acquireVsCodeApi();
       windowWithBridge.vsCodeApi = vsCodeApi;
-      console.warn('[SchemaX] VS Code API acquired successfully');
+      console.warn("[SchemaX] VS Code API acquired successfully");
       return vsCodeApi;
     }
   } catch (error: unknown) {
-    console.warn('[SchemaX] Could not acquire VS Code API:', error);
+    console.warn("[SchemaX] Could not acquire VS Code API:", error);
   }
 
   // Fallback mock for development
   const fallbackApi: VsCodeApiBridge = {
-    postMessage: (message: unknown) => console.warn('[Mock] postMessage:', message),
+    postMessage: (message: unknown) => console.warn("[Mock] postMessage:", message),
     getState: () => ({}),
-    setState: (state: unknown) => console.warn('[Mock] setState:', state),
+    setState: (state: unknown) => console.warn("[Mock] setState:", state),
   };
 
   vsCodeApi = fallbackApi as VsCodeApi;

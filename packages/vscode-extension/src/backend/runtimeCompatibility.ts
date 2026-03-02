@@ -1,4 +1,4 @@
-import type { RuntimeInfoData } from './contracts';
+import type { RuntimeInfoData } from "./contracts";
 
 export interface CompatibilityResult {
   ok: boolean;

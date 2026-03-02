@@ -1,7 +1,7 @@
-import React from 'react';
-import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
-import { useDesignerStore } from '../state/useDesignerStore';
-import { getVsCodeApi } from '../vscode-api';
+import React from "react";
+import { VSCodeButton } from "@vscode/webview-ui-toolkit/react";
+import { useDesignerStore } from "../state/useDesignerStore";
+import { getVsCodeApi } from "../vscode-api";
 
 interface EnvironmentConfig {
   topLevelName: string;
@@ -35,7 +35,7 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
   }
 
   const environmentEntries = Object.entries(environments as Record<string, EnvironmentConfig>);
-  const containerClassName = ['environment-summary', className].filter(Boolean).join(' ');
+  const containerClassName = ["environment-summary", className].filter(Boolean).join(" ");
 
   return (
     <section className={containerClassName} aria-label="Environment catalog mapping overview">
@@ -50,10 +50,10 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
           className="environment-summary__cta"
           onClick={() => {
             vscode?.postMessage({
-              type: 'open-docs',
+              type: "open-docs",
               payload: {
-                url: 'https://vb-dbrks.github.io/schemax/guide/environments-and-scope/'
-              }
+                url: "https://vb-dbrks.github.io/schemax/guide/environments-and-scope/",
+              },
             });
           }}
         >
@@ -65,25 +65,35 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
           <article key={envName} className="environment-chip" aria-label={`Environment ${envName}`}>
             <div className="environment-chip__top">
               <span className="environment-chip__name">{envName}</span>
-              <span className="environment-chip__target" title="Tracking catalog">{config.topLevelName}</span>
+              <span className="environment-chip__target" title="Tracking catalog">
+                {config.topLevelName}
+              </span>
             </div>
             <p className="environment-chip__description">
-              {(config.catalogMappings && Object.keys(config.catalogMappings).length > 0)
+              {config.catalogMappings && Object.keys(config.catalogMappings).length > 0
                 ? Object.entries(config.catalogMappings)
                     .map(([logical, physical]) => `${logical}→${physical}`)
-                    .join(', ')
-                : 'No catalog mappings configured'}
+                    .join(", ")
+                : "No catalog mappings configured"}
             </p>
             {config.description && (
               <p className="environment-chip__description">{config.description}</p>
             )}
             <div className="environment-chip__flags">
-              <span className={`chip-flag ${config.allowDrift ? 'chip-flag--warn' : 'chip-flag--success'}`}>
-                {config.allowDrift ? 'Drift allowed' : 'Drift locked'}
+              <span
+                className={`chip-flag ${config.allowDrift ? "chip-flag--warn" : "chip-flag--success"}`}
+              >
+                {config.allowDrift ? "Drift allowed" : "Drift locked"}
               </span>
-              {config.requireSnapshot && <span className="chip-flag chip-flag--accent">Snapshot required</span>}
-              {config.requireApproval && <span className="chip-flag chip-flag--info">Approval required</span>}
-              {config.autoCreateCatalog && <span className="chip-flag chip-flag--neutral">Auto-create catalog</span>}
+              {config.requireSnapshot && (
+                <span className="chip-flag chip-flag--accent">Snapshot required</span>
+              )}
+              {config.requireApproval && (
+                <span className="chip-flag chip-flag--info">Approval required</span>
+              )}
+              {config.autoCreateCatalog && (
+                <span className="chip-flag chip-flag--neutral">Auto-create catalog</span>
+              )}
               {config.autoCreateSchemaxSchema && (
                 <span className="chip-flag chip-flag--neutral">Auto-create schema</span>
               )}
@@ -94,4 +104,3 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
     </section>
   );
 };
-

@@ -1,24 +1,23 @@
-import React, { useEffect } from 'react';
-import { VSCodeButton, VSCodeProgressRing } from '@vscode/webview-ui-toolkit/react';
-import { useDesignerStore } from './state/useDesignerStore';
-import { Sidebar } from './components/Sidebar';
-import { TableDesigner } from './components/TableDesigner';
-import { ViewDetails } from './components/ViewDetails';
-import { VolumeDetails } from './components/VolumeDetails';
-import { FunctionDetails } from './components/FunctionDetails';
-import { MaterializedViewDetails } from './components/MaterializedViewDetails';
-import { CatalogDetails } from './components/CatalogDetails';
-import { SchemaDetails } from './components/SchemaDetails';
-import { SnapshotPanel } from './components/SnapshotPanel';
-import { getVsCodeApi } from './vscode-api';
-import { ProjectSettingsPanel } from './components/ProjectSettingsPanel';
+import React, { useEffect } from "react";
+import { VSCodeButton, VSCodeProgressRing } from "@vscode/webview-ui-toolkit/react";
+import { useDesignerStore } from "./state/useDesignerStore";
+import { Sidebar } from "./components/Sidebar";
+import { TableDesigner } from "./components/TableDesigner";
+import { ViewDetails } from "./components/ViewDetails";
+import { VolumeDetails } from "./components/VolumeDetails";
+import { FunctionDetails } from "./components/FunctionDetails";
+import { MaterializedViewDetails } from "./components/MaterializedViewDetails";
+import { CatalogDetails } from "./components/CatalogDetails";
+import { SchemaDetails } from "./components/SchemaDetails";
+import { SnapshotPanel } from "./components/SnapshotPanel";
+import { getVsCodeApi } from "./vscode-api";
+import { ProjectSettingsPanel } from "./components/ProjectSettingsPanel";
 import type {
   ImportProgress,
   ImportRunRequest,
-  ImportRunResult} from './components/ImportAssetsPanel';
-import {
-  ImportAssetsPanel
-} from './components/ImportAssetsPanel';
+  ImportRunResult,
+} from "./components/ImportAssetsPanel";
+import { ImportAssetsPanel } from "./components/ImportAssetsPanel";
 
 const vscode = getVsCodeApi();
 
@@ -28,7 +27,7 @@ const IconSettings: React.FC = () => (
 );
 
 // Codicon icons automatically adapt to VS Code themes
-const IconRefresh: React.FC<{ className?: string }> = ({ className = '' }) => (
+const IconRefresh: React.FC<{ className?: string }> = ({ className = "" }) => (
   <i className={`codicon codicon-refresh ${className}`} aria-hidden="true"></i>
 );
 
@@ -36,9 +35,7 @@ const IconImport: React.FC = () => (
   <i slot="start" className="codicon codicon-cloud-download" aria-hidden="true"></i>
 );
 
-const IconHelp: React.FC = () => (
-  <i className="codicon codicon-question" aria-hidden="true"></i>
-);
+const IconHelp: React.FC = () => <i className="codicon codicon-question" aria-hidden="true"></i>;
 
 export const App: React.FC = () => {
   const {
@@ -60,7 +57,10 @@ export const App: React.FC = () => {
   const [conflictInfo, setConflictInfo] = React.useState<unknown>(null);
   const [hasStaleSnapshots, setHasStaleSnapshots] = React.useState(false);
   const [staleSnapshotInfo, setStaleSnapshotInfo] = React.useState<unknown>(null);
-  const [validationResult, setValidationResult] = React.useState<{errors: string[], warnings: string[]} | null>(null);
+  const [validationResult, setValidationResult] = React.useState<{
+    errors: string[];
+    warnings: string[];
+  } | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [isImportOpen, setIsImportOpen] = React.useState(false);
   const [isImportRunning, setIsImportRunning] = React.useState(false);
@@ -71,23 +71,25 @@ export const App: React.FC = () => {
   const isViewSelected = selectedTableId ? !!findView(selectedTableId) : false;
   const isVolumeSelected = selectedTableId ? !!findVolume(selectedTableId) : false;
   const isFunctionSelected = selectedTableId ? !!findFunction(selectedTableId) : false;
-  const isMaterializedViewSelected = selectedTableId ? !!findMaterializedView(selectedTableId) : false;
+  const isMaterializedViewSelected = selectedTableId
+    ? !!findMaterializedView(selectedTableId)
+    : false;
 
   useEffect(() => {
     // Set up message listener from extension
     const messageHandler = (event: MessageEvent) => {
       const message = event.data;
       switch (message.type) {
-        case 'project-loaded':
-        case 'project-updated':
+        case "project-loaded":
+        case "project-updated":
           if (message.payload.provider) {
             setProvider(message.payload.provider);
           }
-          
+
           setProject(message.payload);
           setLoading(false);
           setIsRefreshing(false); // Stop refresh spinner
-          
+
           // Check for conflicts
           if (message.payload.conflicts) {
             setHasConflicts(true);
@@ -96,7 +98,7 @@ export const App: React.FC = () => {
             setHasConflicts(false);
             setConflictInfo(null);
           }
-          
+
           // Check for stale snapshots
           if (message.payload.staleSnapshots) {
             setHasStaleSnapshots(true);
@@ -105,7 +107,7 @@ export const App: React.FC = () => {
             setHasStaleSnapshots(false);
             setStaleSnapshotInfo(null);
           }
-          
+
           // Check for validation results
           if (message.payload.validationResult) {
             setValidationResult(message.payload.validationResult);
@@ -113,26 +115,26 @@ export const App: React.FC = () => {
             setValidationResult(null);
           }
           break;
-        case 'import-result':
+        case "import-result":
           setIsImportRunning(false);
           setImportResult(message.payload);
           break;
-        case 'import-progress':
+        case "import-progress":
           setImportProgress(message.payload);
           break;
-        case 'import-sql-file-picked':
+        case "import-sql-file-picked":
           setPickedSqlFilePath(message.payload?.path ?? null);
           break;
       }
     };
 
-    window.addEventListener('message', messageHandler);
+    window.addEventListener("message", messageHandler);
 
     // Request initial project load
-    vscode.postMessage({ type: 'load-project' });
+    vscode.postMessage({ type: "load-project" });
 
     return () => {
-      window.removeEventListener('message', messageHandler);
+      window.removeEventListener("message", messageHandler);
     };
   }, [setProject, setProvider]);
 
@@ -140,16 +142,18 @@ export const App: React.FC = () => {
   const snapshotCount = project?.snapshots?.length ?? 0;
   const hasProjectSettings = Boolean(project);
   const logoUri =
-    typeof document !== 'undefined'
-      ? document.getElementById('root')?.getAttribute('data-logo-uri') ?? ''
-      : '';
+    typeof document !== "undefined"
+      ? (document.getElementById("root")?.getAttribute("data-logo-uri") ?? "")
+      : "";
 
   if (loading) {
     return (
       <div className="app app--loading">
         <VSCodeProgressRing aria-label="Loading SchemaX Designer" />
         <p className="loading-copy">Loading SchemaX Designer…</p>
-        <p className="loading-subcopy">If this persists, open the developer tools (Help → Toggle Developer Tools).</p>
+        <p className="loading-subcopy">
+          If this persists, open the developer tools (Help → Toggle Developer Tools).
+        </p>
       </div>
     );
   }
@@ -168,7 +172,7 @@ export const App: React.FC = () => {
                 height={28}
               />
             ) : null}
-            <h1 className="app-header__title">{project?.name || 'SchemaX Project'}</h1>
+            <h1 className="app-header__title">{project?.name || "SchemaX Project"}</h1>
             {hasProjectSettings && (
               <VSCodeButton
                 type="button"
@@ -182,37 +186,45 @@ export const App: React.FC = () => {
             )}
           </div>
           <p className="app-header__meta">
-            {provider ? `${provider.name} · v${provider.version}` : 'Unity Catalog'}
-            {snapshotCount ? ` · ${snapshotCount} snapshot${snapshotCount === 1 ? '' : 's'}` : ''}
+            {provider ? `${provider.name} · v${provider.version}` : "Unity Catalog"}
+            {snapshotCount ? ` · ${snapshotCount} snapshot${snapshotCount === 1 ? "" : "s"}` : ""}
           </p>
         </div>
         <div className="app-header__actions">
-          <div 
-            className="app-header__status" 
-            data-state={hasConflicts ? 'conflict' : (hasStaleSnapshots ? 'stale' : (pendingOps > 0 ? 'dirty' : 'clean'))}
-            style={{ cursor: (hasConflicts || hasStaleSnapshots) ? 'pointer' : 'default' }}
+          <div
+            className="app-header__status"
+            data-state={
+              hasConflicts
+                ? "conflict"
+                : hasStaleSnapshots
+                  ? "stale"
+                  : pendingOps > 0
+                    ? "dirty"
+                    : "clean"
+            }
+            style={{ cursor: hasConflicts || hasStaleSnapshots ? "pointer" : "default" }}
             onClick={() => {
               if (hasConflicts && conflictInfo) {
                 // Show conflict details (higher priority)
-                vscode.postMessage({ type: 'show-conflict-details', payload: conflictInfo });
+                vscode.postMessage({ type: "show-conflict-details", payload: conflictInfo });
               } else if (hasStaleSnapshots && staleSnapshotInfo) {
                 // Show stale snapshot details
-                vscode.postMessage({ type: 'show-stale-snapshot-details', payload: staleSnapshotInfo });
+                vscode.postMessage({
+                  type: "show-stale-snapshot-details",
+                  payload: staleSnapshotInfo,
+                });
               }
             }}
           >
             <span className="status-dot" aria-hidden="true" />
             <span>
-              {hasConflicts 
-                ? '⚠️ Rebase conflict detected' 
-                : (hasStaleSnapshots
-                    ? '⚠️ Stale snapshots detected'
-                    : (pendingOps > 0 
-                        ? `${pendingOps} pending ${pendingOps === 1 ? 'change' : 'changes'}` 
-                        : 'No pending changes'
-                      )
-                  )
-              }
+              {hasConflicts
+                ? "⚠️ Rebase conflict detected"
+                : hasStaleSnapshots
+                  ? "⚠️ Stale snapshots detected"
+                  : pendingOps > 0
+                    ? `${pendingOps} pending ${pendingOps === 1 ? "change" : "changes"}`
+                    : "No pending changes"}
             </span>
           </div>
           <VSCodeButton
@@ -233,8 +245,8 @@ export const App: React.FC = () => {
             className="help-button"
             onClick={() => {
               vscode.postMessage({
-                type: 'open-docs',
-                payload: { url: 'https://vb-dbrks.github.io/schemax/guide/quickstart/' }
+                type: "open-docs",
+                payload: { url: "https://vb-dbrks.github.io/schemax/guide/quickstart/" },
               });
             }}
             title="Open SchemaX documentation (Quickstart)"
@@ -246,7 +258,7 @@ export const App: React.FC = () => {
             className="refresh-button"
             onClick={() => {
               setIsRefreshing(true);
-              vscode.postMessage({ type: 'refresh-project' });
+              vscode.postMessage({ type: "refresh-project" });
             }}
             title="Refresh project state (re-check for stale snapshots and conflicts)"
             aria-label="Refresh project"
@@ -259,36 +271,37 @@ export const App: React.FC = () => {
       </header>
 
       {/* Validation Results Banner */}
-      {validationResult && (validationResult.errors.length > 0 || validationResult.warnings.length > 0) && (
-        <div className="validation-banner">
-          {validationResult.errors.length > 0 && (
-            <div className="validation-error">
-              <i className="codicon codicon-error"></i>
-              <div className="validation-content">
-                <strong>Dependency Errors:</strong>
-                <ul>
-                  {validationResult.errors.map((error, i) => (
-                    <li key={i}>{error}</li>
-                  ))}
-                </ul>
+      {validationResult &&
+        (validationResult.errors.length > 0 || validationResult.warnings.length > 0) && (
+          <div className="validation-banner">
+            {validationResult.errors.length > 0 && (
+              <div className="validation-error">
+                <i className="codicon codicon-error"></i>
+                <div className="validation-content">
+                  <strong>Dependency Errors:</strong>
+                  <ul>
+                    {validationResult.errors.map((error, i) => (
+                      <li key={i}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
-            </div>
-          )}
-          {validationResult.warnings.length > 0 && (
-            <div className="validation-warning">
-              <i className="codicon codicon-warning"></i>
-              <div className="validation-content">
-                <strong>Dependency Warnings:</strong>
-                <ul>
-                  {validationResult.warnings.map((warning, i) => (
-                    <li key={i}>{warning}</li>
-                  ))}
-                </ul>
+            )}
+            {validationResult.warnings.length > 0 && (
+              <div className="validation-warning">
+                <i className="codicon codicon-warning"></i>
+                <div className="validation-content">
+                  <strong>Dependency Warnings:</strong>
+                  <ul>
+                    {validationResult.warnings.map((warning, i) => (
+                      <li key={i}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
 
       <div className="content">
         <div className="left-panel">
@@ -326,10 +339,7 @@ export const App: React.FC = () => {
       </div>
 
       {hasProjectSettings && isProjectSettingsOpen && project && (
-        <ProjectSettingsPanel 
-          project={project}
-          onClose={() => setIsProjectSettingsOpen(false)}
-        />
+        <ProjectSettingsPanel project={project} onClose={() => setIsProjectSettingsOpen(false)} />
       )}
 
       {isImportOpen && project && (
@@ -346,21 +356,21 @@ export const App: React.FC = () => {
             setIsImportRunning(true);
             setImportResult(null);
             setImportProgress({
-              phase: 'starting',
-              message: 'Preparing import...',
+              phase: "starting",
+              message: "Preparing import...",
               percent: 5,
-              level: 'info',
+              level: "info",
             });
-            vscode.postMessage({ type: 'run-import', payload: request });
+            vscode.postMessage({ type: "run-import", payload: request });
           }}
           onCancel={() => {
             setImportProgress({
-              phase: 'cancel-requested',
-              message: 'Cancelling import...',
+              phase: "cancel-requested",
+              message: "Cancelling import...",
               percent: importProgress?.percent ?? 35,
-              level: 'warning',
+              level: "warning",
             });
-            vscode.postMessage({ type: 'cancel-import' });
+            vscode.postMessage({ type: "cancel-import" });
           }}
           pickedSqlFilePath={pickedSqlFilePath}
         />

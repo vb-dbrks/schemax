@@ -1,4 +1,4 @@
-import type { Operation } from '../../contracts/workspace';
+import type { Operation } from "../../contracts/workspace";
 
 interface BaseObject {
   id: string;
@@ -31,7 +31,7 @@ export interface UnityColumnMask extends BaseObject {
 
 // Constraint definition
 export interface UnityConstraint extends BaseObject {
-  type: 'primary_key' | 'foreign_key' | 'check';
+  type: "primary_key" | "foreign_key" | "check";
   name: string;
   columns: string[];
   timeseries?: boolean;
@@ -48,13 +48,13 @@ export interface UnityGrant {
 
 // Table definition
 export interface UnityTable extends BaseObject {
-  format: 'delta' | 'iceberg';
+  format: "delta" | "iceberg";
   external?: boolean;
   externalLocationName?: string;
   path?: string;
   partitionColumns?: string[];
   clusterColumns?: string[];
-  columnMapping?: 'name' | 'id';
+  columnMapping?: "name" | "id";
   columns: UnityColumn[];
   properties: Record<string, string>;
   tags: Record<string, string>;
@@ -83,7 +83,7 @@ export interface UnityView extends BaseObject {
 
 // Volume definition
 export interface UnityVolume extends BaseObject {
-  volumeType: 'managed' | 'external';
+  volumeType: "managed" | "external";
   comment?: string;
   location?: string;
   grants?: UnityGrant[];
@@ -99,7 +99,7 @@ export interface UnityFunctionParameter {
 
 // Function definition
 export interface UnityFunction extends BaseObject {
-  language: 'SQL' | 'PYTHON';
+  language: "SQL" | "PYTHON";
   returnType?: string;
   returnsTable?: Array<{ columnName: string; dataType: string }>;
   body: string;

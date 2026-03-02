@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useDesignerStore } from '../state/useDesignerStore';
-import { VSCodeButton, VSCodeTextField, VSCodeDropdown, VSCodeOption } from '@vscode/webview-ui-toolkit/react';
-import { validateUnityCatalogObjectName } from '../utils/unityNames';
-import { parsePrivileges } from '../utils/grants';
-import { RichComment } from './RichComment';
-import { BulkOperationsPanel } from './BulkOperationsPanel';
+import React, { useState, useEffect } from "react";
+import { useDesignerStore } from "../state/useDesignerStore";
+import {
+  VSCodeButton,
+  VSCodeTextField,
+  VSCodeDropdown,
+  VSCodeOption,
+} from "@vscode/webview-ui-toolkit/react";
+import { validateUnityCatalogObjectName } from "../utils/unityNames";
+import { parsePrivileges } from "../utils/grants";
+import { RichComment } from "./RichComment";
+import { BulkOperationsPanel } from "./BulkOperationsPanel";
 
 // Codicon icons - theme-aware and vector-based
 const IconEditInline: React.FC = () => (
@@ -29,35 +34,43 @@ interface NamedLocation {
 }
 
 export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => {
-  const { project, findCatalog, updateCatalog, renameCatalog, addGrant, revokeGrant } = useDesignerStore();
+  const { project, findCatalog, updateCatalog, renameCatalog, addGrant, revokeGrant } =
+    useDesignerStore();
   const catalog = findCatalog(catalogId);
 
-  const MANAGED_LOCATION_DEFAULT = '__default__';
+  const MANAGED_LOCATION_DEFAULT = "__default__";
   const [managedLocationName, setManagedLocationName] = useState(
     catalog?.managedLocationName ? catalog.managedLocationName : MANAGED_LOCATION_DEFAULT
   );
   const [tags, setTags] = useState<Record<string, string>>(catalog?.tags || {});
   const [copySuccess, setCopySuccess] = useState(false);
   const [renameDialog, setRenameDialog] = useState(false);
-  const [newName, setNewName] = useState('');
+  const [newName, setNewName] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
-  const [commentDialog, setCommentDialog] = useState<{catalogId: string, comment: string} | null>(null);
+  const [commentDialog, setCommentDialog] = useState<{ catalogId: string; comment: string } | null>(
+    null
+  );
   const [editingTag, setEditingTag] = useState<string | null>(null);
-  const [editTagValue, setEditTagValue] = useState('');
+  const [editTagValue, setEditTagValue] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-  const [newTagName, setNewTagName] = useState('');
-  const [newTagValue, setNewTagValue] = useState('');
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagValue, setNewTagValue] = useState("");
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [addGrantDialog, setAddGrantDialog] = useState(false);
-  const [editingGrant, setEditingGrant] = useState<{ principal: string; privileges: string[] } | null>(null);
+  const [editingGrant, setEditingGrant] = useState<{
+    principal: string;
+    privileges: string[];
+  } | null>(null);
   const [revokeGrantDialog, setRevokeGrantDialog] = useState<{ principal: string } | null>(null);
-  const [grantForm, setGrantForm] = useState({ principal: '', privileges: '' });
+  const [grantForm, setGrantForm] = useState({ principal: "", privileges: "" });
   const [showBulkPanel, setShowBulkPanel] = useState(false);
 
   // Update local state when catalog changes
   useEffect(() => {
     if (catalog) {
-      setManagedLocationName(catalog.managedLocationName ? catalog.managedLocationName : MANAGED_LOCATION_DEFAULT);
+      setManagedLocationName(
+        catalog.managedLocationName ? catalog.managedLocationName : MANAGED_LOCATION_DEFAULT
+      );
       setTags(catalog.tags || {});
     }
   }, [catalog]);
@@ -74,14 +87,14 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   }
 
   const handleManagedLocationChange = (newLocation: string) => {
-    const isDefault = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === '';
+    const isDefault = newLocation === MANAGED_LOCATION_DEFAULT || newLocation === "";
     const value = isDefault ? null : newLocation; // null survives JSON so reducer can clear
     setManagedLocationName(isDefault ? MANAGED_LOCATION_DEFAULT : newLocation);
     updateCatalog(catalogId, { managedLocationName: value });
   };
 
   const handleSetComment = () => {
-    setCommentDialog({catalogId: catalog.id, comment: catalog.comment || ''});
+    setCommentDialog({ catalogId: catalog.id, comment: catalog.comment || "" });
   };
 
   const handleAddTag = () => {
@@ -90,16 +103,16 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
       const updatedTags = { ...tags, [newTagName]: newTagValue };
       updateCatalog(catalogId, { tags: updatedTags });
       setTags(updatedTags);
-      setNewTagName('');
-      setNewTagValue('');
+      setNewTagName("");
+      setNewTagValue("");
       setIsAdding(false);
     }
   };
 
   const handleCancelAdd = () => {
     setIsAdding(false);
-    setNewTagName('');
-    setNewTagValue('');
+    setNewTagName("");
+    setNewTagValue("");
   };
 
   const handleRemoveTag = (tagName: string) => {
@@ -124,12 +137,12 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
     updateCatalog(catalogId, { tags: newTags });
     setTags(newTags);
     setEditingTag(null);
-    setEditTagValue('');
+    setEditTagValue("");
   };
 
   const handleCancelEditTag = () => {
     setEditingTag(null);
-    setEditTagValue('');
+    setEditTagValue("");
   };
 
   const handleCopyCatalogName = () => {
@@ -145,9 +158,11 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
     setRenameDialog(true);
     // Auto-focus the input field after a short delay
     setTimeout(() => {
-      const input = document.getElementById('rename-catalog-input') as { shadowRoot?: ShadowRoot } | null;
+      const input = document.getElementById("rename-catalog-input") as {
+        shadowRoot?: ShadowRoot;
+      } | null;
       if (input && input.shadowRoot) {
-        const inputElement = input.shadowRoot.querySelector('input');
+        const inputElement = input.shadowRoot.querySelector("input");
         if (inputElement) inputElement.focus();
       }
     }, 100);
@@ -155,7 +170,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
 
   const handleCloseRenameDialog = () => {
     setRenameDialog(false);
-    setNewName('');
+    setNewName("");
     setRenameError(null);
   };
 
@@ -176,46 +191,51 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
   return (
     <div className="table-designer">
       <div className="table-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <h2 style={{ marginBottom: 0 }}>{catalog.name}</h2>
             <button
               onClick={handleCopyCatalogName}
-              title={copySuccess ? 'Copied!' : 'Copy catalog name'}
+              title={copySuccess ? "Copied!" : "Copy catalog name"}
               style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '2px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: copySuccess ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-foreground)',
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "2px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: copySuccess
+                  ? "var(--vscode-testing-iconPassed)"
+                  : "var(--vscode-foreground)",
                 opacity: copySuccess ? 1 : 0.6,
-                height: '20px',
-                width: '20px',
+                height: "20px",
+                width: "20px",
               }}
             >
-              <i className={`codicon ${copySuccess ? 'codicon-check' : 'codicon-copy'}`} style={{ fontSize: '14px' }}></i>
+              <i
+                className={`codicon ${copySuccess ? "codicon-check" : "codicon-copy"}`}
+                style={{ fontSize: "14px" }}
+              ></i>
             </button>
             <button
               onClick={handleOpenRenameDialog}
               title="Edit catalog name"
               style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '2px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--vscode-foreground)',
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: "2px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--vscode-foreground)",
                 opacity: 0.6,
-                height: '20px',
-                width: '20px',
+                height: "20px",
+                width: "20px",
               }}
             >
-              <i className="codicon codicon-edit" style={{ fontSize: '14px' }}></i>
+              <i className="codicon codicon-edit" style={{ fontSize: "14px" }}></i>
             </button>
           </div>
           <VSCodeButton
@@ -256,47 +276,69 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
         <div className="property-row">
           <label>
             Managed Location
-            <span className="info-icon" title="Storage location for managed tables"> ℹ️</span>
+            <span className="info-icon" title="Storage location for managed tables">
+              {" "}
+              ℹ️
+            </span>
           </label>
           <div className="property-value">
             <VSCodeDropdown
               value={managedLocationName}
-              style={{ width: '100%' }}
+              style={{ width: "100%" }}
               onInput={(e) => {
                 const target = e.target as HTMLSelectElement;
                 handleManagedLocationChange(target.value);
               }}
             >
               <VSCodeOption value={MANAGED_LOCATION_DEFAULT}>— Default —</VSCodeOption>
-              {Object.entries(project?.managedLocations || {}).map(([name, location]: [string, NamedLocation]) => (
-                <VSCodeOption key={name} value={name}>
-                  {name} {location.description && `(${location.description})`}
-                </VSCodeOption>
-              ))}
+              {Object.entries(project?.managedLocations || {}).map(
+                ([name, location]: [string, NamedLocation]) => (
+                  <VSCodeOption key={name} value={name}>
+                    {name} {location.description && `(${location.description})`}
+                  </VSCodeOption>
+                )
+              )}
             </VSCodeDropdown>
           </div>
         </div>
-        <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
-          Changing managed location may be rejected by Unity Catalog depending on object state and permissions.
+        <div
+          style={{
+            marginTop: "8px",
+            fontSize: "11px",
+            color: "var(--vscode-descriptionForeground)",
+          }}
+        >
+          Changing managed location may be rejected by Unity Catalog depending on object state and
+          permissions.
         </div>
-        {managedLocationName !== MANAGED_LOCATION_DEFAULT && managedLocationName && project?.managedLocations?.[managedLocationName] && (
-          <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
-            <strong>Paths:</strong>
-            <div style={{ marginTop: '4px' }}>
-              {Object.entries(project.managedLocations[managedLocationName].paths || {}).map(([env, path]) => (
-                <div key={env} style={{ marginLeft: '8px' }}>
-                  <span style={{ fontWeight: 500 }}>{env}:</span> <code>{path}</code>
-                </div>
-              ))}
+        {managedLocationName !== MANAGED_LOCATION_DEFAULT &&
+          managedLocationName &&
+          project?.managedLocations?.[managedLocationName] && (
+            <div
+              style={{
+                marginTop: "8px",
+                fontSize: "11px",
+                color: "var(--vscode-descriptionForeground)",
+              }}
+            >
+              <strong>Paths:</strong>
+              <div style={{ marginTop: "4px" }}>
+                {Object.entries(project.managedLocations[managedLocationName].paths || {}).map(
+                  ([env, path]) => (
+                    <div key={env} style={{ marginLeft: "8px" }}>
+                      <span style={{ fontWeight: 500 }}>{env}:</span> <code>{path}</code>
+                    </div>
+                  )
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
       </div>
 
       {/* Tags */}
       <div className="table-properties-section">
         <h3>Catalog Tags (Unity Catalog)</h3>
-        
+
         {Object.keys(tags).length === 0 && !isAdding ? (
           <div className="empty-properties">
             <p>No catalog tags defined</p>
@@ -313,7 +355,9 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
             <tbody>
               {Object.entries(tags).map(([tagName, tagValue]) => (
                 <tr key={tagName}>
-                  <td><code>{tagName}</code></td>
+                  <td>
+                    <code>{tagName}</code>
+                  </td>
                   <td>
                     {editingTag === tagName ? (
                       <input
@@ -329,14 +373,14 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                   <td className="actions-cell">
                     {editingTag === tagName ? (
                       <>
-                        <button 
+                        <button
                           className="action-button-save"
                           onClick={() => handleSaveEditTag(tagName)}
                           title="Save"
                         >
                           ✓
                         </button>
-                        <button 
+                        <button
                           className="action-button-cancel"
                           onClick={handleCancelEditTag}
                           title="Cancel"
@@ -365,7 +409,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                   </td>
                 </tr>
               ))}
-              
+
               {isAdding && (
                 <tr className="adding-row">
                   <td>
@@ -386,14 +430,10 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                     />
                   </td>
                   <td className="actions-cell">
-                    <button 
-                      className="action-button-save"
-                      onClick={handleAddTag}
-                      title="Add tag"
-                    >
+                    <button className="action-button-save" onClick={handleAddTag} title="Add tag">
                       ✓
                     </button>
-                    <button 
+                    <button
                       className="action-button-cancel"
                       onClick={handleCancelAdd}
                       title="Cancel"
@@ -406,12 +446,9 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
             </tbody>
           </table>
         )}
-        
+
         {!isAdding && (
-          <button 
-            className="add-property-btn"
-            onClick={() => setIsAdding(true)}
-          >
+          <button className="add-property-btn" onClick={() => setIsAdding(true)}>
             + Add Tag
           </button>
         )}
@@ -422,7 +459,10 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
         <h3>Grants ({catalog.grants?.length ?? 0})</h3>
         {(!catalog.grants || catalog.grants.length === 0) && !addGrantDialog ? (
           <div className="empty-properties">
-            <p>No grants defined. Grant privileges (e.g. USE CATALOG, CREATE SCHEMA) to users or groups.</p>
+            <p>
+              No grants defined. Grant privileges (e.g. USE CATALOG, CREATE SCHEMA) to users or
+              groups.
+            </p>
           </div>
         ) : (
           <table className="properties-table">
@@ -437,12 +477,27 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
               {(catalog.grants || []).map((g) => (
                 <tr key={g.principal}>
                   <td>{g.principal}</td>
-                  <td>{(g.privileges || []).join(', ')}</td>
+                  <td>{(g.privileges || []).join(", ")}</td>
                   <td>
-                    <VSCodeButton appearance="icon" onClick={() => { setEditingGrant({ principal: g.principal, privileges: g.privileges || [] }); setGrantForm({ principal: g.principal, privileges: (g.privileges || []).join(', ') }); setAddGrantDialog(true); }} title="Edit grant">
+                    <VSCodeButton
+                      appearance="icon"
+                      onClick={() => {
+                        setEditingGrant({ principal: g.principal, privileges: g.privileges || [] });
+                        setGrantForm({
+                          principal: g.principal,
+                          privileges: (g.privileges || []).join(", "),
+                        });
+                        setAddGrantDialog(true);
+                      }}
+                      title="Edit grant"
+                    >
                       <IconEdit />
                     </VSCodeButton>
-                    <VSCodeButton appearance="icon" onClick={() => setRevokeGrantDialog({ principal: g.principal })} title="Revoke all">
+                    <VSCodeButton
+                      appearance="icon"
+                      onClick={() => setRevokeGrantDialog({ principal: g.principal })}
+                      title="Revoke all"
+                    >
                       <IconTrash />
                     </VSCodeButton>
                   </td>
@@ -451,7 +506,14 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
             </tbody>
           </table>
         )}
-        <button className="add-property-btn" onClick={() => { setEditingGrant(null); setGrantForm({ principal: '', privileges: '' }); setAddGrantDialog(true); }}>
+        <button
+          className="add-property-btn"
+          onClick={() => {
+            setEditingGrant(null);
+            setGrantForm({ principal: "", privileges: "" });
+            setAddGrantDialog(true);
+          }}
+        >
           + Add Grant
         </button>
       </div>
@@ -460,10 +522,15 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
         <div className="modal-overlay" onClick={() => setDeleteDialog(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Delete Catalog Tag</h3>
-            <p>Are you sure you want to delete tag <code>{deleteDialog}</code>?</p>
+            <p>
+              Are you sure you want to delete tag <code>{deleteDialog}</code>?
+            </p>
             <p className="warning-text">This will generate an UNSET TAGS operation.</p>
             <div className="modal-buttons">
-              <button onClick={() => handleRemoveTag(deleteDialog)} style={{ backgroundColor: 'var(--vscode-errorForeground)' }}>
+              <button
+                onClick={() => handleRemoveTag(deleteDialog)}
+                style={{ backgroundColor: "var(--vscode-errorForeground)" }}
+              >
                 Delete
               </button>
               <button onClick={() => setDeleteDialog(null)}>Cancel</button>
@@ -473,9 +540,15 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
       )}
 
       {addGrantDialog && (
-        <div className="modal-overlay" onClick={() => { setAddGrantDialog(false); setEditingGrant(null); }}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setAddGrantDialog(false);
+            setEditingGrant(null);
+          }}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>{editingGrant ? 'Edit Grant' : 'Add Grant'}</h3>
+            <h3>{editingGrant ? "Edit Grant" : "Add Grant"}</h3>
             <div className="modal-body">
               <label>Principal (user, group, or service principal)</label>
               <input
@@ -494,22 +567,30 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
               />
             </div>
             <div className="modal-buttons">
-              <button onClick={() => { setAddGrantDialog(false); setEditingGrant(null); setGrantForm({ principal: '', privileges: '' }); }}>Cancel</button>
+              <button
+                onClick={() => {
+                  setAddGrantDialog(false);
+                  setEditingGrant(null);
+                  setGrantForm({ principal: "", privileges: "" });
+                }}
+              >
+                Cancel
+              </button>
               <button
                 onClick={() => {
                   const principal = grantForm.principal.trim();
                   const privs = parsePrivileges(grantForm.privileges);
                   if (principal && privs.length > 0) {
-                    if (editingGrant) revokeGrant('catalog', catalogId, editingGrant.principal);
-                    addGrant('catalog', catalogId, principal, privs);
+                    if (editingGrant) revokeGrant("catalog", catalogId, editingGrant.principal);
+                    addGrant("catalog", catalogId, principal, privs);
                     setAddGrantDialog(false);
                     setEditingGrant(null);
-                    setGrantForm({ principal: '', privileges: '' });
+                    setGrantForm({ principal: "", privileges: "" });
                   }
                 }}
                 disabled={!grantForm.principal.trim() || !grantForm.privileges.trim()}
               >
-                {editingGrant ? 'Save' : 'Add Grant'}
+                {editingGrant ? "Save" : "Add Grant"}
               </button>
             </div>
           </div>
@@ -520,9 +601,20 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
         <div className="modal-overlay" onClick={() => setRevokeGrantDialog(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Revoke Grant</h3>
-            <p>Revoke all privileges for <strong>{revokeGrantDialog.principal}</strong> on this catalog?</p>
+            <p>
+              Revoke all privileges for <strong>{revokeGrantDialog.principal}</strong> on this
+              catalog?
+            </p>
             <div className="modal-buttons">
-              <button onClick={() => { revokeGrant('catalog', catalogId, revokeGrantDialog.principal); setRevokeGrantDialog(null); }} style={{ backgroundColor: 'var(--vscode-errorForeground)' }}>Revoke</button>
+              <button
+                onClick={() => {
+                  revokeGrant("catalog", catalogId, revokeGrantDialog.principal);
+                  setRevokeGrantDialog(null);
+                }}
+                style={{ backgroundColor: "var(--vscode-errorForeground)" }}
+              >
+                Revoke
+              </button>
               <button onClick={() => setRevokeGrantDialog(null)}>Cancel</button>
             </div>
           </div>
@@ -538,7 +630,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
             onSubmit={handleConfirmRename}
           >
             <h3>Rename Catalog</h3>
-            
+
             <div className="modal-field-group">
               <label htmlFor="rename-catalog-input">Name</label>
               <VSCodeTextField
@@ -550,7 +642,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
                   setNewName(target.value);
                   setRenameError(null);
                 }}
-                style={{ width: '100%' }}
+                style={{ width: "100%" }}
               />
               {renameError && <p className="form-error">{renameError}</p>}
             </div>
@@ -559,9 +651,7 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
               <VSCodeButton type="button" appearance="secondary" onClick={handleCloseRenameDialog}>
                 Cancel
               </VSCodeButton>
-              <VSCodeButton type="submit">
-                Rename
-              </VSCodeButton>
+              <VSCodeButton type="submit">Rename</VSCodeButton>
             </div>
           </form>
         </div>
@@ -577,21 +667,29 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
               defaultValue={commentDialog.comment}
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  updateCatalog(commentDialog.catalogId, { comment: (e.target as HTMLInputElement).value });
+                if (e.key === "Enter") {
+                  updateCatalog(commentDialog.catalogId, {
+                    comment: (e.target as HTMLInputElement).value,
+                  });
                   setCommentDialog(null);
-                } else if (e.key === 'Escape') {
+                } else if (e.key === "Escape") {
                   setCommentDialog(null);
                 }
               }}
               id="catalog-comment-input"
             />
             <div className="modal-buttons">
-              <button onClick={() => {
-                const input = document.getElementById('catalog-comment-input') as HTMLInputElement;
-                updateCatalog(commentDialog.catalogId, { comment: input.value });
-                setCommentDialog(null);
-              }}>Set</button>
+              <button
+                onClick={() => {
+                  const input = document.getElementById(
+                    "catalog-comment-input"
+                  ) as HTMLInputElement;
+                  updateCatalog(commentDialog.catalogId, { comment: input.value });
+                  setCommentDialog(null);
+                }}
+              >
+                Set
+              </button>
               <button onClick={() => setCommentDialog(null)}>Cancel</button>
             </div>
           </div>
