@@ -476,7 +476,6 @@ def load_current_state(
     """
     project = read_project(workspace_path)
     changelog = read_changelog(workspace_path)
-    validate_workspace_not_legacy_implicit(project, changelog)
 
     return _load_current_state_from_data(workspace_path, project, changelog, validate=validate)
 

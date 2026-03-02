@@ -120,6 +120,27 @@ function showLegacyWorkspaceUnsupportedMessage(): void {
   vscode.window.showErrorMessage(`SchemaX: ${guidance}`);
 }
 
+function parseUndoRequestPayload(payload: unknown): UndoRequestPayload | null {
+  if (typeof payload !== "object" || payload === null) {
+    return null;
+  }
+  const obj = payload as Record<string, unknown>;
+  const actionId = obj.actionId;
+  const opIds = obj.opIds;
+  const actionLabel = obj.actionLabel;
+  if (typeof actionId !== "string" || actionId.trim().length === 0) {
+    return null;
+  }
+  if (!Array.isArray(opIds) || opIds.some((id) => typeof id !== "string")) {
+    return null;
+  }
+  return {
+    actionId,
+    actionLabel: typeof actionLabel === "string" ? actionLabel : undefined,
+    opIds,
+  };
+}
+
 export function activate(context: vscode.ExtensionContext) {
   extensionContextRef = context;
   outputChannel = vscode.window.createOutputChannel("SchemaX");
@@ -1685,7 +1706,16 @@ async function openDesigner(context: vscode.ExtensionContext) {
           break;
         }
         case "undo-requested": {
-          const payload = message.payload as UndoRequestPayload;
+          const payload = parseUndoRequestPayload(message.payload);
+          if (!payload) {
+            const errorMessage = "Invalid undo payload from webview.";
+            outputChannel.appendLine(`[SchemaX] ERROR: ${errorMessage}`);
+            currentPanel?.webview.postMessage({
+              type: "undo-failed",
+              payload: { actionId: "", error: errorMessage },
+            });
+            break;
+          }
           if (!(await requireCompatibleSdk("changelog.undo"))) {
             currentPanel?.webview.postMessage({
               type: "undo-failed",
