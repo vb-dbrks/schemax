@@ -8,9 +8,17 @@ import '@testing-library/jest-dom';
 // When (global as any).__capturedOps is an array, append-ops payloads are pushed there (for E2E UI→live tests).
 (global as any).__capturedOps = undefined;
 (global as any).acquireVsCodeApi = () => ({
-  postMessage: (msg: { type?: string; payload?: unknown[] }) => {
-    if (msg.type === 'append-ops' && Array.isArray((global as any).__capturedOps) && Array.isArray(msg.payload)) {
-      (global as any).__capturedOps.push(...msg.payload);
+  postMessage: (msg: { type?: string; payload?: unknown }) => {
+    if (msg.type === 'append-ops' && Array.isArray((global as any).__capturedOps)) {
+      if (Array.isArray(msg.payload)) {
+        (global as any).__capturedOps.push(...msg.payload);
+      } else if (
+        msg.payload &&
+        typeof msg.payload === 'object' &&
+        Array.isArray((msg.payload as { ops?: unknown[] }).ops)
+      ) {
+        (global as any).__capturedOps.push(...((msg.payload as { ops: unknown[] }).ops));
+      }
     }
   },
   setState: jest.fn(),
@@ -35,4 +43,3 @@ beforeAll(() => {
 afterAll(() => {
   console.error = originalError;
 });
-

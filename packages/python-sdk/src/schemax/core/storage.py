@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
-from schemax.domain.errors import StorageConflictError
+from schemax.domain.errors import StorageConflictError, WorkflowValidationError
 from schemax.providers import Operation, Provider, ProviderRegistry, ProviderState
 
 SCHEMAX_DIR = ".schemax"
@@ -29,9 +29,79 @@ LOCK_FILENAME = ".workspace.lock"
 DEFAULT_PROJECT_SETTINGS: dict[str, Any] = {
     "autoIncrementVersion": True,
     "versionPrefix": "v",
-    # "single" = implicit catalog (recommended), "multi" = explicit catalogs
-    "catalogMode": "single",
+    "catalogMode": "multi",
 }
+
+LEGACY_SINGLE_CATALOG_UNSUPPORTED = "LEGACY_SINGLE_CATALOG_UNSUPPORTED"
+
+
+def _raise_legacy_single_catalog_unsupported(reason: str) -> None:
+    """Raise deterministic hard-break error for legacy implicit workspaces."""
+    raise WorkflowValidationError(
+        message=(
+            "Legacy single-catalog project is no longer supported. "
+            "Migrate workspace to explicit multi-catalog model and remove "
+            f"implicit '__implicit__' artifacts. Details: {reason}"
+        ),
+        code=LEGACY_SINGLE_CATALOG_UNSUPPORTED,
+    )
+
+
+def _has_legacy_implicit_project_markers(project: dict[str, Any]) -> bool:
+    """Return True when project config still uses implicit single-catalog markers."""
+    settings = cast(dict[str, Any], project.get("settings", {}))
+    if settings.get("catalogMode") == "single":
+        return True
+    environments = (
+        cast(dict[str, Any], project.get("provider", {})).get("environments", {})
+        if isinstance(project.get("provider"), dict)
+        else {}
+    )
+    if not isinstance(environments, dict):
+        return False
+    for env_config in environments.values():
+        if not isinstance(env_config, dict):
+            continue
+        mappings = env_config.get("catalogMappings", {})
+        if isinstance(mappings, dict) and "__implicit__" in mappings:
+            return True
+    return False
+
+
+def _has_legacy_implicit_changelog_markers(changelog: dict[str, Any]) -> bool:
+    """Return True when changelog still contains implicit bootstrap operations."""
+    ops = changelog.get("ops", [])
+    if not isinstance(ops, list):
+        return False
+    for op_item in ops:
+        payload: dict[str, Any] | None
+        target: str | None
+        if isinstance(op_item, Operation):
+            payload = op_item.payload
+            target = op_item.target
+        elif isinstance(op_item, dict):
+            raw_payload = op_item.get("payload")
+            payload = raw_payload if isinstance(raw_payload, dict) else None
+            raw_target = op_item.get("target")
+            target = raw_target if isinstance(raw_target, str) else None
+        else:
+            continue
+        if target == "cat_implicit":
+            return True
+        if isinstance(payload, dict):
+            if payload.get("name") == "__implicit__" or payload.get("catalogId") == "cat_implicit":
+                return True
+    return False
+
+
+def validate_workspace_not_legacy_implicit(
+    project: dict[str, Any], changelog: dict[str, Any] | None = None
+) -> None:
+    """Fail fast when workspace still relies on removed implicit single-catalog model."""
+    if _has_legacy_implicit_project_markers(project):
+        _raise_legacy_single_catalog_unsupported("project contains implicit catalog settings")
+    if changelog is not None and _has_legacy_implicit_changelog_markers(changelog):
+        _raise_legacy_single_catalog_unsupported("changelog contains implicit bootstrap operations")
 
 
 def default_project_skeleton_tail() -> dict[str, Any]:
@@ -241,7 +311,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
                         "requireSnapshot": False,
                         "autoCreateTopLevel": True,
                         "autoCreateSchemaxSchema": True,
-                        "catalogMappings": {"__implicit__": f"dev_{workspace_name}"},
+                        "catalogMappings": {},
                     },
                     "test": {
                         "topLevelName": f"test_{workspace_name}",
@@ -250,7 +320,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
                         "requireSnapshot": True,
                         "autoCreateTopLevel": True,
                         "autoCreateSchemaxSchema": True,
-                        "catalogMappings": {"__implicit__": f"test_{workspace_name}"},
+                        "catalogMappings": {},
                     },
                     "prod": {
                         "topLevelName": f"prod_{workspace_name}",
@@ -260,7 +330,7 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
                         "requireApproval": False,
                         "autoCreateTopLevel": False,
                         "autoCreateSchemaxSchema": True,
-                        "catalogMappings": {"__implicit__": f"prod_{workspace_name}"},
+                        "catalogMappings": {},
                     },
                 },
             },
@@ -269,26 +339,10 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
             **default_project_skeleton_tail(),
         }
 
-        initial_ops = []
-        settings = cast(dict[str, Any], new_project.get("settings", {}))
-        if settings.get("catalogMode") == "single":
-            catalog_id = "cat_implicit"
-            initial_ops.append(
-                {
-                    "id": "op_init_catalog",
-                    "ts": datetime.now(UTC).isoformat(),
-                    "provider": provider_id,
-                    "op": f"{provider_id}.add_catalog",
-                    "target": catalog_id,
-                    "payload": {"catalogId": catalog_id, "name": "__implicit__"},
-                }
-            )
-            print("[SchemaX] Auto-created implicit catalog for single-catalog mode")
-
-        new_changelog = {
+        new_changelog: dict[str, Any] = {
             "version": 1,
             "sinceSnapshot": None,
-            "ops": initial_ops,
+            "ops": [],
             "lastModified": datetime.now(UTC).isoformat(),
         }
 
@@ -330,6 +384,7 @@ def read_project(workspace_path: Path) -> dict[str, Any]:
             "This version of SchemaX requires v4 projects. "
             "Please create a new project or manually migrate to v4."
         )
+    validate_workspace_not_legacy_implicit(project)
 
     return project
 
@@ -433,6 +488,7 @@ def _load_current_state_from_data(
     validate: bool,
 ) -> tuple[ProviderState, dict[str, Any], Provider, dict[str, Any] | None]:
     """Load state using preloaded project/changelog data to avoid duplicate disk reads."""
+    validate_workspace_not_legacy_implicit(project, changelog)
     provider = ProviderRegistry.get(project["provider"]["type"])
     if provider is None:
         raise ValueError(

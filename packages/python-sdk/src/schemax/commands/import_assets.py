@@ -6,6 +6,7 @@ adopt already-deployed objects instead of starting from an empty model.
 """
 
 from collections import Counter
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, NamedTuple, Protocol
 
@@ -194,7 +195,11 @@ def import_from_provider(
 
     differ = provider.get_state_differ(
         old_state=state,
-        new_state=discover.normalized_state,
+        new_state=_merge_discovered_state_for_scope(
+            local_state=state,
+            discovered_state=discover.normalized_state,
+            scope=scope,
+        ),
         old_operations=changelog.get("ops", []),
         new_operations=[],
     )
@@ -321,6 +326,140 @@ def _discover_and_normalize(
         project=project,
         env_config=env_config,
     )
+
+
+def _merge_named_objects(
+    local_items: list[dict[str, Any]], discovered_items: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Merge named object lists by `name`, replacing matches and preserving non-target entries."""
+    merged = [deepcopy(item) for item in local_items]
+    index_by_name = {
+        str(item.get("name")): idx
+        for idx, item in enumerate(merged)
+        if isinstance(item, dict) and item.get("name")
+    }
+    for discovered in discovered_items:
+        if not isinstance(discovered, dict):
+            continue
+        name = str(discovered.get("name") or "")
+        if not name:
+            continue
+        replacement = deepcopy(discovered)
+        if name in index_by_name:
+            merged[index_by_name[name]] = replacement
+        else:
+            merged.append(replacement)
+    return merged
+
+
+def _merge_schema_for_table_scope(
+    local_schema: dict[str, Any], discovered_schema: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge table-scoped schema payload while preserving unrelated objects."""
+    merged = deepcopy(local_schema)
+    for field_name in ("comment", "tags", "managedLocationName"):
+        if field_name in discovered_schema:
+            merged[field_name] = deepcopy(discovered_schema[field_name])
+    for collection in ("tables", "views", "volumes", "functions", "materialized_views"):
+        discovered_collection = discovered_schema.get(collection)
+        if not isinstance(discovered_collection, list):
+            continue
+        local_collection = merged.get(collection, [])
+        local_collection_list = local_collection if isinstance(local_collection, list) else []
+        merged[collection] = _merge_named_objects(local_collection_list, discovered_collection)
+    return merged
+
+
+def _merge_catalog_for_schema_or_table_scope(
+    local_catalog: dict[str, Any],
+    discovered_catalog: dict[str, Any],
+    *,
+    table_scoped: bool,
+) -> dict[str, Any]:
+    """Merge scoped schema/table changes into one catalog."""
+    merged = deepcopy(local_catalog)
+    for field_name in ("comment", "tags", "owner", "managedLocationName"):
+        if field_name in discovered_catalog:
+            merged[field_name] = deepcopy(discovered_catalog[field_name])
+    discovered_schemas = discovered_catalog.get("schemas", [])
+    if not isinstance(discovered_schemas, list):
+        return merged
+    local_schemas = merged.get("schemas", [])
+    local_schemas_list = local_schemas if isinstance(local_schemas, list) else []
+    if not table_scoped:
+        merged["schemas"] = _merge_named_objects(local_schemas_list, discovered_schemas)
+        return merged
+
+    merged_schemas = [deepcopy(schema) for schema in local_schemas_list]
+    schema_index = {
+        str(schema.get("name")): idx
+        for idx, schema in enumerate(merged_schemas)
+        if isinstance(schema, dict) and schema.get("name")
+    }
+    for discovered_schema in discovered_schemas:
+        if not isinstance(discovered_schema, dict):
+            continue
+        schema_name = str(discovered_schema.get("name") or "")
+        if not schema_name:
+            continue
+        if schema_name in schema_index:
+            local_schema = merged_schemas[schema_index[schema_name]]
+            merged_schemas[schema_index[schema_name]] = _merge_schema_for_table_scope(
+                local_schema,
+                discovered_schema,
+            )
+        else:
+            merged_schemas.append(deepcopy(discovered_schema))
+    merged["schemas"] = merged_schemas
+    return merged
+
+
+def _merge_discovered_state_for_scope(
+    *,
+    local_state: Any,
+    discovered_state: Any,
+    scope: dict[str, str | None],
+) -> Any:
+    """Merge discovered state into local state for scoped imports to avoid destructive diffs."""
+    if not any(scope.get(key) for key in ("catalog", "schema", "table")):
+        return discovered_state
+    if not isinstance(local_state, dict) or not isinstance(discovered_state, dict):
+        return discovered_state
+
+    local_catalogs = local_state.get("catalogs", [])
+    discovered_catalogs = discovered_state.get("catalogs", [])
+    if not isinstance(local_catalogs, list) or not isinstance(discovered_catalogs, list):
+        return discovered_state
+
+    merged_state = deepcopy(local_state)
+    merged_catalogs = [deepcopy(catalog_item) for catalog_item in local_catalogs]
+    catalog_index = {
+        str(catalog_item.get("name")): idx
+        for idx, catalog_item in enumerate(merged_catalogs)
+        if isinstance(catalog_item, dict) and catalog_item.get("name")
+    }
+    table_scoped = bool(scope.get("table"))
+    schema_or_table_scoped = bool(scope.get("schema") or scope.get("table"))
+    for discovered_catalog in discovered_catalogs:
+        if not isinstance(discovered_catalog, dict):
+            continue
+        catalog_name = str(discovered_catalog.get("name") or "")
+        if not catalog_name:
+            continue
+        if catalog_name not in catalog_index:
+            merged_catalogs.append(deepcopy(discovered_catalog))
+            continue
+        if schema_or_table_scoped:
+            merged_catalogs[catalog_index[catalog_name]] = _merge_catalog_for_schema_or_table_scope(
+                merged_catalogs[catalog_index[catalog_name]],
+                discovered_catalog,
+                table_scoped=table_scoped,
+            )
+            continue
+        merged_catalogs[catalog_index[catalog_name]] = deepcopy(discovered_catalog)
+
+    merged_state["catalogs"] = merged_catalogs
+    return merged_state
 
 
 def _print_import_summary(

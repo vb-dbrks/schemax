@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from schemax.core.storage import append_ops, ensure_project_file
+from schemax.core.storage import append_ops, ensure_project_file, read_project, write_project
 from tests.utils import OperationBuilder
 from tests.utils.cli_helpers import invoke_cli
 
@@ -16,6 +16,27 @@ from tests.utils.cli_helpers import invoke_cli
 def test_apply_json_fails_with_auth_error_non_live(temp_workspace: Path) -> None:
     """Apply should return a structured DB/auth error envelope in non-live runs."""
     ensure_project_file(temp_workspace, provider_id="unity")
+    builder = OperationBuilder()
+    append_ops(
+        temp_workspace,
+        [
+            builder.catalog.add_catalog("cat_1", "bronze", op_id="op_1"),
+            builder.schema.add_schema("schema_1", "core", "cat_1", op_id="op_2"),
+        ],
+    )
+    project = read_project(temp_workspace)
+    project["provider"]["environments"]["dev"]["catalogMappings"] = {"bronze": "dev_bronze"}
+    write_project(temp_workspace, project)
+    create_result = invoke_cli(
+        "snapshot",
+        "create",
+        "--name",
+        "Base",
+        "--version",
+        "v0.1.0",
+        str(temp_workspace),
+    )
+    assert create_result.exit_code == 0, create_result.output
 
     result = invoke_cli(
         "apply",
@@ -88,6 +109,11 @@ def test_apply_json_fails_for_missing_catalog_mapping(temp_workspace: Path) -> N
 def test_snapshot_rebase_fails_for_root_snapshot(temp_workspace: Path) -> None:
     """Rebase should fail when snapshot has no previousSnapshot base."""
     ensure_project_file(temp_workspace, provider_id="unity")
+    builder = OperationBuilder()
+    append_ops(
+        temp_workspace,
+        [builder.catalog.add_catalog("cat_1", "bronze", op_id="op_1")],
+    )
     create_result = invoke_cli(
         "snapshot",
         "create",

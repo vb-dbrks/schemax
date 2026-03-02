@@ -25,6 +25,7 @@ from schemax.providers.base.executor import ExecutionConfig, ExecutionResult
 from schemax.providers.base.scope_filter import filter_operations_by_managed_scope
 from schemax.providers.unity.auth import create_databricks_client
 from schemax.providers.unity.executor import UnitySQLExecutor
+from schemax.version import SCHEMAX_VERSION
 
 console = Console()
 
@@ -574,7 +575,7 @@ class _ApplyCommand:
             project_name=runtime.project_name,
             provider_type=runtime.provider.info.id,
             provider_version=runtime.provider.info.version,
-            schemax_version="0.2.6",
+            schemax_version=SCHEMAX_VERSION,
             from_snapshot_version=runtime.deployed_version,
             previous_deployment_id=previous_deployment_id,
         )

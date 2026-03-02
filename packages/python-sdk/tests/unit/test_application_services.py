@@ -4,7 +4,7 @@ from pathlib import Path
 
 from _pytest.monkeypatch import MonkeyPatch
 
-from schemax.application.services import ApplyService, SnapshotService
+from schemax.application.services import ApplyService, ChangelogService, SnapshotService
 from schemax.commands.snapshot_rebase import RebaseResult
 from schemax.providers.base.executor import ExecutionResult, StatementResult
 
@@ -91,3 +91,40 @@ def test_snapshot_service_rebase_conflict_propagates_false(monkeypatch: MonkeyPa
 
     assert result.success is False
     assert result.code == "snapshot_rebase_conflicts"
+
+
+def test_changelog_service_undo_deduplicates_and_warns(monkeypatch: MonkeyPatch) -> None:
+    """Undo service should deduplicate IDs and surface partial-missing warnings."""
+
+    def _fake_remove(_self: object, *, workspace: Path, op_ids: list[str]) -> dict[str, object]:
+        assert workspace == Path(".")
+        assert op_ids == ["op_1", "op_2"]
+        return {
+            "removedOpIds": ["op_1"],
+            "missingOpIds": ["op_2"],
+            "removedCount": 1,
+            "missingCount": 1,
+            "remainingOpsCount": 4,
+        }
+
+    monkeypatch.setattr(
+        "schemax.application.services.WorkspaceRepository.remove_operations_by_id",
+        _fake_remove,
+    )
+
+    result = ChangelogService().undo_operations(
+        workspace=Path("."), op_ids=["op_1", "op_1", "op_2"]
+    )
+
+    assert result.success is True
+    assert result.code == "undo_completed"
+    assert result.data["removedCount"] == 1
+    assert result.data["missingCount"] == 1
+    assert len(result.data["warnings"]) == 1
+
+
+def test_changelog_service_undo_requires_non_empty_ids() -> None:
+    """Undo service should reject empty operation-id payloads."""
+    result = ChangelogService().undo_operations(workspace=Path("."), op_ids=["", "  "])
+    assert result.success is False
+    assert result.code == "undo_invalid_request"

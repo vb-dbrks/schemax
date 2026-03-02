@@ -29,6 +29,11 @@ jest.mock('../../../src/webview/state/useDesignerStore', () => ({
     findVolume: jest.fn(() => null),
     findFunction: jest.fn(() => null),
     findMaterializedView: jest.fn(() => null),
+    undoStack: [],
+    confirmUndoBatch: jest.fn(),
+    discardUndoBatch: jest.fn(),
+    undoLastAction: jest.fn(() => null),
+    restoreUndoBatch: jest.fn(),
     setProject: jest.fn(),
     setProvider: jest.fn(),
   }),
@@ -49,4 +54,5 @@ describe('App Integration', () => {
     // App starts with loading=true until it receives project-loaded message from extension
     expect(screen.getByText(/Loading SchemaX Designer/)).toBeInTheDocument();
   });
+
 });

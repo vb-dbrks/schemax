@@ -15,7 +15,7 @@ let currentPanel: vscode.WebviewPanel | undefined;
 const pythonBackend = new PythonBackendClient();
 let extensionContextRef: vscode.ExtensionContext | undefined;
 const REQUIRED_ENVELOPE_SCHEMA_VERSION = "1";
-const MIN_SUPPORTED_CLI_VERSION = "0.2.6";
+const MIN_SUPPORTED_CLI_VERSION = "0.2.7";
 
 interface BackendCompatibilityState {
   checked: boolean;
@@ -81,8 +81,65 @@ interface ImportProgressUpdate {
   level?: "info" | "warning" | "error" | "success";
 }
 
+interface AppendOpsRequest {
+  actionId?: string;
+  actionLabel?: string;
+  ops: Operation[];
+}
+
+interface UndoRequestPayload {
+  actionId: string;
+  actionLabel?: string;
+  opIds: string[];
+}
+
+interface ChangelogUndoResultData {
+  removedOpIds: string[];
+  missingOpIds: string[];
+  removedCount: number;
+  missingCount: number;
+  remainingOpsCount: number;
+  warnings: string[];
+}
+
 let activeImportCancelled = false;
 let activeImportController: AbortController | null = null;
+
+const LEGACY_SINGLE_CATALOG_ERROR_CODE = "LEGACY_SINGLE_CATALOG_UNSUPPORTED";
+
+function parseBackendErrorCode(error: unknown): string | null {
+  const messageText = error instanceof Error ? error.message : String(error);
+  const match = messageText.match(/\[([A-Z0-9_]+)\]/);
+  return match ? match[1] : null;
+}
+
+function showLegacyWorkspaceUnsupportedMessage(): void {
+  const guidance =
+    "This workspace uses removed implicit single-catalog mode. " +
+    "Migrate project/changelog to explicit multi-catalog mappings and remove '__implicit__' artifacts.";
+  vscode.window.showErrorMessage(`SchemaX: ${guidance}`);
+}
+
+function parseUndoRequestPayload(payload: unknown): UndoRequestPayload | null {
+  if (typeof payload !== "object" || payload === null) {
+    return null;
+  }
+  const obj = payload as Record<string, unknown>;
+  const actionId = obj.actionId;
+  const opIds = obj.opIds;
+  const actionLabel = obj.actionLabel;
+  if (typeof actionId !== "string" || actionId.trim().length === 0) {
+    return null;
+  }
+  if (!Array.isArray(opIds) || opIds.some((id) => typeof id !== "string")) {
+    return null;
+  }
+  return {
+    actionId,
+    actionLabel: typeof actionLabel === "string" ? actionLabel : undefined,
+    opIds,
+  };
+}
 
 export function activate(context: vscode.ExtensionContext) {
   extensionContextRef = context;
@@ -222,6 +279,14 @@ async function requireCompatibleSdk(workflowName: string): Promise<boolean> {
       `${backendCompatibilityState.reason ?? "unknown reason"}`
   );
   return false;
+}
+
+function supportsBackendCommand(commandName: string): boolean {
+  const runtimeInfo = backendCompatibilityState.runtimeInfo;
+  if (!runtimeInfo) {
+    return false;
+  }
+  return runtimeInfo.supportedCommands.includes(commandName);
 }
 
 /** Check if the SchemaX CLI (schemax) is available on PATH. */
@@ -1209,6 +1274,17 @@ async function openDesigner(context: vscode.ExtensionContext) {
     return data.stale ?? data.data?.stale_snapshots ?? [];
   }
 
+  async function runChangelogUndo(
+    workspacePath: string,
+    payload: UndoRequestPayload
+  ): Promise<CommandEnvelope<ChangelogUndoResultData | null>> {
+    const args: string[] = ["changelog", "undo"];
+    for (const opId of payload.opIds) {
+      args.push("--op-id", opId);
+    }
+    return pythonBackend.runJson<ChangelogUndoResultData>("changelog.undo", args, workspacePath);
+  }
+
   // Helper function to reload project data and send to webview
   async function reloadProject(
     workspaceFolder: vscode.WorkspaceFolder,
@@ -1285,6 +1361,9 @@ async function openDesigner(context: vscode.ExtensionContext) {
       });
     } catch (error) {
       outputChannel.appendLine(`[SchemaX] ERROR: Failed to reload project: ${error}`);
+      if (parseBackendErrorCode(error) === LEGACY_SINGLE_CATALOG_ERROR_CODE) {
+        showLegacyWorkspaceUnsupportedMessage();
+      }
     }
   }
 
@@ -1432,7 +1511,11 @@ async function openDesigner(context: vscode.ExtensionContext) {
             trackEvent("project_loaded", { provider: provider.id });
           } catch (error) {
             outputChannel.appendLine(`[SchemaX] ERROR: Failed to load project: ${error}`);
-            vscode.window.showErrorMessage(`Failed to load project: ${error}`);
+            if (parseBackendErrorCode(error) === LEGACY_SINGLE_CATALOG_ERROR_CODE) {
+              showLegacyWorkspaceUnsupportedMessage();
+            } else {
+              vscode.window.showErrorMessage(`Failed to load project: ${error}`);
+            }
           }
           break;
         }
@@ -1558,8 +1641,14 @@ async function openDesigner(context: vscode.ExtensionContext) {
           break;
         }
         case "append-ops": {
+          const request = (
+            Array.isArray(message.payload)
+              ? { ops: message.payload as Operation[] }
+              : (message.payload as AppendOpsRequest)
+          ) as AppendOpsRequest;
+          const actionId = request.actionId ?? "";
           try {
-            const ops: Operation[] = message.payload;
+            const ops: Operation[] = request.ops;
             outputChannel.appendLine(`[SchemaX] Appending ${ops.length} operation(s) to changelog`);
 
             // Append to changelog (v3 validates operations via provider)
@@ -1594,10 +1683,91 @@ async function openDesigner(context: vscode.ExtensionContext) {
               type: "project-updated",
               payload: payloadForWebview,
             });
+            currentPanel?.webview.postMessage({
+              type: "ops-appended",
+              payload: {
+                actionId,
+                opIds: ops.map((op) => op.id),
+              },
+            });
             trackEvent("ops_appended", { count: ops.length, provider: provider.id });
           } catch (error) {
             outputChannel.appendLine(`[SchemaX] ERROR: Failed to append operations: ${error}`);
-            vscode.window.showErrorMessage(`Failed to append operations: ${error}`);
+            if (parseBackendErrorCode(error) === LEGACY_SINGLE_CATALOG_ERROR_CODE) {
+              showLegacyWorkspaceUnsupportedMessage();
+            } else {
+              vscode.window.showErrorMessage(`Failed to append operations: ${error}`);
+            }
+            currentPanel?.webview.postMessage({
+              type: "ops-append-failed",
+              payload: { actionId },
+            });
+          }
+          break;
+        }
+        case "undo-requested": {
+          const payload = parseUndoRequestPayload(message.payload);
+          if (!payload) {
+            const errorMessage = "Invalid undo payload from webview.";
+            outputChannel.appendLine(`[SchemaX] ERROR: ${errorMessage}`);
+            currentPanel?.webview.postMessage({
+              type: "undo-failed",
+              payload: { actionId: "", error: errorMessage },
+            });
+            break;
+          }
+          if (!(await requireCompatibleSdk("changelog.undo"))) {
+            currentPanel?.webview.postMessage({
+              type: "undo-failed",
+              payload: { actionId: payload.actionId, error: "Python SDK not compatible" },
+            });
+            break;
+          }
+          if (!supportsBackendCommand("changelog.undo")) {
+            const messageText =
+              "Installed SchemaX Python SDK does not support undo yet. " +
+              "Update with: pip install -U schemaxpy";
+            vscode.window.showErrorMessage(messageText);
+            currentPanel?.webview.postMessage({
+              type: "undo-failed",
+              payload: { actionId: payload.actionId, error: messageText },
+            });
+            break;
+          }
+          try {
+            const envelope = await runChangelogUndo(workspaceFolder.uri.fsPath, payload);
+            if (envelope.status === "error" || !envelope.data) {
+              const firstError = envelope.errors[0];
+              const errorCode = firstError?.code || "PYTHON_COMMAND_FAILED";
+              const errorMessage =
+                envelope.errors[0]?.message || "Undo failed because backend returned an error.";
+              throw new Error(`[${errorCode}] ${errorMessage}`);
+            }
+
+            await reloadProject(workspaceFolder, currentPanel);
+            currentPanel?.webview.postMessage({
+              type: "undo-completed",
+              payload: {
+                actionId: payload.actionId,
+                removedCount: envelope.data.removedCount,
+                missingCount: envelope.data.missingCount,
+                warnings: envelope.data.warnings,
+              },
+            });
+            if (envelope.data.missingCount > 0) {
+              vscode.window.showWarningMessage(
+                `SchemaX: Undo removed ${envelope.data.removedCount} operation(s), ` +
+                  `${envelope.data.missingCount} operation(s) were already missing.`
+              );
+            }
+          } catch (error) {
+            const errorMessage = String(error);
+            outputChannel.appendLine(`[SchemaX] ERROR: Undo failed: ${errorMessage}`);
+            vscode.window.showErrorMessage(`SchemaX undo failed: ${errorMessage}`);
+            currentPanel?.webview.postMessage({
+              type: "undo-failed",
+              payload: { actionId: payload.actionId, error: errorMessage },
+            });
           }
           break;
         }

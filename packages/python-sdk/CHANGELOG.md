@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.7] - 2026-03-02
+
+### Added
+
+- **Legacy workspace hard-break guardrails** — Added deterministic detection and rejection for removed implicit single-catalog workspace markers.
+- **Error code contract** — Added `LEGACY_SINGLE_CATALOG_UNSUPPORTED` failure path for CLI/JSON workflows.
+
+### Changed
+
+- **Unity default model** — New projects now initialize with explicit multi-catalog mode (no implicit bootstrap catalog operation).
+- **Rollback execution config** — Removed implicit catalog fallback in rollback execution paths; execution now uses explicit environment deployment catalog.
+- **Versioning architecture** — Centralized runtime version to `schemax.version.SCHEMAX_VERSION` and removed per-command hardcoded version literals.
+- **Release automation** — Fixed version bump script replacement logic to avoid Perl backreference corruption on `0.x.y` versions.
+
+### Fixed
+
+- **Extension/SDK compatibility surfacing** — Legacy workspace failures now propagate cleanly as structured command errors.
+- **Release tooling integrity** — Repaired and hardened version sync checks to validate the shared version source.
+
 ## [0.2.6] - 2026-03-02
 
 ### Added
@@ -15,12 +34,17 @@
 - **Storage/session layer** — Introduced repository/session abstractions for cleaner workspace mutation boundaries.
 - **Unity internals refactor** — Decomposed Unity parser/differ/reducer/sql-generator paths for lint/type compliance and maintainability.
 - **Cross-platform auth profile lookup** — Databricks profile detection now resolves config paths consistently across macOS/Linux/Windows.
+- **Unity catalog model hard cutover** — New workspaces are explicit multi-catalog by default; implicit bootstrap catalog creation was removed.
 
 ### Fixed
 
 - **CLI envelope correctness** — Fixed `apply` and `snapshot validate` JSON status/exit-code mismatches on failure/stale paths.
 - **Snapshot rebase service contract** — `SnapshotService.rebase()` now propagates success/failure from the underlying rebase result.
 - **Parser/test parity** — Updated DDL parser + tests for `ALTER ... SET TAGS` behavior and branch coverage.
+
+### Breaking
+
+- **Legacy implicit workspaces removed** — Workspaces carrying implicit single-catalog markers (`catalogMode: single`, `__implicit__`, or `cat_implicit` bootstrap ops) now fail fast with `LEGACY_SINGLE_CATALOG_UNSUPPORTED`. Migrate to explicit logical catalogs and environment mappings before running `sql/apply/rollback/import/workspace-state`.
 
 ## [0.2.5] - 2026-02-24
 

@@ -2,6 +2,7 @@
 
 from .services import (
     ApplyService,
+    ChangelogService,
     DiffService,
     ImportService,
     InitService,
@@ -18,6 +19,7 @@ __all__ = [
     "DiffService",
     "ImportService",
     "ApplyService",
+    "ChangelogService",
     "RollbackService",
     "SnapshotService",
 ]

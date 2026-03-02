@@ -2,6 +2,13 @@
 
 Complete setup guide for the SchemaX Python SDK development environment.
 
+## Multi-Catalog Baseline (0.2.6+)
+
+- Implicit single-catalog workspaces are intentionally unsupported.
+- New projects are explicit multi-catalog by default.
+- Every logical catalog used in state must be mapped per environment via
+  `provider.environments.<env>.catalogMappings`.
+
 ---
 
 ## 🚀 Quick Start (2 Minutes)
@@ -324,4 +331,3 @@ GitHub Actions automatically runs on every PR:
 ---
 
 **You're all set!** 🎉 Run `make all` to verify everything works.
-

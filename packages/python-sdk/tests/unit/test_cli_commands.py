@@ -30,6 +30,7 @@ def test_cli_help_smoke() -> None:
         "apply",
         "rollback",
         "snapshot",
+        "changelog",
         "runtime-info",
     ]:
         result_sub = runner.invoke(cli, [sub, "--help"])
@@ -616,6 +617,56 @@ def test_snapshot_validate_json_stale_returns_error_envelope(
     assert parsed["errors"][0]["code"] == "SNAPSHOT_STALE"
     assert parsed["data"]["count"] == 1
     assert len(parsed["data"]["stale"]) == 1
+
+
+def test_changelog_undo_json_output(monkeypatch, temp_workspace: Path) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr(
+        "schemax.cli.ChangelogService.undo_operations",
+        lambda _self, **_kwargs: SimpleNamespace(
+            success=True,
+            data={
+                "removedOpIds": ["op_1"],
+                "missingOpIds": [],
+                "removedCount": 1,
+                "missingCount": 0,
+                "remainingOpsCount": 2,
+                "warnings": [],
+            },
+        ),
+    )
+
+    result = runner.invoke(
+        cli,
+        ["changelog", "undo", "--op-id", "op_1", "--json", str(temp_workspace)],
+    )
+    assert result.exit_code == 0
+    parsed = json.loads(result.output)
+    assert parsed["schemaVersion"] == "1"
+    assert parsed["command"] == "changelog.undo"
+    assert parsed["status"] == "success"
+    assert parsed["data"]["removedCount"] == 1
+
+
+def test_changelog_undo_json_invalid_request(monkeypatch, temp_workspace: Path) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr(
+        "schemax.cli.ChangelogService.undo_operations",
+        lambda _self, **_kwargs: SimpleNamespace(
+            success=False,
+            code="undo_invalid_request",
+            message="bad request",
+            data={"warnings": []},
+        ),
+    )
+
+    result = runner.invoke(cli, ["changelog", "undo", "--json", str(temp_workspace)])
+    assert result.exit_code == 1
+    parsed = json.loads(result.output)
+    assert parsed["schemaVersion"] == "1"
+    assert parsed["command"] == "changelog.undo"
+    assert parsed["status"] == "error"
+    assert parsed["errors"][0]["code"] == "undo_invalid_request"
 
 
 def test_workspace_state_json_output(monkeypatch, temp_workspace: Path) -> None:

@@ -14,6 +14,7 @@ from databricks.sdk.service.sql import StatementState
 
 from schemax.providers.base.executor import ExecutionResult, StatementResult
 from schemax.providers.base.operations import Operation
+from schemax.version import SCHEMAX_VERSION
 
 
 class DeploymentOpDetail(TypedDict):
@@ -231,7 +232,7 @@ class DeploymentTracker:
         project_name: str,
         provider_type: str,
         provider_version: str,
-        schemax_version: str = "0.2.6",
+        schemax_version: str = SCHEMAX_VERSION,
         from_snapshot_version: str | None = None,
         previous_deployment_id: str | None = None,
     ) -> None:

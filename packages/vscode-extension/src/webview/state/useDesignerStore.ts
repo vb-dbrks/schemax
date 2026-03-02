@@ -29,12 +29,26 @@ interface ProviderMetadata {
   capabilities: ProviderCapabilities;
 }
 
+interface PendingUndoBatch {
+  actionId: string;
+  actionLabel: string;
+  opIds: string[];
+}
+
+interface UndoBatch {
+  actionId: string;
+  actionLabel: string;
+  opIds: string[];
+}
+
 interface DesignerState {
   project: ProjectFile | null;
   provider: ProviderMetadata | null; // NEW: Provider information
   selectedCatalogId: string | null;
   selectedSchemaId: string | null;
   selectedTableId: string | null;
+  pendingUndoBatches: Record<string, PendingUndoBatch>;
+  undoStack: UndoBatch[];
 
   // Actions
   setProject: (project: ProjectFile) => void;
@@ -310,10 +324,34 @@ interface DesignerState {
     tagName: string,
     tagValue: string
   ) => Operation[];
+  recordUndoBatch: (ops: Operation[], actionLabel?: string) => string;
+  confirmUndoBatch: (actionId: string, opIds: string[]) => void;
+  discardUndoBatch: (actionId: string) => void;
+  undoLastAction: () => UndoBatch | null;
+  restoreUndoBatch: (batch: UndoBatch) => void;
 }
 
-function emitOps(ops: Operation[]) {
-  vscode.postMessage({ type: "append-ops", payload: ops });
+function buildActionLabel(ops: Operation[]): string {
+  if (ops.length === 0) {
+    return "Apply changes";
+  }
+  if (ops.length > 1) {
+    return `Apply ${ops.length} changes`;
+  }
+  const opName = ops[0].op.split(".").pop() ?? "change";
+  return opName.replaceAll("_", " ");
+}
+
+function emitOps(store: DesignerState, ops: Operation[], actionLabel?: string) {
+  const actionId = store.recordUndoBatch(ops, actionLabel);
+  vscode.postMessage({
+    type: "append-ops",
+    payload: {
+      actionId,
+      actionLabel: actionLabel ?? buildActionLabel(ops),
+      ops,
+    },
+  });
 }
 
 // Helper to create an operation with provider context
@@ -344,6 +382,8 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   selectedCatalogId: null,
   selectedSchemaId: null,
   selectedTableId: null,
+  pendingUndoBatches: {},
+  undoStack: [],
 
   setProject: (project) => set({ project }),
   setProvider: (provider) => set({ provider }),
@@ -358,7 +398,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       name,
       ...options,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   renameCatalog: (catalogId, newName) => {
@@ -369,7 +409,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     }
     const oldName = catalog.name;
     const op = createOperation(state, "rename_catalog", catalogId, { oldName, newName });
-    emitOps([op]);
+    emitOps(state, [op]);
   },
 
   updateCatalog: (catalogId, updates) => {
@@ -379,12 +419,12 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       throw new Error(`Cannot update catalog: catalog ${catalogId} not found`);
     }
     const op = createOperation(state, "update_catalog", catalogId, updates);
-    emitOps([op]);
+    emitOps(state, [op]);
   },
 
   dropCatalog: (catalogId) => {
     const op = createOperation(get(), "drop_catalog", catalogId, {});
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   addSchema: (catalogId, name, options) => {
@@ -395,7 +435,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       catalogId,
       ...options,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   renameSchema: (schemaId, newName) => {
@@ -406,7 +446,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     }
     const oldName = schemaInfo.schema.name;
     const op = createOperation(state, "rename_schema", schemaId, { oldName, newName });
-    emitOps([op]);
+    emitOps(state, [op]);
   },
 
   updateSchema: (schemaId, updates) => {
@@ -416,12 +456,12 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       throw new Error(`Cannot update schema: schema ${schemaId} not found`);
     }
     const op = createOperation(state, "update_schema", schemaId, updates);
-    emitOps([op]);
+    emitOps(state, [op]);
   },
 
   dropSchema: (schemaId) => {
     const op = createOperation(get(), "drop_schema", schemaId, {});
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   addTable: (schemaId, name, format, options) => {
@@ -433,7 +473,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       format,
       ...options,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   renameTable: (tableId, newName) => {
@@ -444,17 +484,17 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     }
     const oldName = tableInfo.table.name;
     const op = createOperation(state, "rename_table", tableId, { oldName, newName });
-    emitOps([op]);
+    emitOps(state, [op]);
   },
 
   dropTable: (tableId) => {
     const op = createOperation(get(), "drop_table", tableId, {});
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   setTableComment: (tableId, comment) => {
     const op = createOperation(get(), "set_table_comment", tableId, { tableId, comment });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   // View operations
@@ -467,7 +507,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       definition,
       ...options,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   renameView: (viewId, newName) => {
@@ -478,7 +518,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     }
     const oldName = viewInfo.view.name;
     const op = createOperation(state, "rename_view", viewId, { oldName, newName });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   updateView: (viewId, definition, extractedDependencies) => {
@@ -486,12 +526,12 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       definition,
       extractedDependencies,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   dropView: (viewId) => {
     const op = createOperation(get(), "drop_view", viewId, {});
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   addVolume: (schemaId, name, volumeType, options) => {
@@ -504,7 +544,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       comment: options?.comment,
       location: options?.location,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   renameVolume: (volumeId, newName) => {
@@ -515,17 +555,17 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       oldName: info.volume.name,
       newName,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   updateVolume: (volumeId, updates) => {
     const op = createOperation(get(), "update_volume", volumeId, updates);
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   dropVolume: (volumeId) => {
     const op = createOperation(get(), "drop_volume", volumeId, {});
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   addFunction: (schemaId, name, language, body, options) => {
@@ -540,7 +580,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       comment: options?.comment,
       parameters: options?.parameters ?? [],
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   renameFunction: (functionId, newName) => {
@@ -551,17 +591,17 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       oldName: info.func.name,
       newName,
     });
-    emitOps([op]);
+    emitOps(state, [op]);
   },
 
   updateFunction: (functionId, updates) => {
     const op = createOperation(get(), "update_function", functionId, updates);
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   dropFunction: (functionId) => {
     const op = createOperation(get(), "drop_function", functionId, {});
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   addMaterializedView: (schemaId, name, definition, options) => {
@@ -575,7 +615,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       refreshSchedule: options?.refreshSchedule,
       extractedDependencies: options?.extractedDependencies,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   renameMaterializedView: (materializedViewId, newName) => {
@@ -586,7 +626,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       oldName: info.mv.name,
       newName,
     });
-    emitOps([op]);
+    emitOps(state, [op]);
   },
 
   updateMaterializedView: (materializedViewId, definition, extractedDependencies, options) => {
@@ -594,12 +634,12 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     if (options?.refreshSchedule !== undefined) payload.refreshSchedule = options.refreshSchedule;
     if (options?.comment !== undefined) payload.comment = options.comment;
     const op = createOperation(get(), "update_materialized_view", materializedViewId, payload);
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   dropMaterializedView: (materializedViewId) => {
     const op = createOperation(get(), "drop_materialized_view", materializedViewId, {});
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   addColumn: (tableId, name, type, nullable, comment, tags) => {
@@ -630,7 +670,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       });
     }
 
-    emitOps(ops);
+    emitOps(get(), ops);
   },
 
   renameColumn: (tableId, colId, newName) => {
@@ -645,7 +685,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     }
     const oldName = column.name;
     const op = createOperation(state, "rename_column", colId, { tableId, oldName, newName });
-    emitOps([op]);
+    emitOps(state, [op]);
   },
 
   dropColumn: (tableId, colId) => {
@@ -660,7 +700,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     }
     const name = column.name;
     const op = createOperation(state, "drop_column", colId, { tableId, name });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   reorderColumns: (tableId, order) => {
@@ -686,53 +726,53 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       order,
       previousOrder, // Capture the previous order for ALTER TABLE generation
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   changeColumnType: (tableId, colId, newType) => {
     const op = createOperation(get(), "change_column_type", colId, { tableId, newType });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   setColumnNullable: (tableId, colId, nullable) => {
     const op = createOperation(get(), "set_nullable", colId, { tableId, nullable });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   setColumnComment: (tableId, colId, comment) => {
     const op = createOperation(get(), "set_column_comment", colId, { tableId, comment });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   setTableProperty: (tableId, key, value) => {
     const op = createOperation(get(), "set_table_property", tableId, { tableId, key, value });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   unsetTableProperty: (tableId, key) => {
     const op = createOperation(get(), "unset_table_property", tableId, { tableId, key });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   setTableTag: (tableId, tagName, tagValue) => {
     const op = createOperation(get(), "set_table_tag", tableId, { tableId, tagName, tagValue });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   unsetTableTag: (tableId, tagName) => {
     const op = createOperation(get(), "unset_table_tag", tableId, { tableId, tagName });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   // Column tag operations
   setColumnTag: (tableId, colId, tagName, tagValue) => {
     const op = createOperation(get(), "set_column_tag", colId, { tableId, tagName, tagValue });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   unsetColumnTag: (tableId, colId, tagName) => {
     const op = createOperation(get(), "unset_column_tag", colId, { tableId, tagName });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   // Constraint operations
@@ -743,7 +783,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       constraintId,
       ...constraint,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   updateConstraint: (tableId, constraintId, constraint) => {
@@ -791,7 +831,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
     addOp.ts = new Date(now.getTime() + 1).toISOString();
 
     // Emit both operations as a single batch
-    emitOps([dropOp, addOp]);
+    emitOps(get(), [dropOp, addOp]);
   },
 
   dropConstraint: (tableId, constraintId) => {
@@ -818,7 +858,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       tableId,
       name: constraintName, // Include name for SQL generation
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   // Row filter operations
@@ -832,17 +872,17 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       enabled,
       description,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   updateRowFilter: (tableId, filterId, updates) => {
     const op = createOperation(get(), "update_row_filter", filterId, { tableId, ...updates });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   removeRowFilter: (tableId, filterId) => {
     const op = createOperation(get(), "remove_row_filter", filterId, { tableId });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   // Column mask operations
@@ -857,17 +897,17 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       enabled,
       description,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   updateColumnMask: (tableId, maskId, updates) => {
     const op = createOperation(get(), "update_column_mask", maskId, { tableId, ...updates });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   removeColumnMask: (tableId, maskId) => {
     const op = createOperation(get(), "remove_column_mask", maskId, { tableId });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   addGrant: (targetType, targetId, principal, privileges) => {
@@ -877,7 +917,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       principal,
       privileges,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   revokeGrant: (targetType, targetId, principal, privileges) => {
@@ -887,7 +927,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
       principal,
       privileges: privileges ?? undefined,
     });
-    emitOps([op]);
+    emitOps(get(), [op]);
   },
 
   findCatalog: (catalogId) => {
@@ -980,7 +1020,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
   },
 
   applyBulkOps: (ops) => {
-    if (ops.length > 0) emitOps(ops);
+    if (ops.length > 0) emitOps(get(), ops, "Bulk operation");
   },
 
   buildBulkGrantOps: (scopeResult, principal, privileges, targetTypeFilter?) => {
@@ -1055,5 +1095,61 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
         tags: mergedTags,
       }),
     ];
+  },
+  recordUndoBatch: (ops, actionLabel) => {
+    const actionId = `action_${uuidv4()}`;
+    const opIds = ops.map((operation) => operation.id).filter((opId) => opId.trim().length > 0);
+    const label = actionLabel ?? buildActionLabel(ops);
+    set((state) => ({
+      pendingUndoBatches: {
+        ...state.pendingUndoBatches,
+        [actionId]: { actionId, actionLabel: label, opIds },
+      },
+    }));
+    return actionId;
+  },
+  confirmUndoBatch: (actionId, opIds) => {
+    set((state) => {
+      const pending = state.pendingUndoBatches[actionId];
+      if (!pending) {
+        return state;
+      }
+      const normalizedOpIds = opIds.length > 0 ? opIds : pending.opIds;
+      const nextPending = { ...state.pendingUndoBatches };
+      delete nextPending[actionId];
+      return {
+        pendingUndoBatches: nextPending,
+        undoStack: [
+          ...state.undoStack,
+          {
+            actionId,
+            actionLabel: pending.actionLabel,
+            opIds: normalizedOpIds,
+          },
+        ],
+      };
+    });
+  },
+  discardUndoBatch: (actionId) => {
+    set((state) => {
+      if (!state.pendingUndoBatches[actionId]) {
+        return state;
+      }
+      const nextPending = { ...state.pendingUndoBatches };
+      delete nextPending[actionId];
+      return { pendingUndoBatches: nextPending };
+    });
+  },
+  undoLastAction: () => {
+    const state = get();
+    const last = state.undoStack[state.undoStack.length - 1] ?? null;
+    if (!last) {
+      return null;
+    }
+    set({ undoStack: state.undoStack.slice(0, -1) });
+    return last;
+  },
+  restoreUndoBatch: (batch) => {
+    set((state) => ({ undoStack: [...state.undoStack, batch] }));
   },
 }));

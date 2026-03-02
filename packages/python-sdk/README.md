@@ -56,6 +56,9 @@ schemax init --provider hive
 
 This creates a `.schemax/` directory with your project configuration.
 
+Note: `0.2.6+` uses explicit multi-catalog mode only. New projects start with no
+implicit catalog; add logical catalogs explicitly and map each one per environment.
+
 ### 2. Validate Your Schema
 
 ```bash
@@ -316,8 +319,8 @@ env_config = get_environment_config(project, "prod")
 # Build catalog name mapping (logical -> physical)
 catalog_mapping = {}
 for catalog in state.get("catalogs", []):
-    logical_name = catalog.get("name", "__implicit__")
-    physical_name = env_config.get("catalog", logical_name)
+    logical_name = str(catalog.get("name"))
+    physical_name = env_config.get("catalogMappings", {}).get(logical_name, logical_name)
     catalog_mapping[logical_name] = physical_name
 
 # Generate SQL with environment-specific catalog names
@@ -516,4 +519,3 @@ Apache License 2.0 - see [LICENSE](https://github.com/vb-dbrks/schemax-vscode/bl
 - **Issues**: https://github.com/vb-dbrks/schemax-vscode/issues
 - **VS Code Extension**: [schemax-vscode](https://github.com/vb-dbrks/schemax-vscode/tree/main/packages/vscode-extension)
 - **PyPI**: https://pypi.org/project/schemaxpy/
-

@@ -393,7 +393,7 @@ describe('Storage V4 - Python transport contract', () => {
       });
 
     await expect(loadCurrentState(vscode.Uri.file('/tmp/workspace'), false)).rejects.toThrow(
-      'boom'
+      '[PYTHON_COMMAND_FAILED] boom'
     );
     expect(runJsonSpy).toHaveBeenCalledWith(
       'workspace-state',
