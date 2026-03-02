@@ -10,8 +10,7 @@
 [![Publish to PyPI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-pypi.yml)
 [![Publish VS Code Extension](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-vscode-extension.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-vscode-extension.yml)
 [![PyPI](https://img.shields.io/pypi/v/schemaxpy)](https://pypi.org/project/schemaxpy/)
-![PyPI - Downloads](https://img.shields.io/pypi/dm/schemaxpy?style=plastic)
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/schematic-dev.schemax-vscode)](https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/schemaxpy?style=plastic)](https://pypi.org/project/schemaxpy/)[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/schematic-dev.schemax-vscode)](https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode)
 
 ## What SchemaX Does
 
