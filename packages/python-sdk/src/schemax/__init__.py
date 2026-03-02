@@ -7,7 +7,7 @@ Supports multiple catalog providers: Unity Catalog, Hive, PostgreSQL, and more.
 
 from pathlib import Path
 
-__version__ = "0.2.0"
+__version__ = "0.2.6"
 
 # Provider system exports
 # Storage V4 exports (latest)

@@ -7,6 +7,7 @@ DOCS_DIR    := docs/schemax
 
 .PHONY: fmt format lint typecheck test test-python test-ext integration check ci pre-commit all help
 .PHONY: docs-build docs-serve clean
+.PHONY: release-bump release-check
 
 fmt:
 	$(MAKE) -C $(PYTHON_SDK) fmt
@@ -62,6 +63,20 @@ ci:
 	$(MAKE) -C $(PYTHON_SDK) ci
 	$(MAKE) test-ext
 
+release-bump:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make release-bump VERSION=x.y.z [DATE=YYYY-MM-DD]"; \
+		exit 1; \
+	fi
+	@bash scripts/bump-version.sh "$(VERSION)" "$(DATE)"
+
+release-check:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make release-check VERSION=x.y.z"; \
+		exit 1; \
+	fi
+	@bash scripts/check-version-sync.sh "$(VERSION)"
+
 docs-build:
 	@echo "Building docs (Docusaurus)..."
 	cd $(DOCS_DIR) && npm ci && npm run build
@@ -100,6 +115,8 @@ help:
 	@echo "  make ci          - Full CI checks (format, lint, typecheck, tests)"
 	@echo "  make pre-commit  - Format + lint + typecheck (no test)"
 	@echo "  make all         - Format, lint, typecheck, Python test, extension test"
+	@echo "  make release-bump VERSION=x.y.z [DATE=YYYY-MM-DD] - Bump release versions"
+	@echo "  make release-check VERSION=x.y.z - Verify release version sync"
 	@echo ""
 	@echo "  make docs-build  - Build Docusaurus docs ($(DOCS_DIR))"
 	@echo "  make docs-serve  - Serve docs locally (http://localhost:3000)"

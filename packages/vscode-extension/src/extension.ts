@@ -15,7 +15,7 @@ let currentPanel: vscode.WebviewPanel | undefined;
 const pythonBackend = new PythonBackendClient();
 let extensionContextRef: vscode.ExtensionContext | undefined;
 const REQUIRED_ENVELOPE_SCHEMA_VERSION = "1";
-const MIN_SUPPORTED_CLI_VERSION = "0.2.0";
+const MIN_SUPPORTED_CLI_VERSION = "0.2.6";
 
 interface BackendCompatibilityState {
   checked: boolean;

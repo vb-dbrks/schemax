@@ -46,7 +46,7 @@ from .domain.envelopes import (
 )
 from .providers import ProviderRegistry
 
-CLI_VERSION = "0.2.0"
+CLI_VERSION = "0.2.6"
 ENVELOPE_SCHEMA_VERSION = "1"
 
 console = Console()

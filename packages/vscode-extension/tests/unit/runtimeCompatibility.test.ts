@@ -6,12 +6,12 @@ describe('validateRuntimeInfo', () => {
   test('accepts compatible runtime info', () => {
     const result = validateRuntimeInfo(
       {
-        cliVersion: '0.2.1',
+        cliVersion: '0.2.6',
         envelopeSchemaVersion: '1',
         supportedCommands: ['runtime-info'],
         providerIds: ['unity'],
       },
-      '0.2.0',
+      '0.2.6',
       '1'
     );
     expect(result.ok).toBe(true);
@@ -25,7 +25,7 @@ describe('validateRuntimeInfo', () => {
         supportedCommands: ['runtime-info'],
         providerIds: ['unity'],
       },
-      '0.2.0',
+      '0.2.6',
       '1'
     );
     expect(result.ok).toBe(false);
@@ -35,12 +35,12 @@ describe('validateRuntimeInfo', () => {
   test('rejects too-old cli version', () => {
     const result = validateRuntimeInfo(
       {
-        cliVersion: '0.1.9',
+        cliVersion: '0.2.5',
         envelopeSchemaVersion: '1',
         supportedCommands: ['runtime-info'],
         providerIds: ['unity'],
       },
-      '0.2.0',
+      '0.2.6',
       '1'
     );
     expect(result.ok).toBe(false);

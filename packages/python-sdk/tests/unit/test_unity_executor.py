@@ -103,14 +103,15 @@ def test_get_current_user_and_workspace_url_fallbacks(mock_client: SimpleNamespa
     assert get_workspace_url(mock_client) == "https://example.cloud.databricks.com"
 
 
-@patch("os.path.exists")
-@patch("builtins.open", create=True)
-def test_check_profile_exists_and_missing(mock_open: Mock, mock_exists: Mock) -> None:
-    mock_exists.return_value = True
-    mock_open.return_value.__enter__.return_value.read.return_value = "[DEV]\n[PROD]\n"
+def test_check_profile_exists_and_missing(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_path = tmp_path / ".databrickscfg"
+    config_path.write_text("[DEV]\n[PROD]\n", encoding="utf-8")
+    monkeypatch.setenv("DATABRICKS_CONFIG_FILE", str(config_path))
+
     assert check_profile_exists("DEV")
     assert not check_profile_exists("QA")
-    mock_exists.return_value = False
+
+    config_path.unlink()
     assert not check_profile_exists("DEV")
 
 

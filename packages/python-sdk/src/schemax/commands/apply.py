@@ -574,7 +574,7 @@ class _ApplyCommand:
             project_name=runtime.project_name,
             provider_type=runtime.provider.info.id,
             provider_version=runtime.provider.info.version,
-            schemax_version="0.2.0",
+            schemax_version="0.2.6",
             from_snapshot_version=runtime.deployed_version,
             previous_deployment_id=previous_deployment_id,
         )

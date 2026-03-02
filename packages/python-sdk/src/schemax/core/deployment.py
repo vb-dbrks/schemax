@@ -231,7 +231,7 @@ class DeploymentTracker:
         project_name: str,
         provider_type: str,
         provider_version: str,
-        schemax_version: str = "0.2.0",
+        schemax_version: str = "0.2.6",
         from_snapshot_version: str | None = None,
         previous_deployment_id: str | None = None,
     ) -> None:

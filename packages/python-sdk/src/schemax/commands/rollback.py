@@ -559,7 +559,7 @@ def _track_partial_rollback_deployment(
         project_name=context.project_name,
         provider_type=context.provider.info.id,
         provider_version=context.provider.info.version,
-        schemax_version="0.2.0",
+        schemax_version="0.2.6",
         from_snapshot_version=target_deployment.get("version"),
     )
     for index, (rollback_op, stmt_result) in enumerate(
@@ -1226,7 +1226,7 @@ def _track_complete_rollback_deployment(
         project_name=context.project_name,
         provider_type=context.provider.info.id,
         provider_version=context.provider.info.version,
-        schemax_version="0.2.0",
+        schemax_version="0.2.6",
         from_snapshot_version=current_deployed_version,
     )
     for index, (rollback_op, stmt_result) in enumerate(

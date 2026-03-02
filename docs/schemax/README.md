@@ -27,7 +27,7 @@ npm run serve    # Serve the production build locally
 
 1. **Enable Pages**: Repo → **Settings** → **Pages** → **Source**: **GitHub Actions**.
 2. **Deploy**:
-   - Push a version tag (e.g. `git tag v0.2.0 && git push origin v0.2.0`), or
+   - Push a version tag (e.g. `git tag v0.2.6 && git push origin v0.2.6`), or
    - **Actions** → **Docs Release** → **Run workflow**.
 3. The workflow builds the site and deploys to GitHub Pages. The site URL will be `https://<owner>.github.io/<repo>/` (e.g. `https://your-org.github.io/schemax-vscode/`).
 

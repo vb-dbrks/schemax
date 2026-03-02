@@ -31,6 +31,7 @@ The Docusaurus site is the source of truth for product and engineering docs:
 - [Architecture](https://vb-dbrks.github.io/schemax/docs/architecture/system-overview/)
 - [CLI Reference](https://vb-dbrks.github.io/schemax/docs/reference/cli-reference/)
 - [Provider Contract](https://vb-dbrks.github.io/schemax/docs/reference/provider-contract/)
+- [Release Notes](https://vb-dbrks.github.io/schemax/docs/reference/release-notes/)
 - [Testing Guide](https://vb-dbrks.github.io/schemax/docs/contributing/testing/)
 
 Package-level docs:
@@ -79,6 +80,13 @@ For live integration tests:
 ```bash
 cd packages/python-sdk
 make integration
+```
+
+Release version bump (SDK + extension + docs):
+
+```bash
+make release-bump VERSION=0.2.7 DATE=2026-03-15
+make release-check VERSION=0.2.7
 ```
 
 ## License

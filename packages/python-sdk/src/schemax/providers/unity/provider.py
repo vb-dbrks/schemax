@@ -919,7 +919,7 @@ class UnityProvider(BaseProvider):
             project_name=project.get("name", "unknown"),
             provider_type=self.info.id,
             provider_version=self.info.version,
-            schemax_version="0.2.0",
+            schemax_version="0.2.6",
             from_snapshot_version=from_snapshot_version,
             previous_deployment_id=previous_deployment_id,
         )
