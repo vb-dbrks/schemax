@@ -119,6 +119,7 @@ jobs = 0
 limit-inference-results = 100
 persistent = true
 py-version = "3.11"
+# Minimum score required (10.0 = perfect). Defined only here to avoid duplicate keys.
 fail-under = 10.0
 suggestion-mode = true
 load-plugins = [
@@ -262,8 +263,6 @@ never-returning-functions = ["sys.exit", "argparse.parse_error"]
 
 [tool.pylint.reports]
 evaluation = "max(0, 0 if fatal else 10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10))"
-# Minimum score required; 10.0 = perfect (no errors, warnings, refactor or convention messages).
-fail-under = 10.0
 score = true
 
 [tool.pylint.similarities]

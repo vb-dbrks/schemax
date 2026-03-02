@@ -264,7 +264,7 @@ def _add_table(state: UnityState, operation_dict: OperationDict) -> None:
             cluster_columns=payload.get("clusterColumns"),
             comment=payload.get("comment"),
             columns=[],
-            properties={},
+            properties=payload.get("properties", {}),
             tags={},
             constraints=[],
             grants=[],

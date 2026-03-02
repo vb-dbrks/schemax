@@ -270,8 +270,70 @@ def _strip_quoted_name(value: str) -> str:
     return value.rstrip(";").strip("`\"'")
 
 
-def _parse_command_statement(sql: str, index: int) -> DDLStatementResult:
+def _parse_tag_assignments(text: str) -> dict[str, str]:
+    """Parse SQL tag/property assignment list: 'k'='v', 'k2'='v2'."""
+    tags: dict[str, str] = {}
+    for key, value in re.findall(r"['\"]([^'\"]+)['\"]\s*=\s*['\"]([^'\"]*)['\"]", text):
+        tags[key] = value
+    return tags
+
+
+def _parse_comment_command(sql: str) -> CommentOn | None:
+    """Parse COMMENT ON commands that sqlglot may not parse in Databricks dialect."""
+    match = re.match(
+        r"COMMENT\s+ON\s+(CATALOG|SCHEMA|TABLE|VIEW)\s+([^\s]+)\s+IS\s+['\"]([^'\"]*)['\"]\s*;?\s*$",
+        sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return None
+    object_type = match.group(1).lower()
+    full_name = _strip_quoted_name(match.group(2))
+    comment = match.group(3)
+
+    if object_type == "catalog":
+        return CommentOn(
+            object_type="catalog",
+            catalog=full_name,
+            schema_name=None,
+            name=full_name,
+            comment=comment,
+        )
+
+    parts = full_name.split(".")
+    if object_type == "schema":
+        if len(parts) == 2:
+            catalog, schema_name = parts
+        else:
+            catalog, schema_name = "__implicit__", parts[0]
+        return CommentOn(
+            object_type="schema",
+            catalog=catalog,
+            schema_name=schema_name,
+            name=schema_name,
+            comment=comment,
+        )
+
+    if len(parts) == 3:
+        catalog, schema_name, name = parts
+    elif len(parts) == 2:
+        catalog, schema_name, name = "__implicit__", parts[0], parts[1]
+    else:
+        catalog, schema_name, name = "__implicit__", "", parts[0]
+
+    return CommentOn(
+        object_type=object_type,
+        catalog=catalog,
+        schema_name=schema_name or None,
+        name=name,
+        comment=comment,
+    )
+
+
+def _parse_command_create_catalog(sql: str) -> CreateCatalog | None:
     sql_upper = sql.upper()
+    if "CREATE CATALOG" not in sql_upper:
+        return None
     if "CREATE CATALOG" in sql_upper:
         match = re.match(
             r"CREATE\s+CATALOG\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s]+)",
@@ -282,44 +344,105 @@ def _parse_command_statement(sql: str, index: int) -> DDLStatementResult:
         comment_match = re.search(r"COMMENT\s+['\"]([^'\"]*)['\"]", sql, re.IGNORECASE)
         comment = comment_match.group(1) if comment_match else None
         return CreateCatalog(name=catalog_name, comment=comment)
+    return None
 
-    if "CREATE SCHEMA" in sql_upper:
-        match = re.match(
-            r"CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s]+(?:\.[^\s]+)?)",
-            sql,
-            re.IGNORECASE | re.DOTALL,
-        )
-        full_name = _strip_quoted_name(match.group(1)) if match else "unknown"
-        parts = full_name.split(".", 1)
-        catalog = parts[0] if len(parts) == 2 else "__implicit__"
-        schema_name = parts[1] if len(parts) == 2 else full_name
-        comment_match = re.search(r"COMMENT\s+['\"]([^'\"]*)['\"]", sql, re.IGNORECASE)
-        comment = comment_match.group(1) if comment_match else None
-        return CreateSchema(catalog=catalog, name=schema_name, comment=comment)
 
-    if "ALTER TABLE" in sql_upper and "DROP COLUMN" in sql_upper:
-        match = re.match(
-            r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?([^\s]+)\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([^\s,;]+)",
-            sql,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if not match:
-            return Unsupported(reason="command", index=index)
-        full_table = _strip_quoted_name(match.group(1))
-        column_name = _strip_quoted_name(match.group(2))
-        parts = full_table.split(".")
-        if len(parts) == 3:
-            catalog, schema_name, table_name = parts
-        elif len(parts) == 2:
-            catalog, schema_name, table_name = "__implicit__", parts[0], parts[1]
-        else:
-            catalog, schema_name, table_name = "__implicit__", "", full_table
-        return AlterTableDropColumn(
-            catalog=catalog,
-            schema_name=schema_name,
-            table_name=table_name,
-            column_name=column_name,
-        )
+def _parse_command_create_schema(sql: str) -> CreateSchema | None:
+    if "CREATE SCHEMA" not in sql.upper():
+        return None
+    match = re.match(
+        r"CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s]+(?:\.[^\s]+)?)",
+        sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    full_name = _strip_quoted_name(match.group(1)) if match else "unknown"
+    parts = full_name.split(".", 1)
+    catalog = parts[0] if len(parts) == 2 else "__implicit__"
+    schema_name = parts[1] if len(parts) == 2 else full_name
+    comment_match = re.search(r"COMMENT\s+['\"]([^'\"]*)['\"]", sql, re.IGNORECASE)
+    comment = comment_match.group(1) if comment_match else None
+    return CreateSchema(catalog=catalog, name=schema_name, comment=comment)
+
+
+def _parse_command_alter_catalog_tags(sql: str) -> AlterCatalogSetTags | None:
+    if not ("ALTER CATALOG" in sql.upper() and "SET TAGS" in sql.upper()):
+        return None
+    match = re.match(
+        r"ALTER\s+CATALOG\s+([^\s]+)\s+SET\s+TAGS\s*\((.*)\)\s*;?\s*$",
+        sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return None
+    return AlterCatalogSetTags(
+        name=_strip_quoted_name(match.group(1)),
+        tags=_parse_tag_assignments(match.group(2)),
+    )
+
+
+def _parse_command_alter_schema_tags(sql: str) -> AlterSchemaSetTags | None:
+    if not ("ALTER SCHEMA" in sql.upper() and "SET TAGS" in sql.upper()):
+        return None
+    match = re.match(
+        r"ALTER\s+SCHEMA\s+([^\s]+)\s+SET\s+TAGS\s*\((.*)\)\s*;?\s*$",
+        sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return None
+    full_name = _strip_quoted_name(match.group(1))
+    parts = full_name.split(".", 1)
+    catalog = parts[0] if len(parts) == 2 else "__implicit__"
+    schema_name = parts[1] if len(parts) == 2 else full_name
+    return AlterSchemaSetTags(
+        catalog=catalog,
+        schema_name=schema_name,
+        tags=_parse_tag_assignments(match.group(2)),
+    )
+
+
+def _parse_command_drop_column(sql: str) -> AlterTableDropColumn | None:
+    if not ("ALTER TABLE" in sql.upper() and "DROP COLUMN" in sql.upper()):
+        return None
+    match = re.match(
+        r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?([^\s]+)\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([^\s,;]+)",
+        sql,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return None
+    full_table = _strip_quoted_name(match.group(1))
+    column_name = _strip_quoted_name(match.group(2))
+    parts = full_table.split(".")
+    if len(parts) == 3:
+        catalog, schema_name, table_name = parts
+    elif len(parts) == 2:
+        catalog, schema_name, table_name = "__implicit__", parts[0], parts[1]
+    else:
+        catalog, schema_name, table_name = "__implicit__", "", full_table
+    return AlterTableDropColumn(
+        catalog=catalog,
+        schema_name=schema_name,
+        table_name=table_name,
+        column_name=column_name,
+    )
+
+
+def _parse_command_statement(sql: str, index: int) -> DDLStatementResult:
+    comment_result = _parse_comment_command(sql)
+    if comment_result is not None:
+        return comment_result
+    for parser in (
+        _parse_command_create_catalog,
+        _parse_command_create_schema,
+        _parse_command_alter_catalog_tags,
+        _parse_command_alter_schema_tags,
+        _parse_command_drop_column,
+    ):
+        parsed = parser(sql)
+        if parsed is not None:
+            return parsed
+
     return Unsupported(reason="command", index=index)
 
 
@@ -440,9 +563,20 @@ def _parse_create_table(create_expr: exp.Create, sql: str, index: int) -> DDLSta
 
 def _parse_create_view(create_expr: exp.Create, index: int) -> DDLStatementResult:
     schema_expr = create_expr.this
-    if not isinstance(schema_expr, exp.Schema):
+    view_ref = None
+    definition = ""
+    if isinstance(schema_expr, exp.Schema):
+        view_ref = schema_expr.this
+        if schema_expr.expressions:
+            definition = schema_expr.expressions[0].sql(dialect="databricks")
+    if isinstance(schema_expr, exp.Table):
+        view_ref = schema_expr
+        expression = create_expr.expression
+        if expression is not None and hasattr(expression, "sql"):
+            definition = expression.sql(dialect="databricks")
+    if not isinstance(view_ref, exp.Table):
         return Unsupported(reason="create_view_no_schema", index=index)
-    view_ref = schema_expr.this
+
     catalog = "__implicit__"
     schema_name = ""
     view_name = ""
@@ -450,9 +584,6 @@ def _parse_create_view(create_expr: exp.Create, index: int) -> DDLStatementResul
         catalog = view_ref.catalog or "__implicit__"
         schema_name = view_ref.db or ""
         view_name = _get_name(view_ref.this) or view_ref.name or ""
-    definition = ""
-    if schema_expr.expressions:
-        definition = schema_expr.expressions[0].sql(dialect="databricks")
     return CreateView(
         catalog=str(catalog),
         schema_name=str(schema_name),
@@ -611,6 +742,40 @@ def _parse_alter_tblproperties_action(
     return None
 
 
+def _parse_alter_table_set_tags_action(
+    action: exp.Expression, catalog: str, schema_name: str, table_name: str
+) -> AlterResult | None:
+    if not isinstance(action, exp.AlterSet):
+        return None
+    tag_items = action.args.get("tag")
+    if not isinstance(tag_items, list) or not tag_items:
+        return None
+    tags: dict[str, str] = {}
+    for item in tag_items:
+        expressions: list[exp.Expression] = []
+        if hasattr(item, "expressions") and item.expressions:
+            expressions = list(item.expressions)
+        elif hasattr(item, "this") and item.this is not None:
+            expressions = [item.this]
+        else:
+            expressions = [item]
+        for expression in expressions:
+            if not isinstance(expression, exp.EQ):
+                continue
+            key_raw = expression.this.sql(dialect="databricks")
+            value_expr = expression.expression
+            value_raw = value_expr.sql(dialect="databricks") if value_expr is not None else ""
+            tags[key_raw.strip("'\"")] = value_raw.strip("'\"")
+    if not tags:
+        return None
+    return AlterTableSetTags(
+        catalog=catalog,
+        schema_name=schema_name,
+        table_name=table_name,
+        tags=tags,
+    )
+
+
 def _parse_alter_action(
     action: exp.Expression, catalog: str, schema_name: str, table_name: str
 ) -> AlterResult | None:
@@ -620,6 +785,7 @@ def _parse_alter_action(
         _parse_alter_column_action,
         _parse_alter_rename_action,
         _parse_alter_tblproperties_action,
+        _parse_alter_table_set_tags_action,
     ):
         result = parser(action, catalog, schema_name, table_name)
         if result is not None:
@@ -652,10 +818,17 @@ def parse_ddl_statement(sql: str, index: int = 0) -> DDLStatementResult:
     try:
         parsed = sqlglot.parse_one(sql, dialect="databricks")
     except Exception as err:
+        fallback = _parse_comment_command(sql)
+        if fallback is not None:
+            return fallback
         return ParseError(index=index, message=str(err))
     if parsed is None:
         return ParseError(index=index, message="Parser returned None")
+    return _dispatch_parsed_statement(parsed=parsed, sql=sql, index=index)
 
+
+def _dispatch_parsed_statement(parsed: exp.Expression, sql: str, index: int) -> DDLStatementResult:
+    """Dispatch parsed SQL expression into a typed DDL parser result."""
     if isinstance(parsed, exp.Command):
         return _parse_command_statement(sql, index)
     if isinstance(parsed, exp.Comment):

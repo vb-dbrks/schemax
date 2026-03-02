@@ -1710,21 +1710,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return f"ALTER TABLE {old_esc} RENAME TO {new_esc}"
 
     def _drop_table(self, operation: Operation) -> str:
-        # Get table FQN from id_name_map
-        # SQL generator MUST be created with state containing objects to be dropped
-        # (e.g., use current_state during rollback, not target_state)
-        table_fqn = self.id_name_map.get(operation.target)
-
-        if not table_fqn or "." not in table_fqn:
-            # This should never happen if SQL generator is used correctly
-            # If it does, it indicates a bug in the calling code
-            raise ValueError(
-                f"Cannot generate DROP TABLE for {operation.target}: table not found in state.\n"
-                f"Hint: SQL generator must be created with state containing objects to be dropped.\n"
-                f"For rollback operations, use current_state (not target_state)."
-            )
-
-        fqn_esc = self._build_fqn(*table_fqn.split("."))
+        fqn_esc = self._resolve_fqn_for_drop(operation)
         return f"DROP TABLE IF EXISTS {fqn_esc}"
 
     def _set_table_comment(self, operation: Operation) -> str:
@@ -2462,12 +2448,18 @@ class UnitySQLGenerator(BaseSQLGenerator):
         return []
 
     def _iter_state_tables(self) -> list[dict[str, Any]]:
-        """Flatten state into a list of table dicts."""
-        tables: list[dict[str, Any]] = []
-        for catalog in self.state["catalogs"]:
-            for schema in catalog.get("schemas", []):
-                tables.extend(schema.get("tables", []))
-        return tables
+        """Flatten state into a list of table dicts (supports model or dict state)."""
+        catalogs = (
+            self.state.catalogs
+            if hasattr(self.state, "catalogs")
+            else self.state.get("catalogs", [])
+        )
+        return [
+            table
+            if isinstance(table, dict)
+            else cast(dict[str, Any], table.model_dump(by_alias=True))
+            for table in self._iter_catalog_tables(catalogs)
+        ]
 
     def _generate_optimized_reorder_sql(
         self, table_id: str, original_order: list[str], final_order: list[str], _op_ids: list[str]

@@ -43,7 +43,7 @@ Package-level docs:
 ### VS Code Extension
 
 ```bash
-cd /Users/varun.bhandary/Documents/side-projects/schemax-vscode
+cd schemax-vscode   # or your clone path
 code .
 # Press F5 to launch extension host
 ```
@@ -53,7 +53,7 @@ Then run `SchemaX: Open Designer` from the command palette.
 ### Python CLI
 
 ```bash
-cd /Users/varun.bhandary/Documents/side-projects/schemax-vscode/packages/python-sdk
+cd schemax-vscode/packages/python-sdk
 pip install -e .
 schemax init --provider unity
 schemax validate
@@ -70,14 +70,14 @@ schemax sql --target dev --output migration.sql
 ## Development
 
 ```bash
-cd /Users/varun.bhandary/Documents/side-projects/schemax-vscode/packages/python-sdk
+cd packages/python-sdk
 make ci
 ```
 
-For live integration tests + coverage upload:
+For live integration tests:
 
 ```bash
-cd /Users/varun.bhandary/Documents/side-projects/schemax-vscode/packages/python-sdk
+cd packages/python-sdk
 make integration
 ```
 

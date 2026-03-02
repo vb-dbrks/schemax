@@ -971,6 +971,9 @@ class UnityStateDiffer(StateDiffer):
             payload["partitionColumns"] = table["partitionColumns"]
         if "clusterColumns" in table:
             payload["clusterColumns"] = table["clusterColumns"]
+        properties = table.get("properties")
+        if isinstance(properties, dict) and properties:
+            payload["properties"] = dict(properties)
 
         return Operation(
             id=f"op_diff_{uuid4().hex[:8]}",

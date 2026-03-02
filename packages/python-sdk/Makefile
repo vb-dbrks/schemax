@@ -1,4 +1,4 @@
-.PHONY: format fmt lint typecheck pylint test integration integration-coverage-upload all check ci pre-commit install clean help
+.PHONY: format fmt lint typecheck pylint test integration integration-coverage-upload coverage-gate-ddl-parser all check ci pre-commit install clean help
 
 PYTEST_WORKERS ?= auto
 
@@ -16,6 +16,7 @@ help:
 	@echo "  test        - Run tests with pytest"
 	@echo "  integration - Run all integration tests (including live Databricks; set env for live)"
 	@echo "  integration-coverage-upload - Run integration coverage locally and upload to Codecov"
+	@echo "  coverage-gate-ddl-parser - Enforce >=90% coverage for unity ddl_parser.py"
 	@echo "  all         - Run all checks (format, lint, typecheck, test)"
 	@echo "  check       - Run format/lint checks without modifying files (like CI)"
 	@echo "  ci          - Run exact CI checks (format check + lint check + typecheck + test)"
@@ -56,6 +57,7 @@ integration:
 		--cov=src/schemax \
 		--cov-report=xml:coverage-integration.xml \
 		--cov-report=term-missing
+	@$(MAKE) coverage-gate-ddl-parser
 	@if [ -n "$$CODECOV_TOKEN" ]; then \
 		echo "📤 Uploading integration coverage to Codecov..."; \
 		if [ ! -x "./codecov" ]; then \
@@ -80,6 +82,7 @@ integration-coverage-upload:
 		--cov=src/schemax \
 		--cov-report=xml:coverage-integration.xml \
 		--cov-report=term-missing
+	@$(MAKE) coverage-gate-ddl-parser
 	@if [ ! -x "./codecov" ]; then \
 		curl -Os https://uploader.codecov.io/latest/macos/codecov; \
 		chmod +x ./codecov; \
@@ -91,6 +94,12 @@ integration-coverage-upload:
 		-n "local-integration" \
 		-C "$$(git rev-parse HEAD)" \
 		-B "$$(git rev-parse --abbrev-ref HEAD)"
+
+coverage-gate-ddl-parser:
+	@echo "🎯 Enforcing module coverage gate for unity ddl_parser.py (>=90%)..."
+	uv run coverage report \
+		--include=src/schemax/providers/unity/ddl_parser.py \
+		--fail-under=90
 
 all: format lint typecheck pylint test
 	@echo ""
