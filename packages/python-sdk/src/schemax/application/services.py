@@ -307,7 +307,11 @@ class SnapshotService:
         result = rebase_snapshot(
             workspace=workspace, snapshot_version=version, new_base_version=base_version
         )
-        return CommandResult(success=True, code="snapshot_rebased", data={"result": result})
+        return CommandResult(
+            success=bool(result.success),
+            code="snapshot_rebased" if result.success else "snapshot_rebase_conflicts",
+            data={"result": result},
+        )
 
 
 def _execution_result_to_dict(result: Any) -> dict[str, Any]:

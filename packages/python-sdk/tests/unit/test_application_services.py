@@ -4,7 +4,8 @@ from pathlib import Path
 
 from _pytest.monkeypatch import MonkeyPatch
 
-from schemax.application.services import ApplyService
+from schemax.application.services import ApplyService, SnapshotService
+from schemax.commands.snapshot_rebase import RebaseResult
 from schemax.providers.base.executor import ExecutionResult, StatementResult
 
 
@@ -50,3 +51,43 @@ def test_apply_service_serializes_statement_rows_affected(monkeypatch: MonkeyPat
     statement = result.data["result"]["statement_results"][0]
     assert statement["rows_affected"] == 7
     assert "row_count" not in statement
+
+
+def test_snapshot_service_rebase_success_propagates_true(monkeypatch: MonkeyPatch) -> None:
+    """SnapshotService.rebase should report success when rebase succeeds."""
+
+    monkeypatch.setattr(
+        "schemax.application.services.rebase_snapshot",
+        lambda **_kwargs: RebaseResult(
+            success=True,
+            applied_count=3,
+            conflict_count=0,
+            conflict_log_path=None,
+            message="ok",
+        ),
+    )
+
+    result = SnapshotService().rebase(workspace=Path("."), version="v0.2.0", base_version="v0.1.0")
+
+    assert result.success is True
+    assert result.code == "snapshot_rebased"
+
+
+def test_snapshot_service_rebase_conflict_propagates_false(monkeypatch: MonkeyPatch) -> None:
+    """SnapshotService.rebase should report failure when conflicts are present."""
+
+    monkeypatch.setattr(
+        "schemax.application.services.rebase_snapshot",
+        lambda **_kwargs: RebaseResult(
+            success=False,
+            applied_count=2,
+            conflict_count=1,
+            conflict_log_path=".schemax/conflicts/rebase_v0.2.0.log",
+            message="conflicts",
+        ),
+    )
+
+    result = SnapshotService().rebase(workspace=Path("."), version="v0.2.0", base_version="v0.1.0")
+
+    assert result.success is False
+    assert result.code == "snapshot_rebase_conflicts"

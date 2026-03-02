@@ -148,6 +148,20 @@ def test_sql_json_output(monkeypatch, temp_workspace: Path) -> None:
     assert payload["data"] == {"sql": "SELECT 1"}
 
 
+def test_sql_non_json_keeps_console_output(monkeypatch, temp_workspace: Path) -> None:
+    runner = CliRunner()
+
+    def _run(_self, **kwargs):  # noqa: ARG001
+        print("SQL OUTPUT LINE")
+        return SimpleNamespace(success=True, data={"sql": "SELECT 1"})
+
+    monkeypatch.setattr("schemax.cli.SqlService.run", _run)
+
+    result = runner.invoke(cli, ["sql", str(temp_workspace)])
+    assert result.exit_code == 0
+    assert "SQL OUTPUT LINE" in result.output
+
+
 def test_validate_routes_json_option(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     captured: dict[str, object] = {}
@@ -228,6 +242,30 @@ def test_diff_json_output(monkeypatch, temp_workspace: Path) -> None:
     assert payload["command"] == "diff"
     assert payload["status"] == "success"
     assert payload["data"]["operations"][0]["op"] == "unity.add_catalog"
+
+
+def test_diff_non_json_keeps_console_output(monkeypatch, temp_workspace: Path) -> None:
+    runner = CliRunner()
+
+    def _run(_self, **kwargs):  # noqa: ARG001
+        print("DIFF OUTPUT LINE")
+        return SimpleNamespace(success=True, data={"operations": []})
+
+    monkeypatch.setattr("schemax.cli.DiffService.run", _run)
+
+    result = runner.invoke(
+        cli,
+        [
+            "diff",
+            "--from",
+            "v0.1.0",
+            "--to",
+            "v0.2.0",
+            str(temp_workspace),
+        ],
+    )
+    assert result.exit_code == 0
+    assert "DIFF OUTPUT LINE" in result.output
 
 
 def test_bundle_contract_not_implemented() -> None:
