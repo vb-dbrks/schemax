@@ -61,8 +61,15 @@ class HiveSQLGenerator(SQLGenerator):
             )
 
         if op_type == "drop_table":
+            table_identifier = self._drop_table_identifier(operation)
+            if table_identifier is None:
+                return SQLGenerationResult(
+                    sql="",
+                    warnings=["Missing table metadata for Hive drop_table operation"],
+                    is_idempotent=True,
+                )
             return SQLGenerationResult(
-                sql=f"DROP TABLE IF EXISTS `{operation.target}`;",
+                sql=f"DROP TABLE IF EXISTS {table_identifier};",
                 warnings=[],
                 is_idempotent=True,
             )
@@ -80,6 +87,21 @@ class HiveSQLGenerator(SQLGenerator):
         if "." in target:
             return target.split(".", 1)[0]
         return target
+
+    @staticmethod
+    def _drop_table_identifier(operation: Operation) -> str | None:
+        database_name = str(operation.payload.get("database", ""))
+        table_name = str(operation.payload.get("name", ""))
+        if database_name and table_name:
+            return f"`{database_name}`.`{table_name}`"
+
+        target = str(operation.target or "")
+        if "." not in target:
+            return None
+        db_part, table_part = target.split(".", 1)
+        if not db_part or not table_part:
+            return None
+        return f"`{db_part}`.`{table_part}`"
 
     @staticmethod
     def _column_sql(columns: Any) -> str:

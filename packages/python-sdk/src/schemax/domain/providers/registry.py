@@ -53,7 +53,7 @@ class ProviderManifestRegistry:
             discovery=_supports_method(provider, "discover_state"),
             import_transform=_supports_method(provider, "prepare_import_state")
             and _supports_method(provider, "update_env_import_mappings"),
-            rollback_safety=bool(provider.capabilities.features.get("baseline_adoption", False)),
+            rollback_safety=_supports_method(provider, "assess_safety"),
             deployment_tracking=_supports_method(provider, "adopt_import_baseline"),
             ddl_import=_supports_method(provider, "state_from_ddl"),
         )

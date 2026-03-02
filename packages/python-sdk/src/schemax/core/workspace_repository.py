@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..providers.base.operations import Operation
 from .storage import (
     WorkspaceSession,
     append_ops,
@@ -43,9 +45,12 @@ class WorkspaceRepository:
         """Persist changelog payload."""
         write_changelog(workspace, changelog)
 
-    def append_operations(self, *, workspace: Path, operations: list[Any]) -> None:
+    def append_operations(
+        self, *, workspace: Path, operations: list[Operation | dict[str, Any]]
+    ) -> None:
         """Append operations to workspace changelog."""
-        append_ops(workspace, operations)
+        normalized = [self._normalize_operation(operation) for operation in operations]
+        append_ops(workspace, normalized)
 
     def create_snapshot(
         self,
@@ -94,3 +99,13 @@ class WorkspaceRepository:
     def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
         """Load current provider state and changelog."""
         return load_current_state(workspace, validate=validate)
+
+    @staticmethod
+    def _normalize_operation(operation: Operation | dict[str, Any]) -> Operation:
+        if isinstance(operation, Operation):
+            return operation
+        if isinstance(operation, Mapping):
+            return Operation(**dict(operation))
+        raise TypeError(
+            "WorkspaceRepository.append_operations expects Operation or operation dict payloads"
+        )

@@ -64,3 +64,45 @@ def test_workspace_repository_creates_snapshot(tmp_path: Path) -> None:
     assert project["latestSnapshot"] == "v0.1.0"
     assert snapshot["version"] == "v0.1.0"
     assert changelog["ops"] == []
+
+
+def test_workspace_repository_appends_dict_operations(tmp_path: Path) -> None:
+    """Repository should normalize dict operations before append."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    repo = WorkspaceRepository()
+    repo.ensure_initialized(workspace=workspace, provider_id="unity")
+
+    repo.append_operations(
+        workspace=workspace,
+        operations=[
+            {
+                "id": "op_1",
+                "ts": "2026-01-01T00:00:00Z",
+                "provider": "unity",
+                "op": "unity.add_catalog",
+                "target": "cat_1",
+                "payload": {"catalogId": "cat_1", "name": "bronze"},
+            }
+        ],
+    )
+
+    changelog = repo.read_changelog(workspace=workspace)
+    assert len(changelog["ops"]) >= 2
+    assert changelog["ops"][-1]["op"] == "unity.add_catalog"
+    assert changelog["ops"][-1]["payload"]["catalogId"] == "cat_1"
+
+
+def test_workspace_repository_rejects_malformed_operations(tmp_path: Path) -> None:
+    """Repository should fail fast on unsupported operation payload shapes."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    repo = WorkspaceRepository()
+    repo.ensure_initialized(workspace=workspace, provider_id="unity")
+
+    try:
+        repo.append_operations(workspace=workspace, operations=["invalid"])  # type: ignore[list-item]
+    except TypeError as err:
+        assert "expects Operation or operation dict payloads" in str(err)
+    else:
+        raise AssertionError("Expected TypeError for malformed operation payload")

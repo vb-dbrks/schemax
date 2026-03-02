@@ -60,11 +60,7 @@ integration:
 	@$(MAKE) coverage-gate-ddl-parser
 	@if [ -n "$$CODECOV_TOKEN" ]; then \
 		echo "📤 Uploading integration coverage to Codecov..."; \
-		if [ ! -x "./codecov" ]; then \
-			curl -Os https://uploader.codecov.io/latest/macos/codecov; \
-			chmod +x ./codecov; \
-		fi; \
-		./codecov \
+		curl -s https://codecov.io/bash | bash -s -- \
 			-t "$$CODECOV_TOKEN" \
 			-f coverage-integration.xml \
 			-F integration \
@@ -83,11 +79,7 @@ integration-coverage-upload:
 		--cov-report=xml:coverage-integration.xml \
 		--cov-report=term-missing
 	@$(MAKE) coverage-gate-ddl-parser
-	@if [ ! -x "./codecov" ]; then \
-		curl -Os https://uploader.codecov.io/latest/macos/codecov; \
-		chmod +x ./codecov; \
-	fi
-	./codecov \
+	@curl -s https://codecov.io/bash | bash -s -- \
 		-t "$$CODECOV_TOKEN" \
 		-f coverage-integration.xml \
 		-F integration \

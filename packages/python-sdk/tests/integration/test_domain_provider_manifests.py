@@ -38,6 +38,10 @@ def test_manifest_snapshot_includes_registered_providers() -> None:
     assert unity_manifest.capabilities.sql_generator is True
     assert unity_manifest.capabilities.differ is True
     assert unity_manifest.capabilities.execution is True
+    assert unity_manifest.capabilities.rollback_safety is False
+
+    hive_manifest = _find_manifest(manifests, "hive")
+    assert hive_manifest.capabilities.rollback_safety is False
 
 
 def test_manifest_registry_get_and_all_are_deterministic() -> None:

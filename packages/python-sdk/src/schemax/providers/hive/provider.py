@@ -126,7 +126,16 @@ class HiveProvider(BaseProvider):
 
     def validate_execution_config(self, config: ExecutionConfig) -> ValidationResult:
         del config
-        return ValidationResult(valid=False, errors=[])
+        return ValidationResult(
+            valid=False,
+            errors=[
+                ValidationError(
+                    field="execution_config",
+                    message="Hive execution is not implemented yet",
+                    code="HIVE_EXECUTION_NOT_IMPLEMENTED",
+                )
+            ],
+        )
 
     def get_state_differ(
         self,

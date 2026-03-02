@@ -25,13 +25,7 @@ class StateReducerCapability(Protocol):
 class StateDifferCapability(Protocol):
     """Produce diff operations between two provider states."""
 
-    def generate_diff_operations(
-        self,
-        old_state: ProviderState,
-        new_state: ProviderState,
-        old_operations: list[Operation],
-        new_operations: list[Operation],
-    ) -> list[Operation]: ...
+    def generate_diff_operations(self) -> list[Operation]: ...
 
 
 @runtime_checkable

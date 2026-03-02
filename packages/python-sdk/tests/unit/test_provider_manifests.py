@@ -22,3 +22,14 @@ def test_unity_manifest_reports_core_capabilities() -> None:
     assert unity_manifest.capabilities.reducer is True
     assert unity_manifest.capabilities.sql_generator is True
     assert unity_manifest.capabilities.execution is True
+    assert unity_manifest.capabilities.rollback_safety is False
+
+
+def test_hive_manifest_reports_no_rollback_safety_capability() -> None:
+    manifests = {
+        manifest.provider_id: manifest
+        for manifest in build_manifest_snapshot(ProviderRegistry.get_all())
+    }
+    hive_manifest = manifests["hive"]
+
+    assert hive_manifest.capabilities.rollback_safety is False
