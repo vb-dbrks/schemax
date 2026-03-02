@@ -1242,17 +1242,32 @@ async function openDesigner(context: vscode.ExtensionContext) {
         outputChannel.appendLine(`[SchemaX] - Detected ${staleSnapshots.length} stale snapshot(s)`);
       }
 
+      // Naming standards (Unity): merge naming violations into validation result for refresh
+      let mergedValidationResult = validationResult ?? { errors: [] as string[], warnings: [] as string[] };
+      if (provider.info.id === 'unity' && state && typeof state === 'object' && 'catalogs' in state) {
+        const namingViolations = collectNamingViolations(state as { catalogs?: unknown[] });
+        if (namingViolations.length > 0) {
+          const namingErrors = namingViolations.map(
+            (v) => `Naming (strict): catalog '${v.catalogName}', ${v.objectType} '${v.objectName}' — ${v.message}`
+          );
+          mergedValidationResult = {
+            errors: [...(mergedValidationResult.errors ?? []), ...namingErrors],
+            warnings: mergedValidationResult.warnings ?? [],
+          };
+        }
+      }
+
       // Log validation results
-      if (validationResult) {
-        if (validationResult.errors.length > 0) {
-          outputChannel.appendLine(`[SchemaX] - Dependency validation ERRORS:`);
-          validationResult.errors.forEach((error) => {
+      if (mergedValidationResult.errors?.length > 0 || mergedValidationResult.warnings?.length > 0) {
+        if (mergedValidationResult.errors.length > 0) {
+          outputChannel.appendLine(`[SchemaX] - Validation ERRORS:`);
+          mergedValidationResult.errors.forEach((error: string) => {
             outputChannel.appendLine(`  ✗ ${error}`);
           });
         }
-        if (validationResult.warnings.length > 0) {
-          outputChannel.appendLine(`[SchemaX] - Dependency validation warnings:`);
-          validationResult.warnings.forEach((warning) => {
+        if (mergedValidationResult.warnings.length > 0) {
+          outputChannel.appendLine(`[SchemaX] - Validation warnings:`);
+          mergedValidationResult.warnings.forEach((warning: string) => {
             outputChannel.appendLine(`  ⚠️  ${warning}`);
           });
         }
@@ -1264,7 +1279,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         ops: changelog.ops,
         conflicts,
         staleSnapshots: staleSnapshots.length > 0 ? staleSnapshots : null,
-        validationResult,
+        validationResult: mergedValidationResult,
         provider: {
           ...project.provider,
           id: provider.info.id,

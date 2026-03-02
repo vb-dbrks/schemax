@@ -112,6 +112,45 @@ def _print_dependency_status(dep_warnings: list[str], json_output: bool) -> None
         console.print("  [green]✓[/green] No dependency issues detected")
 
 
+def _validate_naming_standards(
+    state: Any, provider: Any, dep_warnings: list[str], json_output: bool
+) -> None:
+    """Run naming standards validation for Unity. Raises ValidationError if violations exist."""
+    if getattr(provider.info, "id", None) != "unity":
+        return
+    from schemax.providers.unity.models import UnityState
+    from schemax.providers.unity.naming_validation import collect_naming_violations
+
+    unity_state = (
+        state
+        if isinstance(state, UnityState)
+        else UnityState.model_validate(state)
+    )
+    violations = collect_naming_violations(unity_state)
+    if not violations:
+        return
+    naming_errors = [
+        f"Naming (strict): catalog '{v.catalog_name}', {v.object_type} '{v.object_name}' — {v.message}"
+        for v in violations
+    ]
+    if json_output:
+        print(
+            json.dumps(
+                {
+                    "valid": False,
+                    "errors": naming_errors,
+                    "warnings": dep_warnings,
+                    "staleSnapshots": [],
+                }
+            )
+        )
+        raise ValidationError("Naming convention violations found.")
+    console.print("[red]✗ Naming convention violations (strict mode):[/red]")
+    for msg in naming_errors:
+        console.print(f"  [red]•[/red] {msg}")
+    raise ValidationError("Naming convention violations found.")
+
+
 def _print_project_summary(project: dict, provider: Any, changelog: dict, state: Any) -> None:
     """Print project/config summary to console."""
     console.print(f"\n[bold]Project:[/bold] {project['name']}")
@@ -173,6 +212,13 @@ def _run_validation_steps(
         raise ValidationError("Circular dependencies detected")
 
     _print_dependency_status(dep_warnings, json_output)
+
+    if not json_output:
+        console.print("\nValidating naming standards...")
+    _validate_naming_standards(state, provider, dep_warnings, json_output)
+    if not json_output:
+        console.print("  [green]✓[/green] No naming convention violations")
+
     stale = detect_stale_snapshots(workspace)
 
     if json_output:

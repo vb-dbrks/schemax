@@ -264,7 +264,7 @@ export const App: React.FC = () => {
             <div className="validation-error">
               <i className="codicon codicon-error"></i>
               <div className="validation-content">
-                <strong>Dependency Errors:</strong>
+                <strong>Validation Errors:</strong>
                 <ul>
                   {validationResult.errors.map((error, i) => (
                     <li key={i}>{error}</li>
@@ -277,7 +277,7 @@ export const App: React.FC = () => {
             <div className="validation-warning">
               <i className="codicon codicon-warning"></i>
               <div className="validation-content">
-                <strong>Dependency Warnings:</strong>
+                <strong>Validation Warnings:</strong>
                 <ul>
                   {validationResult.warnings.map((warning, i) => (
                     <li key={i}>{warning}</li>
