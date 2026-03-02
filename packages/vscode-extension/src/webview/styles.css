@@ -3294,11 +3294,10 @@ body {
 
 .validation-error,
 .validation-warning {
-  display: flex;
-  gap: 12px;
   padding: 12px;
   border-radius: 4px;
   margin-bottom: 8px;
+  color: #1e1e1e;
 }
 
 .validation-error:last-child,
@@ -3307,53 +3306,92 @@ body {
 }
 
 .validation-error {
-  background: var(--vscode-inputValidation-errorBackground);
-  border: 1px solid var(--vscode-inputValidation-errorBorder);
+  background: #fef2f2;
+  border: 1px solid #c62828;
 }
 
 .validation-warning {
-  background: var(--vscode-inputValidation-warningBackground);
-  border: 1px solid var(--vscode-inputValidation-warningBorder);
+  background: #fffde7;
+  border: 1px solid #f9a825;
 }
 
-.validation-error .codicon {
-  color: var(--vscode-inputValidation-errorForeground);
+.validation-error .validation-header .codicon-error,
+.validation-warning .validation-header .codicon-warning {
   font-size: 16px;
-  margin-top: 2px;
+  flex-shrink: 0;
 }
 
-.validation-warning .codicon {
-  color: var(--vscode-inputValidation-warningForeground);
-  font-size: 16px;
-  margin-top: 2px;
+.validation-error .validation-header .codicon-error {
+  color: #c62828;
+}
+
+.validation-warning .validation-header .codicon-warning {
+  color: #f9a825;
 }
 
 .validation-content {
-  flex: 1;
+  min-width: 0;
 }
 
-.validation-content strong {
-  display: block;
-  margin-bottom: 8px;
+.validation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  gap: 8px;
+}
+
+.validation-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.validation-header strong {
   font-size: 13px;
+  margin: 0;
+  color: #1e1e1e;
 }
 
-.validation-error .validation-content strong {
-  color: var(--vscode-inputValidation-errorForeground);
+.validation-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-.validation-warning .validation-content strong {
-  color: var(--vscode-inputValidation-warningForeground);
+.validation-icon-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  color: #1e1e1e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.validation-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 2px;
+}
+
+.validation-icon-btn .codicon {
+  font-size: 14px;
 }
 
 .validation-content ul {
-  margin: 0;
+  margin: 8px 0 0 0;
   padding-left: 20px;
   list-style-type: disc;
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .validation-content li {
   margin: 4px 0;
   font-size: 12px;
   line-height: 1.4;
+  color: #1e1e1e;
 }

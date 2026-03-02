@@ -60,6 +60,10 @@ export const App: React.FC = () => {
   const [hasStaleSnapshots, setHasStaleSnapshots] = React.useState(false);
   const [staleSnapshotInfo, setStaleSnapshotInfo] = React.useState<any>(null);
   const [validationResult, setValidationResult] = React.useState<{errors: string[], warnings: string[]} | null>(null);
+  const [errorsExpanded, setErrorsExpanded] = React.useState(true);
+  const [warningsExpanded, setWarningsExpanded] = React.useState(true);
+  const [errorsDismissed, setErrorsDismissed] = React.useState(false);
+  const [warningsDismissed, setWarningsDismissed] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [isImportOpen, setIsImportOpen] = React.useState(false);
   const [isImportRunning, setIsImportRunning] = React.useState(false);
@@ -105,9 +109,13 @@ export const App: React.FC = () => {
             setStaleSnapshotInfo(null);
           }
           
-          // Check for validation results
+          // Check for validation results (reset expand/dismiss so new run shows banner)
           if (message.payload.validationResult) {
             setValidationResult(message.payload.validationResult);
+            setErrorsDismissed(false);
+            setWarningsDismissed(false);
+            setErrorsExpanded(true);
+            setWarningsExpanded(true);
           } else {
             setValidationResult(null);
           }
@@ -258,36 +266,118 @@ export const App: React.FC = () => {
       </header>
 
       {/* Validation Results Banner */}
-      {validationResult && (validationResult.errors.length > 0 || validationResult.warnings.length > 0) && (
-        <div className="validation-banner">
-          {validationResult.errors.length > 0 && (
-            <div className="validation-error">
-              <i className="codicon codicon-error"></i>
-              <div className="validation-content">
-                <strong>Validation Errors:</strong>
-                <ul>
-                  {validationResult.errors.map((error, i) => (
-                    <li key={i}>{error}</li>
-                  ))}
-                </ul>
+      {validationResult &&
+        ((validationResult.errors.length > 0 && !errorsDismissed) ||
+          (validationResult.warnings.length > 0 && !warningsDismissed)) && (
+          <div className="validation-banner">
+            {validationResult.errors.length > 0 && !errorsDismissed && (
+              <div className="validation-error">
+                <div className="validation-content">
+                  <div
+                    className="validation-header"
+                    onClick={() => setErrorsExpanded((e) => !e)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && setErrorsExpanded((x) => !x)}
+                    aria-expanded={errorsExpanded}
+                  >
+                    <div className="validation-header-left">
+                      <i className="codicon codicon-error" aria-hidden="true"></i>
+                      <strong>Validation Errors:</strong>
+                    </div>
+                    <div className="validation-actions">
+                      <button
+                        type="button"
+                        className="validation-icon-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setErrorsExpanded((x) => !x);
+                        }}
+                        aria-label={errorsExpanded ? 'Collapse' : 'Expand'}
+                      >
+                        <i
+                          className={`codicon ${errorsExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'}`}
+                          aria-hidden="true"
+                        ></i>
+                      </button>
+                      <button
+                        type="button"
+                        className="validation-icon-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setErrorsDismissed(true);
+                        }}
+                        aria-label="Dismiss"
+                      >
+                        <i className="codicon codicon-close" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                  </div>
+                  {errorsExpanded && (
+                    <ul>
+                      {validationResult.errors.map((error, i) => (
+                        <li key={i}>{error}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-          {validationResult.warnings.length > 0 && (
-            <div className="validation-warning">
-              <i className="codicon codicon-warning"></i>
-              <div className="validation-content">
-                <strong>Validation Warnings:</strong>
-                <ul>
-                  {validationResult.warnings.map((warning, i) => (
-                    <li key={i}>{warning}</li>
-                  ))}
-                </ul>
+            )}
+            {validationResult.warnings.length > 0 && !warningsDismissed && (
+              <div className="validation-warning">
+                <div className="validation-content">
+                  <div
+                    className="validation-header"
+                    onClick={() => setWarningsExpanded((e) => !e)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && setWarningsExpanded((x) => !x)}
+                    aria-expanded={warningsExpanded}
+                  >
+                    <div className="validation-header-left">
+                      <i className="codicon codicon-warning" aria-hidden="true"></i>
+                      <strong>Validation Warnings:</strong>
+                    </div>
+                    <div className="validation-actions">
+                      <button
+                        type="button"
+                        className="validation-icon-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setWarningsExpanded((x) => !x);
+                        }}
+                        aria-label={warningsExpanded ? 'Collapse' : 'Expand'}
+                      >
+                        <i
+                          className={`codicon ${warningsExpanded ? 'codicon-chevron-down' : 'codicon-chevron-right'}`}
+                          aria-hidden="true"
+                        ></i>
+                      </button>
+                      <button
+                        type="button"
+                        className="validation-icon-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setWarningsDismissed(true);
+                        }}
+                        aria-label="Dismiss"
+                      >
+                        <i className="codicon codicon-close" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                  </div>
+                  {warningsExpanded && (
+                    <ul>
+                      {validationResult.warnings.map((warning, i) => (
+                        <li key={i}>{warning}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
 
       <div className="content">
         <div className="left-panel">
