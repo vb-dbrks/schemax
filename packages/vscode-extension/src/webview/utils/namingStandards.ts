@@ -114,6 +114,70 @@ export function validateNameInCatalog(
   return validateNameAgainstRule(name, rule);
 }
 
+export interface NamingViolation {
+  catalogName: string;
+  objectType: NamingRuleObjectType;
+  objectName: string;
+  rulePattern: string;
+  message: string;
+}
+
+/**
+ * Collect all naming convention violations for catalogs that have strictMode enabled.
+ * Used to block snapshot creation, SQL generation, and deployment when violations exist.
+ */
+export function collectNamingViolations(state: { catalogs?: UnityCatalog[] }): NamingViolation[] {
+  const violations: NamingViolation[] = [];
+  const catalogs = state.catalogs ?? [];
+  for (const catalog of catalogs) {
+    const ns = catalog.namingStandards;
+    if (!ns?.strictMode || !ns?.rules?.length) continue;
+    const rules = ns.rules;
+
+    const pushViolation = (
+      objectType: NamingRuleObjectType,
+      objectName: string,
+      tableType?: NamingRuleTableType
+    ) => {
+      const rule = getApplicableRule(objectType, rules, tableType);
+      if (!rule) return;
+      const result = validateNameInCatalog(objectName, objectType, catalog, tableType);
+      if (!result.valid && result.error) {
+        violations.push({
+          catalogName: catalog.name,
+          objectType,
+          objectName,
+          rulePattern: (rule.pattern ?? '').trim(),
+          message: result.error,
+        });
+      }
+    };
+
+    for (const schema of catalog.schemas ?? []) {
+      pushViolation('schema', schema.name);
+      for (const table of schema.tables ?? []) {
+        pushViolation('table', table.name);
+        for (const col of table.columns ?? []) {
+          pushViolation('column', col.name);
+        }
+      }
+      for (const view of schema.views ?? []) {
+        pushViolation('view', view.name);
+      }
+      for (const vol of schema.volumes ?? []) {
+        pushViolation('volume', vol.name);
+      }
+      for (const fn of schema.functions ?? []) {
+        pushViolation('function', fn.name);
+      }
+      for (const mv of schema.materializedViews ?? []) {
+        pushViolation('materialized_view', mv.name);
+      }
+    }
+  }
+  return violations;
+}
+
 /**
  * Resolve the catalog that contains the given schema (by schema id).
  */

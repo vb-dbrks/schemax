@@ -235,6 +235,40 @@ def apply_to_environment(
             console.print("[green]✓[/green] No changes to deploy")
             return _create_empty_result(target_env, latest_snapshot_version)
 
+        # 8.6 Naming standards (Unity): block deployment when strict mode is on and there are violations
+        if provider.info.id == "unity":
+            from schemax.providers.unity.models import UnityState
+            from schemax.providers.unity.naming_validation import (
+                collect_naming_violations,
+            )
+
+            unity_desired = (
+                desired_state
+                if isinstance(desired_state, UnityState)
+                else UnityState.model_validate(desired_state)
+            )
+            violations = collect_naming_violations(unity_desired)
+            if violations:
+                console.print()
+                console.print(
+                    "[red]Deployment is not allowed when naming standards strict mode is on "
+                    "and there are naming convention violations.[/red]"
+                )
+                console.print(
+                    "Fix the object names or turn strict mode off for the catalog."
+                )
+                console.print()
+                for v in violations:
+                    console.print(
+                        f"  [red]•[/red] catalog=[cyan]{v.catalog_name}[/cyan] "
+                        f"type=[cyan]{v.object_type}[/cyan] name=[cyan]{v.object_name}[/cyan] "
+                        f"pattern=[dim]{v.rule_pattern}[/dim] — {v.message}"
+                    )
+                console.print()
+                raise ApplyError(
+                    "Naming convention violations found. Fix names or disable strict mode."
+                )
+
         # 9. Generate SQL using desired state (catalog_mapping already built at 5.5)
         console.print("[blue]Generating SQL...[/blue]")
         console.print(

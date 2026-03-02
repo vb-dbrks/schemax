@@ -9,6 +9,28 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class NamingStandardsRule(BaseModel):
+    """Single naming rule (object type + optional pattern)."""
+
+    id: str = ""
+    object_type: str = Field("", alias="objectType")
+    table_type: str | None = Field(None, alias="tableType")
+    pattern: str | None = None
+    enabled: bool | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class NamingStandardsConfig(BaseModel):
+    """Per-catalog naming standards (rules + strict mode)."""
+
+    apply_to_renames: bool | None = Field(None, alias="applyToRenames")
+    strict_mode: bool = Field(False, alias="strictMode")
+    rules: list[NamingStandardsRule] | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class UnityColumn(BaseModel):
     """Column definition"""
 

@@ -545,6 +545,19 @@ export const CatalogDetails: React.FC<CatalogDetailsProps> = ({ catalogId }) => 
       <div className="table-properties-section">
         <h3>Naming Standards</h3>
 
+        <label className="checkbox-label" style={{ display: 'block', marginBottom: '12px' }}>
+          <input
+            type="checkbox"
+            checked={catalog?.namingStandards?.strictMode ?? false}
+            onChange={(e) => {
+              updateCatalog(catalogId, {
+                namingStandards: { ...catalog?.namingStandards, strictMode: e.target.checked },
+              });
+            }}
+          />
+          <span>Strict mode — block snapshot, SQL generation, and deployment when any object violates naming rules</span>
+        </label>
+
         {rules.length === 0 && !addRuleForm ? (
           <div className="empty-properties">
             <p>No naming standards configured for this catalog.</p>

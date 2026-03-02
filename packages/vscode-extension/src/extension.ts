@@ -5,6 +5,7 @@ import { ChildProcess, spawn } from 'child_process';
 import * as storageV4 from './storage-v4';
 import { Operation } from './providers/base/operations';
 import { filterOpsByManagedScope } from './providers/base/scope-filter';
+import { collectNamingViolations } from './webview/utils/namingStandards';
 import { ProviderRegistry } from './providers/registry';
 import { trackEvent } from './telemetry';
 import './providers'; // Initialize providers
@@ -1775,6 +1776,18 @@ async function createSnapshotCommand_impl() {
       return;
     }
 
+    // Strict mode: block snapshot creation when any catalog has strictMode and naming violations
+    const { state: snapshotState } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
+    const snapshotViolations = collectNamingViolations(snapshotState ?? { catalogs: [] });
+    if (snapshotViolations.length > 0) {
+      outputChannel.appendLine('[SchemaX] Snapshot creation blocked: naming convention violations (strict mode is on)');
+      const detail = snapshotViolations.slice(0, 5).map((v) => `${v.catalogName}.${v.objectName} (${v.objectType}): ${v.message}`).join('; ');
+      vscode.window.showErrorMessage(
+        `SchemaX: Cannot create snapshot while naming standards strict mode is on and there are violations. Fix object names or turn strict mode off. ${detail}`
+      );
+      return;
+    }
+
     // Calculate next version (same logic as Python SDK)
     const calculateNextVersion = (currentVersion: string | null, versionPrefix: string = 'v'): string => {
       if (!currentVersion) {
@@ -1982,6 +1995,17 @@ async function generateSQLMigration() {
     if (changelog.ops.length === 0) {
       outputChannel.appendLine('[SchemaX] No operations in changelog, nothing to generate');
       vscode.window.showInformationMessage('No changes to generate SQL for. Changelog is empty.');
+      return;
+    }
+
+    // Strict mode: block SQL generation when any catalog has strictMode and naming violations
+    const sqlViolations = collectNamingViolations(state ?? { catalogs: [] });
+    if (sqlViolations.length > 0) {
+      outputChannel.appendLine('[SchemaX] SQL generation blocked: naming convention violations (strict mode is on)');
+      const detail = sqlViolations.slice(0, 5).map((v) => `${v.catalogName}.${v.objectName} (${v.objectType}): ${v.message}`).join('; ');
+      vscode.window.showErrorMessage(
+        `SchemaX: Cannot generate SQL while naming standards strict mode is on and there are violations. Fix object names or turn strict mode off. ${detail}`
+      );
       return;
     }
 

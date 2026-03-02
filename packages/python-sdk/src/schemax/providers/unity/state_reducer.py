@@ -85,6 +85,8 @@ def apply_operation(state: UnityState, op: Operation) -> UnityState:
                     catalog.comment = payload.get("comment")
                 if "tags" in payload:
                     catalog.tags = payload.get("tags", {})
+                if "namingStandards" in payload:
+                    catalog.naming_standards = payload.get("namingStandards")
                 break
 
     elif op_type == "drop_catalog":

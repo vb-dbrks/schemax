@@ -177,6 +177,8 @@ export interface NamingStandardsRule {
 // Naming standards (per-catalog): rules for schema/table/view/column names in this catalog
 export interface NamingStandardsConfig {
   applyToRenames?: boolean;
+  /** When true, block snapshot, SQL generation, and deployment if any objects violate naming rules */
+  strictMode?: boolean;
   rules?: NamingStandardsRule[];
   // Legacy / optional keyed config (kept for backward compatibility)
   schema?: Record<string, unknown>;

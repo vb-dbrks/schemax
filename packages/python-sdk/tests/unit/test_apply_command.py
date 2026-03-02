@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from schemax.commands.apply import apply_to_environment
+from schemax.commands.apply import ApplyError, apply_to_environment
 
 
 class TestApplyCommand:
@@ -600,3 +600,128 @@ class TestApplyCommand:
                 )
 
         assert result.status == "success"
+
+    def test_apply_blocks_when_strict_naming_and_violations(self, temp_workspace):
+        """
+        When a catalog has naming_standards.strictMode True and the desired state
+        has objects that violate the naming rules, apply must raise ApplyError
+        and not execute any SQL.
+        """
+        schemax_dir = temp_workspace / ".schemax"
+        schemax_dir.mkdir()
+        snapshots_dir = schemax_dir / "snapshots"
+        snapshots_dir.mkdir()
+
+        project = {
+            "version": 4,
+            "name": "test_project",
+            "provider": {
+                "type": "unity",
+                "version": "1.0.0",
+                "environments": {
+                    "dev": {
+                        "topLevelName": "dev_catalog",
+                        "catalogMappings": {"main": "dev_catalog"},
+                        "allowDrift": True,
+                        "requireSnapshot": False,
+                        "autoCreateTopLevel": True,
+                        "autoCreateSchemaxSchema": True,
+                    }
+                },
+            },
+            "managedLocations": {},
+            "externalLocations": {},
+            "snapshots": [{"id": "snap1", "version": "v0.1.0", "ts": "2025-01-01T00:00:00Z"}],
+            "deployments": [],
+            "settings": {"versionPrefix": "v"},
+            "latestSnapshot": "v0.1.0",
+        }
+        (schemax_dir / "project.json").write_text(json.dumps(project, indent=2))
+        changelog = {
+            "version": 1,
+            "sinceSnapshot": "v0.1.0",
+            "ops": [],
+            "lastModified": "2025-01-01T00:00:00.000000+00:00",
+        }
+        (schemax_dir / "changelog.json").write_text(json.dumps(changelog, indent=2))
+        snapshot = {
+            "id": "snap1",
+            "version": "v0.1.0",
+            "name": "Initial",
+            "ts": "2025-01-01T00:00:00Z",
+            "createdBy": "test",
+            "state": {"catalogs": []},
+            "operations": [],
+            "previousSnapshot": None,
+            "hash": "hash1",
+            "tags": [],
+        }
+        (snapshots_dir / "v0.1.0.json").write_text(json.dumps(snapshot, indent=2))
+
+        # Desired state: one catalog with strictMode and a schema name that violates ^[a-z_]+$
+        desired_state_dict = {
+            "catalogs": [
+                {
+                    "id": "cat_main",
+                    "name": "main",
+                    "namingStandards": {
+                        "strictMode": True,
+                        "rules": [
+                            {
+                                "id": "r1",
+                                "objectType": "schema",
+                                "pattern": r"^[a-z_]+$",
+                                "enabled": True,
+                            }
+                        ],
+                    },
+                    "schemas": [
+                        {
+                            "id": "sch_1",
+                            "name": "MySchema",  # violates: capital M
+                            "tables": [],
+                            "views": [],
+                            "volumes": [],
+                            "functions": [],
+                            "materializedViews": [],
+                            "grants": [],
+                        }
+                    ],
+                    "grants": [],
+                }
+            ]
+        }
+
+        mock_provider = Mock()
+        mock_provider.info.id = "unity"
+        mock_provider.info.name = "Unity Catalog"
+        mock_provider.info.version = "1.0.0"
+        mock_provider.create_initial_state.return_value = {"catalogs": []}
+        mock_differ = Mock()
+        mock_differ.generate_diff_operations.return_value = [
+            {"op": "unity.add_schema", "target": "sch_1", "payload": {}}
+        ]
+        mock_provider.get_state_differ.return_value = mock_differ
+
+        with patch("schemax.commands.apply.load_current_state") as mock_load:
+            mock_load.return_value = (
+                desired_state_dict,
+                {"ops": []},
+                mock_provider,
+                None,
+            )
+            with patch("schemax.providers.unity.auth.create_databricks_client"):
+                with patch("schemax.commands.apply.DeploymentTracker") as mock_tracker:
+                    mock_tracker.return_value.get_latest_deployment.return_value = None
+
+                    with pytest.raises(ApplyError) as exc_info:
+                        apply_to_environment(
+                            workspace=temp_workspace,
+                            target_env="dev",
+                            profile="DEFAULT",
+                            warehouse_id="test123",
+                            dry_run=True,
+                            no_interaction=True,
+                        )
+
+        assert "naming" in exc_info.value.args[0].lower() or "violation" in exc_info.value.args[0].lower()
