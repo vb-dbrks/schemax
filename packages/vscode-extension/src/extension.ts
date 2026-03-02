@@ -5,7 +5,7 @@ import { ChildProcess, spawn } from 'child_process';
 import * as storageV4 from './storage-v4';
 import { Operation } from './providers/base/operations';
 import { filterOpsByManagedScope } from './providers/base/scope-filter';
-import { collectNamingViolations } from './webview/utils/namingStandards';
+import { collectNamingViolations, formatQualifiedName } from './webview/utils/namingStandards';
 import { ProviderRegistry } from './providers/registry';
 import { trackEvent } from './telemetry';
 import './providers'; // Initialize providers
@@ -1242,17 +1242,28 @@ async function openDesigner(context: vscode.ExtensionContext) {
         outputChannel.appendLine(`[SchemaX] - Detected ${staleSnapshots.length} stale snapshot(s)`);
       }
 
-      // Naming standards (Unity): merge naming violations into validation result for refresh
+      // Naming standards (Unity): merge naming violations into validation result for refresh (errors if strict, warnings if not)
       let mergedValidationResult = validationResult ?? { errors: [] as string[], warnings: [] as string[] };
       if (provider.info.id === 'unity' && state && typeof state === 'object' && 'catalogs' in state) {
         const namingViolations = collectNamingViolations(state as { catalogs?: unknown[] });
-        if (namingViolations.length > 0) {
-          const namingErrors = namingViolations.map(
-            (v) => `Naming (strict): catalog '${v.catalogName}', ${v.objectType} '${v.objectName}' — ${v.message}`
+        const strictViolations = namingViolations.filter((v) => v.strictMode);
+        const warningViolations = namingViolations.filter((v) => !v.strictMode);
+        if (strictViolations.length > 0) {
+          const namingErrors = strictViolations.map(
+            (v) => `Naming (strict): ${formatQualifiedName(v)} — ${v.message}`
           );
           mergedValidationResult = {
             errors: [...(mergedValidationResult.errors ?? []), ...namingErrors],
             warnings: mergedValidationResult.warnings ?? [],
+          };
+        }
+        if (warningViolations.length > 0) {
+          const namingWarnings = warningViolations.map(
+            (v) => `Naming: ${formatQualifiedName(v)} — ${v.message}`
+          );
+          mergedValidationResult = {
+            ...mergedValidationResult,
+            warnings: [...(mergedValidationResult.warnings ?? []), ...namingWarnings],
           };
         }
       }
@@ -1791,12 +1802,13 @@ async function createSnapshotCommand_impl() {
       return;
     }
 
-    // Strict mode: block snapshot creation when any catalog has strictMode and naming violations
+    // Strict mode: block snapshot creation only when any catalog has strictMode and has naming violations
     const { state: snapshotState } = await storageV4.loadCurrentState(workspaceFolder.uri, false);
     const snapshotViolations = collectNamingViolations(snapshotState ?? { catalogs: [] });
-    if (snapshotViolations.length > 0) {
+    const snapshotStrictViolations = snapshotViolations.filter((v) => v.strictMode);
+    if (snapshotStrictViolations.length > 0) {
       outputChannel.appendLine('[SchemaX] Snapshot creation blocked: naming convention violations (strict mode is on)');
-      const detail = snapshotViolations.slice(0, 5).map((v) => `${v.catalogName}.${v.objectName} (${v.objectType}): ${v.message}`).join('; ');
+      const detail = snapshotStrictViolations.slice(0, 5).map((v) => `${formatQualifiedName(v)} (${v.objectType}): ${v.message}`).join('; ');
       vscode.window.showErrorMessage(
         `SchemaX: Cannot create snapshot while naming standards strict mode is on and there are violations. Fix object names or turn strict mode off. ${detail}`
       );
@@ -2013,11 +2025,12 @@ async function generateSQLMigration() {
       return;
     }
 
-    // Strict mode: block SQL generation when any catalog has strictMode and naming violations
+    // Strict mode: block SQL generation only when any catalog has strictMode and has naming violations
     const sqlViolations = collectNamingViolations(state ?? { catalogs: [] });
-    if (sqlViolations.length > 0) {
+    const sqlStrictViolations = sqlViolations.filter((v) => v.strictMode);
+    if (sqlStrictViolations.length > 0) {
       outputChannel.appendLine('[SchemaX] SQL generation blocked: naming convention violations (strict mode is on)');
-      const detail = sqlViolations.slice(0, 5).map((v) => `${v.catalogName}.${v.objectName} (${v.objectType}): ${v.message}`).join('; ');
+      const detail = sqlStrictViolations.slice(0, 5).map((v) => `${formatQualifiedName(v)} (${v.objectType}): ${v.message}`).join('; ');
       vscode.window.showErrorMessage(
         `SchemaX: Cannot generate SQL while naming standards strict mode is on and there are violations. Fix object names or turn strict mode off. ${detail}`
       );

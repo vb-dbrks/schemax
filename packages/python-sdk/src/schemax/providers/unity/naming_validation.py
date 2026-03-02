@@ -26,6 +26,9 @@ class NamingViolation:
     object_name: str
     rule_pattern: str
     message: str
+    schema_name: str | None = None  # For table, view, column, volume, function, materialized_view
+    table_name: str | None = None  # For column only (catalog.schema.table.column)
+    strict_mode: bool = True  # True when catalog has strictMode on → error + block; False → warning only
 
 
 def _get_applicable_rule(
@@ -61,6 +64,17 @@ def _get_applicable_rule(
     return fallback
 
 
+def format_qualified_name(v: NamingViolation) -> str:
+    """Format a violation as a fully qualified name: catalog.schema.table or catalog.schema.table.column."""
+    if v.object_type == "schema":
+        return f"{v.catalog_name}.{v.object_name}"
+    if v.table_name is not None:
+        return f"{v.catalog_name}.{v.schema_name or ''}.{v.table_name}.{v.object_name}"
+    if v.schema_name is not None:
+        return f"{v.catalog_name}.{v.schema_name}.{v.object_name}"
+    return f"{v.catalog_name}.{v.object_name}"
+
+
 def _validate_name_against_rule(name: str, rule: dict[str, Any]) -> tuple[bool, str | None]:
     """Validate a name against a single rule's regex pattern.
 
@@ -88,11 +102,17 @@ def _validate_catalog_objects(
     ns = catalog.naming_standards or {}
     strict = ns.get("strictMode", False)
     rules_raw = ns.get("rules")
-    if not strict or not rules_raw:
+    if not rules_raw:
         return violations
     rules = list(rules_raw) if isinstance(rules_raw, list) else []
 
-    def check(name: str, object_type: str, table_type: str | None = None) -> None:
+    def check(
+        name: str,
+        object_type: str,
+        table_type: str | None = None,
+        schema_name: str | None = None,
+        table_name: str | None = None,
+    ) -> None:
         rule = _get_applicable_rule(object_type, rules, table_type)
         if not rule:
             return
@@ -106,32 +126,36 @@ def _validate_catalog_objects(
                     object_name=name,
                     rule_pattern=pattern,
                     message=msg,
+                    schema_name=schema_name,
+                    table_name=table_name,
+                    strict_mode=strict,
                 )
             )
 
     for schema in catalog.schemas or []:
         check(schema.name, "schema")
         for table in schema.tables or []:
-            check(table.name, "table")
+            check(table.name, "table", schema_name=schema.name)
             for col in table.columns or []:
-                check(col.name, "column")
+                check(col.name, "column", schema_name=schema.name, table_name=table.name)
         for view in schema.views or []:
-            check(view.name, "view")
+            check(view.name, "view", schema_name=schema.name)
         for vol in schema.volumes or []:
-            check(vol.name, "volume")
+            check(vol.name, "volume", schema_name=schema.name)
         for func in schema.functions or []:
-            check(func.name, "function")
+            check(func.name, "function", schema_name=schema.name)
         for mv in schema.materialized_views or []:
-            check(mv.name, "materialized_view")
+            check(mv.name, "materialized_view", schema_name=schema.name)
 
     return violations
 
 
 def collect_naming_violations(state: UnityState) -> list[NamingViolation]:
-    """Collect all naming convention violations for catalogs with strict mode enabled.
+    """Collect naming convention violations for all catalogs that have naming rules.
 
-    Only catalogs that have naming_standards.strictMode True and rules are checked.
-    Returns a list of violations (catalog name, object type, object name, rule pattern, message).
+    Each violation is tagged with strict_mode (True if the catalog has strictMode on).
+    Callers should: block only when any violation has strict_mode True; report strict as
+    errors, non-strict as warnings.
     """
     violations: list[NamingViolation] = []
     for catalog in state.catalogs or []:

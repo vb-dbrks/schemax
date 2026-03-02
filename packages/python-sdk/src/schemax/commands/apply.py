@@ -240,6 +240,7 @@ def apply_to_environment(
             from schemax.providers.unity.models import UnityState
             from schemax.providers.unity.naming_validation import (
                 collect_naming_violations,
+                format_qualified_name,
             )
 
             unity_desired = (
@@ -248,7 +249,8 @@ def apply_to_environment(
                 else UnityState.model_validate(desired_state)
             )
             violations = collect_naming_violations(unity_desired)
-            if violations:
+            strict_violations = [v for v in violations if v.strict_mode]
+            if strict_violations:
                 console.print()
                 console.print(
                     "[red]Deployment is not allowed when naming standards strict mode is on "
@@ -258,16 +260,37 @@ def apply_to_environment(
                     "Fix the object names or turn strict mode off for the catalog."
                 )
                 console.print()
-                for v in violations:
+                for v in strict_violations:
+                    qualified = format_qualified_name(v)
                     console.print(
-                        f"  [red]•[/red] catalog=[cyan]{v.catalog_name}[/cyan] "
-                        f"type=[cyan]{v.object_type}[/cyan] name=[cyan]{v.object_name}[/cyan] "
+                        f"  [red]•[/red] name=[cyan]{qualified}[/cyan] "
+                        f"type=[cyan]{v.object_type}[/cyan] "
                         f"pattern=[dim]{v.rule_pattern}[/dim] — {v.message}"
                     )
+                if len(violations) > len(strict_violations):
+                    console.print("[yellow]Other naming convention warnings (strict mode off):[/yellow]")
+                    for v in violations:
+                        if not v.strict_mode:
+                            qualified = format_qualified_name(v)
+                            console.print(
+                                f"  [yellow]•[/yellow] name=[cyan]{qualified}[/cyan] "
+                                f"type=[cyan]{v.object_type}[/cyan] — {v.message}"
+                            )
                 console.print()
                 raise ApplyError(
                     "Naming convention violations found. Fix names or disable strict mode."
                 )
+            if violations:
+                console.print()
+                console.print("[yellow]Naming convention warnings (strict mode off for affected catalog(s)):[/yellow]")
+                for v in violations:
+                    qualified = format_qualified_name(v)
+                    console.print(
+                        f"  [yellow]•[/yellow] name=[cyan]{qualified}[/cyan] "
+                        f"type=[cyan]{v.object_type}[/cyan] "
+                        f"pattern=[dim]{v.rule_pattern}[/dim] — {v.message}"
+                    )
+                console.print()
 
         # 9. Generate SQL using desired state (catalog_mapping already built at 5.5)
         console.print("[blue]Generating SQL...[/blue]")

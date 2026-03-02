@@ -120,24 +120,51 @@ export interface NamingViolation {
   objectName: string;
   rulePattern: string;
   message: string;
+  /** Set for objects inside a schema (table, view, column, volume, function, materialized_view). */
+  schemaName?: string;
+  /** Set for column violations only (catalog.schema.table.column). */
+  tableName?: string;
+  /** True when catalog has strictMode on → error + block; false → warning only. */
+  strictMode?: boolean;
 }
 
 /**
- * Collect all naming convention violations for catalogs that have strictMode enabled.
- * Used to block snapshot creation, SQL generation, and deployment when violations exist.
+ * Format a violation as a fully qualified name: catalog.schema.table or catalog.schema.table.column.
+ */
+export function formatQualifiedName(v: NamingViolation): string {
+  if (v.objectType === 'schema') {
+    return `${v.catalogName}.${v.objectName}`;
+  }
+  if (v.tableName != null) {
+    return `${v.catalogName}.${v.schemaName ?? ''}.${v.tableName}.${v.objectName}`;
+  }
+  if (v.schemaName != null) {
+    return `${v.catalogName}.${v.schemaName}.${v.objectName}`;
+  }
+  return `${v.catalogName}.${v.objectName}`;
+}
+
+/**
+ * Collect naming convention violations for all catalogs that have naming rules.
+ * Each violation is tagged with strictMode (true if the catalog has strictMode on).
+ * Callers should: block only when any violation has strictMode; report strict as
+ * errors, non-strict as warnings.
  */
 export function collectNamingViolations(state: { catalogs?: UnityCatalog[] }): NamingViolation[] {
   const violations: NamingViolation[] = [];
   const catalogs = state.catalogs ?? [];
   for (const catalog of catalogs) {
     const ns = catalog.namingStandards;
-    if (!ns?.strictMode || !ns?.rules?.length) continue;
+    if (!ns?.rules?.length) continue;
     const rules = ns.rules;
+    const strictMode = ns?.strictMode ?? false;
 
     const pushViolation = (
       objectType: NamingRuleObjectType,
       objectName: string,
-      tableType?: NamingRuleTableType
+      tableType?: NamingRuleTableType,
+      schemaName?: string,
+      tableName?: string
     ) => {
       const rule = getApplicableRule(objectType, rules, tableType);
       if (!rule) return;
@@ -149,6 +176,9 @@ export function collectNamingViolations(state: { catalogs?: UnityCatalog[] }): N
           objectName,
           rulePattern: (rule.pattern ?? '').trim(),
           message: result.error,
+          schemaName,
+          tableName,
+          strictMode,
         });
       }
     };
@@ -156,22 +186,22 @@ export function collectNamingViolations(state: { catalogs?: UnityCatalog[] }): N
     for (const schema of catalog.schemas ?? []) {
       pushViolation('schema', schema.name);
       for (const table of schema.tables ?? []) {
-        pushViolation('table', table.name);
+        pushViolation('table', table.name, undefined, schema.name);
         for (const col of table.columns ?? []) {
-          pushViolation('column', col.name);
+          pushViolation('column', col.name, undefined, schema.name, table.name);
         }
       }
       for (const view of schema.views ?? []) {
-        pushViolation('view', view.name);
+        pushViolation('view', view.name, undefined, schema.name);
       }
       for (const vol of schema.volumes ?? []) {
-        pushViolation('volume', vol.name);
+        pushViolation('volume', vol.name, undefined, schema.name);
       }
       for (const fn of schema.functions ?? []) {
-        pushViolation('function', fn.name);
+        pushViolation('function', fn.name, undefined, schema.name);
       }
       for (const mv of schema.materializedViews ?? []) {
-        pushViolation('materialized_view', mv.name);
+        pushViolation('materialized_view', mv.name, undefined, schema.name);
       }
     }
   }

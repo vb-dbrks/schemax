@@ -119,7 +119,10 @@ def _validate_naming_standards(
     if getattr(provider.info, "id", None) != "unity":
         return
     from schemax.providers.unity.models import UnityState
-    from schemax.providers.unity.naming_validation import collect_naming_violations
+    from schemax.providers.unity.naming_validation import (
+        collect_naming_violations,
+        format_qualified_name,
+    )
 
     unity_state = (
         state
@@ -127,28 +130,36 @@ def _validate_naming_standards(
         else UnityState.model_validate(state)
     )
     violations = collect_naming_violations(unity_state)
-    if not violations:
-        return
+    strict_violations = [v for v in violations if v.strict_mode]
     naming_errors = [
-        f"Naming (strict): catalog '{v.catalog_name}', {v.object_type} '{v.object_name}' — {v.message}"
-        for v in violations
+        f"Naming (strict): {format_qualified_name(v)} — {v.message}" for v in strict_violations
     ]
-    if json_output:
-        print(
-            json.dumps(
-                {
-                    "valid": False,
-                    "errors": naming_errors,
-                    "warnings": dep_warnings,
-                    "staleSnapshots": [],
-                }
+    naming_warnings = [
+        f"Naming: {format_qualified_name(v)} — {v.message}" for v in violations if not v.strict_mode
+    ]
+    if strict_violations:
+        if json_output:
+            print(
+                json.dumps(
+                    {
+                        "valid": False,
+                        "errors": naming_errors,
+                        "warnings": dep_warnings + naming_warnings,
+                        "staleSnapshots": [],
+                    }
+                )
             )
-        )
+            raise ValidationError("Naming convention violations found.")
+        console.print("[red]✗ Naming convention violations (strict mode):[/red]")
+        for msg in naming_errors:
+            console.print(f"  [red]•[/red] {msg}")
         raise ValidationError("Naming convention violations found.")
-    console.print("[red]✗ Naming convention violations (strict mode):[/red]")
-    for msg in naming_errors:
-        console.print(f"  [red]•[/red] {msg}")
-    raise ValidationError("Naming convention violations found.")
+    if naming_warnings:
+        dep_warnings.extend(naming_warnings)
+        if not json_output:
+            console.print("[yellow]⚠ Naming convention warnings (strict mode off):[/yellow]")
+            for msg in naming_warnings:
+                console.print(f"  [yellow]•[/yellow] {msg}")
 
 
 def _print_project_summary(project: dict, provider: Any, changelog: dict, state: Any) -> None:
