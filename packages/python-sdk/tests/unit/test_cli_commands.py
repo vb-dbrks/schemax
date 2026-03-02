@@ -315,6 +315,39 @@ def test_apply_json_output(monkeypatch, temp_workspace: Path) -> None:
     assert payload["data"]["result"]["status"] == "dry_run"
 
 
+def test_apply_json_failure_emits_error_envelope(monkeypatch, temp_workspace: Path) -> None:
+    runner = CliRunner()
+    monkeypatch.setattr(
+        "schemax.cli.ApplyService.run",
+        lambda _self, **kwargs: SimpleNamespace(
+            success=False,
+            data={"result": {"status": "failed", "error_message": "simulated apply failure"}},
+        ),
+    )
+    result = runner.invoke(
+        cli,
+        [
+            "apply",
+            "--target",
+            "dev",
+            "--profile",
+            "dev",
+            "--warehouse-id",
+            "wh",
+            "--dry-run",
+            "--json",
+            str(temp_workspace),
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["schemaVersion"] == "1"
+    assert payload["command"] == "apply"
+    assert payload["status"] == "error"
+    assert payload["errors"][0]["code"] == "APPLY_FAILED"
+    assert "simulated apply failure" in payload["errors"][0]["message"]
+
+
 def test_rollback_requires_minimum_args_for_partial(temp_workspace: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["rollback", "--partial", str(temp_workspace)])

@@ -867,15 +867,34 @@ def _run_apply_command(
             auto_rollback=auto_rollback,
         )
     if json_output:
-        exit_code = 0 if result.success else 1
-        _emit_json_success(
-            command="apply",
-            data=result.data or {},
-            warnings=[],
-            started_at=started_at,
-            exit_code=exit_code,
+        if result.success:
+            _emit_json_success(
+                command="apply",
+                data=result.data or {},
+                warnings=[],
+                started_at=started_at,
+                exit_code=0,
+            )
+            return 0
+
+        apply_data = result.data if isinstance(result.data, Mapping) else {}
+        result_payload = (
+            apply_data.get("result") if isinstance(apply_data.get("result"), Mapping) else {}
         )
-        return exit_code
+        error_message = str(
+            result_payload.get("error_message")
+            or getattr(result, "message", "")
+            or "Apply operation failed"
+        )
+        _emit_json_error(
+            command="apply",
+            code="APPLY_FAILED",
+            message=error_message,
+            started_at=started_at,
+            exit_code=1,
+            data=apply_data,
+        )
+        return 1
     return 0 if result.success else 1
 
 
