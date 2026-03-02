@@ -158,6 +158,127 @@ def test_import_from_provider_invalid_config_raises() -> None:
         )
 
 
+def test_import_from_provider_catalog_scope_preserves_other_catalogs() -> None:
+    repo = _RepoStub()
+    provider = _provider_for_import(import_ops=[])
+    local_state = {
+        "catalogs": [
+            {"name": "main", "schemas": []},
+            {"name": "other", "schemas": []},
+        ]
+    }
+    discovered_state = {"catalogs": [{"name": "main", "schemas": [{"name": "core", "tables": []}]}]}
+    provider.prepare_import_state.return_value = (
+        discovered_state,
+        {"main": "dev_main", "other": "dev_other"},
+        False,
+    )
+    repo.state_result = (local_state, {"ops": []}, provider, None)
+
+    import_from_provider(
+        workspace=Path("."),
+        target_env="dev",
+        profile="DEFAULT",
+        warehouse_id="wh_1",
+        catalog="main",
+        dry_run=True,
+        workspace_repo=repo,
+    )
+
+    new_state = provider.get_state_differ.call_args.kwargs["new_state"]
+    catalog_names = [catalog["name"] for catalog in new_state["catalogs"]]
+    assert "main" in catalog_names
+    assert "other" in catalog_names
+
+
+def test_import_from_provider_schema_scope_preserves_other_schemas() -> None:
+    repo = _RepoStub()
+    provider = _provider_for_import(import_ops=[])
+    local_state = {
+        "catalogs": [
+            {
+                "name": "main",
+                "schemas": [
+                    {"name": "core", "tables": []},
+                    {"name": "finance", "tables": []},
+                ],
+            }
+        ]
+    }
+    discovered_state = {
+        "catalogs": [
+            {"name": "main", "schemas": [{"name": "core", "tables": [{"name": "orders"}]}]}
+        ]
+    }
+    provider.prepare_import_state.return_value = (discovered_state, {"main": "dev_main"}, False)
+    repo.state_result = (local_state, {"ops": []}, provider, None)
+
+    import_from_provider(
+        workspace=Path("."),
+        target_env="dev",
+        profile="DEFAULT",
+        warehouse_id="wh_1",
+        catalog="main",
+        schema="core",
+        dry_run=True,
+        workspace_repo=repo,
+    )
+
+    new_state = provider.get_state_differ.call_args.kwargs["new_state"]
+    schema_names = [schema["name"] for schema in new_state["catalogs"][0]["schemas"]]
+    assert "core" in schema_names
+    assert "finance" in schema_names
+
+
+def test_import_from_provider_table_scope_preserves_other_tables() -> None:
+    repo = _RepoStub()
+    provider = _provider_for_import(import_ops=[])
+    local_state = {
+        "catalogs": [
+            {
+                "name": "main",
+                "schemas": [
+                    {
+                        "name": "core",
+                        "tables": [
+                            {"name": "orders", "columns": [{"name": "id"}]},
+                            {"name": "customers", "columns": [{"name": "id"}]},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    discovered_state = {
+        "catalogs": [
+            {
+                "name": "main",
+                "schemas": [{"name": "core", "tables": [{"name": "orders", "columns": []}]}],
+            }
+        ]
+    }
+    provider.prepare_import_state.return_value = (discovered_state, {"main": "dev_main"}, False)
+    repo.state_result = (local_state, {"ops": []}, provider, None)
+
+    import_from_provider(
+        workspace=Path("."),
+        target_env="dev",
+        profile="DEFAULT",
+        warehouse_id="wh_1",
+        catalog="main",
+        schema="core",
+        table="orders",
+        dry_run=True,
+        workspace_repo=repo,
+    )
+
+    new_state = provider.get_state_differ.call_args.kwargs["new_state"]
+    tables = new_state["catalogs"][0]["schemas"][0]["tables"]
+    table_names = [table["name"] for table in tables]
+    assert "orders" in table_names
+    assert "customers" in table_names
+
+
 def test_import_from_sql_file_missing_file_raises() -> None:
     repo = _RepoStub()
     with pytest.raises(ImportCommandError, match="SQL file not found"):
