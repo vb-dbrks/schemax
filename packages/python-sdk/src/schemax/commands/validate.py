@@ -131,11 +131,16 @@ def _validate_naming_standards(
     )
     violations = collect_naming_violations(unity_state)
     strict_violations = [v for v in violations if v.strict_mode]
+    def _fmt_type(ot: str) -> str:
+        return ot.replace("_", " ").title()
+
     naming_errors = [
-        f"Naming (strict): {format_qualified_name(v)} — {v.message}" for v in strict_violations
+        f"Naming (strict) [{_fmt_type(v.object_type)}]: {format_qualified_name(v)} — {v.message}"
+        for v in strict_violations
     ]
     naming_warnings = [
-        f"Naming: {format_qualified_name(v)} — {v.message}" for v in violations if not v.strict_mode
+        f"Naming [{_fmt_type(v.object_type)}]: {format_qualified_name(v)} — {v.message}"
+        for v in violations if not v.strict_mode
     ]
     if strict_violations:
         if json_output:

@@ -1250,7 +1250,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         const warningViolations = namingViolations.filter((v) => !v.strictMode);
         if (strictViolations.length > 0) {
           const namingErrors = strictViolations.map(
-            (v) => `Naming (strict): ${formatQualifiedName(v)} — ${v.message}`
+            (v) => `Naming (strict) [${v.objectType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}]: ${formatQualifiedName(v)} — ${v.message}`
           );
           mergedValidationResult = {
             errors: [...(mergedValidationResult.errors ?? []), ...namingErrors],
@@ -1259,7 +1259,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         }
         if (warningViolations.length > 0) {
           const namingWarnings = warningViolations.map(
-            (v) => `Naming: ${formatQualifiedName(v)} — ${v.message}`
+            (v) => `Naming [${v.objectType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}]: ${formatQualifiedName(v)} — ${v.message}`
           );
           mergedValidationResult = {
             ...mergedValidationResult,
