@@ -585,9 +585,10 @@ export async function loadCurrentState(
     !envelope.data?.changelog ||
     !envelope.data?.provider
   ) {
-    const message =
-      envelope.errors[0]?.message || "Could not load workspace state from Python backend";
-    throw new Error(message);
+    const firstError = envelope.errors[0];
+    const code = firstError?.code || "WORKSPACE_STATE_FAILED";
+    const message = firstError?.message || "Could not load workspace state from Python backend";
+    throw new Error(`[${code}] ${message}`);
   }
 
   const data = envelope.data;

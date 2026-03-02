@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from schemax.core.storage import append_ops, ensure_project_file
+from schemax.core.storage import append_ops, ensure_project_file, read_project, write_project
 from tests.utils import OperationBuilder
 from tests.utils.cli_helpers import invoke_cli
 
@@ -78,6 +78,23 @@ def test_workspace_state_json_contract_shape(temp_workspace: Path) -> None:
     assert "provider" in payload
     assert "project" in payload
     assert "validation" in payload
+
+
+@pytest.mark.integration
+def test_workspace_state_json_legacy_workspace_hard_break(temp_workspace: Path) -> None:
+    ensure_project_file(temp_workspace, provider_id="unity")
+    project = read_project(temp_workspace)
+    project["settings"]["catalogMode"] = "single"
+    write_project(temp_workspace, project)
+
+    result = invoke_cli("workspace-state", "--json", str(temp_workspace))
+
+    assert result.exit_code == 1
+    envelope = json.loads(result.output)
+    assert envelope["schemaVersion"] == "1"
+    assert envelope["command"] == "workspace-state"
+    assert envelope["status"] == "error"
+    assert envelope["errors"][0]["code"] == "LEGACY_SINGLE_CATALOG_UNSUPPORTED"
 
 
 @pytest.mark.integration
@@ -218,3 +235,32 @@ def test_runtime_info_json_contract_shape() -> None:
     assert "cliVersion" in envelope["data"]
     assert "envelopeSchemaVersion" in envelope["data"]
     assert isinstance(envelope["data"].get("supportedCommands"), list)
+
+
+@pytest.mark.integration
+def test_changelog_undo_json_contract_shape(temp_workspace: Path) -> None:
+    ensure_project_file(temp_workspace, provider_id="unity")
+    builder = OperationBuilder()
+    append_ops(
+        temp_workspace,
+        [builder.catalog.add_catalog("cat_1", "bronze", op_id="op_1")],
+    )
+
+    result = invoke_cli(
+        "changelog",
+        "undo",
+        "--op-id",
+        "op_1",
+        "--op-id",
+        "missing",
+        "--json",
+        str(temp_workspace),
+    )
+    assert result.exit_code == 0
+    envelope = json.loads(result.output)
+    assert envelope["schemaVersion"] == "1"
+    assert envelope["command"] == "changelog.undo"
+    assert envelope["status"] == "success"
+    assert envelope["data"]["removedCount"] == 1
+    assert envelope["data"]["missingCount"] == 1
+    assert isinstance(envelope["warnings"], list)

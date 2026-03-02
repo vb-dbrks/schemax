@@ -28,6 +28,7 @@ from schemax.providers.base.operations import Operation
 from schemax.providers.base.reverse_generator import SafetyLevel, SafetyReport
 from schemax.providers.unity.executor import UnitySQLExecutor
 from schemax.providers.unity.safety_validator import SafetyValidator
+from schemax.version import SCHEMAX_VERSION
 
 console = Console()
 
@@ -559,7 +560,7 @@ def _track_partial_rollback_deployment(
         project_name=context.project_name,
         provider_type=context.provider.info.id,
         provider_version=context.provider.info.version,
-        schemax_version="0.2.6",
+        schemax_version=SCHEMAX_VERSION,
         from_snapshot_version=target_deployment.get("version"),
     )
     for index, (rollback_op, stmt_result) in enumerate(
@@ -626,7 +627,7 @@ def _execute_partial_rollback(
         target_env=context.target_env,
         profile=context.profile,
         warehouse_id=context.warehouse_id,
-        catalog=context.catalog_mapping.get("__implicit__") if context.catalog_mapping else None,
+        catalog=context.deployment_catalog,
     )
 
     result = context.executor.execute_statements(statements, config)
@@ -1226,7 +1227,7 @@ def _track_complete_rollback_deployment(
         project_name=context.project_name,
         provider_type=context.provider.info.id,
         provider_version=context.provider.info.version,
-        schemax_version="0.2.6",
+        schemax_version=SCHEMAX_VERSION,
         from_snapshot_version=current_deployed_version,
     )
     for index, (rollback_op, stmt_result) in enumerate(
@@ -1297,7 +1298,7 @@ def _execute_complete_rollback(
         target_env=context.target_env,
         profile=context.profile,
         warehouse_id=context.warehouse_id,
-        catalog=context.catalog_mapping.get("__implicit__") if context.catalog_mapping else None,
+        catalog=context.deployment_catalog,
     )
     result = context.executor.execute_statements(statements, config)
 

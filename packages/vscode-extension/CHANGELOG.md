@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.7] - 2026-03-02
+
+### Added
+
+- **Legacy workspace UX handling** — Added explicit user-facing error messaging for backend `LEGACY_SINGLE_CATALOG_UNSUPPORTED` failures.
+
+### Changed
+
+- **Workspace-state error propagation** — Backend envelope error codes are now preserved in extension load/update flows.
+- **Runtime compatibility floor** — Updated minimum supported CLI version to `0.2.7`.
+
+### Fixed
+
+- **Release versioning resilience** — Updated extension version metadata alignment as part of shared release-tooling hardening.
+
 ## [0.2.6] - 2026-03-02
 
 ### Added

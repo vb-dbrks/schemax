@@ -314,6 +314,61 @@ class SnapshotService:
         )
 
 
+@dataclass(slots=True)
+class ChangelogService:
+    """Changelog mutation workflows."""
+
+    workspace_repo: WorkspaceRepository = field(default_factory=WorkspaceRepository)
+
+    def undo_operations(self, *, workspace: Path, op_ids: list[str]) -> CommandResult:
+        """Undo operations by removing matching operation IDs from changelog."""
+        normalized_ids = _dedupe_non_empty_ids(op_ids)
+        if not normalized_ids:
+            return CommandResult(
+                success=False,
+                code="undo_invalid_request",
+                message="At least one non-empty --op-id value is required.",
+            )
+
+        try:
+            summary = self.workspace_repo.remove_operations_by_id(
+                workspace=workspace,
+                op_ids=normalized_ids,
+            )
+        except (TypeError, ValueError) as err:
+            return CommandResult(
+                success=False,
+                code="undo_invalid_request",
+                message=str(err),
+            )
+        except (RuntimeError, OSError) as err:
+            return CommandResult(
+                success=False,
+                code="undo_failed",
+                message=str(err),
+            )
+
+        warnings: list[str] = []
+        missing_count = int(summary.get("missingCount", 0))
+        if missing_count > 0:
+            warnings.append(
+                f"{missing_count} requested operation(s) were already missing and could not be removed."
+            )
+        return CommandResult(
+            success=True,
+            code="undo_completed",
+            message="Undo completed",
+            data={
+                "removedOpIds": summary.get("removedOpIds", []),
+                "missingOpIds": summary.get("missingOpIds", []),
+                "removedCount": int(summary.get("removedCount", 0)),
+                "missingCount": missing_count,
+                "remainingOpsCount": int(summary.get("remainingOpsCount", 0)),
+                "warnings": warnings,
+            },
+        )
+
+
 def _execution_result_to_dict(result: Any) -> dict[str, Any]:
     """Serialize execution result object to a stable dictionary."""
     return {
@@ -365,3 +420,16 @@ def _build_apply_request(
         auto_rollback,
     )
     return dict(zip(keys, values, strict=True))
+
+
+def _dedupe_non_empty_ids(op_ids: list[str]) -> list[str]:
+    """Deduplicate non-empty operation IDs while preserving input order."""
+    seen: set[str] = set()
+    deduped_ids: list[str] = []
+    for op_id in op_ids:
+        normalized = op_id.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped_ids.append(normalized)
+    return deduped_ids

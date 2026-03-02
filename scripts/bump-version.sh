@@ -20,27 +20,22 @@ cd "$ROOT_DIR"
 echo "Bumping SchemaX release version to $VERSION (date: $RELEASE_DATE)"
 
 # Root package metadata
-perl -i -pe 's/^(\s*"version":\s*")[^"]+(",\s*)$/$1'"$VERSION"'$2/' package.json
+perl -i -pe 's/^(\s*"version":\s*")[^"]+(",\s*)$/${1}'"$VERSION"'${2}/' package.json
 perl -0pi -e 's/"name": "schemax",\n  "version": "[^"]+"/"name": "schemax",\n  "version": "'"$VERSION"'"/' package-lock.json
 perl -0pi -e 's/"name": "schemax",\n\s+"version": "[^"]+",\n\s+"workspaces"/"name": "schemax",\n      "version": "'"$VERSION"'",\n      "workspaces"/' package-lock.json
 
 # Python SDK
-perl -i -pe 's/^(version = ")[^"]+(")$/\1'"$VERSION"'\2/' packages/python-sdk/pyproject.toml
-perl -i -pe 's/^(__version__ = ")[^"]+(")$/\1'"$VERSION"'\2/' packages/python-sdk/src/schemax/__init__.py
-perl -i -pe 's/^(CLI_VERSION = ")[^"]+(")$/\1'"$VERSION"'\2/' packages/python-sdk/src/schemax/cli.py
-perl -i -pe 's/^(        schemax_version: str = ")[^"]+(")/\1'"$VERSION"'\2/' packages/python-sdk/src/schemax/core/deployment.py
-perl -i -pe 's/(schemax_version=")[^"]+(")/\1'"$VERSION"'\2/g' \
-  packages/python-sdk/src/schemax/commands/apply.py \
-  packages/python-sdk/src/schemax/commands/rollback.py \
-  packages/python-sdk/src/schemax/providers/unity/provider.py
+perl -i -pe 's/^(version = ")[^"]+(")$/${1}'"$VERSION"'${2}/' packages/python-sdk/pyproject.toml
+perl -i -pe 's/^(SCHEMAX_VERSION = ")[^"]+(")$/${1}'"$VERSION"'${2}/' packages/python-sdk/src/schemax/version.py
+perl -i -pe 's/^(        schemax_version: str = ")[^"]+(")/${1}'"$VERSION"'${2}/' packages/python-sdk/src/schemax/core/deployment.py
 
 # Extension + docs packages
-perl -i -pe 's/^(\s*"version":\s*")[^"]+(",\s*)$/$1'"$VERSION"'$2/' packages/vscode-extension/package.json
+perl -i -pe 's/^(\s*"version":\s*")[^"]+(",\s*)$/${1}'"$VERSION"'${2}/' packages/vscode-extension/package.json
 perl -0pi -e 's/"packages\/vscode-extension": \{\n\s+"name": "schemax-vscode",\n\s+"version": "[^"]+"/"packages\/vscode-extension": {\n      "name": "schemax-vscode",\n      "version": "'"$VERSION"'"/' package-lock.json
-perl -i -pe 's/^(const MIN_SUPPORTED_CLI_VERSION = ")[^"]+(";\s*)$/\1'"$VERSION"'\2/' packages/vscode-extension/src/extension.ts
+perl -i -pe 's/^(const MIN_SUPPORTED_CLI_VERSION = ")[^"]+(";\s*)$/${1}'"$VERSION"'${2}/' packages/vscode-extension/src/extension.ts
 perl -i -pe "s/'0\\.2\\.[0-9]+'/'$VERSION'/g if /validateRuntimeInfo\\(|\\s+'1'/" packages/vscode-extension/tests/unit/runtimeCompatibility.test.ts
 
-perl -i -pe 's/^(\s*"version":\s*")[^"]+(",\s*)$/$1'"$VERSION"'$2/' docs/schemax/package.json
+perl -i -pe 's/^(\s*"version":\s*")[^"]+(",\s*)$/${1}'"$VERSION"'${2}/' docs/schemax/package.json
 perl -0pi -e 's/"name": "schemax-docs",\n  "version": "[^"]+"/"name": "schemax-docs",\n  "version": "'"$VERSION"'"/' docs/schemax/package-lock.json
 perl -0pi -e 's/"name": "schemax-docs",\n\s+"version": "[^"]+",\n\s+"dependencies"/"name": "schemax-docs",\n      "version": "'"$VERSION"'",\n      "dependencies"/' docs/schemax/package-lock.json
 

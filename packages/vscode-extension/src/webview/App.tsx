@@ -36,6 +36,7 @@ const IconImport: React.FC = () => (
 );
 
 const IconHelp: React.FC = () => <i className="codicon codicon-question" aria-hidden="true"></i>;
+const IconUndo: React.FC = () => <i className="codicon codicon-discard" aria-hidden="true"></i>;
 
 export const App: React.FC = () => {
   const {
@@ -50,6 +51,11 @@ export const App: React.FC = () => {
     findVolume,
     findFunction,
     findMaterializedView,
+    undoStack,
+    confirmUndoBatch,
+    discardUndoBatch,
+    undoLastAction,
+    restoreUndoBatch,
   } = useDesignerStore();
   const [loading, setLoading] = React.useState(true);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = React.useState(false);
@@ -64,9 +70,15 @@ export const App: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [isImportOpen, setIsImportOpen] = React.useState(false);
   const [isImportRunning, setIsImportRunning] = React.useState(false);
+  const [isUndoRunning, setIsUndoRunning] = React.useState(false);
   const [importResult, setImportResult] = React.useState<ImportRunResult | null>(null);
   const [importProgress, setImportProgress] = React.useState<ImportProgress | null>(null);
   const [pickedSqlFilePath, setPickedSqlFilePath] = React.useState<string | null>(null);
+  const undoInFlightRef = React.useRef<{
+    actionId: string;
+    actionLabel: string;
+    opIds: string[];
+  } | null>(null);
 
   const isViewSelected = selectedTableId ? !!findView(selectedTableId) : false;
   const isVolumeSelected = selectedTableId ? !!findVolume(selectedTableId) : false;
@@ -74,6 +86,22 @@ export const App: React.FC = () => {
   const isMaterializedViewSelected = selectedTableId
     ? !!findMaterializedView(selectedTableId)
     : false;
+  const triggerUndo = React.useCallback(() => {
+    const batch = undoLastAction?.();
+    if (!batch) {
+      return;
+    }
+    undoInFlightRef.current = batch;
+    setIsUndoRunning(true);
+    vscode.postMessage({
+      type: "undo-requested",
+      payload: {
+        actionId: batch.actionId,
+        actionLabel: batch.actionLabel,
+        opIds: batch.opIds,
+      },
+    });
+  }, [undoLastAction]);
 
   useEffect(() => {
     // Set up message listener from extension
@@ -125,6 +153,23 @@ export const App: React.FC = () => {
         case "import-sql-file-picked":
           setPickedSqlFilePath(message.payload?.path ?? null);
           break;
+        case "ops-appended":
+          confirmUndoBatch?.(message.payload?.actionId ?? "", message.payload?.opIds ?? []);
+          break;
+        case "ops-append-failed":
+          discardUndoBatch?.(message.payload?.actionId ?? "");
+          break;
+        case "undo-completed":
+          setIsUndoRunning(false);
+          undoInFlightRef.current = null;
+          break;
+        case "undo-failed":
+          setIsUndoRunning(false);
+          if (undoInFlightRef.current) {
+            restoreUndoBatch?.(undoInFlightRef.current);
+            undoInFlightRef.current = null;
+          }
+          break;
       }
     };
 
@@ -136,11 +181,37 @@ export const App: React.FC = () => {
     return () => {
       window.removeEventListener("message", messageHandler);
     };
-  }, [setProject, setProvider]);
+  }, [confirmUndoBatch, discardUndoBatch, restoreUndoBatch, setProject, setProvider]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isUndoCombo = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z";
+      if (!isUndoCombo || isUndoRunning) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable ||
+          target.closest("[contenteditable='true']"))
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      triggerUndo();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isUndoRunning, triggerUndo]);
 
   const pendingOps = project?.ops?.length ?? 0;
   const snapshotCount = project?.snapshots?.length ?? 0;
   const hasProjectSettings = Boolean(project);
+  const canUndo = (undoStack?.length ?? 0) > 0 && !isUndoRunning;
   const logoUri =
     typeof document !== "undefined"
       ? (document.getElementById("root")?.getAttribute("data-logo-uri") ?? "")
@@ -227,6 +298,17 @@ export const App: React.FC = () => {
                     : "No pending changes"}
             </span>
           </div>
+          <VSCodeButton
+            type="button"
+            appearance="secondary"
+            className="undo-button"
+            onClick={triggerUndo}
+            disabled={!canUndo}
+            title="Undo last action (Ctrl/Cmd+Z)"
+          >
+            <IconUndo />
+            Undo
+          </VSCodeButton>
           <VSCodeButton
             type="button"
             appearance="secondary"

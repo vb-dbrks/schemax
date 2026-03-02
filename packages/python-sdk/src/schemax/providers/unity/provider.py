@@ -27,6 +27,7 @@ from schemax.providers.base.provider import BaseProvider, ProviderCapabilities, 
 from schemax.providers.base.sql_generator import SQLGenerator
 from schemax.providers.base.sql_parser import extract_table_references
 from schemax.providers.base.state_differ import StateDiffer
+from schemax.version import SCHEMAX_VERSION
 
 from .auth import check_profile_exists, create_databricks_client
 from .ddl_parser import state_from_ddl as unity_state_from_ddl
@@ -919,7 +920,7 @@ class UnityProvider(BaseProvider):
             project_name=project.get("name", "unknown"),
             provider_type=self.info.id,
             provider_version=self.info.version,
-            schemax_version="0.2.6",
+            schemax_version=SCHEMAX_VERSION,
             from_snapshot_version=from_snapshot_version,
             previous_deployment_id=previous_deployment_id,
         )

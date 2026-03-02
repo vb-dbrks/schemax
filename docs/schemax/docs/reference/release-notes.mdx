@@ -6,6 +6,26 @@ This page summarizes coordinated SchemaX releases across:
 - VS Code extension (`schemax-vscode`)
 - Documentation site (`docs/schemax`)
 
+## 0.2.7 (2026-03-02)
+
+### Highlights
+
+- Unity hard cutover to explicit multi-catalog model.
+- Legacy implicit workspaces now fail fast with deterministic error code `LEGACY_SINGLE_CATALOG_UNSUPPORTED`.
+- CLI/extension alignment for explicit multi-catalog workflows and clear legacy error surfacing in VS Code.
+- Release automation hardening: fixed version bump script corruption for semantic versions starting with `0`.
+
+### Package versions
+
+- Python SDK/CLI: `0.2.7`
+- VS Code extension: `0.2.7`
+- Docs site package: `0.2.7`
+
+### Changelogs
+
+- [Python SDK changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/CHANGELOG.md)
+- [VS Code extension changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/vscode-extension/CHANGELOG.md)
+
 ## 0.2.6 (2026-03-02)
 
 ### Highlights
@@ -15,6 +35,7 @@ This page summarizes coordinated SchemaX releases across:
 - Standardized CLI JSON envelopes for extension/runtime integration.
 - Cross-platform reliability fixes (including Windows profile/config resolution).
 - Expanded contract, integration, and architecture fitness test coverage.
+- Unity moved to explicit multi-catalog as the default model (legacy implicit workspaces now fail fast).
 
 ### Package versions
 
@@ -26,4 +47,3 @@ This page summarizes coordinated SchemaX releases across:
 
 - [Python SDK changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/CHANGELOG.md)
 - [VS Code extension changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/vscode-extension/CHANGELOG.md)
-

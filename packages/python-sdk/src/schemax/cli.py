@@ -18,6 +18,7 @@ from rich.console import Console
 from ._provider_registration import ensure_providers_loaded
 from .application import (
     ApplyService,
+    ChangelogService,
     DiffService,
     ImportService,
     InitService,
@@ -44,9 +45,11 @@ from .domain.envelopes import (
     build_error_envelope,
     build_success_envelope,
 )
+from .domain.errors import WorkflowValidationError
 from .providers import ProviderRegistry
+from .version import SCHEMAX_VERSION
 
-CLI_VERSION = "0.2.6"
+CLI_VERSION = SCHEMAX_VERSION
 ENVELOPE_SCHEMA_VERSION = "1"
 
 console = Console()
@@ -58,6 +61,7 @@ import_service = ImportService()
 apply_service = ApplyService()
 rollback_service = RollbackService()
 snapshot_service = SnapshotService()
+changelog_service = ChangelogService()
 workspace_repo = WorkspaceRepository()
 
 
@@ -133,6 +137,26 @@ def _parse_validate_payload(output_text: str) -> dict[str, Any]:
     return payload
 
 
+def _emit_validation_error(
+    *,
+    command: str,
+    error: WorkflowValidationError,
+    json_output: bool,
+    started_at: float,
+) -> None:
+    """Render deterministic workflow validation errors across CLI commands."""
+    if json_output:
+        _emit_json_error(
+            command=command,
+            code=error.code,
+            message=error.message,
+            started_at=started_at,
+            exit_code=1,
+        )
+    else:
+        console.print(f"[red]✗ {error.message}[/red]")
+
+
 @click.group()
 @click.version_option(version=CLI_VERSION, prog_name="schemax")
 def cli() -> None:
@@ -158,6 +182,7 @@ def runtime_info(json_output: bool) -> None:
             "rollback",
             "workspace-state",
             "snapshot.validate",
+            "changelog.undo",
         ],
         "providerIds": ProviderRegistry.get_all_ids(),
     }
@@ -209,6 +234,80 @@ def init(provider: str, workspace: str) -> None:
     except Exception as e:
         console.print(f"[red]✗[/red] Error initializing project: {e}")
         sys.exit(1)
+
+
+@cli.group(name="changelog")
+def changelog_group() -> None:
+    """Changelog operations."""
+
+
+@changelog_group.command(name="undo")
+@click.option(
+    "--op-id",
+    "op_ids",
+    multiple=True,
+    help="Operation ID to remove from changelog. Repeat for batch undo.",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def changelog_undo(op_ids: tuple[str, ...], json_output: bool, workspace: str) -> None:
+    """Undo pending changelog operations by operation ID."""
+    started_at = perf_counter()
+    workspace_path = Path(workspace).resolve()
+    try:
+        result = changelog_service.undo_operations(workspace=workspace_path, op_ids=list(op_ids))
+    except Exception as err:  # pragma: no cover - defensive boundary
+        if json_output:
+            _emit_json_error(
+                command="changelog.undo",
+                code="undo_failed",
+                message=str(err),
+                started_at=started_at,
+                exit_code=1,
+            )
+        else:
+            console.print(f"[red]✗ Undo failed:[/red] {err}")
+        sys.exit(1)
+
+    payload = result.data or {}
+    warnings = (
+        list(payload.get("warnings", [])) if isinstance(payload.get("warnings"), list) else []
+    )
+    exit_code = 0 if result.success else 1
+    if json_output:
+        if result.success:
+            _emit_json_success(
+                command="changelog.undo",
+                data=payload,
+                warnings=warnings,
+                started_at=started_at,
+                exit_code=0,
+            )
+        else:
+            _emit_json_error(
+                command="changelog.undo",
+                code=result.code,
+                message=result.message or "Undo request is invalid.",
+                started_at=started_at,
+                exit_code=1,
+                data=payload,
+                warnings=warnings,
+            )
+        sys.exit(exit_code)
+
+    if result.success:
+        removed_count = int(payload.get("removedCount", 0))
+        missing_count = int(payload.get("missingCount", 0))
+        remaining_count = int(payload.get("remainingOpsCount", 0))
+        console.print(
+            f"[green]✓[/green] Removed {removed_count} operation(s), "
+            f"{missing_count} missing, {remaining_count} remaining."
+        )
+        for warning in warnings:
+            console.print(f"[yellow]⚠[/yellow] {warning}")
+    else:
+        console.print(f"[red]✗ Undo request failed:[/red] {result.message}")
+    sys.exit(exit_code)
 
 
 @cli.command()
@@ -289,6 +388,11 @@ def sql(
         else:
             console.print(f"[red]✗ SQL generation failed:[/red] {e}")
         sys.exit(1)
+    except WorkflowValidationError as e:
+        _emit_validation_error(
+            command="sql", error=e, json_output=json_output, started_at=started_at
+        )
+        sys.exit(1)
     except Exception as e:
         if json_output:
             _emit_json_error(
@@ -357,6 +461,14 @@ def validate(workspace: str, json_output: bool) -> None:
             )
         else:
             console.print(f"[red]✗ Validation failed:[/red] {e}")
+        sys.exit(1)
+    except WorkflowValidationError as e:
+        _emit_validation_error(
+            command="validate",
+            error=e,
+            json_output=json_output,
+            started_at=started_at,
+        )
         sys.exit(1)
     except Exception as e:
         if json_output:
@@ -492,6 +604,11 @@ def diff(
         else:
             console.print(f"[red]✗ Diff generation failed:[/red] {e}")
         sys.exit(1)
+    except WorkflowValidationError as e:
+        _emit_validation_error(
+            command="diff", error=e, json_output=json_output, started_at=started_at
+        )
+        sys.exit(1)
     except Exception as e:
         if json_output:
             _emit_json_error(
@@ -605,6 +722,14 @@ def import_command(ctx: click.Context, **_kwargs: Any) -> None:
             )
         else:
             console.print(f"[red]✗ Import failed:[/red] {e}")
+        sys.exit(1)
+    except WorkflowValidationError as e:
+        _emit_validation_error(
+            command="import",
+            error=e,
+            json_output=json_output,
+            started_at=started_at,
+        )
         sys.exit(1)
     except Exception as e:
         if json_output:
@@ -816,6 +941,14 @@ def apply(
             )
         else:
             console.print(f"[red]✗ Apply failed:[/red] {e}")
+        sys.exit(1)
+    except WorkflowValidationError as e:
+        _emit_validation_error(
+            command="apply",
+            error=e,
+            json_output=json_output,
+            started_at=started_at,
+        )
         sys.exit(1)
     except Exception as e:
         if json_output:
@@ -1164,6 +1297,15 @@ def rollback(ctx: click.Context, **_kwargs: Any) -> None:
     try:
         params, workspace_path = _resolve_rollback_context(ctx)
         _run_rollback_dispatch_entry(workspace_path, params, started_at)
+    except WorkflowValidationError as e:
+        json_output = bool(params and params.get("json_output", False))
+        _emit_validation_error(
+            command="rollback",
+            error=e,
+            json_output=json_output,
+            started_at=started_at,
+        )
+        sys.exit(1)
     except RollbackError as e:
         _handle_rollback_error(e, params, workspace_path, started_at)
         sys.exit(1)
@@ -1319,6 +1461,14 @@ def snapshot_create_cmd(
         console.print(f"[red]✗ Error: {e}[/red]")
         console.print("Make sure you're in a SchemaX project directory.")
         sys.exit(1)
+    except WorkflowValidationError as e:
+        _emit_validation_error(
+            command="snapshot.create",
+            error=e,
+            json_output=False,
+            started_at=perf_counter(),
+        )
+        sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Snapshot creation failed: {e}[/red]")
         console.print(f"[dim]{traceback.format_exc()}[/dim]")
@@ -1367,6 +1517,14 @@ def snapshot_rebase_cmd(snapshot_version: str, base: str | None, workspace: str)
     try:
         workspace_path = Path(workspace).resolve()
         _run_snapshot_rebase(workspace_path, snapshot_version, base)
+    except WorkflowValidationError as e:
+        _emit_validation_error(
+            command="snapshot.rebase",
+            error=e,
+            json_output=False,
+            started_at=perf_counter(),
+        )
+        sys.exit(1)
     except RebaseError as e:
         console.print(f"[red]✗ Rebase failed:[/red] {e}")
         sys.exit(1)
@@ -1532,6 +1690,14 @@ def workspace_state_cmd(
             json_output=json_output,
             payload_mode=payload_mode,
         )
+    except WorkflowValidationError as e:
+        _emit_validation_error(
+            command="workspace-state",
+            error=e,
+            json_output=json_output,
+            started_at=started_at,
+        )
+        sys.exit(1)
     except Exception as e:
         if json_output:
             _emit_json_error(
@@ -1563,6 +1729,14 @@ def snapshot_validate_cmd(workspace: str, json_output: bool) -> None:
     try:
         workspace_path = Path(workspace).resolve()
         _run_snapshot_validate(workspace_path, json_output)
+    except WorkflowValidationError as e:
+        _emit_validation_error(
+            command="snapshot.validate",
+            error=e,
+            json_output=json_output,
+            started_at=started_at,
+        )
+        sys.exit(1)
     except Exception as e:
         if json_output:
             _emit_json_error(

@@ -8,6 +8,7 @@ from datetime import datetime
 import pytest
 
 from schemax.core import storage
+from schemax.domain.errors import WorkflowValidationError
 
 
 class TestPathHelpers:
@@ -65,10 +66,10 @@ class TestProjectInitialization:
         assert envs["dev"]["autoCreateTopLevel"] is True
 
         # Check catalogMode setting
-        assert project["settings"]["catalogMode"] == "single"
+        assert project["settings"]["catalogMode"] == "multi"
 
-    def test_ensure_project_file_creates_implicit_catalog(self, tmp_path):
-        """Should create implicit catalog operation in changelog"""
+    def test_ensure_project_file_starts_with_empty_changelog(self, tmp_path):
+        """Should create an empty changelog (no implicit bootstrap ops)."""
         storage.ensure_project_file(tmp_path, "unity")
 
         changelog_file = tmp_path / ".schemax" / "changelog.json"
@@ -77,12 +78,8 @@ class TestProjectInitialization:
         with open(changelog_file) as f:
             changelog = json.load(f)
 
-        # Check implicit catalog operation
-        assert len(changelog["ops"]) == 1
-        op = changelog["ops"][0]
-        assert op["op"] == "unity.add_catalog"
-        assert op["payload"]["name"] == "__implicit__"
-        assert op["payload"]["catalogId"] == "cat_implicit"
+        # No implicit catalog operation should be present.
+        assert changelog["ops"] == []
 
     def test_ensure_project_file_idempotent(self, tmp_path):
         """Should not recreate project if it already exists"""
@@ -167,7 +164,7 @@ class TestFileOperations:
                 "payload": {
                     "schemaId": "schema_test",
                     "name": "test_schema",
-                    "catalogId": "cat_implicit",
+                    "catalogId": "cat_main",
                 },
             }
         )
@@ -175,31 +172,36 @@ class TestFileOperations:
 
         # Read again
         changelog_reloaded = storage.read_changelog(tmp_path)
-        assert len(changelog_reloaded["ops"]) == 2  # 1 implicit catalog + 1 schema
+        assert len(changelog_reloaded["ops"]) == 1
 
 
 class TestStateLoading:
     """Test state loading with v4 schema"""
 
     def test_load_current_state_empty(self, tmp_path):
-        """Should load empty state with implicit catalog"""
+        """Should load empty state with no bootstrap catalogs."""
         storage.ensure_project_file(tmp_path, "unity")
 
         state, changelog, provider, _ = storage.load_current_state(tmp_path)
 
-        # Should have implicit catalog
-        assert len(state["catalogs"]) == 1
-        assert state["catalogs"][0]["name"] == "__implicit__"
-        assert len(state["catalogs"][0]["schemas"]) == 0
+        assert state["catalogs"] == []
 
     def test_load_current_state_with_operations(self, tmp_path):
         """Should apply operations to build current state"""
         storage.ensure_project_file(tmp_path, "unity")
 
-        # Add schema operation
+        # Add catalog + schema operations
         from schemax.providers.base.operations import Operation
 
         ops = [
+            Operation(
+                id="op_catalog",
+                ts=datetime.now().isoformat() + "Z",
+                provider="unity",
+                op="unity.add_catalog",
+                target="cat_main",
+                payload={"catalogId": "cat_main", "name": "main"},
+            ),
             Operation(
                 id="op_schema",
                 ts=datetime.now().isoformat() + "Z",
@@ -209,18 +211,52 @@ class TestStateLoading:
                 payload={
                     "schemaId": "schema_1",
                     "name": "test_schema",
-                    "catalogId": "cat_implicit",
+                    "catalogId": "cat_main",
                 },
-            )
+            ),
         ]
         storage.append_ops(tmp_path, ops)
 
         state, changelog, provider, _ = storage.load_current_state(tmp_path)
 
-        # Should have implicit catalog with schema
+        # Should have explicit catalog with schema
         assert len(state["catalogs"]) == 1
+        assert state["catalogs"][0]["name"] == "main"
         assert len(state["catalogs"][0]["schemas"]) == 1
         assert state["catalogs"][0]["schemas"][0]["name"] == "test_schema"
+
+
+class TestLegacySingleCatalogHardBreak:
+    """Legacy implicit workspace markers must fail fast."""
+
+    def test_read_project_rejects_single_catalog_mode(self, tmp_path):
+        storage.ensure_project_file(tmp_path, "unity")
+        project = storage.read_project(tmp_path)
+        project["settings"]["catalogMode"] = "single"
+        storage.write_project(tmp_path, project)
+
+        with pytest.raises(WorkflowValidationError) as exc_info:
+            storage.read_project(tmp_path)
+        assert exc_info.value.code == storage.LEGACY_SINGLE_CATALOG_UNSUPPORTED
+
+    def test_load_current_state_rejects_implicit_bootstrap_ops(self, tmp_path):
+        storage.ensure_project_file(tmp_path, "unity")
+        changelog = storage.read_changelog(tmp_path)
+        changelog["ops"].append(
+            {
+                "id": "op_init_catalog",
+                "ts": datetime.now().isoformat() + "Z",
+                "provider": "unity",
+                "op": "unity.add_catalog",
+                "target": "cat_implicit",
+                "payload": {"catalogId": "cat_implicit", "name": "__implicit__"},
+            }
+        )
+        storage.write_changelog(tmp_path, changelog)
+
+        with pytest.raises(WorkflowValidationError) as exc_info:
+            storage.load_current_state(tmp_path)
+        assert exc_info.value.code == storage.LEGACY_SINGLE_CATALOG_UNSUPPORTED
 
 
 class TestSnapshotCreation:
@@ -235,6 +271,14 @@ class TestSnapshotCreation:
 
         ops = [
             Operation(
+                id="op_catalog",
+                ts=datetime.now().isoformat() + "Z",
+                provider="unity",
+                op="unity.add_catalog",
+                target="cat_main",
+                payload={"catalogId": "cat_main", "name": "main"},
+            ),
+            Operation(
                 id="op_schema",
                 ts=datetime.now().isoformat() + "Z",
                 provider="unity",
@@ -243,9 +287,9 @@ class TestSnapshotCreation:
                 payload={
                     "schemaId": "schema_1",
                     "name": "test_schema",
-                    "catalogId": "cat_implicit",
+                    "catalogId": "cat_main",
                 },
-            )
+            ),
         ]
         storage.append_ops(tmp_path, ops)
 
@@ -283,6 +327,14 @@ class TestSnapshotCreation:
 
         ops = [
             Operation(
+                id="op_000",
+                ts="2025-10-31T09:59:00Z",
+                provider="unity",
+                op="unity.add_catalog",
+                target="cat_main",
+                payload={"catalogId": "cat_main", "name": "main"},
+            ),
+            Operation(
                 id="op_001",
                 ts="2025-10-31T10:00:00Z",
                 provider="unity",
@@ -291,7 +343,7 @@ class TestSnapshotCreation:
                 payload={
                     "schemaId": "schema_1",
                     "name": "analytics",
-                    "catalogId": "cat_implicit",
+                    "catalogId": "cat_main",
                 },
             ),
             Operation(

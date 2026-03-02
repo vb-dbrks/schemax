@@ -7,7 +7,9 @@ Supports multiple catalog providers: Unity Catalog, Hive, PostgreSQL, and more.
 
 from pathlib import Path
 
-__version__ = "0.2.6"
+from .version import SCHEMAX_VERSION
+
+__version__ = SCHEMAX_VERSION
 
 # Provider system exports
 # Storage V4 exports (latest)

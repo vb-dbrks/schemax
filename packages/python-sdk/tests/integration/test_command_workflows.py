@@ -41,6 +41,32 @@ class TestCommandWorkflows:
         assert workspace_state["provider"]["id"] == "unity"
         assert len(workspace_state["changelog"]["ops"]) >= 3
 
+        undo_result = invoke_cli(
+            "changelog",
+            "undo",
+            "--op-id",
+            "op_3",
+            "--op-id",
+            "missing",
+            "--json",
+            str(temp_workspace),
+        )
+        assert undo_result.exit_code == 0
+        undo_envelope = json.loads(undo_result.output)
+        assert undo_envelope["status"] == "success"
+        assert undo_envelope["data"]["removedCount"] == 1
+        assert undo_envelope["data"]["missingCount"] == 1
+
+        workspace_state_after_undo = invoke_cli(
+            "workspace-state",
+            "--json",
+            str(temp_workspace),
+        )
+        assert workspace_state_after_undo.exit_code == 0
+        workspace_after_undo_envelope = json.loads(workspace_state_after_undo.output)
+        remaining_ops = workspace_after_undo_envelope["data"]["changelog"]["ops"]
+        assert all(op["id"] != "op_3" for op in remaining_ops)
+
         sql_file = temp_workspace / "migration.sql"
         sql_result = invoke_cli("sql", "--output", str(sql_file), str(temp_workspace))
         assert sql_result.exit_code == 0

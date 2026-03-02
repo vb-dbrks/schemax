@@ -52,6 +52,37 @@ class WorkspaceRepository:
         normalized = [self._normalize_operation(operation) for operation in operations]
         append_ops(workspace, normalized)
 
+    def remove_operations_by_id(self, *, workspace: Path, op_ids: list[str]) -> dict[str, Any]:
+        """Remove operations from changelog by ID using best-effort semantics."""
+        changelog = self.read_changelog(workspace=workspace)
+        raw_ops = changelog.get("ops", [])
+        if not isinstance(raw_ops, list):
+            raise ValueError("Changelog ops must be a list")
+
+        requested_ids = set(op_ids)
+        removed_ids: list[str] = []
+        remaining_ops: list[Any] = []
+
+        for operation in raw_ops:
+            op_id = operation.get("id") if isinstance(operation, Mapping) else None
+            if isinstance(op_id, str) and op_id in requested_ids:
+                removed_ids.append(op_id)
+                continue
+            remaining_ops.append(operation)
+
+        removed_id_set = set(removed_ids)
+        missing_ids = [op_id for op_id in op_ids if op_id not in removed_id_set]
+        changelog["ops"] = remaining_ops
+        self.write_changelog(workspace=workspace, changelog=changelog)
+
+        return {
+            "removedOpIds": removed_ids,
+            "missingOpIds": missing_ids,
+            "removedCount": len(removed_ids),
+            "missingCount": len(missing_ids),
+            "remainingOpsCount": len(remaining_ops),
+        }
+
     def create_snapshot(
         self,
         *,
