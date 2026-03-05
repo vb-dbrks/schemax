@@ -128,7 +128,6 @@
     "test:integration": "node scripts/prompt-e2e-env.js",
     "package": "vsce package --no-dependencies",
     "deploy": "vsce publish --no-dependencies",
-    "deploy:openvsx": "npm run package && npx ovsx publish ./*.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

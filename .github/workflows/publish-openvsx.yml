@@ -45,6 +45,6 @@ jobs:
 
       - name: Publish to Open VSX
         working-directory: packages/vscode-extension
-        run: npx ovsx publish ./*.vsix --pat ${{ secrets.OVSX_PAT }}
+        run: npx ovsx publish ./*.vsix
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
