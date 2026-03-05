@@ -1,0 +1,50 @@
+# Publish SchemaX extension to Open VSX (Cursor, Antigravity, and other Open VSX consumers).
+# Uses namespace "schemax" on open-vsx.org. Trigger on v* tags or run manually.
+name: Publish to Open VSX
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publish to Open VSX
+    runs-on: ubuntu-latest
+    environment: vscode-marketplace
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set Open VSX publisher
+        working-directory: packages/vscode-extension
+        run: |
+          node -e "
+          const fs = require('fs');
+          const p = require('./package.json');
+          p.publisher = 'schemax';
+          fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+
+      - name: Build extension
+        working-directory: packages/vscode-extension
+        run: npm run build
+
+      - name: Package VSIX
+        working-directory: packages/vscode-extension
+        run: npm run package
+
+      - name: Publish to Open VSX
+        working-directory: packages/vscode-extension
+        run: npx ovsx publish ./*.vsix
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}

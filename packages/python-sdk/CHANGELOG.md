@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.8] - 2026-02-27
+
+### Changed
+
+- **Version bump** — Bumped to 0.2.8 for coordinated release with extension (Open VSX publishing, workflow clarity). No SDK behavior changes.
+
 ## [0.2.7] - 2026-03-02
 
 ### Added

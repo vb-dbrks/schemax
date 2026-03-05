@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.8] - 2026-02-27
+
+### Added
+
+- **Open VSX publishing** — New GitHub workflow `publish-openvsx.yml` publishes the extension to Open VSX (namespace `schemax`) for Cursor, Antigravity, and other Open VSX-based editors. Triggered on `v*` tag push or manual workflow dispatch.
+- **Publishing documentation** — README "Publishing (maintainers)" section documents both VS Code Marketplace and Open VSX workflows, and CI-only publishing.
+
+### Changed
+
+- **VS Code publish workflow** — Clarified workflow name and comments for Visual Studio Marketplace only; added `workflow_dispatch` for manual re-publish.
+- **Open VSX token handling** — Publish step uses `OVSX_PAT` from environment only (removed redundant `--pat` from command).
+
 ## [0.2.7] - 2026-03-02
 
 ### Added

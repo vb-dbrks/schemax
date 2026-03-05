@@ -1,14 +1,16 @@
-# Publish SchemaX VS Code extension to the Marketplace.
+# Publish SchemaX VS Code extension to the Visual Studio Marketplace.
+# For Open VSX (Cursor, Antigravity) see publish-openvsx.yml.
 name: Publish VS Code Extension
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   publish:
-    name: Publish to Marketplace
+    name: Publish to VS Code Marketplace
     runs-on: ubuntu-latest
     environment: vscode-marketplace
     steps:
@@ -23,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and publish extension
+      - name: Build and publish to VS Code Marketplace
         working-directory: packages/vscode-extension
         run: npm run build && npm run deploy
         env:
