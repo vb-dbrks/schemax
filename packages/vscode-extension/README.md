@@ -68,6 +68,19 @@ SchemaX uses a `.schemax` folder in your workspace:
 
 ---
 
+## Publishing (maintainers)
+
+Two workflows publish the extension:
+
+- **VS Code Marketplace** — `.github/workflows/publish-vscode-extension.yml` (publisher `schematic-dev`, uses `VSCE_PAT`).
+- **Open VSX** — `.github/workflows/publish-openvsx.yml` (namespace `schemax`, uses `OVSX_PAT`). Used by Cursor and Antigravity.
+
+Both run on `v*` tag push and via **Actions → Run workflow**. For Open VSX, add the `OVSX_PAT` secret (from [open-vsx.org/user-settings/tokens](https://open-vsx.org/user-settings/tokens)) to the same environment as `VSCE_PAT` (e.g. `vscode-marketplace`).
+
+Local Open VSX publish (namespace `schemax`): set `OVSX_PAT`, then run `npm run deploy:openvsx` from `packages/vscode-extension` (packages with publisher overridden to `schemax` for Open VSX only).
+
+---
+
 ## Links
 
 - **Documentation**: [vb-dbrks.github.io/schemax](https://vb-dbrks.github.io/schemax/)
