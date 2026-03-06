@@ -2,7 +2,7 @@
 Unity Catalog SQL Executor
 
 Executes SQL statements against Databricks Unity Catalog using
-the Databricks SQL Statement Execution API.
+the Databricks SQL Statement Execution API or local Spark session.
 """
 
 import time
@@ -14,6 +14,7 @@ from databricks.sdk.service.sql import StatementState
 from rich.console import Console
 
 from schemax.providers.base.executor import ExecutionConfig, ExecutionResult, StatementResult
+from schemax.providers.unity.sql_runner import LocalSQLRunner
 
 console = Console()
 
@@ -270,4 +271,73 @@ class UnitySQLExecutor:
             execution_time_ms=int((time.time() - exec_start) * 1000),
             error_message=error_message,
             rows_affected=None,
+        )
+
+
+class LocalSQLExecutor:
+    """Execute SQL statements via spark.sql() on the active Spark session.
+
+    Used in local execution mode (e.g. DAB serverless jobs) where a SQL warehouse
+    is not needed. Implements the same interface as UnitySQLExecutor.
+    """
+
+    def __init__(self) -> None:
+        self._runner = LocalSQLRunner()
+
+    def execute_statements(
+        self, statements: list[str], _config: ExecutionConfig
+    ) -> ExecutionResult:
+        deployment_id = f"deploy_{uuid4().hex[:8]}"
+        results: list[StatementResult] = []
+        start_time = time.time()
+
+        console.print(
+            f"\n[bold cyan]Executing {len(statements)} statements (local mode)...[/bold cyan]\n"
+        )
+
+        for i, sql in enumerate(statements, 1):
+            console.print(f"[cyan]Statement {i}/{len(statements)}[/cyan]")
+            exec_start = time.time()
+
+            run_result = self._runner.run_sql(sql)
+            exec_time_ms = int((time.time() - exec_start) * 1000)
+
+            stmt_result = StatementResult(
+                statement_id=f"local_{i}",
+                sql=sql,
+                status="success" if run_result.status == "success" else "failed",
+                execution_time_ms=exec_time_ms,
+                error_message=run_result.error_message,
+                rows_affected=None,
+            )
+            results.append(stmt_result)
+
+            if stmt_result.status == "success":
+                console.print(f"  [green]✓[/green] Completed in {exec_time_ms / 1000:.2f}s")
+            else:
+                console.print(f"  [red]✗[/red] Failed: {stmt_result.error_message}")
+                total_time_ms = int((time.time() - start_time) * 1000)
+                successful_count = i - 1
+                status: str = "failed" if successful_count == 0 else "partial"
+                return ExecutionResult(
+                    deployment_id=deployment_id,
+                    total_statements=len(statements),
+                    successful_statements=successful_count,
+                    failed_statement_index=i - 1,
+                    statement_results=results,
+                    total_execution_time_ms=total_time_ms,
+                    status=status,
+                    error_message=stmt_result.error_message,
+                )
+
+        total_time_ms = int((time.time() - start_time) * 1000)
+        return ExecutionResult(
+            deployment_id=deployment_id,
+            total_statements=len(statements),
+            successful_statements=len(statements),
+            failed_statement_index=None,
+            statement_results=results,
+            total_execution_time_ms=total_time_ms,
+            status="success",
+            error_message=None,
         )

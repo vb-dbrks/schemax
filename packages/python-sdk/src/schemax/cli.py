@@ -18,6 +18,7 @@ from rich.console import Console
 from ._provider_registration import ensure_providers_loaded
 from .application import (
     ApplyService,
+    BundleService,
     ChangelogService,
     DiffService,
     ImportService,
@@ -183,6 +184,7 @@ def runtime_info(json_output: bool) -> None:
             "workspace-state",
             "snapshot.validate",
             "changelog.undo",
+            "bundle",
         ],
         "providerIds": ProviderRegistry.get_all_ids(),
     }
@@ -625,39 +627,76 @@ def diff(
 
 @cli.command()
 @click.option(
-    "--target",
-    "-t",
-    required=True,
-    help="Target environment (dev/test/prod)",
-)
-@click.option(
-    "--version",
-    "-v",
-    required=True,
-    help="Version to bundle",
-)
-@click.option(
     "--output",
     "-o",
     type=click.Path(),
-    default=".schemax/dab",
-    help="Output directory (default: .schemax/dab)",
+    default="resources",
+    help="Output directory for DAB resource files (default: resources)",
 )
-def bundle(target: str, version: str, output: str) -> None:
-    """Generate Databricks Asset Bundle for deployment"""
+@click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
+def bundle(output: str, json_output: bool) -> None:
+    """Generate Databricks Asset Bundle resources for SchemaX deployment.
 
+    Creates a resource YAML and deploy script that can be included in an
+    existing Databricks Asset Bundle project. The generated job uses
+    ${bundle.target} as the SchemaX environment, so DAB target names
+    should match your SchemaX environments (dev/test/prod).
+
+    Example usage:
+
+        schemax bundle
+        schemax bundle --output my-dab/resources
+
+    Then add to your databricks.yml:
+
+        include:
+          - resources/schemax.yml
+
+        sync:
+          include:
+            - .schemax/**
+            - resources/schemax_deploy.py
+    """
+    started_at = perf_counter()
     try:
-        _workspace = Path.cwd()  # noqa: F841 - Reserved for future DAB implementation
-        _output_dir = Path(output)  # noqa: F841 - Reserved for future DAB implementation
-
-        console.print(f"Generating DAB for [cyan]{target}[/cyan] v{version}...")
-
-        # TODO: Implement DAB generation
-        console.print("[yellow]DAB generation not yet implemented[/yellow]")
-
+        result = BundleService().run(workspace=Path.cwd(), output_dir=Path(output))
+        if not result.success:
+            if json_output:
+                _emit_json_error(
+                    command="bundle",
+                    code="BUNDLE_FAILED",
+                    message=result.message,
+                    started_at=started_at,
+                )
+            else:
+                console.print(f"[red]✗ {result.message}[/red]")
+            sys.exit(1)
+        if json_output:
+            _emit_json_success(
+                command="bundle", data=result.data, warnings=[], started_at=started_at
+            )
+        else:
+            _print_bundle_result(result, output)
     except Exception as e:
-        console.print(f"[red]✗ Error:[/red] {e}")
+        if json_output:
+            _emit_json_error(
+                command="bundle", code="BUNDLE_ERROR", message=str(e), started_at=started_at
+            )
+        else:
+            console.print(f"[red]✗ Error:[/red] {e}")
         sys.exit(1)
+
+
+def _print_bundle_result(result: Any, output: str) -> None:
+    """Print bundle generation results."""
+    console.print(f"[green]✓[/green] Generated DAB resources in [cyan]{output}[/cyan]")
+    console.print(f"  Resource file: [dim]{result.data['resource_file']}[/dim]")
+    console.print(f"  Deploy script: [dim]{result.data['deploy_script']}[/dim]")
+    console.print(f"  Environments:  [dim]{', '.join(result.data['environments'])}[/dim]")
+    console.print()
+    console.print("[dim]Add to your databricks.yml:[/dim]")
+    console.print("[dim]  include:[/dim]")
+    console.print(f"[dim]    - {output}/schemax.yml[/dim]")
 
 
 @cli.command(name="import")
@@ -875,8 +914,21 @@ def _print_import_summary(summary: dict[str, Any]) -> None:
 
 @cli.command()
 @click.option("--target", "-t", required=True, help="Target environment (dev/test/prod)")
-@click.option("--profile", "-p", required=True, help="Databricks profile name")
-@click.option("--warehouse-id", "-w", required=True, help="SQL warehouse ID")
+@click.option(
+    "--profile",
+    "-p",
+    default=None,
+    help="Databricks profile name (omit for serverless/DAB jobs to use runtime auth)",
+)
+@click.option(
+    "--warehouse-id", "-w", default="", help="SQL warehouse ID (required for remote mode)"
+)
+@click.option(
+    "--execution-mode",
+    type=click.Choice(["remote", "local"]),
+    default="remote",
+    help="Execution mode: remote (SQL warehouse) or local (spark.sql for DAB serverless jobs)",
+)
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-interaction", is_flag=True, help="Skip confirmation prompt (for CI/CD)")
 @click.option(
@@ -886,8 +938,9 @@ def _print_import_summary(summary: dict[str, Any]) -> None:
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def apply(
     target: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
+    execution_mode: str,
     dry_run: bool,
     no_interaction: bool,
     auto_rollback: bool,
@@ -922,6 +975,7 @@ def apply(
             target=target,
             profile=profile,
             warehouse_id=warehouse_id,
+            execution_mode=execution_mode,
             dry_run=dry_run,
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
@@ -968,8 +1022,9 @@ def _run_apply_command(
     *,
     workspace: str,
     target: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
+    execution_mode: str,
     dry_run: bool,
     no_interaction: bool,
     auto_rollback: bool,
@@ -985,6 +1040,7 @@ def _run_apply_command(
                 target_env=target,
                 profile=profile,
                 warehouse_id=warehouse_id,
+                execution_mode=execution_mode,
                 dry_run=dry_run,
                 no_interaction=no_interaction,
                 auto_rollback=auto_rollback,
@@ -995,6 +1051,7 @@ def _run_apply_command(
             target_env=target,
             profile=profile,
             warehouse_id=warehouse_id,
+            execution_mode=execution_mode,
             dry_run=dry_run,
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
@@ -1094,11 +1151,11 @@ def _run_rollback_json(workspace_path: Path, params: dict[str, Any], started_at:
                 exit_code=1,
             )
             sys.exit(1)
-        if not params["profile"] or not params["warehouse_id"]:
+        if not params["warehouse_id"]:
             _emit_json_error(
                 command="rollback",
                 code="ROLLBACK_INVALID_ARGS",
-                message="--profile and --warehouse-id required",
+                message="--warehouse-id required",
                 started_at=started_at,
                 exit_code=1,
             )
@@ -1191,8 +1248,8 @@ def _handle_rollback_dispatch(workspace_path: Path, params: dict[str, Any]) -> N
         if not params["target"]:
             console.print("[red]✗[/red] --target required for complete rollback")
             sys.exit(1)
-        if not params["profile"] or not params["warehouse_id"]:
-            console.print("[red]✗[/red] --profile and --warehouse-id required")
+        if not params["warehouse_id"]:
+            console.print("[red]✗[/red] --warehouse-id required")
             sys.exit(1)
         service_result = rollback_service.run_complete(
             workspace=workspace_path,

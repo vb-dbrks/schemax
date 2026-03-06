@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.9] - 2026-03-06
+
+### Added
+
+- **Sidebar buttons** — Added "Import Existing Assets" and "Generate DAB Resources" buttons to the SchemaX sidebar welcome view.
+- **Generate DAB Resources command** — New `schemax.generateBundle` command invokes `schemax bundle` to generate Databricks Asset Bundle resource YAML and deploy script. Opens the generated `schemax.yml` in the editor on success.
+
+### Changed
+
+- **Runtime compatibility floor** — Updated minimum supported CLI version to `0.2.9`.
+- **Supported commands** — Runtime info contract now includes `bundle` and `changelog.undo`.
+
+### Fixed
+
+- **Bundle resource filename** — Extension now looks for `schemax.yml` (matching actual generator output) instead of `schemax_job.yml`.
+
 ## [0.2.8] - 2026-02-27
 
 ### Added

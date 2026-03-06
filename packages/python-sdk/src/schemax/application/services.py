@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from schemax.commands.apply import apply_to_environment
+from schemax.commands.bundle import generate_bundle
 from schemax.commands.diff import generate_diff
 from schemax.commands.import_assets import import_from_provider, import_from_sql_file
 from schemax.commands.rollback import rollback_complete, run_partial_rollback_cli
@@ -172,6 +173,20 @@ class ImportService:
 
 
 @dataclass(slots=True)
+class BundleService:
+    """Generate Databricks Asset Bundle resources for SchemaX deployment."""
+
+    def run(self, *, workspace: Path, output_dir: Path) -> CommandResult:
+        summary = generate_bundle(workspace=workspace, output_dir=output_dir)
+        return CommandResult(
+            success=True,
+            code="bundle_generated",
+            message="DAB resource files generated",
+            data=summary,
+        )
+
+
+@dataclass(slots=True)
 class ApplyService:
     """Apply migration SQL to a target environment."""
 
@@ -180,11 +195,12 @@ class ApplyService:
         *,
         workspace: Path,
         target_env: str,
-        profile: str,
+        profile: str | None,
         warehouse_id: str,
         dry_run: bool,
         no_interaction: bool,
         auto_rollback: bool,
+        execution_mode: str = "remote",
     ) -> CommandResult:
         request = _build_apply_request(
             workspace,
@@ -194,6 +210,7 @@ class ApplyService:
             dry_run,
             no_interaction,
             auto_rollback,
+            execution_mode,
         )
         result = apply_to_environment(**request)
         return CommandResult(
@@ -394,11 +411,12 @@ def _execution_result_to_dict(result: Any) -> dict[str, Any]:
 def _build_apply_request(
     workspace: Path,
     target_env: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
     dry_run: bool,
     no_interaction: bool,
     auto_rollback: bool,
+    execution_mode: str = "remote",
 ) -> dict[str, Any]:
     """Build kwargs for apply command boundary calls."""
     keys = (
@@ -409,6 +427,7 @@ def _build_apply_request(
         "dry_run",
         "no_interaction",
         "auto_rollback",
+        "execution_mode",
     )
     values = (
         workspace,
@@ -418,6 +437,7 @@ def _build_apply_request(
         dry_run,
         no_interaction,
         auto_rollback,
+        execution_mode,
     )
     return dict(zip(keys, values, strict=True))
 

@@ -2,6 +2,7 @@
 
 from .services import (
     ApplyService,
+    BundleService,
     ChangelogService,
     DiffService,
     ImportService,
@@ -19,6 +20,7 @@ __all__ = [
     "DiffService",
     "ImportService",
     "ApplyService",
+    "BundleService",
     "ChangelogService",
     "RollbackService",
     "SnapshotService",

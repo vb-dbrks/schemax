@@ -269,12 +269,20 @@ def test_diff_non_json_keeps_console_output(monkeypatch, temp_workspace: Path) -
     assert "DIFF OUTPUT LINE" in result.output
 
 
-def test_bundle_contract_not_implemented() -> None:
+def test_bundle_generates_resources(tmp_path: Path, monkeypatch) -> None:
+    from schemax.core.storage import ensure_project_file
+
+    ensure_project_file(tmp_path, provider_id="unity")
+    output_dir = tmp_path / "resources"
+
+    monkeypatch.chdir(tmp_path)
     runner = CliRunner()
-    result = runner.invoke(cli, ["bundle", "--target", "dev", "--version", "0.1.0"])
+    result = runner.invoke(cli, ["bundle", "--output", str(output_dir)])
 
     assert result.exit_code == 0
-    assert "not yet implemented" in result.output
+    assert "Generated DAB resources" in result.output
+    assert (output_dir / "schemax.yml").exists()
+    assert (output_dir / "schemax_deploy.py").exists()
 
 
 def test_apply_uses_status_to_set_exit_code(monkeypatch, temp_workspace: Path) -> None:

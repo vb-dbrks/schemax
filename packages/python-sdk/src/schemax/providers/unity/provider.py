@@ -31,11 +31,12 @@ from schemax.version import SCHEMAX_VERSION
 
 from .auth import check_profile_exists, create_databricks_client
 from .ddl_parser import state_from_ddl as unity_state_from_ddl
-from .executor import UnitySQLExecutor
+from .executor import LocalSQLExecutor, UnitySQLExecutor
 from .hierarchy import unity_hierarchy
 from .models import UnityState
 from .operations import UNITY_OPERATIONS, unity_operation_metadata
 from .sql_generator import UnitySQLGenerator
+from .sql_runner import create_remote_sql_runner
 from .state_differ import UnityStateDiffer
 from .state_reducer import apply_operation, apply_operations
 
@@ -324,16 +325,20 @@ class UnityProvider(BaseProvider):
 
         Creates an authenticated Databricks client and returns a
         UnitySQLExecutor instance for executing SQL statements.
+        In local mode, returns a LocalSQLExecutor that uses spark.sql().
 
         Args:
             config: Execution configuration with profile and warehouse
 
         Returns:
-            UnitySQLExecutor instance
+            UnitySQLExecutor or LocalSQLExecutor instance
 
         Raises:
             AuthenticationError: If authentication fails
         """
+        if config.execution_mode == "local":
+            return LocalSQLExecutor()
+
         # Create authenticated client using profile
         client = create_databricks_client(config.profile)
 
@@ -904,8 +909,9 @@ class UnityProvider(BaseProvider):
         auto_create_schema = env_config.get("autoCreateSchemaxSchema", True)
 
         client = create_databricks_client(profile)
+        runner = create_remote_sql_runner(client, warehouse_id)
         deployment_module = importlib.import_module("schemax.core.deployment")
-        tracker = deployment_module.DeploymentTracker(client, deployment_catalog, warehouse_id)
+        tracker = deployment_module.DeploymentTracker(runner, deployment_catalog)
         tracker.ensure_tracking_schema(auto_create=auto_create_schema)
 
         latest_success = tracker.get_latest_deployment(target_env)
@@ -1780,7 +1786,7 @@ class UnityProvider(BaseProvider):
             if retry_props:
                 properties_by_table[table_name] = retry_props
 
-    def _get_import_thread_client(self, profile: str) -> Any:
+    def _get_import_thread_client(self, profile: str | None) -> Any:
         client = getattr(self._import_thread_local, "client", None)
         client_profile = getattr(self._import_thread_local, "profile", None)
         if client is not None and client_profile == profile:
@@ -2082,7 +2088,19 @@ class UnityProvider(BaseProvider):
         """
         errors: list[ValidationError] = []
 
-        # Validate warehouse ID
+        # In local mode, warehouse_id and profile are not required
+        if config.execution_mode == "local":
+            if config.timeout_seconds <= 0:
+                errors.append(
+                    ValidationError(
+                        field="timeout_seconds",
+                        message="Timeout must be positive",
+                        code="INVALID_TIMEOUT",
+                    )
+                )
+            return ValidationResult(valid=len(errors) == 0, errors=errors)
+
+        # Validate warehouse ID (remote mode only)
         if not config.warehouse_id:
             errors.append(
                 ValidationError(

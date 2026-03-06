@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.9] - 2026-03-06
+
+### Added
+
+- **Databricks Asset Bundles integration** — New `schemax bundle` command generates DAB-compatible resource YAML and deploy script. Include the generated files in an existing DAB project to deploy SchemaX migrations as a serverless Python task. The job uses `${bundle.target}` as the SchemaX environment, so DAB target names map directly to your environments (dev/test/prod).
+- **Documentation** — New [Databricks Asset Bundles guide](https://vb-dbrks.github.io/schemax/guide/databricks-asset-bundles) with step-by-step setup, CI/CD integration, and architecture overview.
+- **Demo script** — End-to-end demo script (`examples/demo/run_demo.sh`) covering init, design, snapshot, SQL generation, apply, import, and rollback workflows.
+- **Expanded integration test coverage** — Added ~56 new integration tests covering rollback helper functions, SQL generation for catalog/schema updates, column modifications, function operations, materialized view options, constraint variants (CHECK, FK, PK NOT ENFORCED/RELY), volume updates, revoke-all grants, table partitions/clusters/tags, and column tags.
+
+### Changed
+
+- **`--profile` now optional on `apply` and `rollback`** — Defaults to `None` for Databricks serverless runtime auth. No `~/.databrickscfg` needed in DAB jobs. `ExecutionConfig.profile` accepts `str | None`.
+- **Deploy script runs CLI in-process** — Uses `schemax_cli(args, standalone_mode=False)` instead of `subprocess.run` to inherit Databricks serverless runtime authentication context.
+- **Statement execution polls on PENDING** — `_poll_statement()` retries PENDING/RUNNING states up to 120s instead of failing immediately, handling SQL warehouse cold starts gracefully.
+- **DAB resource YAML correctness** — Uses `environment_version` (not deprecated `client`), `spark_python_task.parameters` (not invalid `environment_variables`), relative `python_file` path, and job tags (`managed_by`, `schemax_project`, `schemax_version`) for discoverability.
+- **CLI runtime-info** — `bundle` now reported in `supportedCommands` for extension compatibility checks.
+- **`schemax bundle --json`** — Added JSON envelope output support required by the VS Code extension's `runJson` interface.
+- **GitHub Actions workflow** — Updated `deploy-prod.yml` to use `schemax bundle` for DAB-based deployment instead of manual script invocation.
+
+### Fixed
+
+- **`SystemExit(0)` in Databricks serverless** — Deploy script catches successful exit codes so Databricks IPython runtime doesn't report success as failure.
+- **Workspace resolution in DAB jobs** — Deploy script locates `.schemax/` project root by walking up from script location, fixing `resources/.schemax/changelog.json` not found errors.
+- **`No module named schemax.__main__`** — Deploy script uses `schemax.cli` module (no `__main__.py` exists).
+
 ## [0.2.8] - 2026-02-27
 
 ### Changed

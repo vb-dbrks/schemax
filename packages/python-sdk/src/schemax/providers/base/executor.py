@@ -5,7 +5,7 @@ Defines the contract for executing SQL statements against data catalogs.
 Providers implement this protocol to support the `schemax apply` command.
 """
 
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -17,17 +17,38 @@ class ExecutionConfig(BaseModel):
         target_env: Target environment name (e.g., "dev", "prod")
         profile: Authentication profile name (e.g., Databricks profile)
         warehouse_id: SQL warehouse/endpoint ID for execution
+        execution_mode: "remote" (Statement Execution API) or "local" (spark.sql)
         dry_run: If True, preview without executing
         no_interaction: If True, skip confirmation prompts
         timeout_seconds: Timeout for long-running statements
     """
 
     target_env: str = Field(..., description="Target environment name")
-    profile: str = Field(..., description="Authentication profile name")
-    warehouse_id: str = Field(..., description="SQL warehouse ID")
+    profile: str | None = Field(
+        default=None, description="Authentication profile name (None for runtime auth)"
+    )
+    warehouse_id: str = Field(default="", description="SQL warehouse ID")
+    execution_mode: Literal["remote", "local"] = Field(
+        default="remote", description="Execution mode: remote (SQL warehouse) or local (spark.sql)"
+    )
     dry_run: bool = Field(default=False, description="Preview without executing")
     no_interaction: bool = Field(default=False, description="Skip confirmation prompts")
     timeout_seconds: int = Field(default=300, description="Statement timeout in seconds")
+
+
+class SQLRunResult(BaseModel):
+    """Result of a single SQL statement execution via SQLRunner."""
+
+    status: Literal["success", "failed"]
+    error_message: str | None = None
+    data_array: list[list[Any]] | None = None
+    columns: list[str] | None = None
+
+
+class SQLRunner(Protocol):
+    """Thin protocol for executing a single SQL statement and getting results."""
+
+    def run_sql(self, sql: str) -> SQLRunResult: ...
 
 
 class StatementResult(BaseModel):
