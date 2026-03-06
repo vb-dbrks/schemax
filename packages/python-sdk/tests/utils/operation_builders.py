@@ -56,6 +56,26 @@ class CatalogOpBuilder:
             op_id=op_id,
         )
 
+    def update_catalog(
+        self,
+        catalog_id: str,
+        comment: str | None = None,
+        managed_location_name: str | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        payload: dict[str, Any] = {}
+        if comment is not None:
+            payload["comment"] = comment
+        if managed_location_name is not None:
+            payload["managedLocationName"] = managed_location_name
+        return create_operation(
+            provider=self.provider,
+            op_type="update_catalog",
+            target=catalog_id,
+            payload=payload,
+            op_id=op_id,
+        )
+
     def drop_catalog(self, catalog_id: str, op_id: str | None = None) -> Operation:
         return create_operation(
             provider=self.provider,
@@ -91,6 +111,26 @@ class SchemaOpBuilder:
             op_type="rename_schema",
             target=schema_id,
             payload={"oldName": old_name, "newName": new_name},
+            op_id=op_id,
+        )
+
+    def update_schema(
+        self,
+        schema_id: str,
+        comment: str | None = None,
+        managed_location_name: str | None = None,
+        op_id: str | None = None,
+    ) -> Operation:
+        payload: dict[str, Any] = {}
+        if comment is not None:
+            payload["comment"] = comment
+        if managed_location_name is not None:
+            payload["managedLocationName"] = managed_location_name
+        return create_operation(
+            provider=self.provider,
+            op_type="update_schema",
+            target=schema_id,
+            payload=payload,
             op_id=op_id,
         )
 
