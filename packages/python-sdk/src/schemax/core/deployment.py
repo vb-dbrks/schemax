@@ -134,12 +134,18 @@ def _normalize_deployed_at(deployed_at: Any) -> str | None:
     return cast(str, out.replace("'", "''"))
 
 
+class _ResultData:
+    """Holds result data in the shape expected by response consumers (response.result.data_array)."""
+
+    def __init__(self, data_array: list[list[Any]] | None) -> None:
+        self.data_array = data_array
+
+
 class _RunnerResultAdapter:
-    """Adapts SQLRunResult to look like a Statement Execution API response for _parse_ops_response."""
+    """Adapts SQLRunResult to look like a Statement Execution API response."""
 
     def __init__(self, run_result: SQLRunResult) -> None:
-        self.result = self
-        self.data_array = run_result.data_array
+        self.result = _ResultData(run_result.data_array)
 
 
 class DeploymentTracker:
