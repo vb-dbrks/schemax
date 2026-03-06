@@ -625,35 +625,55 @@ def diff(
 
 @cli.command()
 @click.option(
-    "--target",
-    "-t",
-    required=True,
-    help="Target environment (dev/test/prod)",
-)
-@click.option(
-    "--version",
-    "-v",
-    required=True,
-    help="Version to bundle",
-)
-@click.option(
     "--output",
     "-o",
     type=click.Path(),
-    default=".schemax/dab",
-    help="Output directory (default: .schemax/dab)",
+    default="resources",
+    help="Output directory for DAB resource files (default: resources)",
 )
-def bundle(target: str, version: str, output: str) -> None:
-    """Generate Databricks Asset Bundle for deployment"""
+def bundle(output: str) -> None:
+    """Generate Databricks Asset Bundle resources for SchemaX deployment.
+
+    Creates a resource YAML and deploy script that can be included in an
+    existing Databricks Asset Bundle project. The generated job uses
+    ${bundle.target} as the SchemaX environment, so DAB target names
+    should match your SchemaX environments (dev/test/prod).
+
+    Example usage:
+
+        schemax bundle
+        schemax bundle --output my-dab/resources
+
+    Then add to your databricks.yml:
+
+        include:
+          - resources/schemax.yml
+
+        sync:
+          include:
+            - .schemax/**
+            - resources/schemax_deploy.py
+    """
+    from schemax.application.services import BundleService
 
     try:
-        _workspace = Path.cwd()  # noqa: F841 - Reserved for future DAB implementation
-        _output_dir = Path(output)  # noqa: F841 - Reserved for future DAB implementation
+        workspace = Path.cwd()
+        output_dir = Path(output)
+        service = BundleService()
+        result = service.run(workspace=workspace, output_dir=output_dir)
 
-        console.print(f"Generating DAB for [cyan]{target}[/cyan] v{version}...")
+        if not result.success:
+            console.print(f"[red]✗ {result.message}[/red]")
+            sys.exit(1)
 
-        # TODO: Implement DAB generation
-        console.print("[yellow]DAB generation not yet implemented[/yellow]")
+        console.print(f"[green]✓[/green] Generated DAB resources in [cyan]{output_dir}[/cyan]")
+        console.print(f"  Resource file: [dim]{result.data['resource_file']}[/dim]")
+        console.print(f"  Deploy script: [dim]{result.data['deploy_script']}[/dim]")
+        console.print(f"  Environments:  [dim]{', '.join(result.data['environments'])}[/dim]")
+        console.print()
+        console.print("[dim]Add to your databricks.yml:[/dim]")
+        console.print("[dim]  include:[/dim]")
+        console.print(f"[dim]    - {output}/schemax.yml[/dim]")
 
     except Exception as e:
         console.print(f"[red]✗ Error:[/red] {e}")

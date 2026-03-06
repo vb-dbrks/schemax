@@ -21,6 +21,7 @@ const sidebars: SidebarsConfig = {
         { type: 'doc', id: 'guide/unity-catalog-grants', label: 'Unity Catalog grants (Advanced)' },
         { type: 'doc', id: 'guide/architecture', label: 'Architecture (Advanced)' },
         'guide/git-and-cicd-setup',
+        { type: 'doc', id: 'guide/databricks-asset-bundles', label: 'Databricks Asset Bundles' },
         { type: 'doc', id: 'reference/workflows', label: 'Workflows (Advanced)' },
         { type: 'doc', id: 'reference/cli', label: 'CLI Reference (Advanced)' },
         'reference/faq',

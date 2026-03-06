@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from schemax.commands.apply import apply_to_environment
+from schemax.commands.bundle import generate_bundle
 from schemax.commands.diff import generate_diff
 from schemax.commands.import_assets import import_from_provider, import_from_sql_file
 from schemax.commands.rollback import rollback_complete, run_partial_rollback_cli
@@ -169,6 +170,20 @@ class ImportService:
             dry_run=dry_run,
         )
         return CommandResult(success=True, code="import_completed", data={"summary": summary})
+
+
+@dataclass(slots=True)
+class BundleService:
+    """Generate Databricks Asset Bundle resources for SchemaX deployment."""
+
+    def run(self, *, workspace: Path, output_dir: Path) -> CommandResult:
+        summary = generate_bundle(workspace=workspace, output_dir=output_dir)
+        return CommandResult(
+            success=True,
+            code="bundle_generated",
+            message="DAB resource files generated",
+            data=summary,
+        )
 
 
 @dataclass(slots=True)

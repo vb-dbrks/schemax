@@ -1,0 +1,355 @@
+---
+sidebar_position: 9
+title: Databricks Asset Bundles
+---
+
+# Databricks Asset Bundles
+
+Deploy SchemaX schema changes through [Databricks Asset Bundles (DABs)](https://docs.databricks.com/en/dev-tools/bundles/index.html) for a fully declarative, version-controlled deployment workflow.
+
+## What are Databricks Asset Bundles?
+
+Databricks Asset Bundles (DABs) are a way to define Databricks resources -- jobs, pipelines, dashboards, and more -- as YAML configuration files that live alongside your code. You manage them with the `databricks bundle` CLI, which handles packaging, deploying, and running resources across workspaces and environments (called **targets** in DAB terminology).
+
+Key properties:
+- Resources are declared in YAML and deployed with `databricks bundle deploy`.
+- Targets (`dev`, `staging`, `prod`) map to different workspaces or configurations.
+- The CLI syncs local files to the workspace and creates or updates the declared resources.
+
+## How SchemaX integrates with DABs
+
+SchemaX provides a `schemax bundle` command that generates two files:
+
+| File | Purpose |
+|---|---|
+| `resources/schemax.yml` | DAB resource definition: a job that runs `schemax apply` with the right environment variables |
+| `resources/schemax_deploy.py` | A small Python script executed by the job; it installs `schemaxpy` and runs the apply |
+
+These files slot into an existing DAB project. You do not need to write the job definition by hand -- `schemax bundle` produces it from your SchemaX project configuration.
+
+:::info
+SchemaX does **not** replace your `databricks.yml`. It generates resource files that you **include** from your existing bundle configuration.
+:::
+
+## Setup
+
+### 1. Generate the bundle resources
+
+From your SchemaX project root, run:
+
+```bash
+schemax bundle
+```
+
+This creates:
+```
+resources/
+  schemax.yml
+  schemax_deploy.py
+```
+
+### 2. Include the resource file in your `databricks.yml`
+
+Add the generated resource file to the `include` list:
+
+```yaml
+include:
+  - resources/schemax.yml
+```
+
+### 3. Configure file sync
+
+The DAB job needs access to your `.schemax` project files and the deploy script at runtime. Add them to the sync configuration:
+
+```yaml
+sync:
+  include:
+    - .schemax/**
+    - resources/schemax_deploy.py
+```
+
+:::warning
+Without the `sync` configuration, the job will not have access to your SchemaX project files and will fail at runtime.
+:::
+
+### 4. Set the `warehouse_id` variable per target
+
+Each target must specify the SQL warehouse ID that SchemaX will use to execute DDL statements:
+
+```yaml
+targets:
+  dev:
+    variables:
+      warehouse_id: "abc123def456"
+  prod:
+    variables:
+      warehouse_id: "xyz789ghi012"
+```
+
+### 5. Match target names to SchemaX environment names
+
+DAB target names **must** match your SchemaX environment names. If your SchemaX project defines environments `dev`, `test`, and `prod`, your DAB targets should be named identically:
+
+```yaml
+targets:
+  dev:
+    # ...
+  test:
+    # ...
+  prod:
+    # ...
+```
+
+The generated job uses `${bundle.target}` as the SchemaX environment, so the names must align.
+
+:::tip
+Check your SchemaX environment names in `.schemax/environments/` and ensure your DAB targets use the same names.
+:::
+
+## Example `databricks.yml`
+
+A complete bundle configuration with SchemaX integration:
+
+```yaml
+bundle:
+  name: my-data-project
+
+include:
+  - resources/schemax.yml
+
+sync:
+  include:
+    - .schemax/**
+    - resources/schemax_deploy.py
+
+workspace:
+  host: https://my-workspace.cloud.databricks.com
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      warehouse_id: "abc123def456"
+
+  test:
+    variables:
+      warehouse_id: "def456ghi789"
+
+  prod:
+    variables:
+      warehouse_id: "xyz789ghi012"
+```
+
+## Generated resource YAML
+
+For reference, `schemax bundle` generates a resource file like this:
+
+```yaml
+variables:
+  warehouse_id:
+    description: "SQL warehouse ID for SchemaX deployments"
+  schemax_auto_rollback:
+    description: "Auto-rollback on failure (true/false)"
+    default: "false"
+
+resources:
+  jobs:
+    schemax_deploy_<project_name>:
+      name: "schemax-deploy-<project_name>-${bundle.target}"
+      environments:
+        - environment_key: schemax
+          spec:
+            dependencies:
+              - schemaxpy>=0.2.8
+      tasks:
+        - task_key: schemax_apply
+          environment_key: schemax
+          spark_python_task:
+            python_file: resources/schemax_deploy.py
+          environment_variables:
+            SCHEMAX_ENVIRONMENT: "${bundle.target}"
+            SCHEMAX_WAREHOUSE_ID: "${var.warehouse_id}"
+            SCHEMAX_AUTO_ROLLBACK: "${var.schemax_auto_rollback}"
+```
+
+The job name includes `${bundle.target}` so each target gets a distinct job (e.g., `schemax-deploy-my_project-dev`).
+
+## Deployment workflow
+
+### Local deployment
+
+Generate the bundle resources and deploy in one command:
+
+```bash
+schemax bundle && databricks bundle deploy -t dev
+```
+
+To also run the job immediately after deploying:
+
+```bash
+schemax bundle && databricks bundle deploy -t dev && databricks bundle run -t dev schemax_deploy_<project_name>
+```
+
+### CI/CD deployment
+
+In a pipeline, the pattern is:
+
+1. Generate the bundle resources.
+2. Deploy the bundle to the target workspace.
+3. Trigger the SchemaX job to apply schema changes.
+
+```bash
+schemax bundle
+databricks bundle deploy -t prod
+databricks bundle run -t prod schemax_deploy_<project_name>
+```
+
+## How it works under the hood
+
+When the DAB job runs, the following happens:
+
+1. **File sync** -- `databricks bundle deploy` uploads your `.schemax/` project files and `resources/schemax_deploy.py` to the workspace.
+2. **Job creation** -- The DAB CLI creates (or updates) the job defined in `resources/schemax.yml`.
+3. **Job execution** -- When the job runs (either via `databricks bundle run` or a manual trigger), it:
+   - Spins up an environment with `schemaxpy>=0.2.8` installed.
+   - Executes `resources/schemax_deploy.py`.
+   - The deploy script runs `schemax apply --no-interaction`, using the environment variables set in the job definition.
+   - `SCHEMAX_ENVIRONMENT` is set to `${bundle.target}` (e.g., `dev`, `prod`), so the correct SchemaX environment configuration is used.
+   - `SCHEMAX_WAREHOUSE_ID` tells SchemaX which SQL warehouse to use for executing DDL.
+
+## Auto-rollback
+
+To automatically roll back schema changes on failure, set the `schemax_auto_rollback` variable to `"true"` on the desired target:
+
+```yaml
+targets:
+  prod:
+    variables:
+      warehouse_id: "xyz789ghi012"
+      schemax_auto_rollback: "true"
+```
+
+When enabled, if `schemax apply` encounters an error partway through execution, it will automatically roll back all changes that were applied in the current run.
+
+:::tip
+Auto-rollback is especially useful in production targets where partial schema changes could leave the environment in an inconsistent state.
+:::
+
+## CI/CD integration
+
+### GitHub Actions
+
+Combine `schemax bundle` with `databricks bundle` in a GitHub Actions workflow:
+
+```yaml
+name: Deploy Schema Changes
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.schemax/**'
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Databricks CLI
+        run: curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Install SchemaX CLI
+        run: pip install schemaxpy
+
+      - name: Generate bundle resources
+        run: schemax bundle
+
+      - name: Deploy and run
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          databricks bundle deploy -t dev
+          databricks bundle run -t dev schemax_deploy_my_project
+
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: deploy-dev
+    environment: production  # Requires manual approval
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Databricks CLI
+        run: curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Install SchemaX CLI
+        run: pip install schemaxpy
+
+      - name: Generate bundle resources
+        run: schemax bundle
+
+      - name: Deploy and run
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
+        run: |
+          databricks bundle deploy -t prod
+          databricks bundle run -t prod schemax_deploy_my_project
+```
+
+:::info
+The `environment: production` setting on the `deploy-prod` job enables [GitHub environment protection rules](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment), such as required reviewers, before the production deployment proceeds.
+:::
+
+### Azure DevOps
+
+```yaml
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - .schemax/**
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: DeployDev
+    jobs:
+      - job: Deploy
+        steps:
+          - checkout: self
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.11'
+          - script: |
+              curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+              pip install schemaxpy
+            displayName: Install CLIs
+          - script: schemax bundle
+            displayName: Generate bundle resources
+          - script: |
+              databricks bundle deploy -t dev
+              databricks bundle run -t dev schemax_deploy_my_project
+            displayName: Deploy and run
+            env:
+              DATABRICKS_HOST: $(DATABRICKS_HOST)
+              DATABRICKS_TOKEN: $(DATABRICKS_TOKEN)
+```
+
+## Next steps
+
+- [Git and CI/CD setup](/docs/guide/git-and-cicd-setup/) -- General CI/CD guidance and authentication in pipelines
+- [Authentication](/docs/guide/authentication/) -- Databricks SDK, profiles, and environment variables
+- [Environments and Scope](/docs/guide/environments-and-scope/) -- Configure dev, test, and prod environments in SchemaX

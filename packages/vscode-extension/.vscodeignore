@@ -1,0 +1,39 @@
+# Source and build tooling (shipped output is dist/ and media/)
+src/**
+*.ts
+!*.d.ts
+tsconfig*.json
+esbuild.config.mjs
+vite.config.ts
+
+# Tests
+tests/**
+jest.config.js
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+TESTING-UI.md
+
+# Dev scripts and config
+scripts/**
+.eslintrc*
+eslint.config.*
+.prettierrc*
+.prettierignore
+.github/**
+
+# Dependencies (bundled at build or not needed at runtime)
+node_modules/**
+
+# Source maps (optional: remove to shrink package; keep for debugging)
+# dist/**/*.map
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/**
+
+# Docs not needed in package (README/CHANGELOG are usually included by default; list here to exclude if desired)
+# README.md
+# CHANGELOG.md

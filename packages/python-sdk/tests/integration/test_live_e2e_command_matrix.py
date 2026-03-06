@@ -195,9 +195,10 @@ def test_live_command_matrix(tmp_path: Path) -> None:
         snapshot_validate = invoke_cli("snapshot", "validate", str(workspace))
         assert snapshot_validate.exit_code == 0
 
-        # bundle is deterministic contract-only today, but included for matrix completeness.
-        bundle_result = invoke_cli("bundle", "--target", "dev", "--version", "0.1.0")
-        assert bundle_result.exit_code == 0
+        # bundle generates DAB resource files from the project config.
+        bundle_output = str(workspace / "resources")
+        bundle_result = invoke_cli("bundle", "--output", bundle_output, cwd=workspace)
+        assert bundle_result.exit_code == 0, bundle_result.output
     finally:
         cleanup_objects(executor, config, [catalog])
         shutil.rmtree(workspace, ignore_errors=True)

@@ -40,6 +40,12 @@ Summary of the SchemaX CLI. Run `schemax --help` and `schemax &lt;command&gt; --
 | `schemax import --target ENV --profile P --warehouse-id W [--catalog NAME] [--adopt-baseline]` | Import from **live Databricks**: discover catalog/schema/table and write ops to changelog; optional baseline. |
 | `schemax import --from-sql PATH [--mode diff\|replace] [--dry-run] [--target ENV]` | Import from a **SQL DDL file**: parse file, diff vs current state (or replace as new baseline), write ops to changelog. |
 
+## Databricks Asset Bundles
+
+| Command | Description |
+|---------|-------------|
+| `schemax bundle [--output DIR]` | Generate DAB resource files (`schemax.yml` + deploy script) for inclusion in a Databricks Asset Bundle project. Default output: `resources/`. See [DAB integration](/docs/guide/databricks-asset-bundles). |
+
 ## Common options
 
 - `--target ENV` — Use environment config (catalog mapping, deployment scope) for SQL generation and apply. See [Environments and deployment scope](/docs/guide/environments-and-scope).

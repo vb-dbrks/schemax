@@ -941,6 +941,86 @@ class OperationBuilder:
         self.materialized_view = MaterializedViewOpBuilder(provider)
 
 
+def ops_catalog_schema_table(builder: OperationBuilder) -> list[Operation]:
+    """Common setup: catalog(sales) + schema(raw) + table(orders)."""
+    return [
+        builder.catalog.add_catalog("cat_1", "sales", op_id="op_1"),
+        builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
+        builder.table.add_table("t1", "orders", "s1", "delta", op_id="op_3"),
+    ]
+
+
+def ops_table_with_pk(builder: OperationBuilder) -> list[Operation]:
+    """Common setup: catalog + schema + table + int column + primary key constraint."""
+    return [
+        builder.catalog.add_catalog("cat_1", "sales", op_id="op_1"),
+        builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
+        builder.table.add_table("t1", "orders", "s1", "delta", op_id="op_3"),
+        builder.column.add_column("c1", "t1", "id", "INT", nullable=False, op_id="op_4"),
+        builder.constraint.add_constraint(
+            "pk_1", "t1", "primary_key", ["c1"], name="pk_orders", op_id="op_5"
+        ),
+    ]
+
+
+def ops_table_with_ssn_column(builder: OperationBuilder) -> list[Operation]:
+    """Common setup: catalog + schema + table + STRING ssn column."""
+    return [
+        builder.catalog.add_catalog("cat_1", "sales", op_id="op_1"),
+        builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
+        builder.table.add_table("t1", "orders", "s1", "delta", op_id="op_3"),
+        builder.column.add_column("c1", "t1", "ssn", "STRING", op_id="op_4"),
+    ]
+
+
+def ops_catalog_schema_with_function(builder: OperationBuilder) -> list[Operation]:
+    """Common setup: catalog + schema + SQL function double_it(x INT) -> INT."""
+    return [
+        builder.catalog.add_catalog("cat_1", "sales", op_id="op_1"),
+        builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
+        builder.function.add_function(
+            "f1",
+            "double_it",
+            "s1",
+            "SQL",
+            "INT",
+            "x * 2",
+            parameters=[{"name": "x", "type": "INT"}],
+            op_id="op_3",
+        ),
+    ]
+
+
+def ops_catalog_schema_with_mv(builder: OperationBuilder) -> list[Operation]:
+    """Common setup: catalog + schema + materialized view with CRON schedule."""
+    return [
+        builder.catalog.add_catalog("cat_1", "sales", op_id="op_1"),
+        builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
+        builder.materialized_view.add_materialized_view(
+            "mv1",
+            "daily_agg",
+            "s1",
+            "SELECT 1",
+            refresh_schedule="CRON '0 0 * * *'",
+            op_id="op_3",
+        ),
+    ]
+
+
+def ops_table_with_ssn_mask(builder: OperationBuilder) -> list[Operation]:
+    """Common setup: table with ssn column + column mask."""
+    return ops_table_with_ssn_column(builder) + [
+        builder.column_mask.add_column_mask(
+            "cm1",
+            "t1",
+            "c1",
+            "ssn_mask",
+            "CASE WHEN 1=1 THEN ssn ELSE '***' END",
+            op_id="op_5",
+        ),
+    ]
+
+
 def make_operation_sequence(
     specs: list[dict[str, Any]], provider: str = "unity"
 ) -> list[Operation]:
