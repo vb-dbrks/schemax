@@ -28,6 +28,7 @@ from schemax.providers.base.operations import Operation
 from schemax.providers.base.reverse_generator import SafetyLevel, SafetyReport
 from schemax.providers.unity.executor import UnitySQLExecutor
 from schemax.providers.unity.safety_validator import SafetyValidator
+from schemax.providers.unity.sql_runner import create_remote_sql_runner
 from schemax.version import SCHEMAX_VERSION
 
 console = Console()
@@ -353,7 +354,7 @@ class _PartialRollbackContext:
     workspace: Path
     deployment_id: str
     target_env: str
-    profile: str
+    profile: str | None
     warehouse_id: str
     executor: SQLExecutor
     catalog_mapping: dict[str, str] | None
@@ -372,7 +373,7 @@ def _load_partial_rollback_context(
     deployment_id: str,
     successful_ops: list[Operation],
     target_env: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
     executor: SQLExecutor,
     catalog_mapping: dict[str, str] | None,
@@ -387,7 +388,8 @@ def _load_partial_rollback_context(
     deployment_catalog = env_config["topLevelName"]
 
     tracker = DeploymentTracker(
-        cast(UnitySQLExecutor, executor).client, deployment_catalog, warehouse_id
+        create_remote_sql_runner(cast(UnitySQLExecutor, executor).client, warehouse_id),
+        deployment_catalog,
     )
     deployment = tracker.get_deployment_by_id(deployment_id)
     if not deployment:
@@ -440,7 +442,7 @@ def _load_partial_rollback_context(
 def _analyze_partial_rollback_safety(
     rollback_ops: list[Operation],
     target_env: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
     executor: SQLExecutor,
     catalog_mapping: dict[str, str] | None,
@@ -539,9 +541,8 @@ def _track_partial_rollback_deployment(
     """Track partial rollback execution in deployment history."""
     rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
     unity_executor = cast(UnitySQLExecutor, context.executor)
-    tracker = DeploymentTracker(
-        unity_executor.client, context.deployment_catalog, context.warehouse_id
-    )
+    runner = create_remote_sql_runner(unity_executor.client, context.warehouse_id)
+    tracker = DeploymentTracker(runner, context.deployment_catalog)
     tracker.ensure_tracking_schema(
         auto_create=context.env_config.get("autoCreateSchemaxSchema", True)
     )
@@ -721,7 +722,7 @@ def rollback_partial(
     deployment_id: str,
     successful_ops: list[Operation],
     target_env: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
     executor: SQLExecutor,
     catalog_mapping: dict[str, str] | None = None,
@@ -933,7 +934,8 @@ def _prepare_partial_cli_plan(
     env_config = workspace_repo.get_environment_config(project=project, environment=target)
     deployment_catalog = env_config["topLevelName"]
     client = unity_auth.create_databricks_client(profile)
-    tracker = DeploymentTracker(client, deployment_catalog, warehouse_id)
+    runner = create_remote_sql_runner(client, warehouse_id)
+    tracker = DeploymentTracker(runner, deployment_catalog)
     target_deployment = tracker.get_deployment_by_id(deployment_id)
 
     if not target_deployment:
@@ -1029,7 +1031,8 @@ def _load_complete_rollback_setup(
 
     client = unity_auth.create_databricks_client(profile)
     executor = UnitySQLExecutor(client)
-    tracker = DeploymentTracker(executor.client, deployment_catalog, warehouse_id)
+    runner = create_remote_sql_runner(client, warehouse_id)
+    tracker = DeploymentTracker(runner, deployment_catalog)
     short_circuit = _check_already_at_target_version(tracker, target_env, to_snapshot)
     if short_circuit is not None:
         return short_circuit

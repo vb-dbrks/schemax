@@ -195,11 +195,12 @@ class ApplyService:
         *,
         workspace: Path,
         target_env: str,
-        profile: str,
+        profile: str | None,
         warehouse_id: str,
         dry_run: bool,
         no_interaction: bool,
         auto_rollback: bool,
+        execution_mode: str = "remote",
     ) -> CommandResult:
         request = _build_apply_request(
             workspace,
@@ -209,6 +210,7 @@ class ApplyService:
             dry_run,
             no_interaction,
             auto_rollback,
+            execution_mode,
         )
         result = apply_to_environment(**request)
         return CommandResult(
@@ -409,11 +411,12 @@ def _execution_result_to_dict(result: Any) -> dict[str, Any]:
 def _build_apply_request(
     workspace: Path,
     target_env: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
     dry_run: bool,
     no_interaction: bool,
     auto_rollback: bool,
+    execution_mode: str = "remote",
 ) -> dict[str, Any]:
     """Build kwargs for apply command boundary calls."""
     keys = (
@@ -424,6 +427,7 @@ def _build_apply_request(
         "dry_run",
         "no_interaction",
         "auto_rollback",
+        "execution_mode",
     )
     values = (
         workspace,
@@ -433,6 +437,7 @@ def _build_apply_request(
         dry_run,
         no_interaction,
         auto_rollback,
+        execution_mode,
     )
     return dict(zip(keys, values, strict=True))
 

@@ -16,7 +16,7 @@ from schemax.core.deployment import (
     _parse_ops_response,
     _row_to_deployment_record,
 )
-from schemax.providers.base.executor import ExecutionResult, StatementResult
+from schemax.providers.base.executor import ExecutionResult, SQLRunResult, StatementResult
 from schemax.providers.base.operations import Operation
 
 
@@ -34,10 +34,19 @@ def _mk_response(
     return SimpleNamespace(status=status, result=result, statement_id=statement_id)
 
 
+class _MockSQLRunner:
+    """Test-friendly SQLRunner that returns pre-configured results."""
+
+    def __init__(self) -> None:
+        self.run_sql = Mock(return_value=SQLRunResult(status="success"))
+
+
 @pytest.fixture
 def tracker() -> DeploymentTracker:
-    client = SimpleNamespace(statement_execution=Mock())
-    return DeploymentTracker(client=client, catalog="cat", warehouse_id="wh")
+    runner = _MockSQLRunner()
+    t = DeploymentTracker(runner, "cat")
+    t._mock_runner = runner  # type: ignore[attr-defined]
+    return t
 
 
 def test_expected_not_found_error_patterns() -> None:
@@ -89,8 +98,9 @@ def test_normalize_deployed_at_variants() -> None:
 
 
 def test_execute_statement_sync_success(tracker: DeploymentTracker) -> None:
-    tracker.client.statement_execution.execute_statement.return_value = _mk_response(
-        data_array=[["v1", "dep_1", "2026-01-01 00:00:00"]]
+    tracker._mock_runner.run_sql.return_value = SQLRunResult(  # type: ignore[attr-defined]
+        status="success",
+        data_array=[["v1", "dep_1", "2026-01-01 00:00:00"]],
     )
     result = tracker._execute_statement_sync("SELECT 1")
     assert result is not None
@@ -99,15 +109,25 @@ def test_execute_statement_sync_success(tracker: DeploymentTracker) -> None:
 def test_execute_statement_sync_handles_expected_not_found_exception(
     tracker: DeploymentTracker,
 ) -> None:
-    tracker.client.statement_execution.execute_statement.side_effect = RuntimeError(
+    tracker._mock_runner.run_sql.side_effect = RuntimeError(  # type: ignore[attr-defined]
         "catalog not found"
     )
     assert tracker._execute_statement_sync("SELECT 1") is None
 
 
+def test_execute_statement_sync_handles_expected_not_found_error_message(
+    tracker: DeploymentTracker,
+) -> None:
+    tracker._mock_runner.run_sql.return_value = SQLRunResult(  # type: ignore[attr-defined]
+        status="failed",
+        error_message="catalog not found",
+    )
+    assert tracker._execute_statement_sync("SELECT 1") is None
+
+
 def test_execute_statement_sync_raises_on_non_terminal_error(tracker: DeploymentTracker) -> None:
-    tracker.client.statement_execution.execute_statement.return_value = _mk_response(
-        state=StatementState.FAILED,
+    tracker._mock_runner.run_sql.return_value = SQLRunResult(  # type: ignore[attr-defined]
+        status="failed",
         error_message="permission denied",
     )
     with pytest.raises(RuntimeError, match="Database query failed"):
@@ -115,8 +135,8 @@ def test_execute_statement_sync_raises_on_non_terminal_error(tracker: Deployment
 
 
 def test_execute_statement_raise_raises_on_failure(tracker: DeploymentTracker) -> None:
-    tracker.client.statement_execution.execute_statement.return_value = _mk_response(
-        state=StatementState.FAILED,
+    tracker._mock_runner.run_sql.return_value = SQLRunResult(  # type: ignore[attr-defined]
+        status="failed",
         error_message="boom",
     )
     with pytest.raises(RuntimeError, match="boom"):
@@ -281,36 +301,18 @@ def test_get_previous_deployment_returns_previous_record(tracker: DeploymentTrac
     assert result == previous
 
 
-def test_wait_for_statement_success(tracker: DeploymentTracker) -> None:
-    tracker.client.statement_execution.get_statement.return_value = _mk_response()
-    tracker._wait_for_statement("stmt_1")
+def test_execute_ddl_succeeds(tracker: DeploymentTracker) -> None:
+    tracker._mock_runner.run_sql.return_value = SQLRunResult(status="success")  # type: ignore[attr-defined]
+    tracker._execute_ddl("CREATE TABLE x")
+    tracker._mock_runner.run_sql.assert_called_with("CREATE TABLE x")  # type: ignore[attr-defined]
 
 
-def test_wait_for_statement_failed_raises(tracker: DeploymentTracker) -> None:
-    tracker.client.statement_execution.get_statement.return_value = _mk_response(
-        state=StatementState.FAILED, error_message="ddl failed"
+def test_execute_ddl_raises_on_failure(tracker: DeploymentTracker) -> None:
+    tracker._mock_runner.run_sql.return_value = SQLRunResult(  # type: ignore[attr-defined]
+        status="failed", error_message="ddl failed"
     )
-    with pytest.raises(RuntimeError, match="DDL execution failed"):
-        tracker._wait_for_statement("stmt_1")
-
-
-def test_wait_for_statement_timeout(tracker: DeploymentTracker) -> None:
-    tracker.client.statement_execution.get_statement.return_value = _mk_response(
-        state=StatementState.RUNNING
-    )
-    with patch("schemax.core.deployment.time.sleep", return_value=None):
-        with pytest.raises(TimeoutError):
-            tracker._wait_for_statement("stmt_1", max_wait_seconds=1)
-
-
-def test_execute_ddl_waits_when_not_immediately_succeeded(tracker: DeploymentTracker) -> None:
-    tracker.client.statement_execution.execute_statement.return_value = _mk_response(
-        state=StatementState.RUNNING,
-        statement_id="stmt_22",
-    )
-    with patch.object(tracker, "_wait_for_statement") as wait_for_statement:
+    with pytest.raises(RuntimeError, match="DDL execution failed: ddl failed"):
         tracker._execute_ddl("CREATE TABLE x")
-    wait_for_statement.assert_called_once_with("stmt_22")
 
 
 def test_deployment_table_ddls_contain_expected_columns(tracker: DeploymentTracker) -> None:
@@ -320,3 +322,12 @@ def test_deployment_table_ddls_contain_expected_columns(tracker: DeploymentTrack
     assert "previous_deployment_id" in deployments_ddl
     assert "CREATE TABLE IF NOT EXISTS `cat`.`schemax`.deployment_ops" in ops_ddl
     assert "op_payload" in ops_ddl
+
+
+def test_constructor_accepts_any_runner() -> None:
+    """Constructor should accept any SQLRunner."""
+    runner = _MockSQLRunner()
+    tracker = DeploymentTracker(runner, "cat")
+    assert tracker._runner is runner
+    assert tracker.catalog == "cat"
+    assert tracker.schema == "`cat`.`schemax`"

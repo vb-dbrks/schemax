@@ -2266,7 +2266,7 @@ async function generateBundleResources() {
     outputChannel.appendLine(`[SchemaX] DAB resources generated in: ${outputDir}`);
 
     // Open the resources directory in the explorer
-    const resourceYaml = path.join(outputDir, "schemax_job.yml");
+    const resourceYaml = path.join(outputDir, "schemax.yml");
     if (fs.existsSync(resourceYaml)) {
       const doc = await vscode.workspace.openTextDocument(resourceYaml);
       await vscode.window.showTextDocument(doc);

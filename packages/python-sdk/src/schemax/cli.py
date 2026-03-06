@@ -914,8 +914,21 @@ def _print_import_summary(summary: dict[str, Any]) -> None:
 
 @cli.command()
 @click.option("--target", "-t", required=True, help="Target environment (dev/test/prod)")
-@click.option("--profile", "-p", required=True, help="Databricks profile name")
-@click.option("--warehouse-id", "-w", required=True, help="SQL warehouse ID")
+@click.option(
+    "--profile",
+    "-p",
+    default=None,
+    help="Databricks profile name (omit for serverless/DAB jobs to use runtime auth)",
+)
+@click.option(
+    "--warehouse-id", "-w", default="", help="SQL warehouse ID (required for remote mode)"
+)
+@click.option(
+    "--execution-mode",
+    type=click.Choice(["remote", "local"]),
+    default="remote",
+    help="Execution mode: remote (SQL warehouse) or local (spark.sql for DAB serverless jobs)",
+)
 @click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.option("--no-interaction", is_flag=True, help="Skip confirmation prompt (for CI/CD)")
 @click.option(
@@ -925,8 +938,9 @@ def _print_import_summary(summary: dict[str, Any]) -> None:
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def apply(
     target: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
+    execution_mode: str,
     dry_run: bool,
     no_interaction: bool,
     auto_rollback: bool,
@@ -961,6 +975,7 @@ def apply(
             target=target,
             profile=profile,
             warehouse_id=warehouse_id,
+            execution_mode=execution_mode,
             dry_run=dry_run,
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
@@ -1007,8 +1022,9 @@ def _run_apply_command(
     *,
     workspace: str,
     target: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
+    execution_mode: str,
     dry_run: bool,
     no_interaction: bool,
     auto_rollback: bool,
@@ -1024,6 +1040,7 @@ def _run_apply_command(
                 target_env=target,
                 profile=profile,
                 warehouse_id=warehouse_id,
+                execution_mode=execution_mode,
                 dry_run=dry_run,
                 no_interaction=no_interaction,
                 auto_rollback=auto_rollback,
@@ -1034,6 +1051,7 @@ def _run_apply_command(
             target_env=target,
             profile=profile,
             warehouse_id=warehouse_id,
+            execution_mode=execution_mode,
             dry_run=dry_run,
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
@@ -1133,11 +1151,11 @@ def _run_rollback_json(workspace_path: Path, params: dict[str, Any], started_at:
                 exit_code=1,
             )
             sys.exit(1)
-        if not params["profile"] or not params["warehouse_id"]:
+        if not params["warehouse_id"]:
             _emit_json_error(
                 command="rollback",
                 code="ROLLBACK_INVALID_ARGS",
-                message="--profile and --warehouse-id required",
+                message="--warehouse-id required",
                 started_at=started_at,
                 exit_code=1,
             )
@@ -1230,8 +1248,8 @@ def _handle_rollback_dispatch(workspace_path: Path, params: dict[str, Any]) -> N
         if not params["target"]:
             console.print("[red]✗[/red] --target required for complete rollback")
             sys.exit(1)
-        if not params["profile"] or not params["warehouse_id"]:
-            console.print("[red]✗[/red] --profile and --warehouse-id required")
+        if not params["warehouse_id"]:
+            console.print("[red]✗[/red] --warehouse-id required")
             sys.exit(1)
         service_result = rollback_service.run_complete(
             workspace=workspace_path,

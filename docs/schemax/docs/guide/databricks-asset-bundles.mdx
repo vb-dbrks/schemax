@@ -22,8 +22,8 @@ SchemaX provides a `schemax bundle` command that generates two files:
 
 | File | Purpose |
 |---|---|
-| `resources/schemax.yml` | DAB resource definition: a job that runs `schemax apply` with the right environment variables |
-| `resources/schemax_deploy.py` | A small Python script executed by the job; it installs `schemaxpy` and runs the apply |
+| `resources/schemax.yml` | DAB resource definition: a serverless Python job that runs `schemax apply` with the right parameters |
+| `resources/schemax_deploy.py` | A Python script executed by the job; it invokes `schemax apply` in-process using Databricks runtime auth |
 
 These files slot into an existing DAB project. You do not need to write the job definition by hand -- `schemax bundle` produces it from your SchemaX project configuration.
 
@@ -157,21 +157,32 @@ resources:
   jobs:
     schemax_deploy_<project_name>:
       name: "schemax-deploy-<project_name>-${bundle.target}"
+      tags:
+        managed_by: "schemax"
+        schemax_project: "<project_name>"
+        schemax_version: "0.2.9"
       environments:
         - environment_key: schemax
           spec:
+            environment_version: "2"
             dependencies:
               - schemaxpy>=0.2.9
       tasks:
         - task_key: schemax_apply
           environment_key: schemax
           spark_python_task:
-            python_file: resources/schemax_deploy.py
-          environment_variables:
-            SCHEMAX_ENVIRONMENT: "${bundle.target}"
-            SCHEMAX_WAREHOUSE_ID: "${var.warehouse_id}"
-            SCHEMAX_AUTO_ROLLBACK: "${var.schemax_auto_rollback}"
+            python_file: schemax_deploy.py
+            parameters:
+              - "${bundle.target}"
+              - "${var.warehouse_id}"
+              - "${var.schemax_auto_rollback}"
 ```
+
+:::note
+- `python_file` is relative to the YAML file's directory (both live in `resources/`).
+- Parameters are passed via `sys.argv` to the deploy script, not environment variables.
+- The job includes `tags` for easy filtering in the Databricks Jobs UI.
+:::
 
 The job name includes `${bundle.target}` so each target gets a distinct job (e.g., `schemax-deploy-my_project-dev`).
 
@@ -212,11 +223,12 @@ When the DAB job runs, the following happens:
 1. **File sync** -- `databricks bundle deploy` uploads your `.schemax/` project files and `resources/schemax_deploy.py` to the workspace.
 2. **Job creation** -- The DAB CLI creates (or updates) the job defined in `resources/schemax.yml`.
 3. **Job execution** -- When the job runs (either via `databricks bundle run` or a manual trigger), it:
-   - Spins up an environment with `schemaxpy>=0.2.9` installed.
-   - Executes `resources/schemax_deploy.py`.
-   - The deploy script runs `schemax apply --no-interaction`, using the environment variables set in the job definition.
-   - `SCHEMAX_ENVIRONMENT` is set to `${bundle.target}` (e.g., `dev`, `prod`), so the correct SchemaX environment configuration is used.
-   - `SCHEMAX_WAREHOUSE_ID` tells SchemaX which SQL warehouse to use for executing DDL.
+   - Spins up a serverless Python environment (version 2) with `schemaxpy>=0.2.9` installed.
+   - Executes `resources/schemax_deploy.py` as a `spark_python_task`.
+   - The deploy script locates the `.schemax/` project root (one level up from `resources/`) and invokes `schemax apply` **in-process** to inherit Databricks runtime authentication.
+   - The target environment, warehouse ID, and auto-rollback flag are passed as `parameters` via `sys.argv`.
+   - `${bundle.target}` (e.g., `dev`, `prod`) maps to the SchemaX environment name, so target names must match.
+   - No `--profile` is needed -- the serverless runtime provides authentication automatically.
 
 ## Auto-rollback
 

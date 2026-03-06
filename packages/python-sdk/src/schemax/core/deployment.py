@@ -6,13 +6,14 @@ Provides database-backed deployment history and audit trail.
 """
 
 import json
-import time
 from typing import Any, TypedDict, cast
 
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.sql import StatementState
-
-from schemax.providers.base.executor import ExecutionResult, StatementResult
+from schemax.providers.base.executor import (
+    ExecutionResult,
+    SQLRunner,
+    SQLRunResult,
+    StatementResult,
+)
 from schemax.providers.base.operations import Operation
 from schemax.version import SCHEMAX_VERSION
 
@@ -133,75 +134,55 @@ def _normalize_deployed_at(deployed_at: Any) -> str | None:
     return cast(str, out.replace("'", "''"))
 
 
+class _RunnerResultAdapter:
+    """Adapts SQLRunResult to look like a Statement Execution API response for _parse_ops_response."""
+
+    def __init__(self, run_result: SQLRunResult) -> None:
+        self.result = self
+        self.data_array = run_result.data_array
+
+
 class DeploymentTracker:
     """Track deployments in target catalog's tracking schema (named schemax)
 
     Creates and manages deployment tracking tables in <catalog>.schemax:
     - deployments: Main deployment records
     - deployment_ops: Individual operation tracking
-
-    Attributes:
-        client: Authenticated Databricks WorkspaceClient
-        catalog: Target catalog name
-        schema: Tracking schema name (<catalog>.schemax)
-        warehouse_id: SQL warehouse ID for execution
     """
 
-    def __init__(self, client: WorkspaceClient, catalog: str, warehouse_id: str):
-        """Initialize deployment tracker
+    def __init__(self, runner: SQLRunner, catalog: str) -> None:
+        """Initialize deployment tracker.
 
         Args:
-            client: Authenticated Databricks WorkspaceClient
+            runner: SQLRunner for executing SQL statements
             catalog: Target catalog name
-            warehouse_id: SQL warehouse ID for DDL execution
         """
-        self.client = client
         self.catalog = catalog
         self.schema = f"`{catalog}`.`schemax`"
-        self.warehouse_id = warehouse_id
+        self._runner = runner
 
-    def _execute_statement_sync(self, sql: str, wait_timeout: str = "10s") -> Any | None:
+    def _execute_statement_sync(self, sql: str) -> Any | None:
         """Execute a read-only statement; return response or None on expected not-found errors."""
         try:
-            response = self.client.statement_execution.execute_statement(
-                warehouse_id=self.warehouse_id,
-                statement=sql,
-                wait_timeout=wait_timeout,
-            )
+            result = self._runner.run_sql(sql)
         except Exception as e:
             if _is_expected_not_found_error(str(e)):
                 return None
             raise
-        if not response.status or response.status.state != StatementState.SUCCEEDED:
-            error_msg = ""
-            if response.status and response.status.error:
-                error_msg = str(getattr(response.status.error, "message", None) or "").strip()
-            state_obj = getattr(response.status, "state", None) if response.status else None
-            state_str = (
-                getattr(state_obj, "name", None) or str(state_obj)
-                if state_obj is not None
-                else "unknown"
-            )
+        if result.status == "failed":
+            error_msg = result.error_message or ""
             if _is_expected_not_found_error(error_msg):
                 return None
-            raise RuntimeError(
-                f"Database query failed (state={state_str}): {error_msg or 'No error message'}"
-            )
-        return response
+            raise RuntimeError(f"Database query failed: {error_msg or 'No error message'}")
+        return _RunnerResultAdapter(result)
 
-    def _execute_statement_raise(self, sql: str, wait_timeout: str = "10s") -> Any:
+    def _execute_statement_raise(self, sql: str) -> Any:
         """Execute a statement; raise on any failure."""
-        response = self.client.statement_execution.execute_statement(
-            warehouse_id=self.warehouse_id,
-            statement=sql,
-            wait_timeout=wait_timeout,
-        )
-        if not response.status or response.status.state != StatementState.SUCCEEDED:
-            error_msg = "No error message"
-            if response.status and response.status.error:
-                error_msg = str(getattr(response.status.error, "message", error_msg) or error_msg)
+        result = self._runner.run_sql(sql)
+        if result.status == "failed":
+            error_msg = result.error_message or "No error message"
             raise RuntimeError(f"Database query failed: {error_msg}")
-        return response
+        return _RunnerResultAdapter(result)
 
     def ensure_tracking_schema(self, auto_create: bool = True) -> None:
         """Create tracking schema and tables if needed
@@ -535,35 +516,11 @@ class DeploymentTracker:
         except Exception:
             return None
 
-    def _wait_for_statement(self, statement_id: str, max_wait_seconds: int = 60) -> None:
-        """Poll until statement reaches a terminal state; raise on failure or timeout."""
-        elapsed = 0
-        while elapsed < max_wait_seconds:
-            status = self.client.statement_execution.get_statement(statement_id)
-            if not status or not status.status:
-                raise RuntimeError("Failed to get statement status")
-            if status.status.state == StatementState.SUCCEEDED:
-                return
-            if status.status.state in (StatementState.FAILED, StatementState.CANCELED):
-                error_msg = status.status.error.message if status.status.error else "Unknown error"
-                raise RuntimeError(f"DDL execution failed: {error_msg}")
-            time.sleep(1)
-            elapsed += 1
-        raise TimeoutError(f"DDL execution timed out after {max_wait_seconds} seconds")
-
     def _execute_ddl(self, sql: str) -> None:
-        """Execute DDL statement and wait for completion
-
-        Args:
-            sql: SQL DDL statement to execute
-        """
-        response = self.client.statement_execution.execute_statement(
-            warehouse_id=self.warehouse_id,
-            statement=sql,
-            wait_timeout="30s",
-        )
-        if response.status and response.status.state != StatementState.SUCCEEDED:
-            self._wait_for_statement(response.statement_id or "")
+        """Execute DDL statement and wait for completion."""
+        result = self._runner.run_sql(sql)
+        if result.status == "failed":
+            raise RuntimeError(f"DDL execution failed: {result.error_message}")
 
     def _get_deployments_table_ddl(self) -> str:
         """Get DDL for deployments table

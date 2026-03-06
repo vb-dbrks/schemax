@@ -11,10 +11,19 @@
 
 ### Changed
 
+- **`--profile` now optional on `apply` and `rollback`** — Defaults to `None` for Databricks serverless runtime auth. No `~/.databrickscfg` needed in DAB jobs. `ExecutionConfig.profile` accepts `str | None`.
+- **Deploy script runs CLI in-process** — Uses `schemax_cli(args, standalone_mode=False)` instead of `subprocess.run` to inherit Databricks serverless runtime authentication context.
+- **Statement execution polls on PENDING** — `_poll_statement()` retries PENDING/RUNNING states up to 120s instead of failing immediately, handling SQL warehouse cold starts gracefully.
+- **DAB resource YAML correctness** — Uses `environment_version` (not deprecated `client`), `spark_python_task.parameters` (not invalid `environment_variables`), relative `python_file` path, and job tags (`managed_by`, `schemax_project`, `schemax_version`) for discoverability.
 - **CLI runtime-info** — `bundle` now reported in `supportedCommands` for extension compatibility checks.
-- **CLI code quality** — Refactored `bundle` command to fix pylint complexity/import warnings (extracted `_print_bundle_result` helper, moved `BundleService` import to top-level).
+- **`schemax bundle --json`** — Added JSON envelope output support required by the VS Code extension's `runJson` interface.
 - **GitHub Actions workflow** — Updated `deploy-prod.yml` to use `schemax bundle` for DAB-based deployment instead of manual script invocation.
-- **CLI** — `schemax bundle` no longer requires `--target` or `--version` flags; it generates environment-agnostic resources that resolve targets at deploy time via DAB variables.
+
+### Fixed
+
+- **`SystemExit(0)` in Databricks serverless** — Deploy script catches successful exit codes so Databricks IPython runtime doesn't report success as failure.
+- **Workspace resolution in DAB jobs** — Deploy script locates `.schemax/` project root by walking up from script location, fixing `resources/.schemax/changelog.json` not found errors.
+- **`No module named schemax.__main__`** — Deploy script uses `schemax.cli` module (no `__main__.py` exists).
 
 ## [0.2.8] - 2026-02-27
 

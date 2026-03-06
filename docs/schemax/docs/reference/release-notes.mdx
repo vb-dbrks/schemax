@@ -10,10 +10,12 @@ This page summarizes coordinated SchemaX releases across:
 
 ### Highlights
 
-- **Databricks Asset Bundles integration** — New `schemax bundle` command generates DAB-compatible resource YAML and deploy script. Deploy SchemaX migrations as a serverless Python task in your existing DAB project, with environment resolution via `${bundle.target}`.
+- **Databricks Asset Bundles integration** — New `schemax bundle` command generates DAB-compatible resource YAML and deploy script. Deploy SchemaX migrations as a serverless Python task in your existing DAB project, with environment resolution via `${bundle.target}`. Validated end-to-end on Databricks serverless.
+- **Serverless runtime auth** — `schemax apply` no longer requires `--profile`. In DAB serverless jobs, authentication is handled by the Databricks runtime automatically.
 - **VS Code sidebar** — Added "Import Existing Assets" and "Generate DAB Resources" buttons to the extension sidebar. New `schemax.generateBundle` command invokes `schemax bundle` directly from the editor.
+- **Warehouse cold start resilience** — Statement execution now polls PENDING/RUNNING states up to 120s, handling SQL warehouse cold starts gracefully instead of failing immediately.
 - **Documentation** — New Databricks Asset Bundles guide with setup, CI/CD integration, and architecture overview.
-- **Expanded test coverage** — 56 new integration tests covering rollback helpers, SQL generation edge cases, constraint variants, and column/table operations.
+- **Expanded test coverage** — 56+ new integration tests covering rollback helpers, SQL generation edge cases, constraint variants, column/table operations, and DAB compatibility regressions.
 
 ### Package versions
 

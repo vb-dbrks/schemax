@@ -24,7 +24,11 @@ from schemax.providers.base.exceptions import SchemaXProviderError
 from schemax.providers.base.executor import ExecutionConfig, ExecutionResult
 from schemax.providers.base.scope_filter import filter_operations_by_managed_scope
 from schemax.providers.unity.auth import create_databricks_client
-from schemax.providers.unity.executor import UnitySQLExecutor
+from schemax.providers.unity.sql_runner import (
+    LocalSQLRunner,
+    RemoteSQLRunner,
+    create_remote_sql_runner,
+)
 from schemax.version import SCHEMAX_VERSION
 
 console = Console()
@@ -102,11 +106,12 @@ class _ApplyWorkspaceRepository:
 def apply_to_environment(
     workspace: Path,
     target_env: str,
-    profile: str,
+    profile: str | None,
     warehouse_id: str,
     dry_run: bool = False,
     no_interaction: bool = False,
     auto_rollback: bool = False,
+    execution_mode: str = "remote",
     workspace_repo: _WorkspaceRepoPort | None = None,
 ) -> ExecutionResult:
     """Apply changes to target environment
@@ -123,6 +128,7 @@ def apply_to_environment(
         dry_run: If True, preview without executing
         no_interaction: If True, skip confirmation prompt
         auto_rollback: If True, automatically roll back on failed deployment
+        execution_mode: "remote" (SQL warehouse) or "local" (spark.sql)
         workspace_repo: Optional repository override for tests/injection
 
     Returns:
@@ -141,6 +147,7 @@ def apply_to_environment(
             dry_run=dry_run,
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
+            execution_mode=execution_mode,
             workspace_repo=repository,
         ).execute()
     except Exception as err:
@@ -235,11 +242,12 @@ class _ApplyConfig:
 
     workspace: Path
     target_env: str
-    profile: str
+    profile: str | None
     warehouse_id: str
     dry_run: bool
     no_interaction: bool
     auto_rollback: bool
+    execution_mode: str = "remote"
 
 
 @dataclass
@@ -271,12 +279,13 @@ class _ApplyCommand:
         self,
         workspace: Path,
         target_env: str,
-        profile: str,
+        profile: str | None,
         warehouse_id: str,
         dry_run: bool,
         no_interaction: bool,
         auto_rollback: bool,
         workspace_repo: _WorkspaceRepoPort,
+        execution_mode: str = "remote",
     ) -> None:
         self._config = _ApplyConfig(
             workspace=workspace,
@@ -286,6 +295,7 @@ class _ApplyCommand:
             dry_run=dry_run,
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
+            execution_mode=execution_mode,
         )
         self._workspace_repo = workspace_repo
         self._runtime = _ApplyRuntime()
@@ -383,8 +393,12 @@ class _ApplyCommand:
             f"[blue]Provider:[/blue] {runtime.provider.info.name} v{runtime.provider.info.version}"
         )
         console.print(f"[blue]Environment:[/blue] {config.target_env}")
-        console.print(f"[blue]Warehouse:[/blue] {config.warehouse_id}")
-        console.print(f"[blue]Profile:[/blue] {config.profile}")
+        console.print(f"[blue]Execution mode:[/blue] {config.execution_mode}")
+        if config.execution_mode == "local":
+            console.print("[blue]SQL runner:[/blue] spark.sql() (local Spark session)")
+        else:
+            console.print(f"[blue]Warehouse:[/blue] {config.warehouse_id}")
+            console.print(f"[blue]Profile:[/blue] {config.profile or '(runtime auth)'}")
         runtime.latest_snapshot_version = runtime.project.get("latestSnapshot")
         if not runtime.latest_snapshot_version:
             raise ApplyError("No snapshots found. Please create a snapshot first.")
@@ -398,12 +412,22 @@ class _ApplyCommand:
         runtime.deployment_catalog = runtime.env_config["topLevelName"]
         console.print(f"[blue]Deployment tracking catalog:[/blue] {runtime.deployment_catalog}")
 
+    def _create_tracker(self) -> DeploymentTracker:
+        """Create a DeploymentTracker using the appropriate runner for the execution mode."""
+        config = self._config
+        runner: LocalSQLRunner | RemoteSQLRunner
+        if config.execution_mode == "local":
+            runner = LocalSQLRunner()
+        else:
+            client = create_databricks_client(config.profile)
+            runner = create_remote_sql_runner(client, config.warehouse_id)
+        return DeploymentTracker(runner, self._runtime.deployment_catalog)
+
     def _query_deployment_state(self) -> None:
         """Query database for last deployment; set self.deployed_version."""
         runtime, config = self._runtime, self._config
         try:
-            client = create_databricks_client(config.profile)
-            tracker = DeploymentTracker(client, runtime.deployment_catalog, config.warehouse_id)
+            tracker = self._create_tracker()
             db_deployment = tracker.get_latest_deployment(config.target_env)
             if db_deployment:
                 runtime.deployed_version = db_deployment.get("version")
@@ -421,11 +445,15 @@ class _ApplyCommand:
             console.print("\n[yellow]Cannot proceed without database access.[/yellow]")
             console.print("[yellow]Please check:[/yellow]")
             console.print("  • Databricks credentials are valid")
-            console.print(f"  • Warehouse {config.warehouse_id} is running")
+            if config.execution_mode == "remote":
+                console.print(f"  • Warehouse {config.warehouse_id} is running")
+            else:
+                console.print("  • SparkSession is active (local execution mode)")
             console.print("  • Network connectivity to Databricks")
+            profile_flag = f" --profile {config.profile}" if config.profile else ""
             console.print(
-                f"\n[blue]Retry with:[/blue] schemax apply --target {config.target_env} "
-                f"--profile {config.profile} --warehouse-id {config.warehouse_id}"
+                f"\n[blue]Retry with:[/blue] schemax apply --target {config.target_env}"
+                f"{profile_flag} --warehouse-id {config.warehouse_id}"
             )
             raise ApplyError(f"Database query failed: {err}") from err
 
@@ -530,6 +558,7 @@ class _ApplyCommand:
             target_env=config.target_env,
             profile=config.profile,
             warehouse_id=config.warehouse_id,
+            execution_mode=config.execution_mode,
             dry_run=False,
             no_interaction=config.no_interaction,
         )
@@ -537,9 +566,12 @@ class _ApplyCommand:
         if not validation.valid:
             errors = "\n".join([f"  - {e.field}: {e.message}" for e in validation.errors])
             raise ApplyError(f"Invalid execution configuration:\n{errors}")
-        console.print("\n[cyan]Authenticating with Databricks...[/cyan]")
+        if config.execution_mode == "local":
+            console.print("\n[cyan]Using local Spark session...[/cyan]")
+        else:
+            console.print("\n[cyan]Authenticating with Databricks...[/cyan]")
         runtime.executor = runtime.provider.get_sql_executor(exec_config)
-        console.print("[green]✓[/green] Authenticated successfully")
+        console.print("[green]✓[/green] Ready")
         runtime.deployment_id = f"deploy_{uuid4().hex[:8]}"
         console.print("\n[cyan]Executing SQL statements...[/cyan]")
         return cast(ExecutionResult, runtime.executor.execute_statements(statements, exec_config))
@@ -554,12 +586,7 @@ class _ApplyCommand:
         if not sql_result:
             return
         runtime, config = self._runtime, self._config
-        unity_executor = cast(UnitySQLExecutor, runtime.executor)
-        tracker = DeploymentTracker(
-            unity_executor.client,
-            runtime.deployment_catalog,
-            config.warehouse_id,
-        )
+        tracker = self._create_tracker()
         console.print(
             f"\n[cyan]Setting up deployment tracking in {runtime.deployment_catalog}.schemax...[/cyan]"
         )
