@@ -6,11 +6,7 @@
 [![codecov](https://codecov.io/gh/vb-dbrks/schemax/graph/badge.svg?token=Z5FWGAXEXS)](https://codecov.io/gh/vb-dbrks/schemax)
 [![Python SDK CI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/python-sdk-ci.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/python-sdk-ci.yml)
 [![Extension CI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/extension-ci.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/extension-ci.yml)
-[![Docs CI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/docs-ci.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/docs-ci.yml)
-[![Publish to PyPI](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-pypi.yml)
-[![Publish VS Code Extension](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-vscode-extension.yml/badge.svg)](https://github.com/vb-dbrks/schemax-vscode/actions/workflows/publish-vscode-extension.yml)
-[![PyPI](https://img.shields.io/pypi/v/schemaxpy)](https://pypi.org/project/schemaxpy/)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/schemaxpy?style=plastic)](https://pypi.org/project/schemaxpy/)[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/schematic-dev.schemax-vscode)](https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/schemaxpy?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/schemaxpy)
 
 ## What SchemaX Does
 
