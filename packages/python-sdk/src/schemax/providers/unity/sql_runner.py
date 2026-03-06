@@ -90,22 +90,28 @@ class RemoteSQLRunner:
 class LocalSQLRunner:
     """Executes SQL via spark.sql() on the active Spark session."""
 
+    _RESULT_PREFIXES = ("SELECT", "SHOW", "DESCRIBE", "EXPLAIN", "WITH")
+
     def run_sql(self, sql: str) -> SQLRunResult:
         spark = self._get_spark_session()
         try:
             df = spark.sql(sql)
-            # Collect results for SELECT-like statements
-            try:
-                columns = list(df.columns)
-                rows = [[row[col] for col in columns] for row in df.collect()]
-                return SQLRunResult(
-                    status="success",
-                    data_array=rows if rows else None,
-                    columns=columns if columns else None,
-                )
-            except Exception:
-                # DDL statements may not return meaningful results
-                return SQLRunResult(status="success")
+        except Exception as e:
+            return SQLRunResult(status="failed", error_message=str(e))
+
+        # Only collect results for statements that return a result set.
+        # DDL/DML statements succeed once spark.sql() completes without error.
+        if not sql.lstrip().upper().startswith(self._RESULT_PREFIXES):
+            return SQLRunResult(status="success")
+
+        try:
+            columns = list(df.columns)
+            rows = [[row[col] for col in columns] for row in df.collect()]
+            return SQLRunResult(
+                status="success",
+                data_array=rows if rows else None,
+                columns=columns if columns else None,
+            )
         except Exception as e:
             return SQLRunResult(status="failed", error_message=str(e))
 

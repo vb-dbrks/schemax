@@ -23,10 +23,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install tools
-        run: |
-          pip install schemaxpy
-          pip install databricks-cli
+      - name: Install SchemaX CLI
+        run: pip install schemaxpy
+
+      - name: Install Databricks CLI
+        run: curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
 
       - name: Validate schema
         run: schemax validate
@@ -40,7 +41,8 @@ jobs:
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
         run: |
           databricks bundle deploy --target prod
-          databricks bundle run schemax_deploy_* --target prod
+          # Job name matches your project: schemax_deploy_<project_name>
+          databricks bundle run schemax_deploy_my_project --target prod
 
       - name: Create deployment summary
         run: |

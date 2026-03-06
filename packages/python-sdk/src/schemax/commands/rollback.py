@@ -11,7 +11,7 @@ simpler and more robust than manual reverse operation generation.
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 from uuid import uuid4
 
 from rich.console import Console
@@ -23,12 +23,12 @@ from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
 from schemax.core.deployment import DeploymentRecord, DeploymentTracker
 from schemax.core.version import parse_semantic_version
 from schemax.core.workspace_repository import WorkspaceRepository
-from schemax.providers.base.executor import ExecutionConfig, SQLExecutor
+from schemax.providers.base.executor import ExecutionConfig, SQLExecutor, SQLRunner
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.reverse_generator import SafetyLevel, SafetyReport
-from schemax.providers.unity.executor import UnitySQLExecutor
+from schemax.providers.unity.executor import LocalSQLExecutor, UnitySQLExecutor
 from schemax.providers.unity.safety_validator import SafetyValidator
-from schemax.providers.unity.sql_runner import create_remote_sql_runner
+from schemax.providers.unity.sql_runner import LocalSQLRunner, create_remote_sql_runner
 from schemax.version import SCHEMAX_VERSION
 
 console = Console()
@@ -349,6 +349,22 @@ def _maybe_confirm_partial_cascade_drops(
     )
 
 
+def _create_tracking_runner(
+    executor: SQLExecutor,
+    profile: str | None,
+    warehouse_id: str,
+) -> SQLRunner:
+    """Create a SQLRunner for deployment tracking from the executor context."""
+    if isinstance(executor, LocalSQLExecutor):
+        return LocalSQLRunner()
+    # Use existing client from executor when available (UnitySQLExecutor or compatible)
+    client = getattr(executor, "client", None)
+    if client is not None:
+        return create_remote_sql_runner(client, warehouse_id)
+    # Fallback: create a new client from profile
+    return create_remote_sql_runner(unity_auth.create_databricks_client(profile), warehouse_id)
+
+
 @dataclass
 class _PartialRollbackContext:
     workspace: Path
@@ -388,8 +404,7 @@ def _load_partial_rollback_context(
     deployment_catalog = env_config["topLevelName"]
 
     tracker = DeploymentTracker(
-        create_remote_sql_runner(cast(UnitySQLExecutor, executor).client, warehouse_id),
-        deployment_catalog,
+        _create_tracking_runner(executor, profile, warehouse_id), deployment_catalog
     )
     deployment = tracker.get_deployment_by_id(deployment_id)
     if not deployment:
@@ -540,8 +555,7 @@ def _track_partial_rollback_deployment(
 ) -> str:
     """Track partial rollback execution in deployment history."""
     rollback_deployment_id = f"rollback_{uuid4().hex[:8]}"
-    unity_executor = cast(UnitySQLExecutor, context.executor)
-    runner = create_remote_sql_runner(unity_executor.client, context.warehouse_id)
+    runner = _create_tracking_runner(context.executor, context.profile, context.warehouse_id)
     tracker = DeploymentTracker(runner, context.deployment_catalog)
     tracker.ensure_tracking_schema(
         auto_create=context.env_config.get("autoCreateSchemaxSchema", True)

@@ -148,7 +148,11 @@ For reference, `schemax bundle` generates a resource file like this:
 ```yaml
 variables:
   warehouse_id:
-    description: "SQL warehouse ID for SchemaX deployments"
+    description: "SQL warehouse ID (required for remote mode, ignored in local mode)"
+    default: ""
+  schemax_execution_mode:
+    description: "Execution mode: local (spark.sql) or remote (SQL warehouse)"
+    default: "local"
   schemax_auto_rollback:
     description: "Auto-rollback on failure (true/false)"
     default: "false"
@@ -174,8 +178,9 @@ resources:
             python_file: schemax_deploy.py
             parameters:
               - "${bundle.target}"
-              - "${var.warehouse_id}"
+              - "${var.schemax_execution_mode}"
               - "${var.schemax_auto_rollback}"
+              - "${var.warehouse_id}"
 ```
 
 :::note
