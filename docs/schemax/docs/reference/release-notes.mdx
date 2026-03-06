@@ -6,6 +6,26 @@ This page summarizes coordinated SchemaX releases across:
 - VS Code extension (`schemax-vscode`)
 - Documentation site (`docs/schemax`)
 
+## 0.2.9 (2026-03-06)
+
+### Highlights
+
+- **Databricks Asset Bundles integration** — New `schemax bundle` command generates DAB-compatible resource YAML and deploy script. Deploy SchemaX migrations as a serverless Python task in your existing DAB project, with environment resolution via `${bundle.target}`.
+- **VS Code sidebar** — Added "Import Existing Assets" and "Generate DAB Resources" buttons to the extension sidebar. New `schemax.generateBundle` command invokes `schemax bundle` directly from the editor.
+- **Documentation** — New Databricks Asset Bundles guide with setup, CI/CD integration, and architecture overview.
+- **Expanded test coverage** — 56 new integration tests covering rollback helpers, SQL generation edge cases, constraint variants, and column/table operations.
+
+### Package versions
+
+- Python SDK/CLI: `0.2.9`
+- VS Code extension: `0.2.9`
+- Docs site package: `0.2.9`
+
+### Changelogs
+
+- [Python SDK changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/CHANGELOG.md)
+- [VS Code extension changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/vscode-extension/CHANGELOG.md)
+
 ## 0.2.8 (2026-02-27)
 
 ### Highlights

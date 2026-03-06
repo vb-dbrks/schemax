@@ -18,6 +18,7 @@ from rich.console import Console
 from ._provider_registration import ensure_providers_loaded
 from .application import (
     ApplyService,
+    BundleService,
     ChangelogService,
     DiffService,
     ImportService,
@@ -183,6 +184,7 @@ def runtime_info(json_output: bool) -> None:
             "workspace-state",
             "snapshot.validate",
             "changelog.undo",
+            "bundle",
         ],
         "providerIds": ProviderRegistry.get_all_ids(),
     }
@@ -631,7 +633,8 @@ def diff(
     default="resources",
     help="Output directory for DAB resource files (default: resources)",
 )
-def bundle(output: str) -> None:
+@click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
+def bundle(output: str, json_output: bool) -> None:
     """Generate Databricks Asset Bundle resources for SchemaX deployment.
 
     Creates a resource YAML and deploy script that can be included in an
@@ -654,30 +657,46 @@ def bundle(output: str) -> None:
             - .schemax/**
             - resources/schemax_deploy.py
     """
-    from schemax.application.services import BundleService
-
+    started_at = perf_counter()
     try:
-        workspace = Path.cwd()
-        output_dir = Path(output)
-        service = BundleService()
-        result = service.run(workspace=workspace, output_dir=output_dir)
-
+        result = BundleService().run(workspace=Path.cwd(), output_dir=Path(output))
         if not result.success:
-            console.print(f"[red]✗ {result.message}[/red]")
+            if json_output:
+                _emit_json_error(
+                    command="bundle",
+                    code="BUNDLE_FAILED",
+                    message=result.message,
+                    started_at=started_at,
+                )
+            else:
+                console.print(f"[red]✗ {result.message}[/red]")
             sys.exit(1)
-
-        console.print(f"[green]✓[/green] Generated DAB resources in [cyan]{output_dir}[/cyan]")
-        console.print(f"  Resource file: [dim]{result.data['resource_file']}[/dim]")
-        console.print(f"  Deploy script: [dim]{result.data['deploy_script']}[/dim]")
-        console.print(f"  Environments:  [dim]{', '.join(result.data['environments'])}[/dim]")
-        console.print()
-        console.print("[dim]Add to your databricks.yml:[/dim]")
-        console.print("[dim]  include:[/dim]")
-        console.print(f"[dim]    - {output}/schemax.yml[/dim]")
-
+        if json_output:
+            _emit_json_success(
+                command="bundle", data=result.data, warnings=[], started_at=started_at
+            )
+        else:
+            _print_bundle_result(result, output)
     except Exception as e:
-        console.print(f"[red]✗ Error:[/red] {e}")
+        if json_output:
+            _emit_json_error(
+                command="bundle", code="BUNDLE_ERROR", message=str(e), started_at=started_at
+            )
+        else:
+            console.print(f"[red]✗ Error:[/red] {e}")
         sys.exit(1)
+
+
+def _print_bundle_result(result: Any, output: str) -> None:
+    """Print bundle generation results."""
+    console.print(f"[green]✓[/green] Generated DAB resources in [cyan]{output}[/cyan]")
+    console.print(f"  Resource file: [dim]{result.data['resource_file']}[/dim]")
+    console.print(f"  Deploy script: [dim]{result.data['deploy_script']}[/dim]")
+    console.print(f"  Environments:  [dim]{', '.join(result.data['environments'])}[/dim]")
+    console.print()
+    console.print("[dim]Add to your databricks.yml:[/dim]")
+    console.print("[dim]  include:[/dim]")
+    console.print(f"[dim]    - {output}/schemax.yml[/dim]")
 
 
 @cli.command(name="import")

@@ -15,7 +15,7 @@ let currentPanel: vscode.WebviewPanel | undefined;
 const pythonBackend = new PythonBackendClient();
 let extensionContextRef: vscode.ExtensionContext | undefined;
 const REQUIRED_ENVELOPE_SCHEMA_VERSION = "1";
-const MIN_SUPPORTED_CLI_VERSION = "0.2.7";
+const MIN_SUPPORTED_CLI_VERSION = "0.2.9";
 
 interface BackendCompatibilityState {
   checked: boolean;
@@ -169,6 +169,10 @@ export function activate(context: vscode.ExtensionContext) {
     runImportFromPrompts()
   );
 
+  const generateBundleCommand = vscode.commands.registerCommand("schemax.generateBundle", () =>
+    generateBundleResources()
+  );
+
   const installPythonSdkCommand = vscode.commands.registerCommand("schemax.installPythonSdk", () =>
     installPythonSdk()
   );
@@ -190,13 +194,14 @@ export function activate(context: vscode.ExtensionContext) {
     createSnapshotCommand,
     generateSQLCommand,
     importAssetsCommand,
+    generateBundleCommand,
     installPythonSdkCommand,
     outputChannel
   );
 
   outputChannel.appendLine("[SchemaX] Extension activated successfully!");
   outputChannel.appendLine(
-    "[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps, schemax.createSnapshot, schemax.generateSQL, schemax.importAssets"
+    "[SchemaX] Commands registered: schemax.openDesigner, schemax.showLastOps, schemax.createSnapshot, schemax.generateSQL, schemax.importAssets, schemax.generateBundle"
   );
   vscode.window.showInformationMessage("SchemaX Extension Activated!");
   trackEvent("extension_activated");
@@ -2228,5 +2233,52 @@ async function generateSQLMigration() {
       outputChannel.appendLine(`[SchemaX] Stack trace: ${error.stack}`);
     }
     vscode.window.showErrorMessage(`Failed to generate SQL: ${error}`);
+  }
+}
+
+async function generateBundleResources() {
+  if (!(await requireCompatibleSdk("bundle"))) {
+    return;
+  }
+  outputChannel.appendLine("[SchemaX] Generate DAB Resources command invoked");
+
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!workspaceFolder) {
+    outputChannel.appendLine("[SchemaX] ERROR: No workspace folder open");
+    vscode.window.showErrorMessage("SchemaX: Please open a workspace folder first.");
+    return;
+  }
+
+  try {
+    const outputDir = path.join(workspaceFolder.uri.fsPath, "resources");
+
+    const bundleResult = await pythonBackend.runJson<{ outputDir?: string }>(
+      "bundle",
+      ["bundle", "--output", outputDir],
+      workspaceFolder.uri.fsPath
+    );
+    if (bundleResult.status !== "success") {
+      throw new Error(
+        bundleResult.errors.map((error) => error.message).join("\n") || "Bundle generation failed"
+      );
+    }
+
+    outputChannel.appendLine(`[SchemaX] DAB resources generated in: ${outputDir}`);
+
+    // Open the resources directory in the explorer
+    const resourceYaml = path.join(outputDir, "schemax_job.yml");
+    if (fs.existsSync(resourceYaml)) {
+      const doc = await vscode.workspace.openTextDocument(resourceYaml);
+      await vscode.window.showTextDocument(doc);
+    }
+
+    vscode.window.showInformationMessage("DAB resources generated in resources/ directory");
+    trackEvent("bundle_generated");
+  } catch (error) {
+    outputChannel.appendLine(`[SchemaX] ERROR: Bundle generation failed: ${error}`);
+    if (error instanceof Error) {
+      outputChannel.appendLine(`[SchemaX] Stack trace: ${error.stack}`);
+    }
+    vscode.window.showErrorMessage(`Failed to generate DAB resources: ${error}`);
   }
 }

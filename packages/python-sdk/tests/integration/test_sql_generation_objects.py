@@ -211,7 +211,13 @@ class TestFunctionSqlGeneration:
             builder.catalog.add_catalog("cat_1", "sales", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
             builder.function.add_function(
-                "f1", "my_fn", "s1", "SQL", "INT", "1", op_id="op_3",
+                "f1",
+                "my_fn",
+                "s1",
+                "SQL",
+                "INT",
+                "1",
+                op_id="op_3",
             ),
             builder.function.drop_function("f1", op_id="op_4"),
         ]
@@ -248,7 +254,11 @@ class TestMaterializedViewSqlGeneration:
             builder.catalog.add_catalog("cat_1", "sales", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
             builder.materialized_view.add_materialized_view(
-                "mv1", "summary", "s1", "SELECT 1", op_id="op_3",
+                "mv1",
+                "summary",
+                "s1",
+                "SELECT 1",
+                op_id="op_3",
             ),
             builder.materialized_view.drop_materialized_view("mv1", op_id="op_4"),
         ]

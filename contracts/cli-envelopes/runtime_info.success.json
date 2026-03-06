@@ -3,7 +3,7 @@
   "command": "runtime-info",
   "status": "success",
   "data": {
-    "cliVersion": "0.2.8",
+    "cliVersion": "0.2.9",
     "envelopeSchemaVersion": "1",
     "supportedCommands": [
       "runtime-info",
@@ -14,7 +14,9 @@
       "apply",
       "rollback",
       "workspace-state",
-      "snapshot.validate"
+      "snapshot.validate",
+      "changelog.undo",
+      "bundle"
     ],
     "providerIds": [
       "unity",

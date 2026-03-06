@@ -43,16 +43,13 @@ class TestCatalogUpdateSql:
             builder.catalog.update_catalog("cat_1", comment="Updated comment", op_id="op_2"),
         ]
         sql = _gen_single(ops)
-        assert "COMMENT" in sql
-        assert "Updated comment" in sql
+        assert sql == "ALTER CATALOG `sales` SET COMMENT 'Updated comment'"
 
     def test_update_catalog_managed_location_error(self) -> None:
         builder = OperationBuilder()
         ops = [
             builder.catalog.add_catalog("cat_1", "sales", op_id="op_1"),
-            builder.catalog.update_catalog(
-                "cat_1", managed_location_name="new_loc", op_id="op_2"
-            ),
+            builder.catalog.update_catalog("cat_1", managed_location_name="new_loc", op_id="op_2"),
         ]
         sql = _gen_single(ops)
         assert "managedLocations" in sql or "Error" in sql
@@ -68,8 +65,7 @@ class TestSchemaUpdateSql:
             builder.schema.update_schema("s1", comment="Schema comment", op_id="op_3"),
         ]
         sql = _gen_single(ops)
-        assert "COMMENT" in sql
-        assert "Schema comment" in sql
+        assert sql == "ALTER SCHEMA `sales`.`raw` SET COMMENT 'Schema comment'"
 
 
 @pytest.mark.integration
@@ -81,8 +77,7 @@ class TestColumnModificationSql:
             builder.column.change_column_type("c1", "t1", "BIGINT", op_id="op_5"),
         ]
         sql = _gen_single(ops)
-        assert "ALTER" in sql
-        assert "BIGINT" in sql
+        assert sql == "ALTER TABLE `sales`.`raw`.`orders` ALTER COLUMN `amount` TYPE BIGINT"
 
     def test_set_column_not_null(self) -> None:
         builder = OperationBuilder()
@@ -91,7 +86,7 @@ class TestColumnModificationSql:
             builder.column.set_nullable("c1", "t1", False, op_id="op_5"),
         ]
         sql = _gen_single(ops)
-        assert "NOT NULL" in sql or "SET" in sql
+        assert sql == "ALTER TABLE `sales`.`raw`.`orders` ALTER COLUMN `id` SET NOT NULL"
 
     def test_set_column_comment(self) -> None:
         builder = OperationBuilder()
@@ -100,18 +95,19 @@ class TestColumnModificationSql:
             builder.column.set_column_comment("c1", "t1", "User email", op_id="op_5"),
         ]
         sql = _gen_single(ops)
-        assert "COMMENT" in sql
-        assert "User email" in sql
+        assert sql == "ALTER TABLE `sales`.`raw`.`orders` ALTER COLUMN `email` COMMENT 'User email'"
 
-    def test_reorder_columns_not_supported(self) -> None:
+    def test_reorder_columns_batch(self) -> None:
         builder = OperationBuilder()
         ops = ops_catalog_schema_table(builder) + [
             builder.column.add_column("c1", "t1", "id", "INT", op_id="op_4"),
             builder.column.add_column("c2", "t1", "name", "STRING", op_id="op_5"),
             builder.column.reorder_columns("t1", ["c2", "c1"], op_id="op_6"),
         ]
-        sql = _gen_single(ops)
-        assert "not directly supported" in sql.lower() or "reorder" in sql.lower()
+        sql = _gen_sql(ops)
+        assert "`name` STRING" in sql
+        assert "`id` INT" in sql
+        assert sql.index("`name`") < sql.index("`id`")
 
 
 @pytest.mark.integration
@@ -122,7 +118,9 @@ class TestFunctionAdvancedSql:
             builder.function.rename_function("f1", "triple_it", "double_it", op_id="op_4"),
         ]
         sql = _gen_single(ops)
-        assert "ALTER" in sql or "RENAME" in sql
+        assert "ALTER FUNCTION" in sql
+        assert "RENAME TO" in sql
+        assert "`triple_it`" in sql
 
     def test_set_function_comment(self) -> None:
         builder = OperationBuilder()
@@ -130,8 +128,7 @@ class TestFunctionAdvancedSql:
             builder.function.set_function_comment("f1", "Doubles the input", op_id="op_4"),
         ]
         sql = _gen_single(ops)
-        assert "COMMENT" in sql
-        assert "Doubles the input" in sql
+        assert sql == "COMMENT ON FUNCTION `sales`.`raw`.`double_it` IS 'Doubles the input'"
 
     def test_update_function_body(self) -> None:
         builder = OperationBuilder()
@@ -139,7 +136,9 @@ class TestFunctionAdvancedSql:
             builder.function.update_function("f1", body="x * 10", op_id="op_4"),
         ]
         sql = _gen_single(ops)
-        assert "CREATE OR REPLACE" in sql or "FUNCTION" in sql
+        assert sql.startswith("CREATE OR REPLACE FUNCTION")
+        assert "`double_it`" in sql
+        assert "x * 10" in sql
 
 
 @pytest.mark.integration
@@ -159,8 +158,10 @@ class TestMaterializedViewAdvancedSql:
             ),
         ]
         sql = _gen_single(ops, target_op_index=2)
-        assert "COMMENT" in sql
-        assert "Daily aggregation" in sql
+        assert sql == (
+            "CREATE MATERIALIZED VIEW IF NOT EXISTS `sales`.`raw`.`daily_agg`"
+            " COMMENT 'Daily aggregation' AS\nSELECT\n  1"
+        )
 
     def test_mv_with_partition_columns(self) -> None:
         builder = OperationBuilder()
@@ -177,7 +178,8 @@ class TestMaterializedViewAdvancedSql:
             ),
         ]
         sql = _gen_single(ops, target_op_index=2)
-        assert "PARTITIONED BY" in sql or "MATERIALIZED VIEW" in sql
+        assert "PARTITIONED BY (region)" in sql
+        assert "`partitioned_agg`" in sql
 
     def test_mv_with_schedule_and_comment(self) -> None:
         builder = OperationBuilder()
@@ -190,7 +192,8 @@ class TestMaterializedViewAdvancedSql:
             ),
         ]
         sql = _gen_single(ops)
-        assert "MATERIALIZED VIEW" in sql or "ALTER" in sql
+        assert "SCHEDULE CRON '0 6 * * *'" in sql
+        assert "'Updated daily'" in sql
 
     def test_set_mv_comment(self) -> None:
         builder = OperationBuilder()
@@ -200,8 +203,7 @@ class TestMaterializedViewAdvancedSql:
             ),
         ]
         sql = _gen_single(ops)
-        assert "COMMENT" in sql
-        assert "New comment" in sql
+        assert sql == "COMMENT ON MATERIALIZED VIEW `sales`.`raw`.`daily_agg` IS 'New comment'"
 
 
 @pytest.mark.integration
@@ -221,7 +223,7 @@ class TestConstraintAdvancedSql:
             ),
         ]
         sql = _gen_single(ops, target_op_index=-1)
-        assert "CHECK" in sql or "CONSTRAINT" in sql
+        assert sql == "ALTER TABLE `sales`.`raw`.`orders` ADD CONSTRAINT `chk_age` CHECK (age > 0)"
 
     def test_foreign_key_with_parent(self) -> None:
         builder = OperationBuilder()
@@ -244,8 +246,10 @@ class TestConstraintAdvancedSql:
             ),
         ]
         sql = _gen_single(ops, target_op_index=-1)
-        assert "FOREIGN KEY" in sql or "CONSTRAINT" in sql
-        assert "REFERENCES" in sql
+        assert sql == (
+            "ALTER TABLE `sales`.`raw`.`items` ADD CONSTRAINT `fk_order`"
+            " FOREIGN KEY(`order_id`) REFERENCES `sales`.`raw`.`orders`(`id`)"
+        )
 
     def test_primary_key_not_enforced(self) -> None:
         builder = OperationBuilder()
@@ -262,7 +266,10 @@ class TestConstraintAdvancedSql:
             ),
         ]
         sql = _gen_single(ops, target_op_index=-1)
-        assert "NOT ENFORCED" in sql
+        assert sql == (
+            "ALTER TABLE `sales`.`raw`.`orders` ADD CONSTRAINT"
+            " `pk_orders` PRIMARY KEY(`id`) NOT ENFORCED"
+        )
 
     def test_primary_key_rely(self) -> None:
         builder = OperationBuilder()
@@ -279,7 +286,9 @@ class TestConstraintAdvancedSql:
             ),
         ]
         sql = _gen_single(ops, target_op_index=-1)
-        assert "RELY" in sql
+        assert sql == (
+            "ALTER TABLE `sales`.`raw`.`orders` ADD CONSTRAINT `pk_orders` PRIMARY KEY(`id`) RELY"
+        )
 
 
 @pytest.mark.integration
@@ -293,7 +302,7 @@ class TestVolumeUpdateSql:
             builder.volume.update_volume("v1", comment="Holds CSV files", op_id="op_4"),
         ]
         sql = _gen_single(ops)
-        assert "COMMENT" in sql or "ALTER" in sql
+        assert sql == "ALTER VOLUME `sales`.`raw`.`data_files` SET COMMENT 'Holds CSV files'"
 
 
 @pytest.mark.integration
@@ -308,7 +317,7 @@ class TestRevokeAllGrantsSql:
             builder.grant.revoke_grant("catalog", "cat_1", "team", op_id="op_3"),
         ]
         sql = _gen_sql(ops)
-        assert "REVOKE" in sql
+        assert "REVOKE ALL PRIVILEGES ON CATALOG `sales` FROM `team`" in sql
 
 
 @pytest.mark.integration
@@ -328,8 +337,7 @@ class TestTableWithCommentAndPartitions:
             ),
         ]
         sql = _gen_sql(ops)
-        assert "COMMENT" in sql
-        assert "Order data" in sql
+        assert "COMMENT 'Order data'" in sql
 
     def test_table_with_partition_columns(self) -> None:
         builder = OperationBuilder()
@@ -348,7 +356,7 @@ class TestTableWithCommentAndPartitions:
             builder.column.add_column("c2", "t1", "event_name", "STRING", op_id="op_5"),
         ]
         sql = _gen_sql(ops)
-        assert "PARTITIONED BY" in sql or "CREATE" in sql
+        assert "PARTITIONED BY" in sql
 
     def test_table_with_cluster_columns(self) -> None:
         builder = OperationBuilder()
@@ -379,7 +387,10 @@ class TestTableWithCommentAndPartitions:
             ),
         ]
         sql = _gen_single(ops)
-        assert "UNSET TBLPROPERTIES" in sql
+        assert sql == (
+            "ALTER TABLE `sales`.`raw`.`orders`"
+            " UNSET TBLPROPERTIES ('delta.autoOptimize.optimizeWrite')"
+        )
 
     def test_table_unset_tag(self) -> None:
         builder = OperationBuilder()
@@ -388,7 +399,7 @@ class TestTableWithCommentAndPartitions:
             builder.table.unset_table_tag("t1", "pii", op_id="op_5"),
         ]
         sql = _gen_single(ops)
-        assert "UNSET TAGS" in sql or "ALTER TABLE" in sql
+        assert sql == "ALTER TABLE `sales`.`raw`.`orders` UNSET TAGS ('pii')"
 
 
 @pytest.mark.integration
@@ -401,4 +412,4 @@ class TestColumnTagSql:
             builder.column.unset_column_tag("c1", "t1", "pii", op_id="op_6"),
         ]
         sql = _gen_single(ops)
-        assert "UNSET TAGS" in sql or "ALTER" in sql
+        assert sql == "ALTER TABLE `sales`.`raw`.`orders` ALTER COLUMN `email` UNSET TAGS ('pii')"

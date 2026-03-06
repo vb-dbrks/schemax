@@ -197,6 +197,4 @@ class TestEnforceImportBaselineGuard:
 
     def test_invalid_version_strings_skip_guard(self) -> None:
         env_config = {"importBaselineSnapshot": "not-a-version"}
-        _enforce_import_baseline_guard(
-            env_config, "also-invalid", force=False, no_interaction=True
-        )
+        _enforce_import_baseline_guard(env_config, "also-invalid", force=False, no_interaction=True)

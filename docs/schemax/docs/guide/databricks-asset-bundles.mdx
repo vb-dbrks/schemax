@@ -161,7 +161,7 @@ resources:
         - environment_key: schemax
           spec:
             dependencies:
-              - schemaxpy>=0.2.8
+              - schemaxpy>=0.2.9
       tasks:
         - task_key: schemax_apply
           environment_key: schemax
@@ -212,7 +212,7 @@ When the DAB job runs, the following happens:
 1. **File sync** -- `databricks bundle deploy` uploads your `.schemax/` project files and `resources/schemax_deploy.py` to the workspace.
 2. **Job creation** -- The DAB CLI creates (or updates) the job defined in `resources/schemax.yml`.
 3. **Job execution** -- When the job runs (either via `databricks bundle run` or a manual trigger), it:
-   - Spins up an environment with `schemaxpy>=0.2.8` installed.
+   - Spins up an environment with `schemaxpy>=0.2.9` installed.
    - Executes `resources/schemax_deploy.py`.
    - The deploy script runs `schemax apply --no-interaction`, using the environment variables set in the job definition.
    - `SCHEMAX_ENVIRONMENT` is set to `${bundle.target}` (e.g., `dev`, `prod`), so the correct SchemaX environment configuration is used.
