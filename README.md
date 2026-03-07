@@ -38,52 +38,17 @@ Package-level docs:
 
 ### VS Code Extension
 
-```bash
-cd schemax-vscode   # or your clone path
-code .
-# Press F5 to launch extension host
-```
-
-Then run `SchemaX: Open Designer` from the command palette.
+Install it from VS Code / Cursor / Antigravity Extension Marketplace
+- https://open-vsx.org/extension/schemax/schemax-vscode
+- https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode
 
 ### Python CLI
 
-```bash
-cd schemax-vscode/packages/python-sdk
-pip install -e .
-schemax init --provider unity
-schemax validate
-schemax sql --target dev --output migration.sql
+```python
+pip install schemaxpy
 ```
 
-## Repository Structure
-
-- `packages/vscode-extension`: VS Code extension (TypeScript + React)
-- `packages/python-sdk`: CLI + SDK (Python)
-- `docs/schemax`: Docusaurus documentation site
-- `examples`: sample projects and CI/CD templates
-
-## Development
-
-```bash
-cd packages/python-sdk
-make ci
-```
-
-For live integration tests:
-
-```bash
-cd packages/python-sdk
-make integration
-```
-
-Release version bump (SDK + extension + docs):
-
-```bash
-make release-bump VERSION=0.2.7 DATE=2026-03-15
-make release-check VERSION=0.2.7
-```
-
+Read more on how to use [SchemaX](https://vb-dbrks.github.io/schemax/)
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE).
