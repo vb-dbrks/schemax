@@ -7,28 +7,19 @@ title: Setup
 
 Get the SchemaX extension and CLI installed and open a project. For a full walkthrough, see [Quickstart](/docs/guide/quickstart/).
 
-## 1. Install the VS Code extension
+## 1. Install the extension
 
-**From source (development):**
+**For regular use** — Install "SchemaX" from your editor’s marketplace:
 
-1. Clone the repo and open it in VS Code: `code /path/to/schemax-vscode`
-2. Press **F5** to launch the Extension Development Host (builds and loads the extension in a new window).
-
-**When published:** Install "SchemaX" from the VS Code Marketplace (search "SchemaX" in Extensions).
+- **VS Code** — [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode) (search **SchemaX** in Extensions, or install via the link).
+- **Cursor** — Extensions → search **SchemaX** (extension is published to [Open VSX](https://open-vsx.org/extension/schemax/schemax-vscode), which Cursor uses).
+- **Antigravity and other Open VSX–based editors** — [Open VSX: SchemaX](https://open-vsx.org/extension/schemax/schemax-vscode), or search **SchemaX** in your editor’s extension view.
 
 ## 2. Install the CLI (Python SDK)
 
 The CLI is required for `schemax apply`, `schemax validate`, `schemax sql`, snapshots, and CI/CD.
 
-**From source:**
-
-```bash
-cd packages/python-sdk
-pip install -e .
-# or: uv pip install -e .
-```
-
-**When published:**
+Install from [PyPI](https://pypi.org/project/schemaxpy/):
 
 ```bash
 pip install schemaxpy
@@ -43,7 +34,7 @@ schemax --help
 
 ## 3. Open a project
 
-1. In VS Code (or Extension Development Host), **File → Open Folder**
+1. In VS Code, Cursor, or your editor, **File → Open Folder**
 2. Choose a folder that will hold your SchemaX project (e.g. a Git repo or new directory).
 
 ## 4. First-time project init
@@ -56,3 +47,5 @@ schemax --help
 - [Authentication](/docs/guide/authentication/) — How the CLI authenticates to Databricks (same locally and in CI/CD)
 - [Quickstart](/docs/guide/quickstart/) — Step-by-step: first catalog, schema, table, SQL, snapshot
 - [Environments and deployment scope](/docs/guide/environments-and-scope/) — Full vs governance-only, existing objects
+
+**Building from source?** See [Development](/docs/guide/development/) or [Contributing](/docs/contributing/).

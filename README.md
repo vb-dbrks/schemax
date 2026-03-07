@@ -36,19 +36,22 @@ Package-level docs:
 
 ## Quick Start
 
-### VS Code Extension
+### Extension (VS Code, Cursor, Antigravity)
 
-Install it from VS Code / Cursor / Antigravity Extension Marketplace
-- https://open-vsx.org/extension/schemax/schemax-vscode
-- https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode
+Install **SchemaX** from your editor’s marketplace:
+
+- **VS Code** — [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode) (or search **SchemaX** in Extensions).
+- **Cursor / Antigravity** — [Open VSX](https://open-vsx.org/extension/schemax/schemax-vscode) (or search **SchemaX** in your editor’s extension view).
+
+Full setup (extension + CLI, open a project): [Setup guide](https://vb-dbrks.github.io/schemax/docs/guide/setup/).
 
 ### Python CLI
 
-```python
+```bash
 pip install schemaxpy
 ```
 
-Read more on how to use [SchemaX](https://vb-dbrks.github.io/schemax/)
+Install from [PyPI](https://pypi.org/project/schemaxpy/). Then read [Quickstart](https://vb-dbrks.github.io/schemax/docs/guide/quickstart/) or the [CLI reference](https://vb-dbrks.github.io/schemax/docs/reference/cli-reference/).
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE).
