@@ -10,6 +10,7 @@ from typing import Any
 from schemax.providers.base.operations import Operation
 
 from .grant_differ import diff_grants
+from .metadata_differ import diff_view_properties
 from .operation_builders import (
     create_add_column_op,
     create_add_constraint_op,
@@ -64,6 +65,7 @@ def add_all_views_in_schema(schema_id: str, schema: dict[str, Any]) -> list[Oper
     for view in schema.get("views", []):
         view_id = view["id"]
         ops.append(create_add_view_op(view, schema_id))
+        ops.extend(diff_view_properties(view_id, {}, view.get("properties", {})))
         ops.extend(add_all_tags_for_view(view_id, view))
         ops.extend(diff_grants("view", view_id, [], view.get("grants", [])))
 

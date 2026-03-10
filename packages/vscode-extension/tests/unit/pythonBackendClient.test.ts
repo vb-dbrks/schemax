@@ -29,14 +29,15 @@ describe('PythonBackendClient.run', () => {
 
     const client = new PythonBackendClient();
     const runSingleMock: jest.Mock = jest.fn();
-    runSingleMock.mockImplementationOnce((_cmd: unknown, _args: unknown, _cwd: unknown, rendered: unknown) =>
-      Promise.resolve({
-        success: true,
-        command: rendered,
-        stdout: '{}',
-        stderr: '',
-        exitCode: 0,
-      })
+    runSingleMock.mockImplementationOnce(
+      (_cmd: unknown, _args: unknown, _cwd: unknown, rendered: unknown, _useShell: unknown) =>
+        Promise.resolve({
+          success: true,
+          command: rendered,
+          stdout: '{}',
+          stderr: '',
+          exitCode: 0,
+        })
     );
     (client as unknown as { runSingle: (...args: unknown[]) => unknown }).runSingle = runSingleMock;
 
@@ -46,6 +47,8 @@ describe('PythonBackendClient.run', () => {
     expect(result.command).toContain('/home/user/.venv/bin/python');
     expect(result.command).toContain('-m schemax.cli');
     expect(runSingleMock).toHaveBeenCalledTimes(1);
+    // Configured interpreter paths should use shell: false to handle spaces in paths
+    expect(runSingleMock.mock.calls[0][4]).toBe(false);
   });
 
   test('falls back to python module command when schemax candidate fails', async () => {

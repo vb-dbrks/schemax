@@ -268,6 +268,7 @@ class UnityStateDiffer(StateDiffer):
         for view_id, view in new_views.items():
             if view_id not in old_views:
                 ops.append(create_add_view_op(view, schema_id))
+                ops.extend(diff_view_properties(view_id, {}, view.get("properties", {})))
                 ops.extend(add_all_tags_for_view(view_id, view))
                 ops.extend(diff_grants("view", view_id, [], view.get("grants", [])))
                 continue

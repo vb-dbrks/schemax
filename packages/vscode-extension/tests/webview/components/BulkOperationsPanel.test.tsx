@@ -164,11 +164,21 @@ describe('BulkOperationsPanel', () => {
     expect(mockApplyBulkOps).not.toHaveBeenCalled();
   });
 
-  test('shows operation count message when scope has table grant targets', () => {
+  test('shows no-scope message for grants when no principal is entered', () => {
     render(
       <BulkOperationsPanel scope="catalog" catalogId="cat_1" onClose={onClose} />
     );
-    // Default op is add_table_grants; scope has 2 tables
+    // Default op is add_table_grants; no principal entered yet → 0 count → empty message
+    expect(screen.getByText(/No objects in scope for this operation/)).toBeInTheDocument();
+  });
+
+  test('shows correct operation count when principal is entered', () => {
+    render(
+      <BulkOperationsPanel scope="catalog" catalogId="cat_1" onClose={onClose} />
+    );
+    // Enter a principal to see the count (2 table targets × 1 principal = 2 operations)
+    const principalInput = document.getElementById('bulk-grant-principal') ?? screen.getByLabelText(/Principal/i);
+    fireEvent.input(principalInput, { target: { value: 'data_engineers' } });
     expect(screen.getByText(/2 operation/)).toBeInTheDocument();
   });
 

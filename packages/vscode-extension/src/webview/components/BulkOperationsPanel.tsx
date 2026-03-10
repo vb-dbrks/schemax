@@ -98,8 +98,7 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
       const targetCount = scopeResult.grantTargets.filter(
         (g) => g.targetType === targetType
       ).length;
-      const principalCount = Math.max(parsedPrincipals.length, 1);
-      return targetCount * principalCount;
+      return targetCount * parsedPrincipals.length;
     }
     switch (operationType) {
       case "add_table_tag":
