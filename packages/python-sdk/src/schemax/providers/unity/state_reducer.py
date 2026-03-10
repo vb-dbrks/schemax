@@ -377,6 +377,20 @@ def _update_view(state: UnityState, operation_dict: OperationDict) -> None:
         view.extracted_dependencies = payload.get("extractedDependencies")
 
 
+def _set_view_tag(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    view = _find_view(state, payload["viewId"])
+    if view:
+        view.tags[payload["tagName"]] = payload["tagValue"]
+
+
+def _unset_view_tag(state: UnityState, operation_dict: OperationDict) -> None:
+    payload = _payload(operation_dict)
+    view = _find_view(state, payload["viewId"])
+    if view and payload["tagName"] in view.tags:
+        del view.tags[payload["tagName"]]
+
+
 def _set_view_comment(state: UnityState, operation_dict: OperationDict) -> None:
     payload = _payload(operation_dict)
     view = _find_view(state, payload["viewId"])
@@ -887,6 +901,8 @@ _HANDLERS: dict[str, OperationHandler] = {
     "rename_view": _rename_view,
     "drop_view": _drop_view,
     "update_view": _update_view,
+    "set_view_tag": _set_view_tag,
+    "unset_view_tag": _unset_view_tag,
     "set_view_comment": _set_view_comment,
     "set_view_property": _set_view_property,
     "unset_view_property": _unset_view_property,

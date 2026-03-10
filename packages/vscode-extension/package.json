@@ -1,7 +1,7 @@
 {
   "name": "schemax-vscode",
   "displayName": "SchemaX",
-  "description": "Design and manage Databricks Unity Catalog schemas visually. Version control, SQL generation, apply/rollback/import via CLI. Install Python SDK (pip install schemaxpy) for full features.",
+  "description": "Declarative schema management for Databricks Unity Catalog. Visual designer, Git-based versioning, governance (grants, tags, row filters), and CI/CD-ready deployment across environments.",
   "publisher": "schematic-dev",
   "version": "0.2.9",
   "author": {
@@ -32,7 +32,12 @@
     "delta lake",
     "data governance",
     "visual designer",
-    "catalog"
+    "catalog",
+    "grants",
+    "tags",
+    "rollback",
+    "lakehouse",
+    "schema-as-code"
   ],
   "engines": {
     "vscode": "^1.90.0"
@@ -40,7 +45,7 @@
   "categories": [
     "Data Science",
     "Visualization",
-    "Other"
+    "Programming Languages"
   ],
   "icon": "images/icon128.png",
   "galleryBanner": {

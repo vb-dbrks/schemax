@@ -694,6 +694,26 @@ class ViewOpBuilder:
             op_id=op_id,
         )
 
+    def set_view_tag(
+        self, view_id: str, tag_name: str, tag_value: str, op_id: str | None = None
+    ) -> Operation:
+        return create_operation(
+            provider=self.provider,
+            op_type="set_view_tag",
+            target=view_id,
+            payload={"viewId": view_id, "tagName": tag_name, "tagValue": tag_value},
+            op_id=op_id,
+        )
+
+    def unset_view_tag(self, view_id: str, tag_name: str, op_id: str | None = None) -> Operation:
+        return create_operation(
+            provider=self.provider,
+            op_type="unset_view_tag",
+            target=view_id,
+            payload={"viewId": view_id, "tagName": tag_name},
+            op_id=op_id,
+        )
+
 
 class VolumeOpBuilder:
     """Builds volume operations (add, rename, update, drop)."""

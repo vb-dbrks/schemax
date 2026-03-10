@@ -1,88 +1,121 @@
 # SchemaX
 
-Design and manage **Databricks Unity Catalog** schemas visually—with version control and one-click SQL generation.
+**Declarative schema management and migration for Databricks Unity Catalog** — design schemas visually, version changes in Git, and deploy consistently across environments.
 
-**📖 [Read the full documentation](https://vb-dbrks.github.io/schemax/)** for setup, quickstart, and reference.
+SchemaX brings schema-as-code to the lakehouse. Define your catalogs, schemas, tables, views, volumes, functions, and governance policies in a visual designer or through the CLI, track every change as a versioned operation, and generate dependency-ordered SQL that deploys cleanly from dev through production.
 
----
+<!-- TODO: Add screenshot — designer-overview.png -->
+<!-- ![SchemaX Designer](images/designer-overview.png) -->
+
+## Why schema management matters
+
+As your lakehouse grows, so does the complexity of managing its structure. Catalogs, schemas, tables, views, grants, tags, row filters, column masks — these accumulate across environments and teams. Without a structured approach:
+
+- Schema changes are ad hoc and hard to audit
+- Governance policies drift between dev, test, and production
+- Promoting changes across environments means manual SQL and guesswork
+- Rolling back a bad deployment is painful or impossible
+
+SchemaX solves this by treating your catalog structure as code — versioned, reviewable, and deployable through the same Git and CI/CD workflows you use for everything else.
+
+### Works alongside Spark and Lakeflow Declarative Pipelines
+
+If your tables are created by Spark jobs or DLT pipelines, SchemaX complements that workflow. Use **governance-only mode** to manage comments, tags, grants, row filters, and column masks on existing objects — without touching CREATE TABLE statements. Your pipelines handle the data; SchemaX handles the governance layer.
 
 ## Get started
 
-1. **Install the extension**  
-   In VS Code: Extensions (Ctrl+Shift+X / Cmd+Shift+X) → search **SchemaX** → Install.
+1. **Install the extension**
+   Extensions (Ctrl+Shift+X / Cmd+Shift+X) → search **SchemaX** → Install.
 
-2. **Open the designer**  
-   Click the **SchemaX** icon in the left Activity Bar, then **Open SchemaX Designer**, or use the Command Palette (Ctrl+Shift+P / Cmd+Shift+P) → **SchemaX: Open Designer**.
+2. **Open the designer**
+   Click the **SchemaX** icon in the Activity Bar, then **Open SchemaX Designer**.
+   Or: Command Palette (Ctrl+Shift+P / Cmd+Shift+P) → **SchemaX: Open Designer**.
 
-3. **Create your schema**  
-   Add a catalog, then schemas and tables. Edit columns and properties in the grid. Create snapshots and generate SQL when you’re ready.
+3. **Design your schema**
+   Add catalogs, schemas, and tables. Edit columns, properties, and governance in the detail panels. Create snapshots and generate SQL when ready.
 
-**Optional — Python SDK:** For **import from Databricks**, **apply**, **rollback**, and **validate**, install the SchemaX CLI. Run **SchemaX: Install Python SDK** from the Command Palette (this uses the Python interpreter selected in VS Code when set), or run `pip install schemaxpy` in your own environment. The extension will prompt you when a feature needs the CLI.
-
----
+4. **Install the CLI** (for import, apply, rollback)
+   Command Palette → **SchemaX: Install Python SDK**, or `pip install schemaxpy`.
 
 ## What you can do
 
-- **Visual designer** — Catalogs, schemas, tables, and columns in an intuitive UI.
-- **Version control** — Snapshots with semantic versions; changelog for uncommitted changes.
-- **SQL generation** — Generate migration SQL from the designer.
-- **Data governance** — Constraints, column tags, row filters, column masks, table properties (Delta Lake TBLPROPERTIES).
-- **Import** — Bring existing Unity Catalog assets into your project (requires Python SDK).
+### Schema design
 
----
+- **Full object hierarchy** — Catalogs, schemas, tables, views, volumes, functions, and materialized views
+- **Column management** — Add, rename, reorder, change types, set nullability, comments, and tags
+- **Table configuration** — Delta and Iceberg formats, partitioning, liquid clustering, external tables with storage locations
+- **View dependencies** — Automatic dependency extraction from SQL with correct creation ordering
+- **Constraints** — Primary keys, foreign keys, and check constraints
+
+### Data governance
+
+- **Grants** — GRANT and REVOKE on all securable object types (catalogs through columns)
+- **Tags** — Governance tags on catalogs, schemas, tables, views, and columns
+- **Row filters** — Row-level security policies
+- **Column masks** — Column-level data masking
+- **Table properties** — Delta Lake TBLPROPERTIES configuration
+- **Bulk operations** — Apply the same grant or tag across an entire catalog or schema in one action
+
+<!-- TODO: Add screenshot — governance-panel.png -->
+<!-- ![Governance](images/governance-panel.png) -->
+
+### Version control and deployment
+
+- **Snapshots** — Semantic versioned snapshots with changelog tracking
+- **Environment mapping** — Logical catalog names mapped to physical names per environment (dev/test/prod)
+- **SQL generation** — Dependency-ordered, idempotent DDL with environment-specific catalog names
+- **Apply and rollback** — Deploy via Databricks Statement Execution API with deployment tracking
+- **Safety validation** — Operations classified as SAFE, RISKY, or DESTRUCTIVE before rollback
+- **Governance-only mode** — Deploy only governance DDL, skip CREATE statements for pipeline-managed objects
+- **CI/CD ready** — GitHub Actions, GitLab CI, Azure DevOps, and Databricks Asset Bundles integration
+
+<!-- TODO: Add screenshot — sql-preview.png -->
+<!-- ![SQL Generation](images/sql-preview.png) -->
+
+### Import existing assets
+
+- **From Databricks** — Import your live Unity Catalog hierarchy into a SchemaX project
+- **From SQL** — Parse DDL files and import the schema structure
 
 ## Commands
 
-| Command | What it does |
-|--------|----------------|
-| **SchemaX: Open Designer** | Open the schema designer |
-| **SchemaX: Create Snapshot** | Save a version snapshot |
-| **SchemaX: Generate SQL Migration** | Generate SQL from your changes |
+| Command | Description |
+|---------|-------------|
+| **SchemaX: Open Designer** | Open the visual schema designer |
+| **SchemaX: Create Snapshot** | Save a versioned snapshot |
+| **SchemaX: Generate SQL Migration** | Generate SQL from pending changes |
 | **SchemaX: Show Last Emitted Changes** | View recent operations |
-| **SchemaX: Import Existing Assets** | Import from Databricks (needs Python SDK) |
+| **SchemaX: Import Existing Assets** | Import from Databricks or SQL (needs CLI) |
 | **SchemaX: Install Python SDK** | Install `schemaxpy` for CLI features |
 
----
+## Multi-provider roadmap
 
-## Where things are stored
+SchemaX is built on a provider architecture. Unity Catalog is fully supported today (v0.2.x). Lakebase (PostgreSQL) support is in active development for v0.3.x — same workflow, same Git integration, different catalog system.
 
-SchemaX uses a `.schemax` folder in your workspace:
+| Provider | Status |
+|----------|--------|
+| **Unity Catalog** | Available (v0.2.x) |
+| **Lakebase (PostgreSQL)** | In development (v0.3.x) |
 
-- `project.json` — Project and environment settings  
-- `changelog.json` — Uncommitted changes  
-- `snapshots/` — Version snapshots (e.g. v0.1.0.json)
+## Project structure
 
----
+SchemaX stores project data in a `.schemax` folder in your workspace:
+
+- `project.json` — Project configuration and environment settings
+- `changelog.json` — Pending changes (uncommitted operations)
+- `snapshots/` — Version snapshots (e.g. `v0.1.0.json`)
 
 ## Requirements
 
-- VS Code 1.90.0 or newer  
+- VS Code 1.90.0 or newer
 - A workspace folder open
-
----
-
-## Development / Testing
-
-- Run tests: `npm test` (unit + integration).
-- UI testing guide (unit, integration, E2E): see [TESTING-UI.md](TESTING-UI.md).
-
----
-
-## Publishing (maintainers)
-
-Two workflows publish the extension:
-
-- **VS Code Marketplace** — `.github/workflows/publish-vscode-extension.yml` (publisher `schematic-dev`, uses `VSCE_PAT`).
-- **Open VSX** — `.github/workflows/publish-openvsx.yml` (namespace `schemax`, uses `OVSX_PAT`). Used by Cursor and Antigravity.
-
-Both run on `v*` tag push and via **Actions → Run workflow**. For Open VSX, add the `OVSX_PAT` secret (from [open-vsx.org/user-settings/tokens](https://open-vsx.org/user-settings/tokens)) to the same environment as `VSCE_PAT` (e.g. `vscode-marketplace`). Publishing is done via CI only; the workflow overrides the publisher to `schemax` for Open VSX.
-
----
+- Python SDK (`pip install schemaxpy`) for import, apply, rollback, and validate
 
 ## Links
 
-- **Documentation**: [vb-dbrks.github.io/schemax](https://vb-dbrks.github.io/schemax/)
-- **Report an issue**: [GitHub Issues](https://github.com/vb-dbrks/schemax-vscode/issues)
-- **Repository**: [github.com/vb-dbrks/schemax-vscode](https://github.com/vb-dbrks/schemax-vscode)
+- [Documentation](https://vb-dbrks.github.io/schemax/) — Setup, quickstart, and reference
+- [Python SDK on PyPI](https://pypi.org/project/schemaxpy/) — CLI and automation
+- [GitHub Repository](https://github.com/vb-dbrks/schemax-vscode) — Source code and issues
+- [Report an issue](https://github.com/vb-dbrks/schemax-vscode/issues)
 
 Apache License 2.0 — see [LICENSE](../../LICENSE) for details.

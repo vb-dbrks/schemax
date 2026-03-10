@@ -244,6 +244,95 @@ class TestTableOperations:
         assert "department" not in view.tags
 
 
+class TestViewTagOperations:
+    """Test dedicated view tag operations (set_view_tag / unset_view_tag)."""
+
+    def test_set_view_tag(self, empty_unity_state):
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", op_id="op_3"),
+        ]
+        state = apply_operations(empty_unity_state, setup_ops)
+
+        tag_op = builder.view.set_view_tag("view_1", "env", "prod", op_id="op_4")
+        new_state = apply_operation(state, tag_op)
+
+        view = new_state.catalogs[0].schemas[0].views[0]
+        assert view.tags["env"] == "prod"
+
+    def test_unset_view_tag(self, empty_unity_state):
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", op_id="op_3"),
+        ]
+        state = apply_operations(empty_unity_state, setup_ops)
+        state = apply_operation(
+            state, builder.view.set_view_tag("view_1", "env", "prod", op_id="op_4")
+        )
+
+        unset_op = builder.view.unset_view_tag("view_1", "env", op_id="op_5")
+        new_state = apply_operation(state, unset_op)
+
+        view = new_state.catalogs[0].schemas[0].views[0]
+        assert "env" not in view.tags
+
+    def test_set_view_tag_multiple(self, empty_unity_state):
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", op_id="op_3"),
+        ]
+        state = apply_operations(empty_unity_state, setup_ops)
+        state = apply_operation(
+            state, builder.view.set_view_tag("view_1", "env", "prod", op_id="op_4")
+        )
+        state = apply_operation(
+            state, builder.view.set_view_tag("view_1", "team", "data", op_id="op_5")
+        )
+
+        view = state.catalogs[0].schemas[0].views[0]
+        assert view.tags == {"env": "prod", "team": "data"}
+
+    def test_set_view_tag_overwrite(self, empty_unity_state):
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", op_id="op_3"),
+        ]
+        state = apply_operations(empty_unity_state, setup_ops)
+        state = apply_operation(
+            state, builder.view.set_view_tag("view_1", "env", "dev", op_id="op_4")
+        )
+        state = apply_operation(
+            state, builder.view.set_view_tag("view_1", "env", "prod", op_id="op_5")
+        )
+
+        view = state.catalogs[0].schemas[0].views[0]
+        assert view.tags["env"] == "prod"
+
+    def test_unset_view_tag_nonexistent(self, empty_unity_state):
+        """Unsetting a tag that doesn't exist should be a no-op."""
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", op_id="op_3"),
+        ]
+        state = apply_operations(empty_unity_state, setup_ops)
+
+        unset_op = builder.view.unset_view_tag("view_1", "nonexistent", op_id="op_4")
+        new_state = apply_operation(state, unset_op)
+
+        view = new_state.catalogs[0].schemas[0].views[0]
+        assert view.tags == {}
+
+
 class TestColumnOperations:
     """Test column operations"""
 

@@ -76,17 +76,30 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
   );
 
   const [operationType, setOperationType] = useState<BulkOperationType>("add_table_grants");
-  const [principal, setPrincipal] = useState("");
+  const [principalsStr, setPrincipalsStr] = useState("");
   const [privilegesStr, setPrivilegesStr] = useState("");
   const [tagName, setTagName] = useState("");
   const [tagValue, setTagValue] = useState("");
 
   const previewText = formatScopePreview(scopeResult);
 
+  const parsedPrincipals = useMemo(
+    () =>
+      principalsStr
+        .split(",")
+        .map((p) => p.trim())
+        .filter((p) => p !== ""),
+    [principalsStr]
+  );
+
   const opCount = useMemo(() => {
     if (isGrantOp(operationType)) {
       const targetType = GRANT_OP_TO_TARGET[operationType];
-      return scopeResult.grantTargets.filter((g) => g.targetType === targetType).length;
+      const targetCount = scopeResult.grantTargets.filter(
+        (g) => g.targetType === targetType
+      ).length;
+      const principalCount = Math.max(parsedPrincipals.length, 1);
+      return targetCount * principalCount;
     }
     switch (operationType) {
       case "add_table_tag":
@@ -100,31 +113,30 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
       default:
         return 0;
     }
-  }, [operationType, scopeResult]);
+  }, [operationType, scopeResult, parsedPrincipals]);
 
   const canApply = useMemo(() => {
     if (opCount === 0) return false;
     if (isGrantOp(operationType)) {
-      return principal.trim() !== "" && parsePrivileges(privilegesStr).length > 0;
+      return parsedPrincipals.length > 0 && parsePrivileges(privilegesStr).length > 0;
     }
     if (isTagOp(operationType)) {
       return tagName.trim() !== "" && tagValue.trim() !== "";
     }
     return false;
-  }, [operationType, opCount, principal, privilegesStr, tagName, tagValue]);
+  }, [operationType, opCount, parsedPrincipals, privilegesStr, tagName, tagValue]);
 
   const handleApply = () => {
     if (!canApply) return;
     let ops: Operation[] = [];
     if (isGrantOp(operationType)) {
       const privileges = parsePrivileges(privilegesStr);
-      if (principal.trim() && privileges.length > 0) {
-        ops = buildBulkGrantOps(
-          scopeResult,
-          principal.trim(),
-          privileges,
-          GRANT_OP_TO_TARGET[operationType]
-        );
+      if (parsedPrincipals.length > 0 && privileges.length > 0) {
+        for (const p of parsedPrincipals) {
+          ops = ops.concat(
+            buildBulkGrantOps(scopeResult, p, privileges, GRANT_OP_TO_TARGET[operationType])
+          );
+        }
       }
     } else if (operationType === "add_table_tag" && tagName.trim() && tagValue.trim()) {
       ops = buildBulkTableTagOps(scopeResult, tagName.trim(), tagValue.trim());
@@ -204,17 +216,17 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
             <>
               <div className="modal-field-group">
                 <label htmlFor="bulk-grant-principal">
-                  Principal (user, group, or service principal)
+                  Principals (comma-separated users, groups, or service principals)
                 </label>
                 <VSCodeTextField
                   id="bulk-grant-principal"
-                  value={principal}
+                  value={principalsStr}
                   onInput={(e) => {
                     const target = e.target as HTMLInputElement;
-                    setPrincipal(target.value ?? "");
+                    setPrincipalsStr(target.value ?? "");
                   }}
-                  placeholder="e.g. data_engineers"
-                  aria-label="Principal"
+                  placeholder="e.g. data_engineers, analysts, ml_team"
+                  aria-label="Principals"
                 />
               </div>
               <div className="modal-field-group">

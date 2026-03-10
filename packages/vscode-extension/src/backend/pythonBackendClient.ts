@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import * as vscode from "vscode";
 import type { CommandEnvelope, PythonCommandResult } from "./contracts";
 
 type StreamHandler = (chunk: string) => void;
@@ -9,7 +10,28 @@ interface RunOptions {
   signal?: AbortSignal;
 }
 
-const COMMAND_CANDIDATES = ["schemax", "python3 -m schemax.cli", "python -m schemax.cli"] as const;
+const BASE_COMMAND_CANDIDATES = [
+  "schemax",
+  "python3 -m schemax.cli",
+  "python -m schemax.cli",
+];
+
+/**
+ * Build the ordered list of command candidates.
+ * If the user (or VS Code Python extension) has configured an interpreter path,
+ * prepend it so that venv / uv / poetry / conda envs selected in VS Code are
+ * tried first — before falling back to PATH-based lookup.
+ */
+function getCommandCandidates(): string[] {
+  const configured = vscode.workspace
+    .getConfiguration("python")
+    .get<string>("defaultInterpreterPath");
+  if (configured && configured.trim()) {
+    const pyPath = configured.trim();
+    return [`${pyPath} -m schemax.cli`, ...BASE_COMMAND_CANDIDATES];
+  }
+  return [...BASE_COMMAND_CANDIDATES];
+}
 
 function parseCommandCandidate(
   candidate: string,
@@ -84,7 +106,7 @@ export class PythonBackendClient {
       exitCode: null,
     };
 
-    for (const candidate of COMMAND_CANDIDATES) {
+    for (const candidate of getCommandCandidates()) {
       const { cmd, fullArgs } = parseCommandCandidate(candidate, args);
       const rendered = `${cmd} ${fullArgs.join(" ")}`;
       const result = await this.runSingle(cmd, fullArgs, cwd, rendered, options);
@@ -186,7 +208,7 @@ export class PythonBackendClient {
         return;
       }
 
-      const child = spawn(cmd, args, { cwd, shell: false });
+      const child = spawn(cmd, args, { cwd, shell: true });
       let stdout = "";
       let stderr = "";
       let spawnError: string | null = null;

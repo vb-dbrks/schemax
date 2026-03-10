@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.10] - 2026-03-10
+
+### Added
+
+- **View tags** — Full support for `ALTER VIEW SET TAGS` and `ALTER VIEW UNSET TAGS` (Databricks DBR 13.3+). Add, update, and remove tags on views through the Designer or state files. Tags are tracked in the changelog, included in SQL generation, and applied during deployment.
+- **Bulk view tag operations** — Apply the same tag to all views in a catalog or schema scope using the bulk operations panel.
+
+### Changed
+
+- **State differ refactored by responsibility** — Split the monolithic `state_differ.py` into focused modules: `operation_builders.py` (factory functions), `grant_differ.py` (grant comparison), `metadata_differ.py` (tags, properties, constraints), and `bulk_operations.py` (recursive traversal). The public `UnityStateDiffer` API is unchanged.
+
+### Fixed
+
+- **Live integration test performance** — Existence checks in test helpers (`table_exists`, `volume_exists`, `function_exists`, `materialized_view_exists`, `assert_schema_exists`) now use single `information_schema` queries instead of full catalog discovery. Tests run approximately 7x faster per check on large metastores.
+
 ## [0.2.9] - 2026-03-06
 
 ### Added
