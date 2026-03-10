@@ -15,8 +15,8 @@ def test_workspace_repository_initializes_workspace(tmp_path: Path) -> None:
     repo.ensure_initialized(workspace=workspace, provider_id="unity")
     project = repo.read_project(workspace=workspace)
 
-    assert project["version"] == 4
-    assert project["provider"]["type"] == "unity"
+    assert project["version"] == 5
+    assert project["targets"]["default"]["type"] == "unity"
 
 
 def test_workspace_repository_appends_operations(tmp_path: Path) -> None:

@@ -148,7 +148,7 @@ def empty_unity_state():
 
 @pytest.fixture
 def initialized_workspace(temp_workspace):
-    """Workspace with initialized .schemax project (v4)"""
+    """Workspace with initialized .schemax project (v5)"""
     ensure_project_file(temp_workspace, provider_id="unity")
     return temp_workspace
 

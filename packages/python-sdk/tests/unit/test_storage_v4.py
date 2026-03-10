@@ -48,13 +48,14 @@ class TestProjectInitialization:
         with open(project_file) as f:
             project = json.load(f)
 
-        # Check v4 schema
-        assert project["version"] == 4
-        assert "provider" in project
-        assert "environments" in project["provider"]
+        # Check v5 schema
+        assert project["version"] == 5
+        assert "targets" in project
+        default_target = project["targets"]["default"]
+        assert "environments" in default_target
 
         # Check default environments
-        envs = project["provider"]["environments"]
+        envs = project["targets"]["default"]["environments"]
         assert "dev" in envs
         assert "test" in envs
         assert "prod" in envs
@@ -133,8 +134,8 @@ class TestFileOperations:
 
         # Read project
         project = storage.read_project(tmp_path)
-        assert project["version"] == 4
-        assert "provider" in project
+        assert project["version"] == 5
+        assert "targets" in project
 
         # Modify and write
         project["name"] = "test_modified"
@@ -230,8 +231,11 @@ class TestLegacySingleCatalogHardBreak:
     """Legacy implicit workspace markers must fail fast."""
 
     def test_read_project_rejects_single_catalog_mode(self, tmp_path):
+        # Write a v4 project directly so read_project triggers legacy validation
         storage.ensure_project_file(tmp_path, "unity")
         project = storage.read_project(tmp_path)
+        project["version"] = 4
+        project["provider"] = project.pop("targets")["default"]
         project["settings"]["catalogMode"] = "single"
         storage.write_project(tmp_path, project)
 

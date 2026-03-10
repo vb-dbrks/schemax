@@ -15,6 +15,7 @@ import type {
   UnityView,
   UnityVolume,
 } from "../models/unity";
+import { getDefaultTargetConfig } from "../models/unity";
 
 // Environment config type for tooltip
 interface EnvironmentConfig {
@@ -1125,10 +1126,10 @@ export const Sidebar: React.FC = () => {
       <div className="tree">{renderTree()}</div>
 
       {/* Render tooltip at root level with fixed positioning */}
-      {hoveredCatalogId && tooltipAnchor && hoveredCatalog && project.provider.environments && (
+      {hoveredCatalogId && tooltipAnchor && hoveredCatalog && getDefaultTargetConfig(project)?.environments && (
         <TopLevelMappingTooltip
           logicalName={hoveredCatalog.name}
-          environments={project.provider.environments}
+          environments={getDefaultTargetConfig(project)?.environments || {}}
           topLevelDisplayName={topLevelName}
           anchorElement={tooltipAnchor}
         />

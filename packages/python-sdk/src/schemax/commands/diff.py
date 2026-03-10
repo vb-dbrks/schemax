@@ -89,7 +89,9 @@ def generate_diff(
     )
 
     project = repository.read_project(workspace=workspace)
-    provider_id = project["provider"]["type"]
+    from schemax.core.storage import get_target_config, _get_provider_from_target
+    target_cfg = get_target_config(project)
+    provider_id = _get_provider_from_target(target_cfg)
     provider = ProviderRegistry.get(provider_id)
     if not provider:
         raise DiffError(f"Provider '{provider_id}' not found in registry")

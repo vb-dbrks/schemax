@@ -9,6 +9,7 @@ export interface Operation {
   op: string;
   target: string;
   payload: Record<string, unknown>;
+  target_name?: string | null; // v5 multi-target: which target this op belongs to
 }
 
 export interface ProviderCapabilities {

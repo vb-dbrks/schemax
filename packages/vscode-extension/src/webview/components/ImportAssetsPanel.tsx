@@ -7,6 +7,7 @@ import {
 } from "@vscode/webview-ui-toolkit/react";
 import { getVsCodeApi } from "../vscode-api";
 import type { ProjectFile } from "../models/unity";
+import { getDefaultTargetConfig } from "../models/unity";
 
 const vscode = getVsCodeApi();
 
@@ -115,7 +116,7 @@ export function ImportAssetsPanel({
   onCancel,
   pickedSqlFilePath = null,
 }: ImportAssetsPanelProps) {
-  const envNames = Object.keys(project.provider?.environments || {});
+  const envNames = Object.keys(getDefaultTargetConfig(project)?.environments || {});
   const [activeTab, setActiveTab] = React.useState<ImportTab>("databricks");
   const [target, setTarget] = React.useState<string>(envNames[0] || "dev");
   const [profile, setProfile] = React.useState<string>("DEFAULT");
@@ -593,7 +594,8 @@ function parseCatalogMappings(input: string): Record<string, string> | undefined
 }
 
 function buildSuggestedCatalogMappingsText(project: ProjectFile, target: string): string {
-  const envCfg = (project.provider?.environments?.[target] || {}) as {
+  const targetConfig = getDefaultTargetConfig(project);
+  const envCfg = (targetConfig?.environments?.[target] || {}) as {
     catalogMappings?: Record<string, string>;
     topLevelName?: string;
   };

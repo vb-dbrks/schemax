@@ -51,6 +51,7 @@ class Operation(BaseModel):
     op: str  # Operation type with provider prefix
     target: str  # ID of target object
     payload: dict[str, Any]  # Operation-specific data
+    target_name: str | None = None  # v5 multi-target: which target this op belongs to
 
 
 class OperationMetadata(BaseModel):
@@ -72,6 +73,7 @@ def create_operation(
     target: str,
     payload: dict[str, Any],
     op_id: str | None = None,
+    target_name: str | None = None,
 ) -> Operation:
     """
     Helper to create a new operation with defaults
@@ -99,4 +101,5 @@ def create_operation(
         op=f"{provider}.{op_type}",
         target=target,
         payload=payload,
+        target_name=target_name,
     )

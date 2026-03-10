@@ -187,11 +187,21 @@ export interface ProjectDeployment {
   environment: string;
 }
 
+export interface TargetConfig {
+  type: string;
+  version: string;
+  environments?: Record<string, UnityProjectEnvironment>;
+}
+
 export interface ProjectFile {
   version: number;
   name: string;
   activeEnvironment?: string;
-  provider: {
+  // v5: multi-target support
+  targets: Record<string, TargetConfig>;
+  defaultTarget: string;
+  // v4 compat: provider is kept as optional for components that haven't migrated yet
+  provider?: {
     type: string;
     version: string;
     environments?: Record<string, UnityProjectEnvironment>;
@@ -219,6 +229,18 @@ export interface ProjectFile {
     versionPrefix: string;
   };
   latestSnapshot: string | null;
+}
+
+/**
+ * Get the default target config from a project.
+ */
+export function getDefaultTargetConfig(project: ProjectFile): TargetConfig {
+  const targetName = project.defaultTarget || "default";
+  const config = project.targets?.[targetName];
+  if (config) return config;
+  // Fallback for v4-shaped data that hasn't been fully migrated in webview
+  if (project.provider) return project.provider;
+  throw new Error(`Target '${targetName}' not found in project`);
 }
 
 // Legacy compatibility aliases used across webview components.

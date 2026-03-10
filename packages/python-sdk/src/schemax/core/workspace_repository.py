@@ -15,6 +15,7 @@ from .storage import (
     ensure_project_file,
     get_environment_config,
     get_snapshot_file_path,
+    get_target_config,
     load_current_state,
     read_changelog,
     read_project,
@@ -102,10 +103,16 @@ class WorkspaceRepository:
         )
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, target_name: str | None = None
     ) -> dict[str, Any]:
         """Resolve one environment config from project configuration."""
-        return get_environment_config(project, environment)
+        return get_environment_config(project, environment, target_name=target_name)
+
+    def get_target_config(
+        self, *, project: dict[str, Any], target_name: str | None = None
+    ) -> dict[str, Any]:
+        """Resolve one target config from project configuration."""
+        return get_target_config(project, target_name)
 
     def open_session(self, *, workspace: Path) -> WorkspaceSession:
         """Open a transactional workspace session."""
@@ -127,9 +134,11 @@ class WorkspaceRepository:
         """Resolve one snapshot file path."""
         return get_snapshot_file_path(workspace, version)
 
-    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
+    def load_current_state(
+        self, *, workspace: Path, validate: bool = False, target_name: str | None = None
+    ) -> tuple[Any, ...]:
         """Load current provider state and changelog."""
-        return load_current_state(workspace, validate=validate)
+        return load_current_state(workspace, validate=validate, target_name=target_name)
 
     @staticmethod
     def _normalize_operation(operation: Operation | dict[str, Any]) -> Operation:

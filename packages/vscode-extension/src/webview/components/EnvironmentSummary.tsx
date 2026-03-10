@@ -1,6 +1,7 @@
 import React from "react";
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react";
 import { useDesignerStore } from "../state/useDesignerStore";
+import { getDefaultTargetConfig } from "../models/unity";
 import { getVsCodeApi } from "../vscode-api";
 
 interface EnvironmentConfig {
@@ -29,7 +30,7 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
     }
   }, []);
 
-  const environments = project?.provider?.environments;
+  const environments = project ? getDefaultTargetConfig(project).environments : undefined;
   if (!environments || Object.keys(environments).length === 0) {
     return null;
   }

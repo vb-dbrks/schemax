@@ -694,9 +694,9 @@ def test_workspace_state_json_output(monkeypatch, temp_workspace: Path) -> None:
         read_project=lambda *, workspace: {
             "name": "demo",
             "latestSnapshot": None,
-            "provider": {"type": "unity", "version": "1.0.0"},
+            "targets": {"default": {"type": "unity", "version": "1.0.0"}},
         },
-        load_current_state=lambda *, workspace, validate=False: (
+        load_current_state=lambda *, workspace, validate=False, target_name=None: (
             {"catalogs": [{"id": "cat_1", "name": "demo"}]},
             {
                 "version": 1,

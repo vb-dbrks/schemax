@@ -2441,6 +2441,48 @@ body {
   color: var(--vscode-foreground);
 }
 
+/* Target Tabs */
+.target-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.target-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.target-tab:hover {
+  color: var(--vscode-foreground);
+}
+
+.target-tab--active {
+  color: var(--vscode-foreground);
+  border-bottom-color: var(--vscode-focusBorder);
+}
+
+.target-tab__name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.target-tab__provider {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 /* Environment Sections */
 .environment-section {
   border: 1px solid var(--vscode-panel-border);

@@ -1,8 +1,10 @@
 """
-Storage Layer V4 - Multi-Environment Support
+Storage Layer V5 - Multi-Target / Multi-Provider Support
 
-Supports environment-specific catalog configurations with logical → physical name mapping.
-Breaking change from v3: environments are now rich objects instead of simple arrays.
+Supports multiple named targets (provider instances) per project, each managing
+one scope of infrastructure. Transparent auto-migration from v4 → v5 on first load.
+
+V4 → V5 migration: wraps the single `provider` object into `targets: { "default": provider }`.
 """
 
 import hashlib
@@ -52,16 +54,18 @@ def _has_legacy_implicit_project_markers(project: dict[str, Any]) -> bool:
     settings = cast(dict[str, Any], project.get("settings", {}))
     if settings.get("catalogMode") == "single":
         return True
-    environments = (
-        cast(dict[str, Any], project.get("provider", {})).get("environments", {})
-        if isinstance(project.get("provider"), dict)
-        else {}
-    )
-    if not isinstance(environments, dict):
-        return False
-    for env_config in environments.values():
-        if not isinstance(env_config, dict):
-            continue
+    # Check v4 format (provider.environments) and v5 format (targets.*.environments)
+    all_environments: list[dict[str, Any]] = []
+    if isinstance(project.get("provider"), dict):
+        envs = cast(dict[str, Any], project["provider"]).get("environments", {})
+        if isinstance(envs, dict):
+            all_environments.extend(v for v in envs.values() if isinstance(v, dict))
+    for target_cfg in (project.get("targets") or {}).values():
+        if isinstance(target_cfg, dict):
+            envs = target_cfg.get("environments", {})
+            if isinstance(envs, dict):
+                all_environments.extend(v for v in envs.values() if isinstance(v, dict))
+    for env_config in all_environments:
         mappings = env_config.get("catalogMappings", {})
         if isinstance(mappings, dict) and "__implicit__" in mappings:
             return True
@@ -270,8 +274,51 @@ def ensure_schemax_dir(workspace_path: Path) -> None:
     snapshots_dir.mkdir(parents=True, exist_ok=True)
 
 
+def _migrate_v4_to_v5(project: dict[str, Any]) -> dict[str, Any]:
+    """Migrate a v4 project dict to v5 in-memory, wrapping provider into targets."""
+    old_provider = project.get("provider", {})
+    if not isinstance(old_provider, dict):
+        old_provider = {}
+    project["version"] = 5
+    project["targets"] = {
+        "default": old_provider,
+    }
+    project["defaultTarget"] = "default"
+    # Remove the old top-level provider key
+    project.pop("provider", None)
+    return project
+
+
+def _get_provider_from_target(target_config: dict[str, Any]) -> str:
+    """Extract provider type string from a target config dict."""
+    return str(target_config.get("type", "unity"))
+
+
+def get_target_config(project: dict[str, Any], target_name: str | None = None) -> dict[str, Any]:
+    """Get a specific target's configuration from a v5 project.
+
+    Args:
+        project: Project data (v5)
+        target_name: Target name. If None, uses defaultTarget.
+
+    Returns:
+        Target configuration dict (contains type, version, environments, etc.)
+
+    Raises:
+        ValueError: If target not found
+    """
+    targets = project.get("targets", {})
+    resolved_name = target_name or project.get("defaultTarget", "default")
+    if resolved_name not in targets:
+        available = ", ".join(targets.keys())
+        raise ValueError(
+            f"Target '{resolved_name}' not found in project. Available targets: {available}"
+        )
+    return cast(dict[str, Any], targets[resolved_name])
+
+
 def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> None:
-    """Initialize a new v4 project with environment configuration
+    """Initialize a new v5 project with environment configuration
 
     Args:
         workspace_path: Path to workspace
@@ -282,11 +329,17 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         if project_path.exists():
             with open(project_path, encoding="utf-8") as f:
                 project = cast(dict[str, Any], json.load(f))
-            if project.get("version") == 4:
+            version = project.get("version")
+            if version == 5:
+                return
+            if version == 4:
+                # Auto-migrate v4 → v5
+                project = _migrate_v4_to_v5(project)
+                _write_json_atomic(project_path, project)
                 return
             raise ValueError(
-                f"Project version {project.get('version')} not supported. "
-                "Please create a new project or manually migrate to v4."
+                f"Project version {version} not supported. "
+                "Please create a new project or manually migrate."
             )
 
         workspace_name = workspace_path.name
@@ -298,42 +351,45 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
             )
 
         new_project = {
-            "version": 4,
+            "version": 5,
             "name": workspace_name,
-            "provider": {
-                "type": provider_id,
-                "version": provider.info.version,
-                "environments": {
-                    "dev": {
-                        "topLevelName": f"dev_{workspace_name}",
-                        "description": "Development environment",
-                        "allowDrift": True,
-                        "requireSnapshot": False,
-                        "autoCreateTopLevel": True,
-                        "autoCreateSchemaxSchema": True,
-                        "catalogMappings": {},
-                    },
-                    "test": {
-                        "topLevelName": f"test_{workspace_name}",
-                        "description": "Test/staging environment",
-                        "allowDrift": False,
-                        "requireSnapshot": True,
-                        "autoCreateTopLevel": True,
-                        "autoCreateSchemaxSchema": True,
-                        "catalogMappings": {},
-                    },
-                    "prod": {
-                        "topLevelName": f"prod_{workspace_name}",
-                        "description": "Production environment",
-                        "allowDrift": False,
-                        "requireSnapshot": True,
-                        "requireApproval": False,
-                        "autoCreateTopLevel": False,
-                        "autoCreateSchemaxSchema": True,
-                        "catalogMappings": {},
+            "targets": {
+                "default": {
+                    "type": provider_id,
+                    "version": provider.info.version,
+                    "environments": {
+                        "dev": {
+                            "topLevelName": f"dev_{workspace_name}",
+                            "description": "Development environment",
+                            "allowDrift": True,
+                            "requireSnapshot": False,
+                            "autoCreateTopLevel": True,
+                            "autoCreateSchemaxSchema": True,
+                            "catalogMappings": {},
+                        },
+                        "test": {
+                            "topLevelName": f"test_{workspace_name}",
+                            "description": "Test/staging environment",
+                            "allowDrift": False,
+                            "requireSnapshot": True,
+                            "autoCreateTopLevel": True,
+                            "autoCreateSchemaxSchema": True,
+                            "catalogMappings": {},
+                        },
+                        "prod": {
+                            "topLevelName": f"prod_{workspace_name}",
+                            "description": "Production environment",
+                            "allowDrift": False,
+                            "requireSnapshot": True,
+                            "requireApproval": False,
+                            "autoCreateTopLevel": False,
+                            "autoCreateSchemaxSchema": True,
+                            "catalogMappings": {},
+                        },
                     },
                 },
             },
+            "defaultTarget": "default",
             "managedLocations": {},
             "externalLocations": {},
             **default_project_skeleton_tail(),
@@ -350,22 +406,22 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
         _write_json_atomic(get_changelog_file_path(workspace_path), new_changelog)
 
     provider_name = provider.info.name
-    print(f"[SchemaX] Initialized new v4 project: {workspace_name} with provider: {provider_name}")
+    print(f"[SchemaX] Initialized new v5 project: {workspace_name} with provider: {provider_name}")
     print("[SchemaX] Environments: dev, test, prod")
 
 
 def read_project(workspace_path: Path) -> dict[str, Any]:
-    """Read project file (v4 only)
+    """Read project file (v4 auto-migrated to v5, or v5 native)
 
     Args:
         workspace_path: Path to workspace
 
     Returns:
-        Project data
+        Project data (always v5 format)
 
     Raises:
         FileNotFoundError: If project file does not exist
-        ValueError: If project version is not v4
+        ValueError: If project version is not v4 or v5
     """
     project_path = get_project_file_path(workspace_path)
 
@@ -377,14 +433,20 @@ def read_project(workspace_path: Path) -> dict[str, Any]:
     with open(project_path, encoding="utf-8") as f:
         project = cast(dict[str, Any], json.load(f))
 
-    # Enforce v4
-    if project.get("version") != 4:
+    version = project.get("version")
+    if version == 4:
+        # Transparent v4 → v5 migration: upgrade in-memory and persist
+        validate_workspace_not_legacy_implicit(project)
+        project = _migrate_v4_to_v5(project)
+        _write_json_atomic(project_path, project)
+    elif version == 5:
+        pass  # Already v5
+    else:
         raise ValueError(
-            f"Project version {project.get('version')} not supported. "
-            "This version of SchemaX requires v4 projects. "
-            "Please create a new project or manually migrate to v4."
+            f"Project version {version} not supported. "
+            "This version of SchemaX requires v4 or v5 projects. "
+            "Please create a new project or manually migrate."
         )
-    validate_workspace_not_legacy_implicit(project)
 
     return project
 
@@ -460,13 +522,14 @@ def write_snapshot(workspace_path: Path, snapshot: dict[str, Any]) -> None:
 
 
 def load_current_state(
-    workspace_path: Path, validate: bool = False
+    workspace_path: Path, validate: bool = False, target_name: str | None = None
 ) -> tuple[ProviderState, dict[str, Any], Provider, dict[str, Any] | None]:
     """Load current state using provider
 
     Args:
         workspace_path: Path to workspace
         validate: Whether to validate dependencies (default False for performance)
+        target_name: Optional target name (v5). Uses defaultTarget if None.
 
     Returns:
         Tuple of (state, changelog, provider, validation_result)
@@ -477,7 +540,9 @@ def load_current_state(
     project = read_project(workspace_path)
     changelog = read_changelog(workspace_path)
 
-    return _load_current_state_from_data(workspace_path, project, changelog, validate=validate)
+    return _load_current_state_from_data(
+        workspace_path, project, changelog, validate=validate, target_name=target_name
+    )
 
 
 def _load_current_state_from_data(
@@ -486,13 +551,17 @@ def _load_current_state_from_data(
     changelog: dict[str, Any],
     *,
     validate: bool,
+    target_name: str | None = None,
 ) -> tuple[ProviderState, dict[str, Any], Provider, dict[str, Any] | None]:
     """Load state using preloaded project/changelog data to avoid duplicate disk reads."""
     validate_workspace_not_legacy_implicit(project, changelog)
-    provider = ProviderRegistry.get(project["provider"]["type"])
+    # v5: resolve provider type from the target config
+    target_cfg = get_target_config(project, target_name)
+    provider_type = _get_provider_from_target(target_cfg)
+    provider = ProviderRegistry.get(provider_type)
     if provider is None:
         raise ValueError(
-            f"Provider '{project['provider']['type']}' not found. "
+            f"Provider '{provider_type}' not found. "
             "Please ensure the provider is installed."
         )
 
@@ -558,20 +627,23 @@ def validate_dependencies_internal(
     return {"errors": errors, "warnings": warnings}
 
 
-def append_ops(workspace_path: Path, ops: list[Operation]) -> None:
+def append_ops(workspace_path: Path, ops: list[Operation], target_name: str | None = None) -> None:
     """Append operations to changelog
 
     Args:
         workspace_path: Path to workspace
         ops: Operations to append
+        target_name: Optional target name (v5). Uses defaultTarget if None.
     """
     with WorkspaceSession(workspace_path) as session:
         project = session.read_project()
         changelog = session.read_changelog()
-        provider = ProviderRegistry.get(project["provider"]["type"])
+        target_cfg = get_target_config(project, target_name)
+        provider_type = _get_provider_from_target(target_cfg)
+        provider = ProviderRegistry.get(provider_type)
 
         if provider is None:
-            raise ValueError(f"Provider '{project['provider']['type']}' not found")
+            raise ValueError(f"Provider '{provider_type}' not found")
 
         for operation in ops:
             validation = provider.validate_operation(operation)
@@ -774,10 +846,12 @@ def _get_next_version(current_version: str | None, settings: dict[str, Any]) -> 
     return f"{version_prefix}{major}.{next_minor}.0"
 
 
-def get_environment_config(project: dict[str, Any], environment: str) -> dict[str, Any]:
+def get_environment_config(
+    project: dict[str, Any], environment: str, target_name: str | None = None
+) -> dict[str, Any]:
     """Get environment configuration from project.
 
-    Each entry under provider.environments.<env> may include optional:
+    Each entry under targets.<target>.environments.<env> may include optional:
     - importBaselineSnapshot (string, snapshot version) set when
       import --adopt-baseline runs; used to block rollback before baseline
       unless --force is used.
@@ -790,8 +864,9 @@ def get_environment_config(project: dict[str, Any], environment: str) -> dict[st
       logical catalog "analytics".
 
     Args:
-        project: Project data (v4)
+        project: Project data (v5)
         environment: Environment name (e.g., "dev", "prod")
+        target_name: Optional target name. Uses defaultTarget if None.
 
     Returns:
         Environment configuration (reference into project dict)
@@ -799,7 +874,8 @@ def get_environment_config(project: dict[str, Any], environment: str) -> dict[st
     Raises:
         ValueError: If environment not found
     """
-    environments = project.get("provider", {}).get("environments", {})
+    target_cfg = get_target_config(project, target_name)
+    environments = target_cfg.get("environments", {})
 
     if environment not in environments:
         available = ", ".join(environments.keys())
