@@ -122,7 +122,7 @@ def _quick_query(config: LiveDatabricksConfig, sql: str) -> list[list[Any]]:
     response = client.statement_execution.execute_statement(
         warehouse_id=config.warehouse_id,
         statement=sql,
-        wait_timeout="60s",
+        wait_timeout="50s",
     )
     if not response.status:
         raise RuntimeError(f"_quick_query: no status returned for: {sql}")

@@ -2092,73 +2092,38 @@ class UnitySQLGenerator(BaseSQLGenerator):
 
     def _set_view_comment(self, operation: Operation) -> str:
         """Generate ALTER VIEW SET TBLPROPERTIES for comment"""
-        view_fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
-        parts = view_fqn.split(".")
-        catalog_name = parts[0] if len(parts) > 0 else "unknown"
-
-        # Apply catalog name mapping (logical → physical)
-        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
-        parts[0] = catalog_name
-
-        view_esc = self._build_fqn(*parts)
+        fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
+        view_esc = self._build_fqn(*fqn.split("."))
         comment = operation.payload["comment"].replace("'", "\\'")
         return f"COMMENT ON VIEW {view_esc} IS '{comment}'"
 
     def _set_view_property(self, operation: Operation) -> str:
         """Generate ALTER VIEW SET TBLPROPERTIES"""
-        view_fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
-        parts = view_fqn.split(".")
-        catalog_name = parts[0] if len(parts) > 0 else "unknown"
-
-        # Apply catalog name mapping (logical → physical)
-        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
-        parts[0] = catalog_name
-
-        view_esc = self._build_fqn(*parts)
+        fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
+        view_esc = self._build_fqn(*fqn.split("."))
         key = operation.payload["key"]
         value = operation.payload["value"].replace("'", "\\'")
         return f"ALTER VIEW {view_esc} SET TBLPROPERTIES ('{key}' = '{value}')"
 
     def _unset_view_property(self, operation: Operation) -> str:
         """Generate ALTER VIEW UNSET TBLPROPERTIES"""
-        view_fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
-        parts = view_fqn.split(".")
-        catalog_name = parts[0] if len(parts) > 0 else "unknown"
-
-        # Apply catalog name mapping (logical → physical)
-        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
-        parts[0] = catalog_name
-
-        view_esc = self._build_fqn(*parts)
+        fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
+        view_esc = self._build_fqn(*fqn.split("."))
         key = operation.payload["key"]
         return f"ALTER VIEW {view_esc} UNSET TBLPROPERTIES ('{key}')"
 
     def _set_view_tag(self, operation: Operation) -> str:
         """Generate ALTER VIEW SET TAGS"""
-        view_fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
-        parts = view_fqn.split(".")
-        catalog_name = parts[0] if len(parts) > 0 else "unknown"
-
-        # Apply catalog name mapping (logical → physical)
-        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
-        parts[0] = catalog_name
-
-        view_esc = self._build_fqn(*parts)
+        fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
+        view_esc = self._build_fqn(*fqn.split("."))
         tag_name = self.escape_string(operation.payload["tagName"])
         tag_value = self.escape_string(operation.payload["tagValue"])
         return f"ALTER VIEW {view_esc} SET TAGS ('{tag_name}' = '{tag_value}')"
 
     def _unset_view_tag(self, operation: Operation) -> str:
         """Generate ALTER VIEW UNSET TAGS"""
-        view_fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
-        parts = view_fqn.split(".")
-        catalog_name = parts[0] if len(parts) > 0 else "unknown"
-
-        # Apply catalog name mapping (logical → physical)
-        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
-        parts[0] = catalog_name
-
-        view_esc = self._build_fqn(*parts)
+        fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
+        view_esc = self._build_fqn(*fqn.split("."))
         tag_name = self.escape_string(operation.payload["tagName"])
         return f"ALTER VIEW {view_esc} UNSET TAGS ('{tag_name}')"
 

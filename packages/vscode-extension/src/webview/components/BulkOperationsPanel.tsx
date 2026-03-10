@@ -131,11 +131,9 @@ export const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
     if (isGrantOp(operationType)) {
       const privileges = parsePrivileges(privilegesStr);
       if (parsedPrincipals.length > 0 && privileges.length > 0) {
-        for (const p of parsedPrincipals) {
-          ops = ops.concat(
-            buildBulkGrantOps(scopeResult, p, privileges, GRANT_OP_TO_TARGET[operationType])
-          );
-        }
+        ops = parsedPrincipals.flatMap((p) =>
+          buildBulkGrantOps(scopeResult, p, privileges, GRANT_OP_TO_TARGET[operationType])
+        );
       }
     } else if (operationType === "add_table_tag" && tagName.trim() && tagValue.trim()) {
       ops = buildBulkTableTagOps(scopeResult, tagName.trim(), tagValue.trim());
