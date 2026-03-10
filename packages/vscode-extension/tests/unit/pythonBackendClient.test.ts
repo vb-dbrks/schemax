@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { describe, expect, jest, test } from '@jest/globals';
+import { describe, expect, jest, test, beforeEach } from '@jest/globals';
+import * as vscode from 'vscode';
 
 import { PythonBackendClient } from '../../src/backend/pythonBackendClient';
 
@@ -15,6 +16,41 @@ function readFixture(name: string): unknown {
 }
 
 describe('PythonBackendClient.run', () => {
+  beforeEach(() => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn(() => undefined),
+    });
+  });
+
+  test('tries configured interpreter path first when python.defaultInterpreterPath is set', async () => {
+    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
+      get: jest.fn(() => '/home/user/.venv/bin/python'),
+    });
+
+    const client = new PythonBackendClient();
+    const runSingleMock: jest.Mock = jest.fn();
+    runSingleMock.mockImplementationOnce(
+      (_cmd: unknown, _args: unknown, _cwd: unknown, rendered: unknown, _useShell: unknown) =>
+        Promise.resolve({
+          success: true,
+          command: rendered,
+          stdout: '{}',
+          stderr: '',
+          exitCode: 0,
+        })
+    );
+    (client as unknown as { runSingle: (...args: unknown[]) => unknown }).runSingle = runSingleMock;
+
+    const result = await client.run(['validate', '--json'], '/tmp');
+
+    expect(result.success).toBe(true);
+    expect(result.command).toContain('/home/user/.venv/bin/python');
+    expect(result.command).toContain('-m schemax.cli');
+    expect(runSingleMock).toHaveBeenCalledTimes(1);
+    // Configured interpreter paths should use shell: false to handle spaces in paths
+    expect(runSingleMock.mock.calls[0][4]).toBe(false);
+  });
+
   test('falls back to python module command when schemax candidate fails', async () => {
     const client = new PythonBackendClient();
     const runSingleMock: jest.Mock = jest.fn();

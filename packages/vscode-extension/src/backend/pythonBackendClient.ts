@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import * as vscode from "vscode";
 import type { CommandEnvelope, PythonCommandResult } from "./contracts";
 
 type StreamHandler = (chunk: string) => void;
@@ -9,17 +10,40 @@ interface RunOptions {
   signal?: AbortSignal;
 }
 
-const COMMAND_CANDIDATES = ["schemax", "python3 -m schemax.cli", "python -m schemax.cli"] as const;
+interface CommandCandidate {
+  cmd: string;
+  baseArgs: string[];
+  /** Use shell: false for absolute interpreter paths (avoids shell metachar issues). */
+  useShell: boolean;
+}
 
-function parseCommandCandidate(
-  candidate: string,
-  args: string[]
-): { cmd: string; fullArgs: string[] } {
-  if (candidate.includes(" -m ")) {
-    const [pythonCmd] = candidate.split(" -m ");
-    return { cmd: pythonCmd, fullArgs: ["-m", "schemax.cli", ...args] };
+const BASE_COMMAND_CANDIDATES: CommandCandidate[] = [
+  { cmd: "schemax", baseArgs: [], useShell: true },
+  { cmd: "python3", baseArgs: ["-m", "schemax.cli"], useShell: true },
+  { cmd: "python", baseArgs: ["-m", "schemax.cli"], useShell: true },
+];
+
+/**
+ * Build the ordered list of command candidates.
+ * If the user (or VS Code Python extension) has configured an interpreter path,
+ * prepend it so that venv / uv / poetry / conda envs selected in VS Code are
+ * tried first — before falling back to PATH-based lookup.
+ *
+ * Configured interpreter paths are spawned with shell: false to correctly
+ * handle paths containing spaces (common on Windows/macOS).
+ */
+function getCommandCandidates(): CommandCandidate[] {
+  const configured = vscode.workspace
+    .getConfiguration("python")
+    .get<string>("defaultInterpreterPath");
+  if (configured && configured.trim()) {
+    const pyPath = configured.trim();
+    return [
+      { cmd: pyPath, baseArgs: ["-m", "schemax.cli"], useShell: false },
+      ...BASE_COMMAND_CANDIDATES,
+    ];
   }
-  return { cmd: candidate, fullArgs: args };
+  return [...BASE_COMMAND_CANDIDATES];
 }
 
 function parseJsonLine(output: string): unknown {
@@ -84,10 +108,17 @@ export class PythonBackendClient {
       exitCode: null,
     };
 
-    for (const candidate of COMMAND_CANDIDATES) {
-      const { cmd, fullArgs } = parseCommandCandidate(candidate, args);
-      const rendered = `${cmd} ${fullArgs.join(" ")}`;
-      const result = await this.runSingle(cmd, fullArgs, cwd, rendered, options);
+    for (const candidate of getCommandCandidates()) {
+      const fullArgs = [...candidate.baseArgs, ...args];
+      const rendered = `${candidate.cmd} ${fullArgs.join(" ")}`;
+      const result = await this.runSingle(
+        candidate.cmd,
+        fullArgs,
+        cwd,
+        rendered,
+        candidate.useShell,
+        options,
+      );
       if (result.cancelled) {
         return result;
       }
@@ -171,7 +202,8 @@ export class PythonBackendClient {
     args: string[],
     cwd: string,
     renderedCommand: string,
-    options: RunOptions
+    useShell: boolean,
+    options: RunOptions,
   ): Promise<PythonCommandResult> {
     return new Promise((resolve) => {
       if (options.signal?.aborted) {
@@ -186,7 +218,7 @@ export class PythonBackendClient {
         return;
       }
 
-      const child = spawn(cmd, args, { cwd, shell: false });
+      const child = spawn(cmd, args, { cwd, shell: useShell });
       let stdout = "";
       let stderr = "";
       let spawnError: string | null = null;

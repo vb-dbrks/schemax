@@ -71,6 +71,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
         "set_view_comment": "_set_view_comment",
         "set_view_property": "_set_view_property",
         "unset_view_property": "_unset_view_property",
+        "set_view_tag": "_set_view_tag",
+        "unset_view_tag": "_unset_view_tag",
         "add_volume": "_add_volume",
         "rename_volume": "_rename_volume",
         "update_volume": "_update_volume",
@@ -364,6 +366,8 @@ class UnitySQLGenerator(BaseSQLGenerator):
             "set_view_comment",
             "set_view_property",
             "unset_view_property",
+            "set_view_tag",
+            "unset_view_tag",
         }:
             return f"view:{operation.target}"  # Prefix to avoid ID collisions
 
@@ -1790,14 +1794,14 @@ class UnitySQLGenerator(BaseSQLGenerator):
     def _set_table_tag(self, operation: Operation) -> str:
         fqn = self.id_name_map.get(operation.payload["tableId"], "unknown")
         fqn_esc = self._build_fqn(*fqn.split("."))
-        tag_name = operation.payload["tagName"]
+        tag_name = self.escape_string(operation.payload["tagName"])
         tag_value = self.escape_string(operation.payload["tagValue"])
         return f"ALTER TABLE {fqn_esc} SET TAGS ('{tag_name}' = '{tag_value}')"
 
     def _unset_table_tag(self, operation: Operation) -> str:
         fqn = self.id_name_map.get(operation.payload["tableId"], "unknown")
         fqn_esc = self._build_fqn(*fqn.split("."))
-        tag_name = operation.payload["tagName"]
+        tag_name = self.escape_string(operation.payload["tagName"])
         return f"ALTER TABLE {fqn_esc} UNSET TAGS ('{tag_name}')"
 
     # View operations
@@ -2128,6 +2132,35 @@ class UnitySQLGenerator(BaseSQLGenerator):
         view_esc = self._build_fqn(*parts)
         key = operation.payload["key"]
         return f"ALTER VIEW {view_esc} UNSET TBLPROPERTIES ('{key}')"
+
+    def _set_view_tag(self, operation: Operation) -> str:
+        """Generate ALTER VIEW SET TAGS"""
+        view_fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
+        tag_name = self.escape_string(operation.payload["tagName"])
+        tag_value = self.escape_string(operation.payload["tagValue"])
+        return f"ALTER VIEW {view_esc} SET TAGS ('{tag_name}' = '{tag_value}')"
+
+    def _unset_view_tag(self, operation: Operation) -> str:
+        """Generate ALTER VIEW UNSET TAGS"""
+        view_fqn = self.id_name_map.get(operation.payload["viewId"], "unknown")
+        parts = view_fqn.split(".")
+        catalog_name = parts[0] if len(parts) > 0 else "unknown"
+
+        # Apply catalog name mapping (logical → physical)
+        catalog_name = self.catalog_name_mapping.get(catalog_name, catalog_name)
+        parts[0] = catalog_name
+
+        view_esc = self._build_fqn(*parts)
+        tag_name = self.escape_string(operation.payload["tagName"])
+        return f"ALTER VIEW {view_esc} UNSET TAGS ('{tag_name}')"
 
     # Volume operations
     def _add_volume(self, operation: Operation) -> str:
@@ -3382,7 +3415,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_esc = self._build_fqn(*table_fqn.split("."))
         # Get column name from payload (fallback for new columns) or id_name_map
         col_name = operation.payload.get("name", self.id_name_map.get(operation.target, "unknown"))
-        tag_name = operation.payload["tagName"]
+        tag_name = self.escape_string(operation.payload["tagName"])
         tag_value = self.escape_string(operation.payload["tagValue"])
         col_esc = self.escape_identifier(col_name)
         sql = f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc}"
@@ -3393,7 +3426,7 @@ class UnitySQLGenerator(BaseSQLGenerator):
         table_esc = self._build_fqn(*table_fqn.split("."))
         # Get column name from payload (fallback for new columns) or id_name_map
         col_name = operation.payload.get("name", self.id_name_map.get(operation.target, "unknown"))
-        tag_name = operation.payload["tagName"]
+        tag_name = self.escape_string(operation.payload["tagName"])
         col_esc = self.escape_identifier(col_name)
         return f"ALTER TABLE {table_esc} ALTER COLUMN {col_esc} UNSET TAGS ('{tag_name}')"
 

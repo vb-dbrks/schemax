@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from schemax.providers import ProviderRegistry
-from schemax.providers.base.executor import ExecutionConfig
+from databricks.sdk.service.sql import StatementState
+
+from schemax.providers.unity.auth import create_databricks_client
 from tests.utils.live_databricks import (
     LiveDatabricksConfig,
     build_execution_config,
@@ -111,24 +112,49 @@ def write_project_promote_managed_locations(workspace: Path, managed_root: str) 
     project_path.write_text(json.dumps(project, indent=2))
 
 
+def _quick_query(config: LiveDatabricksConfig, sql: str) -> list[list[Any]]:
+    """Execute a single SQL query and return raw data rows (lightweight, no discover_state).
+
+    Raises on query failure or timeout so that callers get clear errors instead
+    of silently treating failures as "object does not exist".
+    """
+    client = create_databricks_client(profile=config.profile)
+    response = client.statement_execution.execute_statement(
+        warehouse_id=config.warehouse_id,
+        statement=sql,
+        wait_timeout="60s",
+    )
+    if not response.status:
+        raise RuntimeError(f"_quick_query: no status returned for: {sql}")
+    state = response.status.state
+    if state != StatementState.SUCCEEDED:
+        error_msg = ""
+        if response.status.error:
+            error_msg = f": {response.status.error.message}"
+        raise RuntimeError(f"_quick_query: statement {state}{error_msg} for: {sql}")
+    if not response.result or not response.result.data_array:
+        return []
+    return list(response.result.data_array)
+
+
+def _ident(name: str) -> str:
+    """Backtick-escape an identifier to prevent SQL injection in FROM clauses."""
+    return f"`{name.replace('`', '``')}`"
+
+
 def assert_schema_exists(
     config: LiveDatabricksConfig, physical_catalog: str, schema_name: str
 ) -> None:
-    """Assert that a schema exists in the given catalog (live discovery)."""
-    provider = ProviderRegistry.get("unity")
-    assert provider is not None
-    discovered = provider.discover_state(
-        config=ExecutionConfig(
-            target_env="dev",
-            profile=config.profile,
-            warehouse_id=config.warehouse_id,
-        ),
-        scope={"catalog": physical_catalog},
+    """Assert that a schema exists in the given catalog (lightweight SQL check)."""
+    cat_esc = physical_catalog.replace("'", "''")
+    sch_esc = schema_name.replace("'", "''")
+    cat_id = _ident(physical_catalog)
+    rows = _quick_query(
+        config,
+        f"SELECT schema_name FROM {cat_id}.information_schema.schemata "
+        f"WHERE catalog_name = '{cat_esc}' AND schema_name = '{sch_esc}'",
     )
-    catalogs = discovered.get("catalogs", [])
-    assert catalogs, f"Catalog not found: {physical_catalog}"
-    schemas = catalogs[0].get("schemas", [])
-    assert any(schema.get("name") == schema_name for schema in schemas)
+    assert rows, f"Schema {schema_name} not found in catalog {physical_catalog}"
 
 
 def table_exists(
@@ -137,25 +163,18 @@ def table_exists(
     schema_name: str,
     table_name: str,
 ) -> bool:
-    """Return True if a table exists in the given catalog.schema (live discovery)."""
-    provider = ProviderRegistry.get("unity")
-    assert provider is not None
-    discovered = provider.discover_state(
-        config=ExecutionConfig(
-            target_env="dev",
-            profile=config.profile,
-            warehouse_id=config.warehouse_id,
-        ),
-        scope={"catalog": physical_catalog, "schema": schema_name},
+    """Return True if a table exists in the given catalog.schema (lightweight SQL check)."""
+    cat_esc = physical_catalog.replace("'", "''")
+    sch_esc = schema_name.replace("'", "''")
+    tbl_esc = table_name.replace("'", "''")
+    cat_id = _ident(physical_catalog)
+    rows = _quick_query(
+        config,
+        f"SELECT table_name FROM {cat_id}.information_schema.tables "
+        f"WHERE table_catalog = '{cat_esc}' AND table_schema = '{sch_esc}' "
+        f"AND table_name = '{tbl_esc}' AND table_type IN ('TABLE', 'MANAGED', 'EXTERNAL')",
     )
-    catalogs = discovered.get("catalogs", [])
-    if not catalogs:
-        return False
-    schemas = catalogs[0].get("schemas", [])
-    if not schemas:
-        return False
-    tables = schemas[0].get("tables", [])
-    return any(table.get("name") == table_name for table in tables)
+    return len(rows) > 0
 
 
 def volume_exists(
@@ -164,26 +183,17 @@ def volume_exists(
     schema_name: str,
     volume_name: str,
 ) -> bool:
-    """Return True if a volume exists in the given catalog.schema (live discovery)."""
-    provider = ProviderRegistry.get("unity")
-    assert provider is not None
-    discovered = provider.discover_state(
-        config=ExecutionConfig(
-            target_env="dev",
-            profile=config.profile,
-            warehouse_id=config.warehouse_id,
-        ),
-        scope={"catalog": physical_catalog, "schema": schema_name},
+    """Return True if a volume exists in the given catalog.schema (lightweight SQL check)."""
+    cat_esc = physical_catalog.replace("'", "''")
+    sch_esc = schema_name.replace("'", "''")
+    vol_esc = volume_name.replace("'", "''")
+    rows = _quick_query(
+        config,
+        f"SELECT volume_name FROM system.information_schema.volumes "
+        f"WHERE volume_catalog = '{cat_esc}' AND volume_schema = '{sch_esc}' "
+        f"AND volume_name = '{vol_esc}'",
     )
-    catalogs = discovered.get("catalogs", [])
-    if not catalogs:
-        return False
-    for schema in catalogs[0].get("schemas", []):
-        if schema.get("name") != schema_name:
-            continue
-        volumes = schema.get("volumes", [])
-        return any(v.get("name") == volume_name for v in volumes)
-    return False
+    return len(rows) > 0
 
 
 def function_exists(
@@ -192,26 +202,18 @@ def function_exists(
     schema_name: str,
     function_name: str,
 ) -> bool:
-    """Return True if a function exists in the given catalog.schema (live discovery)."""
-    provider = ProviderRegistry.get("unity")
-    assert provider is not None
-    discovered = provider.discover_state(
-        config=ExecutionConfig(
-            target_env="dev",
-            profile=config.profile,
-            warehouse_id=config.warehouse_id,
-        ),
-        scope={"catalog": physical_catalog, "schema": schema_name},
+    """Return True if a function exists in the given catalog.schema (lightweight SQL check)."""
+    cat_esc = physical_catalog.replace("'", "''")
+    sch_esc = schema_name.replace("'", "''")
+    func_esc = function_name.replace("'", "''")
+    cat_id = _ident(physical_catalog)
+    rows = _quick_query(
+        config,
+        f"SELECT routine_name FROM {cat_id}.information_schema.routines "
+        f"WHERE routine_catalog = '{cat_esc}' AND routine_schema = '{sch_esc}' "
+        f"AND routine_name = '{func_esc}'",
     )
-    catalogs = discovered.get("catalogs", [])
-    if not catalogs:
-        return False
-    for schema in catalogs[0].get("schemas", []):
-        if schema.get("name") != schema_name:
-            continue
-        functions = schema.get("functions", [])
-        return any(f.get("name") == function_name for f in functions)
-    return False
+    return len(rows) > 0
 
 
 def materialized_view_exists(
@@ -220,26 +222,18 @@ def materialized_view_exists(
     schema_name: str,
     mv_name: str,
 ) -> bool:
-    """Return True if a materialized view exists in the given catalog.schema (live discovery)."""
-    provider = ProviderRegistry.get("unity")
-    assert provider is not None
-    discovered = provider.discover_state(
-        config=ExecutionConfig(
-            target_env="dev",
-            profile=config.profile,
-            warehouse_id=config.warehouse_id,
-        ),
-        scope={"catalog": physical_catalog, "schema": schema_name},
+    """Return True if a materialized view exists in the given catalog.schema (lightweight SQL check)."""
+    cat_esc = physical_catalog.replace("'", "''")
+    sch_esc = schema_name.replace("'", "''")
+    mv_esc = mv_name.replace("'", "''")
+    cat_id = _ident(physical_catalog)
+    rows = _quick_query(
+        config,
+        f"SELECT table_name FROM {cat_id}.information_schema.tables "
+        f"WHERE table_catalog = '{cat_esc}' AND table_schema = '{sch_esc}' "
+        f"AND table_name = '{mv_esc}' AND table_type = 'MATERIALIZED_VIEW'",
     )
-    catalogs = discovered.get("catalogs", [])
-    if not catalogs:
-        return False
-    for schema in catalogs[0].get("schemas", []):
-        if schema.get("name") != schema_name:
-            continue
-        mvs = schema.get("materialized_views", schema.get("materializedViews", []))
-        return any(m.get("name") == mv_name for m in mvs)
-    return False
+    return len(rows) > 0
 
 
 def preseed_tracking_only(

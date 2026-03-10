@@ -1,29 +1,59 @@
 # SchemaX Python SDK & CLI
 
-**Declarative schema management** for modern data catalogs. Version control your schemas, generate SQL migrations, and deploy with confidence across multiple environments.
+**Declarative schema management and migration for Databricks Unity Catalog.** Version control your catalog structure, generate SQL migrations, and deploy consistently across environments — from a single developer workflow through CI/CD.
+
+## What is schema management?
+
+**Schema management** is defining and maintaining the structure of your data catalog — catalogs, schemas, tables, views, columns, constraints, and their metadata. In Unity Catalog, this is the layer that determines what exists and who can access it.
+
+**Schema migration** is applying changes to that structure over time in a controlled way: add a column, create a table, change grants — and track those changes so they can be reviewed, versioned, and deployed per environment (dev → test → prod).
+
+Without it, schema changes are ad hoc, hard to audit, and risky when promoting to production. With it, changes are declarative, stored in Git, and applied consistently via CI/CD or manual deployment.
+
+### Works alongside Spark and Lakeflow Declarative Pipelines
+
+If your tables are created by Spark jobs or DLT pipelines, SchemaX complements that workflow. Use **governance-only mode** to version and deploy comments, tags, grants, row filters, and column masks on existing objects — without touching CREATE TABLE statements. Your pipelines handle the data; SchemaX handles the governance layer.
 
 ## Features
 
-- **Multi-Provider Architecture**: Unity Catalog (Databricks), Hive, PostgreSQL, and more
-- **Version-Controlled Schemas**: Git-based workflow with snapshots and changelogs
-- **SQL Migration Generation**: Generate idempotent SQL DDL from schema changes
-- **Environment Management**: Dev, test, prod with catalog name mapping
-- **Deployment Tracking**: Know what's deployed where with database-backed tracking
-- **Auto-Rollback**: Automatically rollback failed deployments with data loss detection (NEW!)
-- **Safety Validation**: Analyze data impact before rollback operations
-- **Type-Safe**: Full type annotations, validated with mypy
-- **CI/CD Ready**: Designed for GitHub Actions, GitLab CI, and other pipelines
-- **Extensible**: Plugin architecture for custom catalog providers
+### Full Unity Catalog object support
 
-## Why SchemaX?
+- **Catalogs and schemas** — create, rename, update managed locations, comments, tags, grants
+- **Tables** — managed and external (Delta, Iceberg), partitioning, liquid clustering, column mapping
+- **Views** — definitions, dependency tracking with automatic SQL extraction via sqlglot
+- **Materialized views** — definitions, refresh schedules, dependency ordering
+- **Volumes** — managed and external with storage locations
+- **Functions** — SQL and Python UDFs, table functions, parameters with types and defaults
+- **Columns** — add, rename, drop, reorder, change types, nullability, comments, tags
+- **Constraints** — primary keys, foreign keys, check constraints (with NOT ENFORCED / RELY)
 
-**Provider-agnostic design**: Write your schema once, deploy to any catalog system. Start with Unity Catalog (Databricks) and easily extend to Hive, PostgreSQL, Snowflake, or custom providers.
+### Data governance
 
-**Git-based workflow**: Your schemas are code. Version them, review them, and deploy them with confidence using familiar Git workflows.
+- **Grants** — GRANT and REVOKE on all securable types
+- **Tags** — governance tags on catalogs, schemas, tables, views, and columns
+- **Row filters** — row-level security policies
+- **Column masks** — column-level data masking
+- **Table and view properties** — TBLPROPERTIES configuration
+- **Governance-only mode** — deploy only governance DDL, skip CREATE for pipeline-managed objects
 
-**Environment-aware**: Manage dev, test, and prod environments with automatic catalog name mapping. No more hardcoded catalog names in SQL.
+### Deployment and CI/CD
 
-**Type-safe and tested**: Built with Python 3.11+ type hints, validated with mypy, and covered by 138+ tests. Production-ready from day one.
+- **Multi-environment** — logical catalog names mapped to physical names per environment
+- **Apply with tracking** — deploy via Databricks Statement Execution API with database-backed audit trail
+- **Rollback** — partial (revert a failed deployment) and complete (to a snapshot), with safety classification
+- **Dry run** — preview SQL without executing
+- **Auto-rollback** — automatically revert on partial failure
+- **Deployment scope** — governance-only mode, existing-object awareness
+- **CI/CD templates** — GitHub Actions, GitLab CI, Azure DevOps
+- **Databricks Asset Bundles** — generate DAB resource YAML with `schemax bundle`
+
+### Version control
+
+- **Snapshots** — semantic versioned state captures
+- **Changelogs** — every change tracked as a typed operation
+- **State diffing** — compute minimal operations between any two snapshots
+- **Dependency-ordered SQL** — correct creation ordering for views and materialized views
+- **Stale detection** — detect and rebase snapshots after Git rebases
 
 ## Installation
 
@@ -31,389 +61,84 @@
 pip install schemaxpy
 ```
 
-### Development Install
+## Quick start
+
+### 1. Initialize a project
 
 ```bash
-git clone https://github.com/vb-dbrks/schemax-vscode.git
-cd schemax-vscode/packages/python-sdk
-pip install -e ".[dev]"
-```
-
-## Quick Start
-
-### 1. Initialize a New Project
-
-```bash
-# Unity Catalog (Databricks) - default
 schemax init
-
-# PostgreSQL
-schemax init --provider postgres
-
-# Hive Metastore
-schemax init --provider hive
 ```
 
-This creates a `.schemax/` directory with your project configuration.
+Creates a `.schemax/` directory with project configuration.
 
-Note: `0.2.6+` uses explicit multi-catalog mode only. New projects start with no
-implicit catalog; add logical catalogs explicitly and map each one per environment.
-
-### 2. Validate Your Schema
+### 2. Import from a live workspace
 
 ```bash
-schemax validate
+schemax import --profile my-databricks --warehouse-id abc123
 ```
 
-Validates project structure, provider compatibility, and schema correctness.
+Brings your existing Unity Catalog hierarchy into a SchemaX project.
 
-### 3. Generate SQL Migration
+### 3. Make changes and generate SQL
 
-```bash
-# Generate SQL from changelog
-schemax sql --output migration.sql
-
-# Generate for specific environment (with catalog mapping)
-schemax sql --target dev --output dev-migration.sql
-```
-
-### 4. Apply Changes (Unity Catalog)
+Use the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode) to design visually, or modify the state directly. Then:
 
 ```bash
-# Preview changes
-schemax apply --target dev --profile my-databricks --warehouse-id abc123 --dry-run
-
-# Apply with automatic rollback on failure (MVP feature!)
-schemax apply --target dev --profile my-databricks --warehouse-id abc123 --auto-rollback
-
-# Apply to environment
-schemax apply --target dev --profile my-databricks --warehouse-id abc123
-```
-
-### 5. Track Deployments
-
-```bash
-# Record deployment (works for all providers)
-schemax record-deployment --environment prod --version v1.0.0 --mark-deployed
-```
-
-## CLI Commands
-
-### `schemax sql`
-
-Generate SQL DDL migration scripts from schema changes.
-
-**Options:**
-- `--output, -o`: Output file path (default: stdout)
-- `--target, -t`: Target environment (applies catalog name mapping)
-
-**Examples:**
-```bash
-# Output to stdout
-schemax sql
+# Preview SQL for an environment
+schemax sql --target dev
 
 # Save to file
-schemax sql --output migration.sql
-
-# Generate for specific environment
-schemax sql --target prod --output prod-migration.sql
+schemax sql --target prod --output migration.sql
 ```
 
-### `schemax apply` (Unity Catalog only)
+### 4. Deploy
 
-Execute SQL migrations against a Databricks Unity Catalog environment with automatic deployment tracking and optional rollback.
-
-**Options:**
-- `--target, -t`: Target environment (required)
-- `--profile, -p`: Databricks CLI profile (required)
-- `--warehouse-id, -w`: SQL Warehouse ID (required)
-- `--sql`: SQL file to execute (optional, generates from changelog if not provided)
-- `--dry-run`: Preview changes without executing
-- `--no-interaction`: Skip confirmation prompts (for CI/CD)
-- `--auto-rollback`: Automatically rollback on failure (NEW!)
-
-**Features:**
-- Interactive snapshot prompts (create snapshot before deployment)
-- SQL preview with statement-by-statement display
-- Database-backed deployment tracking in `{catalog}.schemax`
-- Automatic rollback on partial failures (with `--auto-rollback`)
-
-**Examples:**
 ```bash
-# Preview changes
-schemax apply --target dev --profile default --warehouse-id abc123 --dry-run
+# Dry run
+schemax apply --target dev --profile my-databricks --warehouse-id abc123 --dry-run
 
-# Apply with automatic rollback on failure
-schemax apply --target dev --profile default --warehouse-id abc123 --auto-rollback
+# Apply
+schemax apply --target dev --profile my-databricks --warehouse-id abc123
 
-# Apply with confirmation
-schemax apply --target prod --profile prod --warehouse-id xyz789
-
-# Non-interactive (CI/CD)
-schemax apply --target prod --profile prod --warehouse-id xyz789 --no-interaction
+# With auto-rollback on failure
+schemax apply --target prod --profile my-databricks --warehouse-id abc123 --auto-rollback
 ```
 
-### `schemax rollback` (Unity Catalog only)
+### 5. Rollback if needed
 
-Rollback failed or unwanted deployments with safety validation. Idempotent design prevents redundant operations by checking database state.
-
-**Partial Rollback** - Revert successful operations from a failed deployment:
 ```bash
-schemax rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id>
+# Partial — revert a failed deployment
+schemax rollback --partial --deployment <id> --target dev --profile my-databricks --warehouse-id abc123
 
-# With dry-run
-schemax rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id> --dry-run
-
-# Only safe operations
-schemax rollback --partial --deployment <id> --target dev --profile DEFAULT --warehouse-id <id> --safe-only
+# Complete — rollback to a snapshot
+schemax rollback --to-snapshot v0.2.0 --target dev --profile my-databricks --warehouse-id abc123
 ```
 
-**Complete Rollback** - Rollback to a previous snapshot:
-```bash
-schemax rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id>
+## CLI reference
 
-# With dry-run
-schemax rollback --to-snapshot v0.2.0 --target dev --profile DEFAULT --warehouse-id <id> --dry-run
-```
+| Command | Description |
+|---------|-------------|
+| `schemax init` | Initialize a new project |
+| `schemax validate` | Validate project structure and schema |
+| `schemax sql` | Generate SQL migration from changes |
+| `schemax apply` | Deploy to a Databricks environment |
+| `schemax rollback` | Rollback a deployment (partial or complete) |
+| `schemax import` | Import from live Databricks or SQL file |
+| `schemax snapshot create` | Create a versioned snapshot |
+| `schemax snapshot validate` | Detect stale snapshots |
+| `schemax snapshot rebase` | Rebase a stale snapshot |
+| `schemax diff` | Compare two versions with optional SQL preview |
+| `schemax bundle` | Generate Databricks Asset Bundles resource YAML |
+| `schemax record-deployment` | Manually record deployment metadata |
 
-**Options:**
-- `--partial`: Rollback successful operations from a failed deployment
-- `--deployment, -d`: Deployment ID to rollback (required for partial)
-- `--to-snapshot`: Snapshot version to rollback to (required for complete)
-- `--target, -t`: Target environment (required)
-- `--profile, -p`: Databricks CLI profile (required)
-- `--warehouse-id, -w`: SQL Warehouse ID (required)
-- `--dry-run`: Preview rollback SQL without executing
-- `--safe-only`: Only execute SAFE operations (skip RISKY/DESTRUCTIVE)
+Run `schemax <command> --help` for detailed options.
 
-**Safety Levels:**
-- **SAFE**: No data loss (e.g., DROP empty table)
-- **RISKY**: Potential data loss (e.g., ALTER COLUMN TYPE)
-- **DESTRUCTIVE**: Certain data loss (e.g., DROP table with data)
+## CI/CD integration
 
-**Features:**
-- **Idempotent**: Checks database deployment state to prevent redundant rollbacks
-- **SQL Preview**: Shows exact SQL statements before execution (matches `apply` UX)
-- **Database as Source of Truth**: Queries deployment tracking table for accurate state
-
-### `schemax snapshot`
-
-Manage schema snapshots with lifecycle commands.
-
-**Create Snapshot:**
-```bash
-# Auto-generate version
-schemax snapshot create --name "Initial schema"
-
-# Specify version manually
-schemax snapshot create --name "Production release" --version v1.0.0
-
-# With tags
-schemax snapshot create --name "Hotfix" --version v0.2.1 --tags hotfix,urgent
-```
-
-**Validate Snapshots:**
-```bash
-# Detect stale snapshots after git rebase
-schemax snapshot validate
-```
-
-**Rebase Snapshot:**
-```bash
-# Rebase a stale snapshot onto new base
-schemax snapshot rebase v0.3.0
-```
-
-**Features:**
-- Semantic versioning (MAJOR.MINOR.PATCH)
-- Detects stale snapshots after Git rebases
-- Unpacks and replays operations on new base
-- Conflict detection with manual UI resolution
-- Validates snapshot lineage
-
-### `schemax validate`
-
-Validate `.schemax/` project files for correctness and provider compatibility.
-
-**Examples:**
-```bash
-# Validate current directory
-schemax validate
-
-# Validate specific directory
-schemax validate /path/to/project
-```
-
-### `schemax record-deployment`
-
-Manually record deployment metadata (useful for non-Unity Catalog providers).
-
-**Options:**
-- `--environment, -e`: Environment name (required)
-- `--version, -v`: Version deployed (default: latest snapshot)
-- `--mark-deployed`: Mark as successfully deployed
-
-**Examples:**
-```bash
-# Record successful deployment
-schemax record-deployment --environment prod --version v1.0.0 --mark-deployed
-```
-
-### `schemax diff`
-
-Compare two schema versions and show the operations needed to transform one into the other.
-
-**Examples:**
-```bash
-# Basic diff
-schemax diff --from v0.1.0 --to v0.2.0
-
-# Show generated SQL with logical catalog names
-schemax diff --from v0.1.0 --to v0.2.0 --show-sql
-
-# Show SQL with environment-specific catalog names
-schemax diff --from v0.1.0 --to v0.2.0 --show-sql --target dev
-
-# Show detailed operation payloads
-schemax diff --from v0.1.0 --to v0.2.0 --show-details
-```
-
-## Python API
-
-### Generate SQL Programmatically
-
-```python
-from pathlib import Path
-from schemax.core.storage import load_current_state, read_project, get_environment_config
-from schemax.providers.base.operations import Operation
-
-# Load schema with provider
-workspace = Path.cwd()
-state, changelog, provider = load_current_state(workspace)
-
-print(f"Provider: {provider.info.name} v{provider.info.version}")
-
-# Convert ops to Operation objects
-operations = [Operation(**op) for op in changelog["ops"]]
-
-# Generate SQL using provider's SQL generator
-generator = provider.get_sql_generator(state)
-sql = generator.generate_sql(operations)
-
-print(sql)
-```
-
-### Environment-Specific SQL Generation
-
-```python
-from pathlib import Path
-from schemax.core.storage import load_current_state, read_project, get_environment_config
-
-workspace = Path.cwd()
-state, changelog, provider = load_current_state(workspace)
-
-# Get environment configuration
-project = read_project(workspace)
-env_config = get_environment_config(project, "prod")
-
-# Build catalog name mapping (logical -> physical)
-catalog_mapping = {}
-for catalog in state.get("catalogs", []):
-    logical_name = str(catalog.get("name"))
-    physical_name = env_config.get("catalogMappings", {}).get(logical_name, logical_name)
-    catalog_mapping[logical_name] = physical_name
-
-# Generate SQL with environment-specific catalog names
-generator = provider.get_sql_generator(state)
-generator.catalog_name_mapping = catalog_mapping  # For Unity provider
-
-operations = [Operation(**op) for op in changelog["ops"]]
-sql = generator.generate_sql(operations)
-
-print(sql)  # Contains prod catalog names
-```
-
-### Working with Multiple Providers
-
-```python
-from schemax.providers import ProviderRegistry
-
-# List available providers
-providers = ProviderRegistry.get_all_ids()
-print(f"Available providers: {providers}")
-
-# Get specific provider
-unity_provider = ProviderRegistry.get("unity")
-if unity_provider:
-    print(f"Name: {unity_provider.info.name}")
-    print(f"Version: {unity_provider.info.version}")
-    print(f"Operations: {len(unity_provider.info.capabilities.supported_operations)}")
-```
-
-### Validate Schema
-
-```python
-from pathlib import Path
-from schemax.core.storage import read_project, load_current_state
-
-try:
-    workspace = Path.cwd()
-    project = read_project(workspace)
-    state, changelog, provider = load_current_state(workspace)
-    
-    # Validate with provider
-    validation = provider.validate_state(state)
-    if validation.valid:
-        print("✓ Schema is valid")
-    else:
-        print("✗ Validation failed:")
-        for error in validation.errors:
-            print(f"  - {error.field}: {error.message}")
-except Exception as e:
-    print(f"✗ Error: {e}")
-```
-
-## CI/CD Integration
-
-### GitHub Actions (Generic)
+### GitHub Actions
 
 ```yaml
-name: Schema Management
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      
-      - name: Install SchemaX
-        run: pip install schemaxpy
-      
-      - name: Validate Schema
-        run: schemax validate
-      
-      - name: Generate SQL Preview
-        run: schemax sql --target prod --output migration.sql
-      
-      - name: Upload SQL
-        uses: actions/upload-artifact@v3
-        with:
-          name: migration-sql
-          path: migration.sql
-```
-
-### GitHub Actions (Unity Catalog - Automated Deployment)
-
-```yaml
-name: Deploy to Unity Catalog
+name: Deploy Schema
 on:
   push:
     branches: [main]
@@ -423,19 +148,15 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v3
-      
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
-      - name: Install SchemaX
-        run: pip install schemaxpy
-      
-      - name: Validate Schema
-        run: schemax validate
-      
-      - name: Apply to Production
+
+      - run: pip install schemaxpy
+      - run: schemax validate
+
+      - name: Apply to production
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
@@ -444,78 +165,57 @@ jobs:
             --target prod \
             --profile default \
             --warehouse-id ${{ secrets.WAREHOUSE_ID }} \
-            --no-interaction
+            --no-interaction \
+            --auto-rollback
 ```
 
-### GitLab CI
+## Python API
 
-```yaml
-validate-schema:
-  stage: test
-  image: python:3.11
-  script:
-    - pip install schemaxpy
-    - schemax validate
-    - schemax sql --target prod --output migration.sql
-  artifacts:
-    paths:
-      - migration.sql
-    expire_in: 1 week
+```python
+from pathlib import Path
+from schemax.core.storage import load_current_state, read_project, get_environment_config
+from schemax.providers.base.operations import Operation
+
+workspace = Path.cwd()
+state, changelog, provider = load_current_state(workspace)
+
+# Generate SQL with environment-specific catalog names
+project = read_project(workspace)
+env_config = get_environment_config(project, "prod")
+
+catalog_mapping = {}
+for catalog in state.get("catalogs", []):
+    logical = str(catalog.get("name"))
+    physical = env_config.get("catalogMappings", {}).get(logical, logical)
+    catalog_mapping[logical] = physical
+
+generator = provider.get_sql_generator(state)
+generator.catalog_name_mapping = catalog_mapping
+
+operations = [Operation(**op) for op in changelog["ops"]]
+print(generator.generate_sql(operations))
 ```
 
-## Supported Providers
+## Multi-provider roadmap
 
-| Provider | Status | Operations | Apply Command | Notes |
-|----------|--------|------------|---------------|-------|
-| **Unity Catalog** | ✅ Stable | 29 | ✅ `schemax apply` | Full Databricks integration |
-| **Hive Metastore** | 🚧 Planned | TBD | Manual | SQL generation only |
-| **PostgreSQL** | 🚧 Planned | TBD | Manual | SQL generation only |
+SchemaX is built on a provider architecture. Unity Catalog is fully supported today (v0.2.x). Lakebase (PostgreSQL) support is in active development for v0.3.x.
 
-Want to add a provider? See the [documentation site](https://github.com/vb-dbrks/schemax-vscode/tree/main/docs/schemax) — **For Contributors** → Provider contract.
+| Provider | Status | Hierarchy |
+|----------|--------|-----------|
+| **Unity Catalog** | Available (v0.2.x) | Catalog → Schema → Table / View / Volume / Function / MV |
+| **Lakebase (PostgreSQL)** | In development (v0.3.x) | Database → Schema → Table |
 
 ## Requirements
 
-- **Python 3.11+**
+- Python 3.11+
 - A SchemaX project (`.schemax/` directory)
-- For Unity Catalog: Databricks workspace with SQL Warehouse access
-
-## Documentation
-
-All guides and reference live in the **Docusaurus site** (`docs/schemax/`):
-
-- **For Users:** Quickstart, Architecture, Workflows, CLI, Environments & scope, Unity Catalog grants
-- **For Contributors:** Development, Testing, Provider contract, Contributing
-
-Run `cd docs/schemax && npm run start` to browse locally. See also [SETUP.md](SETUP.md) for SDK-specific setup.
-
-## Development
-
-See [SETUP.md](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/SETUP.md) for complete development setup instructions.
-
-**Quick setup:**
-```bash
-cd packages/python-sdk
-uv pip install -e ".[dev]"  # Or use pip
-pre-commit install
-make all  # Run all quality checks
-```
-
-**Commands:**
-```bash
-make format      # Format code
-make lint        # Lint code
-make typecheck   # Type check
-make test        # Run tests
-make all         # Run all checks
-```
-
-## License
-
-Apache License 2.0 - see [LICENSE](https://github.com/vb-dbrks/schemax-vscode/blob/main/LICENSE) for details.
+- For deployment: Databricks workspace with SQL Warehouse access
 
 ## Links
 
-- **Repository**: https://github.com/vb-dbrks/schemax-vscode
-- **Issues**: https://github.com/vb-dbrks/schemax-vscode/issues
-- **VS Code Extension**: [schemax-vscode](https://github.com/vb-dbrks/schemax-vscode/tree/main/packages/vscode-extension)
-- **PyPI**: https://pypi.org/project/schemaxpy/
+- [Documentation](https://vb-dbrks.github.io/schemax/) — Setup, quickstart, and reference
+- [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=schematic-dev.schemax-vscode) — Visual schema designer
+- [GitHub Repository](https://github.com/vb-dbrks/schemax-vscode) — Source code and issues
+- [PyPI](https://pypi.org/project/schemaxpy/)
+
+Apache License 2.0 — see [LICENSE](https://github.com/vb-dbrks/schemax-vscode/blob/main/LICENSE) for details.

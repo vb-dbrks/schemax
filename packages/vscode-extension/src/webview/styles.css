@@ -1274,7 +1274,8 @@ body {
 .modal-field-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  margin-bottom: 12px;
 }
 
 /* Bulk operations panel */
@@ -1302,7 +1303,8 @@ body {
   font-size: 12px;
   font-weight: 500;
   color: var(--vscode-foreground);
-  margin-bottom: 4px;
+  margin-bottom: 0;
+  line-height: 1.4;
 }
 
 .modal-field-group .modal-field-hint {

@@ -13,7 +13,9 @@ export const window = {
 
 export const workspace = {
   workspaceFolders: [],
-  getConfiguration: jest.fn(),
+  getConfiguration: jest.fn(() => ({
+    get: jest.fn(() => undefined),
+  })),
 };
 
 export const Uri = {

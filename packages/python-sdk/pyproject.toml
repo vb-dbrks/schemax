@@ -1,7 +1,7 @@
 [project]
 name = "schemaxpy"
-version = "0.2.9"
-description = "Python SDK and CLI for Databricks Unity Catalog schema management"
+version = "0.2.10"
+description = "Declarative schema management, governance, and migration for Databricks Unity Catalog. Version control schemas, generate SQL, deploy across environments."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
@@ -15,15 +15,25 @@ keywords = [
     "schema",
     "migration",
     "sql",
-    "cli"
+    "cli",
+    "governance",
+    "grants",
+    "tags",
+    "rollback",
+    "lakehouse",
+    "schema-as-code",
+    "delta-lake",
+    "data-governance"
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Software Development :: Code Generators",
 ]
 dependencies = [
     "pydantic>=2.0.0",

@@ -37,6 +37,9 @@ UNITY_OPERATIONS = {
     "SET_VIEW_COMMENT": "unity.set_view_comment",
     "SET_VIEW_PROPERTY": "unity.set_view_property",
     "UNSET_VIEW_PROPERTY": "unity.unset_view_property",
+    # View tag operations
+    "SET_VIEW_TAG": "unity.set_view_tag",
+    "UNSET_VIEW_TAG": "unity.unset_view_tag",
     # Volume operations
     "ADD_VOLUME": "unity.add_volume",
     "RENAME_VOLUME": "unity.rename_volume",
@@ -325,6 +328,27 @@ unity_operation_metadata = [
         description="Remove a view property",
         category=OperationCategory.METADATA,
         required_fields=["viewId", "key"],
+        optional_fields=[],
+        is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
+    ),
+    # View tag operations
+    OperationMetadata(
+        type=UNITY_OPERATIONS["SET_VIEW_TAG"],
+        display_name="Set View Tag",
+        description="Set a Unity Catalog view tag (for governance)",
+        category=OperationCategory.METADATA,
+        required_fields=["viewId", "tagName", "tagValue"],
+        optional_fields=[],
+        is_destructive=False,
+        managed_category=ManagedCategory.GOVERNANCE,
+    ),
+    OperationMetadata(
+        type=UNITY_OPERATIONS["UNSET_VIEW_TAG"],
+        display_name="Unset View Tag",
+        description="Remove a Unity Catalog view tag",
+        category=OperationCategory.METADATA,
+        required_fields=["viewId", "tagName"],
         optional_fields=[],
         is_destructive=False,
         managed_category=ManagedCategory.GOVERNANCE,

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.10] - 2026-03-10
+
+### Added
+
+- **View tags in bulk operations** — The bulk operations panel now supports adding tags to all views in a catalog or schema scope, alongside the existing table, schema, and catalog tag operations.
+- **Multi-principal grants** — Enter multiple principals (comma-separated) in the bulk operations panel to grant privileges to several users, groups, or service principals at once.
+
+### Changed
+
+- **Marketplace content** — Rewrote the VS Code Marketplace and Open VSX listing with user-focused descriptions: what schema management is, why it matters alongside DLT and Spark, and how to get started. Added multi-provider roadmap hint (Unity Catalog now, Lakebase/PostgreSQL in v0.3.x).
+
+### Fixed
+
+- **Python environment detection** — The extension now finds `schemax` and Python in conda, miniconda, venv, uv, pyenv, and poetry environments. It reads the VS Code Python interpreter setting (`python.defaultInterpreterPath`) and tries that first, then falls back to PATH. Commands are spawned through the user's shell so conda-activated environments resolve correctly.
+- **Bulk operations label alignment** — Fixed labels floating above input fields and dropdowns in the bulk operations modal.
+
 ## [0.2.9] - 2026-03-06
 
 ### Added

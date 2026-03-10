@@ -811,6 +811,68 @@ class TestColumnTagSQL:
         assert "env" in result.sql and "dev" in result.sql
 
 
+class TestViewTagSQL:
+    """Test SQL generation for view tag operations."""
+
+    def test_set_view_tag_produces_alter_view_sql(self, empty_unity_state):
+        from schemax.providers.unity.state_reducer import apply_operations
+
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", op_id="op_3"),
+        ]
+        state = apply_operations(empty_unity_state, setup_ops)
+        generator = UnitySQLGenerator(state.model_dump(by_alias=True))
+
+        tag_op = builder.view.set_view_tag("view_1", "env", "prod", op_id="op_4")
+        result = generator.generate_sql_for_operation(tag_op)
+
+        assert "ALTER VIEW" in result.sql
+        assert "SET TAGS" in result.sql
+        assert "env" in result.sql
+        assert "prod" in result.sql
+
+    def test_unset_view_tag_produces_alter_view_sql(self, empty_unity_state):
+        from schemax.providers.unity.state_reducer import apply_operations
+
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", op_id="op_3"),
+        ]
+        state = apply_operations(empty_unity_state, setup_ops)
+        generator = UnitySQLGenerator(state.model_dump(by_alias=True))
+
+        tag_op = builder.view.unset_view_tag("view_1", "env", op_id="op_4")
+        result = generator.generate_sql_for_operation(tag_op)
+
+        assert "ALTER VIEW" in result.sql
+        assert "UNSET TAGS" in result.sql
+        assert "env" in result.sql
+
+    def test_set_view_tag_escapes_value(self, empty_unity_state):
+        from schemax.providers.unity.state_reducer import apply_operations
+
+        builder = OperationBuilder()
+        setup_ops = [
+            builder.catalog.add_catalog("cat_1", "c1", op_id="op_1"),
+            builder.schema.add_schema("sch_1", "s1", "cat_1", op_id="op_2"),
+            builder.view.add_view("view_1", "v1", "sch_1", "SELECT 1", op_id="op_3"),
+        ]
+        state = apply_operations(empty_unity_state, setup_ops)
+        generator = UnitySQLGenerator(state.model_dump(by_alias=True))
+
+        tag_op = builder.view.set_view_tag("view_1", "desc", "it's a view", op_id="op_4")
+        result = generator.generate_sql_for_operation(tag_op)
+
+        assert "ALTER VIEW" in result.sql
+        # Value should be escaped
+        assert "it\\'s a view" in result.sql or "it''s a view" in result.sql
+
+
 class TestConstraintSQL:
     """Test SQL generation for constraint operations"""
 
