@@ -6,6 +6,27 @@ This page summarizes coordinated SchemaX releases across:
 - VS Code extension (`schemax-vscode`)
 - Documentation site (`docs/schemax`)
 
+## 0.2.10 (2026-03-10)
+
+### Highlights
+
+- **View tags** — Full support for `ALTER VIEW SET TAGS` and `ALTER VIEW UNSET TAGS` (Databricks DBR 13.3+). Add, update, and remove tags on views through the Designer, bulk operations, or state files. Tracked in changelog, SQL generation, and deployment.
+- **Multi-principal bulk grants** — Enter multiple principals (comma-separated) in the bulk operations panel to grant privileges to several users, groups, or service principals at once.
+- **Python environment detection** — The VS Code extension now finds `schemax` and Python in conda, miniconda, venv, uv, pyenv, and poetry environments. Reads the VS Code Python interpreter setting first, then falls back to PATH.
+- **State differ refactored** — Split the monolithic differ into focused modules (operation builders, grant differ, metadata differ, bulk operations) for maintainability. Public API unchanged.
+- **Faster live integration tests** — Existence checks use single `information_schema` queries instead of full catalog discovery (~7x faster on large metastores).
+
+### Package versions
+
+- Python SDK/CLI: `0.2.10`
+- VS Code extension: `0.2.10`
+- Docs site package: `0.2.10`
+
+### Changelogs
+
+- [Python SDK changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/CHANGELOG.md)
+- [VS Code extension changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/vscode-extension/CHANGELOG.md)
+
 ## 0.2.9 (2026-03-06)
 
 ### Highlights

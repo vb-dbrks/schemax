@@ -127,15 +127,21 @@ def _quick_query(config: LiveDatabricksConfig, sql: str) -> list[list[Any]]:
     return list(response.result.data_array)
 
 
+def _ident(name: str) -> str:
+    """Backtick-escape an identifier to prevent SQL injection in FROM clauses."""
+    return f"`{name.replace('`', '``')}`"
+
+
 def assert_schema_exists(
     config: LiveDatabricksConfig, physical_catalog: str, schema_name: str
 ) -> None:
     """Assert that a schema exists in the given catalog (lightweight SQL check)."""
     cat_esc = physical_catalog.replace("'", "''")
     sch_esc = schema_name.replace("'", "''")
+    cat_id = _ident(physical_catalog)
     rows = _quick_query(
         config,
-        f"SELECT schema_name FROM {physical_catalog}.information_schema.schemata "
+        f"SELECT schema_name FROM {cat_id}.information_schema.schemata "
         f"WHERE catalog_name = '{cat_esc}' AND schema_name = '{sch_esc}'",
     )
     assert rows, f"Schema {schema_name} not found in catalog {physical_catalog}"
@@ -151,9 +157,10 @@ def table_exists(
     cat_esc = physical_catalog.replace("'", "''")
     sch_esc = schema_name.replace("'", "''")
     tbl_esc = table_name.replace("'", "''")
+    cat_id = _ident(physical_catalog)
     rows = _quick_query(
         config,
-        f"SELECT table_name FROM {physical_catalog}.information_schema.tables "
+        f"SELECT table_name FROM {cat_id}.information_schema.tables "
         f"WHERE table_catalog = '{cat_esc}' AND table_schema = '{sch_esc}' "
         f"AND table_name = '{tbl_esc}' AND table_type IN ('TABLE', 'MANAGED', 'EXTERNAL')",
     )
@@ -189,9 +196,10 @@ def function_exists(
     cat_esc = physical_catalog.replace("'", "''")
     sch_esc = schema_name.replace("'", "''")
     func_esc = function_name.replace("'", "''")
+    cat_id = _ident(physical_catalog)
     rows = _quick_query(
         config,
-        f"SELECT routine_name FROM {physical_catalog}.information_schema.routines "
+        f"SELECT routine_name FROM {cat_id}.information_schema.routines "
         f"WHERE routine_catalog = '{cat_esc}' AND routine_schema = '{sch_esc}' "
         f"AND routine_name = '{func_esc}'",
     )
@@ -208,9 +216,10 @@ def materialized_view_exists(
     cat_esc = physical_catalog.replace("'", "''")
     sch_esc = schema_name.replace("'", "''")
     mv_esc = mv_name.replace("'", "''")
+    cat_id = _ident(physical_catalog)
     rows = _quick_query(
         config,
-        f"SELECT table_name FROM {physical_catalog}.information_schema.tables "
+        f"SELECT table_name FROM {cat_id}.information_schema.tables "
         f"WHERE table_catalog = '{cat_esc}' AND table_schema = '{sch_esc}' "
         f"AND table_name = '{mv_esc}' AND table_type = 'MATERIALIZED_VIEW'",
     )
