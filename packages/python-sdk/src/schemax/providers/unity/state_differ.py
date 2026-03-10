@@ -27,6 +27,7 @@ from .bulk_operations import (
     add_all_tags_for_view,
     add_all_views_in_schema,
     add_all_volumes_in_schema,
+    create_column_tag_ops,
 )
 from .grant_differ import diff_grants
 from .metadata_differ import (
@@ -478,6 +479,7 @@ class UnityStateDiffer(StateDiffer):
             if col_id not in old_columns:
                 if all(key in col for key in ("id", "name", "type")):
                     ops.append(create_add_column_op(col, table_id))
+                    ops.extend(create_column_tag_ops(col, table_id))
                 continue
             ops.extend(
                 diff_existing_column(

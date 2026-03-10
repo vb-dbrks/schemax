@@ -5,6 +5,7 @@ Handles catalog/schema metadata diffs, table/view property diffs, table/column t
 constraint comparison, and deep column field comparison.
 """
 
+from collections.abc import Callable
 from typing import Any, cast
 
 from schemax.providers.base.operations import Operation
@@ -275,7 +276,7 @@ def diff_existing_column(
     table_id: str,
     old_col: dict[str, Any],
     new_col: dict[str, Any],
-    detect_rename_fn: Any,
+    detect_rename_fn: Callable[[str, str, str, str, str], bool],
 ) -> list[Operation]:
     """Compare an existing column and return update operations.
 
