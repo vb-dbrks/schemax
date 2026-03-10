@@ -193,9 +193,9 @@ class TestCatalogMutations:
         old = _base_state([_catalog("c1", "main", comment="Old comment")])
         new = _base_state([_catalog("c1", "main", comment="New comment")])
         ops = UnityStateDiffer(old, new).generate_diff_operations()
-        comment_ops = _ops_of_type(ops, "unity.set_catalog_comment")
-        if not comment_ops:
-            pass  # Will be reported as finding
+        update_ops = _ops_of_type(ops, "unity.update_catalog")
+        assert len(update_ops) == 1
+        assert update_ops[0].payload.get("comment") == "New comment"
 
     def test_catalog_tags_added(self):
         old = _base_state([_catalog("c1", "main", tags={})])
