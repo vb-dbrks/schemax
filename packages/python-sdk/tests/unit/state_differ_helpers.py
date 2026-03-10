@@ -3,11 +3,12 @@ Shared test helpers for state differ tests.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 
 from schemax.providers.base.operations import Operation
 
 
-def _make_op(op_type: str, target: str, payload: dict) -> Operation:
+def _make_op(op_type: str, target: str, payload: dict[str, Any]) -> Operation:
     return Operation(
         id=f"op_{target}",
         ts=datetime.now(UTC).isoformat(),
@@ -18,25 +19,27 @@ def _make_op(op_type: str, target: str, payload: dict) -> Operation:
     )
 
 
-def _base_state(catalogs=None):
+def _base_state(catalogs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     return {"catalogs": catalogs or []}
 
 
-def _catalog(id, name, schemas=None, **kwargs):
+def _catalog(
+    id: str, name: str, schemas: list[dict[str, Any]] | None = None, **kwargs: Any
+) -> dict[str, Any]:
     return {"id": id, "name": name, "schemas": schemas or [], **kwargs}
 
 
 def _schema(
-    id,
-    name,
-    tables=None,
-    views=None,
-    volumes=None,
-    functions=None,
-    materialized_views=None,
-    **kwargs,
-):
-    d = {"id": id, "name": name, "tables": tables or []}
+    id: str,
+    name: str,
+    tables: list[dict[str, Any]] | None = None,
+    views: list[dict[str, Any]] | None = None,
+    volumes: list[dict[str, Any]] | None = None,
+    functions: list[dict[str, Any]] | None = None,
+    materialized_views: list[dict[str, Any]] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    d: dict[str, Any] = {"id": id, "name": name, "tables": tables or []}
     if views is not None:
         d["views"] = views
     if volumes is not None:
@@ -49,41 +52,53 @@ def _schema(
     return d
 
 
-def _table(id, name, columns=None, fmt="delta", **kwargs):
+def _table(
+    id: str,
+    name: str,
+    columns: list[dict[str, Any]] | None = None,
+    fmt: str = "delta",
+    **kwargs: Any,
+) -> dict[str, Any]:
     return {"id": id, "name": name, "format": fmt, "columns": columns or [], **kwargs}
 
 
-def _col(id, name, type="STRING", nullable=True, **kwargs):
+def _col(
+    id: str,
+    name: str,
+    type: str = "STRING",
+    nullable: bool = True,
+    **kwargs: Any,
+) -> dict[str, Any]:
     return {"id": id, "name": name, "type": type, "nullable": nullable, **kwargs}
 
 
-def _view(id, name, definition="SELECT 1", **kwargs):
+def _view(id: str, name: str, definition: str = "SELECT 1", **kwargs: Any) -> dict[str, Any]:
     return {"id": id, "name": name, "definition": definition, **kwargs}
 
 
-def _volume(id, name, volume_type="managed", **kwargs):
+def _volume(id: str, name: str, volume_type: str = "managed", **kwargs: Any) -> dict[str, Any]:
     return {"id": id, "name": name, "volumeType": volume_type, **kwargs}
 
 
-def _function(id, name, body="RETURN 1", **kwargs):
+def _function(id: str, name: str, body: str = "RETURN 1", **kwargs: Any) -> dict[str, Any]:
     return {"id": id, "name": name, "language": "SQL", "returnType": "INT", "body": body, **kwargs}
 
 
-def _mv(id, name, definition="SELECT 1", **kwargs):
+def _mv(id: str, name: str, definition: str = "SELECT 1", **kwargs: Any) -> dict[str, Any]:
     return {"id": id, "name": name, "definition": definition, **kwargs}
 
 
-def _constraint(id, type, columns, **kwargs):
+def _constraint(id: str, type: str, columns: list[str], **kwargs: Any) -> dict[str, Any]:
     return {"id": id, "type": type, "columns": columns, **kwargs}
 
 
-def _grant(principal, privileges):
+def _grant(principal: str, privileges: list[str]) -> dict[str, Any]:
     return {"principal": principal, "privileges": privileges}
 
 
-def _op_types(ops):
+def _op_types(ops: list[Operation]) -> list[str]:
     return [o.op for o in ops]
 
 
-def _ops_of_type(ops, op_type):
+def _ops_of_type(ops: list[Operation], op_type: str) -> list[Operation]:
     return [o for o in ops if o.op == op_type]
