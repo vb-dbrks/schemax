@@ -10,11 +10,7 @@ interface RunOptions {
   signal?: AbortSignal;
 }
 
-const BASE_COMMAND_CANDIDATES = [
-  "schemax",
-  "python3 -m schemax.cli",
-  "python -m schemax.cli",
-];
+const BASE_COMMAND_CANDIDATES = ["schemax", "python3 -m schemax.cli", "python -m schemax.cli"];
 
 /**
  * Build the ordered list of command candidates.
