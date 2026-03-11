@@ -333,6 +333,8 @@ def ensure_project_file(workspace_path: Path, provider_id: str = "unity") -> Non
             if version == 5:
                 return
             if version == 4:
+                # Validate before migration (same check as read_project)
+                validate_workspace_not_legacy_implicit(project)
                 # Auto-migrate v4 → v5
                 project = _migrate_v4_to_v5(project)
                 _write_json_atomic(project_path, project)
