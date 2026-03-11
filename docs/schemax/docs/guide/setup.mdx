@@ -32,6 +32,28 @@ Verify:
 schemax --help
 ```
 
+:::tip Using a virtual environment
+
+We recommend installing `schemaxpy` inside a virtual environment so it doesn't interfere with other Python projects.
+
+```bash
+# uv (fastest)
+uv venv .venv && source .venv/bin/activate
+uv pip install schemaxpy
+
+# conda / mamba
+conda create -n schemax python=3.11 && conda activate schemax
+pip install schemaxpy
+
+# standard venv
+python3 -m venv .venv && source .venv/bin/activate
+pip install schemaxpy
+```
+
+If your IDE can't find the `schemax` command after installing, select the correct Python interpreter: in VS Code / Cursor, open the Command Palette (`Cmd+Shift+P`) → **Python: Select Interpreter** → choose the interpreter inside your virtual environment.
+
+:::
+
 ## 3. Open a project
 
 1. In VS Code, Cursor, or your editor, **File → Open Folder**

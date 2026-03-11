@@ -30,7 +30,7 @@ class _WorkspaceRepoPort(Protocol):
     def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]: ...
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]: ...
 
 
@@ -50,9 +50,11 @@ class _SqlWorkspaceRepository:
         return self._repository.load_current_state(workspace=workspace, validate=validate)
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]:
-        return self._repository.get_environment_config(project=project, environment=environment)
+        return self._repository.get_environment_config(
+            project=project, environment=environment, scope=scope
+        )
 
 
 # TODO: Snapshot-based SQL generation requires issue #56 to be implemented first

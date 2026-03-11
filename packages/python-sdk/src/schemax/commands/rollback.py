@@ -42,7 +42,7 @@ class _WorkspaceRepoPort(Protocol):
     def read_project(self, *, workspace: Path) -> dict[str, Any]: ...
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]: ...
 
     def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]: ...
@@ -62,9 +62,11 @@ class _RollbackWorkspaceRepository:
         return self._repository.read_project(workspace=workspace)
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]:
-        return self._repository.get_environment_config(project=project, environment=environment)
+        return self._repository.get_environment_config(
+            project=project, environment=environment, scope=scope
+        )
 
     def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
         return self._repository.load_current_state(workspace=workspace, validate=validate)

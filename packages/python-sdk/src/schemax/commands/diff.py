@@ -33,7 +33,7 @@ class _WorkspaceRepoPort(Protocol):
     def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]: ...
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]: ...
 
 
@@ -50,9 +50,11 @@ class _DiffWorkspaceRepository:
         return self._repository.read_snapshot(workspace=workspace, version=version)
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]:
-        return self._repository.get_environment_config(project=project, environment=environment)
+        return self._repository.get_environment_config(
+            project=project, environment=environment, scope=scope
+        )
 
 
 def generate_diff(

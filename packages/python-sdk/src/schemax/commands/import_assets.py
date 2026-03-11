@@ -77,7 +77,7 @@ class _WorkspaceRepoPort(Protocol):
     ) -> tuple[dict[str, Any], dict[str, Any]]: ...
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]: ...
 
     def write_project(self, *, workspace: Path, project: dict[str, Any]) -> None: ...
@@ -122,9 +122,11 @@ class _ImportWorkspaceRepository:
         )
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]:
-        return self._repository.get_environment_config(project=project, environment=environment)
+        return self._repository.get_environment_config(
+            project=project, environment=environment, scope=scope
+        )
 
     def write_project(self, *, workspace: Path, project: dict[str, Any]) -> None:
         self._repository.write_project(workspace=workspace, project=project)
