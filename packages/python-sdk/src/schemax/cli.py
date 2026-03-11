@@ -338,6 +338,11 @@ def changelog_undo(op_ids: tuple[str, ...], json_output: bool, workspace: str) -
     "-t",
     help="Target environment (maps logical catalog names to physical catalog names)",
 )
+@click.option(
+    "--scope",
+    default=None,
+    help="Target scope (v5 multi-target). Uses defaultTarget if omitted.",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def sql(
@@ -346,6 +351,7 @@ def sql(
     from_version: str | None,
     to_version: str | None,
     target: str | None,
+    scope: str | None,
     json_output: bool,
     workspace: str,
 ) -> None:
@@ -366,6 +372,7 @@ def sql(
             from_version=from_version,
             to_version=to_version,
             target=target,
+            scope=scope,
             json_output=json_output,
         )
         if json_output:
@@ -417,6 +424,7 @@ def _run_sql_command(
     from_version: str | None,
     to_version: str | None,
     target: str | None,
+    scope: str | None = None,
     json_output: bool,
 ) -> Any:
     """Execute SQL service call for SQL command."""
@@ -431,6 +439,7 @@ def _run_sql_command(
                 from_version=from_version,
                 to_version=to_version,
                 target_env=target,
+                scope=scope,
             )
     return sql_service.run(
         workspace=workspace_path,
@@ -439,18 +448,24 @@ def _run_sql_command(
         from_version=from_version,
         to_version=to_version,
         target_env=target,
+        scope=scope,
     )
 
 
 @cli.command()
 @click.option("--json", "json_output", is_flag=True, help="Output validation results as JSON")
+@click.option(
+    "--scope",
+    default=None,
+    help="Target scope (v5 multi-target). Uses defaultTarget if omitted.",
+)
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
-def validate(workspace: str, json_output: bool) -> None:
+def validate(workspace: str, json_output: bool, scope: str | None) -> None:
     """Validate .schemax/ project files"""
     started_at = perf_counter()
     workspace_path = Path(workspace).resolve()
     try:
-        _run_validate_command(workspace_path, json_output, started_at)
+        _run_validate_command(workspace_path, json_output, started_at, scope=scope)
         sys.exit(0)
     except CommandValidationError as e:
         if json_output:
@@ -486,14 +501,20 @@ def validate(workspace: str, json_output: bool) -> None:
         sys.exit(1)
 
 
-def _run_validate_command(workspace_path: Path, json_output: bool, started_at: float) -> None:
+def _run_validate_command(
+    workspace_path: Path,
+    json_output: bool,
+    started_at: float,
+    *,
+    scope: str | None = None,
+) -> None:
     """Run validate command in console or JSON mode."""
     if not json_output:
-        validate_service.run(workspace=workspace_path, json_output=False)
+        validate_service.run(workspace=workspace_path, json_output=False, scope=scope)
         return
     captured = StringIO()
     with redirect_stdout(captured):
-        validate_service.run(workspace=workspace_path, json_output=True)
+        validate_service.run(workspace=workspace_path, json_output=True, scope=scope)
     payload = _parse_validate_payload(captured.getvalue())
     warnings = payload.get("warnings", [])
     warning_list = warnings if isinstance(warnings, list) else []
@@ -935,6 +956,11 @@ def _print_import_summary(summary: dict[str, Any]) -> None:
     "--auto-rollback", is_flag=True, help="Automatically rollback on failure (MVP feature!)"
 )
 @click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
+@click.option(
+    "--scope",
+    default=None,
+    help="Target scope (v5 multi-target). Uses defaultTarget if omitted.",
+)
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def apply(
     target: str,
@@ -945,6 +971,7 @@ def apply(
     no_interaction: bool,
     auto_rollback: bool,
     json_output: bool,
+    scope: str | None,
     workspace: str,
 ) -> None:
     """Execute SQL against target environment
@@ -980,6 +1007,7 @@ def apply(
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
             json_output=json_output,
+            scope=scope,
             started_at=started_at,
         )
         sys.exit(exit_code)
@@ -1029,6 +1057,7 @@ def _run_apply_command(
     no_interaction: bool,
     auto_rollback: bool,
     json_output: bool,
+    scope: str | None = None,
     started_at: float,
 ) -> int:
     """Run apply service and emit result envelope if requested."""
@@ -1044,6 +1073,7 @@ def _run_apply_command(
                 dry_run=dry_run,
                 no_interaction=no_interaction,
                 auto_rollback=auto_rollback,
+                scope=scope,
             )
     else:
         result = apply_service.run(
@@ -1055,6 +1085,7 @@ def _run_apply_command(
             dry_run=dry_run,
             no_interaction=no_interaction,
             auto_rollback=auto_rollback,
+            scope=scope,
         )
     if json_output:
         if result.success:
@@ -1671,12 +1702,13 @@ def _run_workspace_state(
     validate_dependencies: bool,
     json_output: bool,
     payload_mode: str,
+    scope: str | None = None,
 ) -> None:
     """Load provider-resolved workspace state for IDE consumers."""
     started_at = perf_counter()
     project = workspace_repo.read_project(workspace=workspace_path)
     state, changelog, provider, validation = workspace_repo.load_current_state(
-        workspace=workspace_path, validate=validate_dependencies
+        workspace=workspace_path, validate=validate_dependencies, scope=scope
     )
     serialized_ops = [_serialize_operation(op) for op in changelog.get("ops", [])]
     changelog_payload: dict[str, Any] = {
@@ -1687,7 +1719,7 @@ def _run_workspace_state(
         changelog_payload["ops"] = []
     else:
         changelog_payload["ops"] = serialized_ops
-    payload = {
+    payload: dict[str, Any] = {
         "state": state,
         "changelog": changelog_payload,
         "provider": {
@@ -1699,7 +1731,8 @@ def _run_workspace_state(
         "project": {
             "name": project.get("name"),
             "latestSnapshot": project.get("latestSnapshot"),
-            "provider": project.get("provider", {}),
+            "targets": project.get("targets", {}),
+            "defaultTarget": project.get("defaultTarget", "default"),
         },
         "validation": validation or {"errors": [], "warnings": []},
     }
@@ -1729,12 +1762,18 @@ def _run_workspace_state(
     show_default=True,
     help="Payload shape for workspace-state transport",
 )
+@click.option(
+    "--scope",
+    default=None,
+    help="Target scope (v5 multi-target). Uses defaultTarget if omitted.",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def workspace_state_cmd(
     workspace: str,
     validate_dependencies: bool,
     payload_mode: str,
+    scope: str | None,
     json_output: bool,
 ) -> None:
     """Emit current workspace state/changelog/provider metadata for extension transport."""
@@ -1746,6 +1785,7 @@ def workspace_state_cmd(
             validate_dependencies=validate_dependencies,
             json_output=json_output,
             payload_mode=payload_mode,
+            scope=scope,
         )
     except WorkflowValidationError as e:
         _emit_validation_error(

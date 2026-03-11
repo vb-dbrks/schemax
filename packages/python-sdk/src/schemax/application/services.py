@@ -55,8 +55,14 @@ class InitService:
 class ValidateService:
     """Validate workspace project state."""
 
-    def run(self, *, workspace: Path, json_output: bool = False) -> CommandResult:
-        valid = validate_project(workspace, json_output=json_output)
+    def run(
+        self,
+        *,
+        workspace: Path,
+        json_output: bool = False,
+        scope: str | None = None,
+    ) -> CommandResult:
+        valid = validate_project(workspace, json_output=json_output, scope=scope)
         code = "valid" if valid else "invalid"
         return CommandResult(success=valid, code=code, message="Validation completed")
 
@@ -74,6 +80,7 @@ class SqlService:
         from_version: str | None,
         to_version: str | None,
         target_env: str | None,
+        scope: str | None = None,
     ) -> CommandResult:
         sql = generate_sql_migration(
             workspace=workspace,
@@ -82,6 +89,7 @@ class SqlService:
             _from_version=from_version,
             _to_version=to_version,
             target_env=target_env,
+            scope=scope,
         )
         return CommandResult(
             success=True,
@@ -201,6 +209,7 @@ class ApplyService:
         no_interaction: bool,
         auto_rollback: bool,
         execution_mode: str = "remote",
+        scope: str | None = None,
     ) -> CommandResult:
         request = _build_apply_request(
             workspace,
@@ -211,6 +220,7 @@ class ApplyService:
             no_interaction,
             auto_rollback,
             execution_mode,
+            scope=scope,
         )
         result = apply_to_environment(**request)
         return CommandResult(
@@ -417,6 +427,8 @@ def _build_apply_request(
     no_interaction: bool,
     auto_rollback: bool,
     execution_mode: str = "remote",
+    *,
+    scope: str | None = None,
 ) -> dict[str, Any]:
     """Build kwargs for apply command boundary calls."""
     keys = (
@@ -428,6 +440,7 @@ def _build_apply_request(
         "no_interaction",
         "auto_rollback",
         "execution_mode",
+        "scope",
     )
     values = (
         workspace,
@@ -438,6 +451,7 @@ def _build_apply_request(
         no_interaction,
         auto_rollback,
         execution_mode,
+        scope,
     )
     return dict(zip(keys, values, strict=True))
 

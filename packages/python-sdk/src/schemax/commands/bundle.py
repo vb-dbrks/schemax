@@ -12,7 +12,7 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
-from schemax.core.storage import read_project
+from schemax.core.storage import get_target_config, read_project
 from schemax.version import SCHEMAX_VERSION
 
 _DEPLOY_SCRIPT_TEMPLATE = textwrap.dedent("""\
@@ -180,8 +180,8 @@ def generate_bundle(
     """
     project = read_project(workspace)
     project_name: str = project.get("name", "schemax")
-    provider_config = project.get("provider", {})
-    environments: dict[str, Any] = provider_config.get("environments", {})
+    target_config = get_target_config(project)
+    environments: dict[str, Any] = target_config.get("environments", {})
 
     if not environments:
         raise ValueError(

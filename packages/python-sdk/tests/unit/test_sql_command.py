@@ -1,141 +1,272 @@
-"""Unit tests for SQL command module."""
+"""Tests for commands/sql.py — covers build_catalog_mapping and helper functions."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
-from schemax.commands.sql import SQLGenerationError, build_catalog_mapping, generate_sql_migration
+from schemax.commands.sql import (
+    SQLGenerationError,
+    _extract_add_table_payload,
+    _prepare_operations,
+    build_catalog_mapping,
+    generate_sql_migration,
+)
+from schemax.providers.base.operations import Operation
+
+# ── build_catalog_mapping ──────────────────────────────────────────────
 
 
-def _make_op(op_id: str = "op_1") -> dict:
-    return {
-        "id": op_id,
-        "ts": "2026-02-01T00:00:00Z",
-        "provider": "unity",
-        "op": "unity.add_catalog",
-        "target": "cat_1",
-        "payload": {"catalogId": "cat_1", "name": "demo"},
-    }
+class TestBuildCatalogMapping:
+    def test_no_catalogs(self):
+        result = build_catalog_mapping({"catalogs": []}, {})
+        assert result == {}
+
+    def test_valid_mapping(self):
+        state = {"catalogs": [{"name": "analytics"}]}
+        env = {"catalogMappings": {"analytics": "prod_analytics"}}
+        result = build_catalog_mapping(state, env)
+        assert result == {"analytics": "prod_analytics"}
+
+    def test_missing_mapping_raises(self):
+        state = {"catalogs": [{"name": "analytics"}, {"name": "raw"}]}
+        env = {"catalogMappings": {"analytics": "prod_analytics"}}
+        with pytest.raises(SQLGenerationError, match="Missing catalog mapping"):
+            build_catalog_mapping(state, env)
+
+    def test_non_dict_mappings_raises(self):
+        state = {"catalogs": [{"name": "analytics"}]}
+        env = {"catalogMappings": "not_a_dict"}
+        with pytest.raises(SQLGenerationError, match="must be an object"):
+            build_catalog_mapping(state, env)
+
+    def test_empty_mappings_dict(self):
+        state = {"catalogs": [{"name": "cat1"}]}
+        env = {"catalogMappings": {}}
+        with pytest.raises(SQLGenerationError, match="Missing catalog mapping"):
+            build_catalog_mapping(state, env)
 
 
-class _RepoStub:
-    def __init__(
-        self,
-        *,
-        project: dict,
-        state_result: tuple | None = None,
-        snapshots: dict[str, dict] | None = None,
-        env_config: dict | None = None,
-    ) -> None:
-        self._project = project
+# ── _extract_add_table_payload ─────────────────────────────────────────
+
+
+class TestExtractAddTablePayload:
+    def test_non_add_table_op_returns_none(self):
+        op = Operation(
+            id="op1",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_schema",
+            target="s1",
+            payload={},
+        )
+        assert _extract_add_table_payload(op) is None
+
+    def test_non_external_table_returns_none(self):
+        op = Operation(
+            id="op1",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_table",
+            target="t1",
+            payload={"name": "tbl"},
+        )
+        assert _extract_add_table_payload(op) is None
+
+    def test_external_table_operation(self):
+        op = Operation(
+            id="op1",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_table",
+            target="t1",
+            payload={
+                "name": "ext_tbl",
+                "external": True,
+                "externalLocationName": "loc1",
+                "path": "data/",
+            },
+        )
+        result = _extract_add_table_payload(op)
+        assert result == ("ext_tbl", "loc1", "data/")
+
+    def test_dict_operation_non_external(self):
+        assert (
+            _extract_add_table_payload({"op": "unity.add_table", "payload": {"name": "t"}}) is None
+        )
+
+    def test_dict_operation_non_add_table(self):
+        assert _extract_add_table_payload({"op": "unity.add_schema"}) is None
+
+    def test_dict_external_table(self):
+        result = _extract_add_table_payload(
+            {
+                "op": "unity.add_table",
+                "payload": {
+                    "name": "ext",
+                    "external": True,
+                    "externalLocationName": "loc",
+                    "path": "p/",
+                },
+            }
+        )
+        assert result == ("ext", "loc", "p/")
+
+
+# ── _prepare_operations ───────────────────────────────────────────────
+
+
+class TestPrepareOperations:
+    def test_converts_dicts_to_operations(self):
+        ops = [
+            {
+                "id": "op1",
+                "ts": "2025-01-01T00:00:00Z",
+                "provider": "unity",
+                "op": "unity.add_table",
+                "target": "t1",
+                "payload": {},
+            }
+        ]
+        result = _prepare_operations(ops, None, None)
+        assert isinstance(result[0], Operation)
+
+    def test_passes_through_operation_objects(self):
+        op = Operation(
+            id="op1",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_table",
+            target="t1",
+            payload={},
+        )
+        result = _prepare_operations([op], None, None)
+        assert result[0] is op
+
+
+# ── generate_sql_migration ─────────────────────────────────────────────
+
+
+class _FakeRepo:
+    def __init__(self, *, project=None, state_result=None, snapshots=None, env_config=None):
+        self._project = project or {"name": "test"}
         self._state_result = state_result
         self._snapshots = snapshots or {}
         self._env_config = env_config or {}
 
-    def read_project(self, *, workspace: Path) -> dict:
-        del workspace
+    def read_project(self, *, workspace):
         return self._project
 
-    def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple:
-        del workspace, validate
-        if self._state_result is None:
-            raise AssertionError("state_result not configured")
+    def load_current_state(self, *, workspace, validate=False):
         return self._state_result
 
-    def read_snapshot(self, *, workspace: Path, version: str) -> dict:
-        del workspace
+    def read_snapshot(self, *, workspace, version):
         return self._snapshots[version]
 
-    def get_environment_config(self, *, project: dict, environment: str) -> dict:
-        del project, environment
+    def get_environment_config(self, *, project, environment):
         return self._env_config
 
 
-def test_build_catalog_mapping_empty_state_returns_empty_mapping() -> None:
-    assert build_catalog_mapping({"catalogs": []}, {"catalogMappings": {}}) == {}
+class TestGenerateSqlMigration:
+    def test_no_ops_returns_empty(self):
+        provider = Mock()
+        provider.info = SimpleNamespace(name="Unity Catalog")
+        repo = _FakeRepo(
+            state_result=({"catalogs": []}, {"ops": []}, provider, None),
+        )
+        result = generate_sql_migration(Path("/tmp"), workspace_repo=repo)
+        assert result == ""
 
+    def test_with_ops_generates_sql(self):
+        provider = Mock()
+        provider.info = SimpleNamespace(name="Unity Catalog")
+        provider.get_sql_generator.return_value.generate_sql.return_value = "CREATE CATALOG demo;"
 
-def test_build_catalog_mapping_requires_object_mappings() -> None:
-    with pytest.raises(SQLGenerationError, match="must be an object"):
-        build_catalog_mapping({"catalogs": [{"name": "demo"}]}, {"catalogMappings": "bad"})
+        ops = [
+            {
+                "id": "op1",
+                "ts": "2025-01-01T00:00:00Z",
+                "provider": "unity",
+                "op": "unity.add_catalog",
+                "target": "c1",
+                "payload": {"name": "demo"},
+            }
+        ]
+        repo = _FakeRepo(
+            state_result=({"catalogs": []}, {"ops": ops}, provider, None),
+        )
+        result = generate_sql_migration(Path("/tmp"), workspace_repo=repo)
+        assert "CREATE CATALOG demo" in result
 
+    def test_file_not_found_wraps_error(self):
+        repo = _FakeRepo()
+        repo.read_project = Mock(side_effect=FileNotFoundError("no project"))
+        with pytest.raises(SQLGenerationError, match="Project files not found"):
+            generate_sql_migration(Path("/tmp"), workspace_repo=repo)
 
-def test_build_catalog_mapping_requires_all_catalogs() -> None:
-    state = {"catalogs": [{"name": "demo"}, {"name": "analytics"}]}
-    env_config = {"catalogMappings": {"demo": "dev_demo"}}
+    def test_unexpected_error_wraps(self):
+        repo = _FakeRepo()
+        repo.read_project = Mock(side_effect=RuntimeError("boom"))
+        with pytest.raises(SQLGenerationError, match="Failed to generate SQL"):
+            generate_sql_migration(Path("/tmp"), workspace_repo=repo)
 
-    with pytest.raises(SQLGenerationError, match=r"Missing catalog mapping\(s\)"):
-        build_catalog_mapping(state, env_config)
+    def test_snapshot_latest_no_snapshots_raises(self):
+        repo = _FakeRepo(project={"name": "test", "latestSnapshot": None})
+        with pytest.raises(SQLGenerationError, match="No snapshots available"):
+            generate_sql_migration(Path("/tmp"), snapshot="latest", workspace_repo=repo)
 
+    def test_snapshot_latest_with_ops(self):
+        provider = Mock()
+        provider.info = SimpleNamespace(name="Unity Catalog")
+        provider.get_sql_generator.return_value.generate_sql.return_value = "ALTER TABLE t1;"
+        ops = [
+            {
+                "id": "op1",
+                "ts": "2025-01-01T00:00:00Z",
+                "provider": "unity",
+                "op": "unity.add_column",
+                "target": "col1",
+                "payload": {},
+            }
+        ]
+        repo = _FakeRepo(
+            project={"name": "test", "latestSnapshot": "v0.1.0"},
+            snapshots={"v0.1.0": {"state": {"catalogs": []}, "operations": ops}},
+            state_result=({"catalogs": []}, {"ops": []}, provider, None),
+        )
+        result = generate_sql_migration(Path("/tmp"), snapshot="latest", workspace_repo=repo)
+        assert "ALTER TABLE t1" in result
 
-def test_generate_sql_migration_returns_empty_when_no_ops(monkeypatch: pytest.MonkeyPatch) -> None:
-    del monkeypatch
-    provider = Mock()
-    provider.info.name = "Unity Catalog"
-    provider.info.version = "1.0.0"
+    def test_snapshot_no_operations_raises(self):
+        provider = Mock()
+        repo = _FakeRepo(
+            project={"name": "test", "latestSnapshot": "v0.1.0"},
+            snapshots={"v0.1.0": {"state": {"catalogs": []}}},
+            state_result=({"catalogs": []}, {"ops": []}, provider, None),
+        )
+        with pytest.raises(SQLGenerationError, match="not yet supported"):
+            generate_sql_migration(Path("/tmp"), snapshot="latest", workspace_repo=repo)
 
-    repo = _RepoStub(
-        project={
-            "provider": {"environments": {"dev": {"topLevelName": "dev_demo"}}},
-            "managedLocations": {},
-            "externalLocations": {},
-        },
-        state_result=({"catalogs": []}, {"ops": []}, provider, None),
-    )
+    def test_output_to_file(self, tmp_path):
+        provider = Mock()
+        provider.info = SimpleNamespace(name="Unity Catalog")
+        provider.get_sql_generator.return_value.generate_sql.return_value = "CREATE TABLE t1;"
 
-    assert generate_sql_migration(workspace=Path("."), workspace_repo=repo) == ""
-
-
-def test_generate_sql_migration_with_target_and_output(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    del monkeypatch
-    provider = Mock()
-    provider.info.name = "Unity Catalog"
-    provider.info.version = "1.0.0"
-
-    generator = Mock()
-    generator.generate_sql.return_value = "CREATE CATALOG `dev_demo`;"
-    provider.get_sql_generator.return_value = generator
-
-    state = {"catalogs": [{"name": "demo"}]}
-    changelog = {"ops": [_make_op()]}
-    project = {
-        "provider": {"environments": {"dev": {"topLevelName": "dev_demo"}}},
-        "managedLocations": {},
-        "externalLocations": {},
-    }
-    repo = _RepoStub(
-        project=project,
-        state_result=(state, changelog, provider, None),
-        env_config={"topLevelName": "dev_demo", "catalogMappings": {"demo": "dev_demo"}},
-    )
-
-    out_file = tmp_path / "migration.sql"
-    sql = generate_sql_migration(
-        workspace=tmp_path,
-        output=out_file,
-        target_env="dev",
-        workspace_repo=repo,
-    )
-
-    assert sql == "CREATE CATALOG `dev_demo`;"
-    assert out_file.read_text() == "CREATE CATALOG `dev_demo`;"
-    generator.generate_sql.assert_called_once()
-
-
-def test_generate_sql_migration_snapshot_latest_requires_existing_snapshot(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    del monkeypatch
-    repo = _RepoStub(
-        project={
-            "latestSnapshot": None,
-            "managedLocations": {},
-            "externalLocations": {},
-        },
-    )
-
-    with pytest.raises(SQLGenerationError, match="No snapshots available"):
-        generate_sql_migration(workspace=Path("."), snapshot="latest", workspace_repo=repo)
+        ops = [
+            {
+                "id": "op1",
+                "ts": "2025-01-01T00:00:00Z",
+                "provider": "unity",
+                "op": "unity.add_table",
+                "target": "t1",
+                "payload": {},
+            }
+        ]
+        repo = _FakeRepo(
+            state_result=({"catalogs": []}, {"ops": ops}, provider, None),
+        )
+        output = tmp_path / "out.sql"
+        generate_sql_migration(Path("/tmp"), output=output, workspace_repo=repo)
+        assert output.exists()
+        assert output.read_text() == "CREATE TABLE t1;"

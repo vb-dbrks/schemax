@@ -146,7 +146,8 @@ def test_live_command_matrix(tmp_path: Path) -> None:
         # Keep environment mappings complete for all logical catalogs in state.
         project_path = workspace / ".schemax" / "project.json"
         project = json.loads(project_path.read_text())
-        dev_env = project["provider"]["environments"]["dev"]
+        scope = project.get("defaultTarget", "default")
+        dev_env = project["targets"][scope]["environments"]["dev"]
         mappings = dict(dev_env.get("catalogMappings") or {})
         mappings[f"local_live_{suffix}"] = f"local_live_{suffix}"
         dev_env["catalogMappings"] = mappings

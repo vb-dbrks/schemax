@@ -44,6 +44,7 @@ interface UndoBatch {
 interface DesignerState {
   project: ProjectFile | null;
   provider: ProviderMetadata | null; // NEW: Provider information
+  activeTarget: string | null; // v5: active target name
   selectedCatalogId: string | null;
   selectedSchemaId: string | null;
   selectedTableId: string | null;
@@ -53,6 +54,7 @@ interface DesignerState {
   // Actions
   setProject: (project: ProjectFile) => void;
   setProvider: (provider: ProviderMetadata) => void;
+  setActiveTarget: (scope: string | null) => void;
   selectCatalog: (catalogId: string | null) => void;
   selectSchema: (schemaId: string | null) => void;
   selectTable: (tableId: string | null) => void;
@@ -373,12 +375,14 @@ function createOperation(
     op: `${provider.id}.${opType}`, // Prefix with provider ID
     target,
     payload,
+    scope: store.activeTarget || undefined, // v5: scope op to active target
   };
 }
 
 export const useDesignerStore = create<DesignerState>((set, get) => ({
   project: null,
   provider: null, // Initialize as null
+  activeTarget: null, // v5: null means use project.defaultTarget
   selectedCatalogId: null,
   selectedSchemaId: null,
   selectedTableId: null,
@@ -387,6 +391,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   setProject: (project) => set({ project }),
   setProvider: (provider) => set({ provider }),
+  setActiveTarget: (scope) => set({ activeTarget: scope }),
   selectCatalog: (catalogId) => set({ selectedCatalogId: catalogId }),
   selectSchema: (schemaId) => set({ selectedSchemaId: schemaId }),
   selectTable: (tableId) => set({ selectedTableId: tableId }),

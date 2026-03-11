@@ -1,5 +1,4 @@
 import { spawn } from "child_process";
-import * as vscode from "vscode";
 import type { CommandEnvelope, PythonCommandResult } from "./contracts";
 
 type StreamHandler = (chunk: string) => void;
@@ -24,22 +23,59 @@ const BASE_COMMAND_CANDIDATES: CommandCandidate[] = [
 ];
 
 /**
- * Build the ordered list of command candidates.
- * If the user (or VS Code Python extension) has configured an interpreter path,
- * prepend it so that venv / uv / poetry / conda envs selected in VS Code are
- * tried first — before falling back to PATH-based lookup.
+ * Resolve the Python executable path from the ms-python.python extension API.
  *
- * Configured interpreter paths are spawned with shell: false to correctly
+ * Uses the official @vscode/python-extension API which correctly handles all
+ * environment types (conda, micromamba, venv, poetry, uv, pyenv, etc.) and
+ * respects the user's interpreter selection in VS Code — not just the
+ * defaultInterpreterPath setting.
+ *
+ * Returns undefined if the Python extension is not installed or the path
+ * cannot be resolved. Callers should fall back to other detection methods.
+ */
+async function getPythonExtensionInterpreterPath(): Promise<string | undefined> {
+  try {
+    const { PythonExtension } = await import("@vscode/python-extension");
+    const api = await PythonExtension.api();
+    const envPath = api.environments.getActiveEnvironmentPath();
+    const resolved = await api.environments.resolveEnvironment(envPath);
+    if (resolved?.executable?.uri) {
+      return resolved.executable.uri.fsPath;
+    }
+    // envPath.path may be a folder (environment root) — resolve to executable
+    if (envPath?.path) {
+      const fs = await import("fs");
+      const path = await import("path");
+      const candidate = path.join(envPath.path, "bin", "python");
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+      // On Windows, check Scripts/python.exe
+      const winCandidate = path.join(envPath.path, "Scripts", "python.exe");
+      if (fs.existsSync(winCandidate)) {
+        return winCandidate;
+      }
+    }
+  } catch {
+    // Python extension not installed or not activated — fall through.
+  }
+  return undefined;
+}
+
+/**
+ * Build the ordered list of command candidates.
+ *
+ * 1. ms-python.python extension API (handles conda, micromamba, venv, poetry, uv, pyenv, etc.)
+ * 2. PATH-based fallbacks (schemax, python3, python) for users without the Python extension
+ *
+ * The Python extension API path is spawned with shell: false to correctly
  * handle paths containing spaces (common on Windows/macOS).
  */
-function getCommandCandidates(): CommandCandidate[] {
-  const configured = vscode.workspace
-    .getConfiguration("python")
-    .get<string>("defaultInterpreterPath");
-  if (configured && configured.trim()) {
-    const pyPath = configured.trim();
+async function getCommandCandidates(): Promise<CommandCandidate[]> {
+  const apiPath = await getPythonExtensionInterpreterPath();
+  if (apiPath) {
     return [
-      { cmd: pyPath, baseArgs: ["-m", "schemax.cli"], useShell: false },
+      { cmd: apiPath, baseArgs: ["-m", "schemax.cli"], useShell: false },
       ...BASE_COMMAND_CANDIDATES,
     ];
   }
@@ -99,6 +135,12 @@ function isCommandEnvelope(value: unknown): value is CommandEnvelope<unknown> {
 }
 
 export class PythonBackendClient {
+  private log: (message: string) => void;
+
+  constructor(log?: (message: string) => void) {
+    this.log = log ?? (() => {});
+  }
+
   async run(args: string[], cwd: string, options: RunOptions = {}): Promise<PythonCommandResult> {
     let lastFailure: PythonCommandResult = {
       success: false,
@@ -108,9 +150,13 @@ export class PythonBackendClient {
       exitCode: null,
     };
 
-    for (const candidate of getCommandCandidates()) {
+    const candidates = await getCommandCandidates();
+    this.log(`[SchemaX] Python interpreter candidates: ${candidates.map((c) => c.cmd).join(", ")}`);
+
+    for (const candidate of candidates) {
       const fullArgs = [...candidate.baseArgs, ...args];
       const rendered = `${candidate.cmd} ${fullArgs.join(" ")}`;
+      this.log(`[SchemaX] Trying: ${rendered}`);
       const result = await this.runSingle(
         candidate.cmd,
         fullArgs,
@@ -123,8 +169,10 @@ export class PythonBackendClient {
         return result;
       }
       if (result.success) {
+        this.log(`[SchemaX] Command succeeded: ${rendered}`);
         return result;
       }
+      this.log(`[SchemaX] Command failed (exit ${result.exitCode}): ${result.stderr?.split("\n")[0] ?? ""}`);
       lastFailure = result;
     }
     return lastFailure;

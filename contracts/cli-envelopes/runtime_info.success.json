@@ -3,7 +3,7 @@
   "command": "runtime-info",
   "status": "success",
   "data": {
-    "cliVersion": "0.2.10",
+    "cliVersion": "0.2.11",
     "envelopeSchemaVersion": "1",
     "supportedCommands": [
       "runtime-info",

@@ -30,7 +30,8 @@ def _write_project_with_envs(
     project = json.loads(project_path.read_text())
     project["name"] = name
     if environments is not None:
-        project["provider"]["environments"] = environments
+        default_target = project.get("defaultTarget", "default")
+        project["targets"][default_target]["environments"] = environments
     project_path.write_text(json.dumps(project, indent=2))
 
 

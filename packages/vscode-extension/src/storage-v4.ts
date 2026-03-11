@@ -1,8 +1,8 @@
 /**
- * Storage Layer V4 - Multi-Environment Support
+ * Storage Layer V5 - Multi-Target / Multi-Provider Support
  *
- * Supports environment-specific catalog configurations with logical → physical name mapping.
- * Breaking change from v3: environments are now rich objects instead of simple arrays.
+ * Supports multiple named targets (provider instances) per project.
+ * Transparent auto-migration from v4 → v5 on first load.
  */
 
 import * as vscode from "vscode";
@@ -102,10 +102,17 @@ export interface EnvironmentConfig {
   existingObjects?: ExistingObjectsConfig;
 }
 
-// Project File V4 Types
+// Project File V4 Types (legacy, auto-migrated to v5)
 interface ProviderConfigV4 {
   type: string; // 'unity', 'hive', 'postgres'
   version: string; // Provider schema version
+  environments: Record<string, EnvironmentConfig>;
+}
+
+// Target config in v5 = same shape as the old ProviderConfigV4
+export interface TargetConfig {
+  type: string;
+  version: string;
   environments: Record<string, EnvironmentConfig>;
 }
 
@@ -143,6 +150,23 @@ interface Deployment {
   driftDetails?: unknown[];
 }
 
+// V5 project file with multi-target support
+export interface ProjectFileV5 {
+  version: 5;
+  name: string;
+  targets: Record<string, TargetConfig>;
+  defaultTarget: string;
+
+  managedLocations?: Record<string, LocationDefinition>;
+  externalLocations?: Record<string, LocationDefinition>;
+
+  snapshots: SnapshotMetadata[];
+  deployments: Deployment[];
+  settings: ProjectSettings;
+  latestSnapshot: string | null;
+}
+
+// Keep V4 type for migration purposes
 export interface ProjectFileV4 {
   version: 4;
   name: string;
@@ -158,6 +182,40 @@ export interface ProjectFileV4 {
   deployments: Deployment[];
   settings: ProjectSettings;
   latestSnapshot: string | null;
+}
+
+// Union type: a loaded project is always v5 after migration
+export type ProjectFile = ProjectFileV5;
+
+/**
+ * Migrate a v4 project to v5 in-memory by wrapping provider into targets.
+ */
+function migrateV4ToV5(v4: ProjectFileV4): ProjectFileV5 {
+  const { provider, version: _version, ...rest } = v4;
+  return {
+    ...rest,
+    version: 5,
+    targets: { default: provider },
+    defaultTarget: "default",
+  };
+}
+
+/**
+ * Get the target config for a given target name, falling back to defaultTarget.
+ */
+export function getTargetConfig(
+  project: ProjectFileV5,
+  scope?: string | null
+): TargetConfig {
+  const resolved = scope || project.defaultTarget || "default";
+  const config = project.targets[resolved];
+  if (!config) {
+    const available = Object.keys(project.targets).join(", ");
+    throw new Error(
+      `Target '${resolved}' not found in project. Available targets: ${available}`
+    );
+  }
+  return config;
 }
 
 export interface ChangelogFile {
@@ -292,16 +350,23 @@ export async function ensureProjectFile(
 
     // File exists, check version
     const content = await vscode.workspace.fs.readFile(projectPath);
-    const project = JSON.parse(content.toString()) as ProjectFileV4;
+    const raw = JSON.parse(content.toString()) as { version: number };
 
-    if (project.version === 4) {
-      outputChannel.appendLine("[SchemaX] Project file already exists (v4)");
+    if (raw.version === 5) {
+      outputChannel.appendLine("[SchemaX] Project file already exists (v5)");
+      return;
+    } else if (raw.version === 4) {
+      // Auto-migrate v4 → v5
+      const v4 = raw as unknown as ProjectFileV4;
+      const v5 = migrateV4ToV5(v4);
+      const migrated = Buffer.from(JSON.stringify(v5, null, 2), "utf8");
+      await vscode.workspace.fs.writeFile(projectPath, migrated);
+      outputChannel.appendLine("[SchemaX] Auto-migrated project v4 → v5");
       return;
     } else {
       throw new Error(
-        `Project version ${project.version} not supported. ` +
-          "This version of SchemaX requires v4 projects. " +
-          "Please create a new project or manually migrate to v4."
+        `Project version ${raw.version} not supported. ` +
+          "This version of SchemaX requires v4 or v5 projects."
       );
     }
   } catch (error: unknown) {
@@ -310,47 +375,49 @@ export async function ensureProjectFile(
     }
   }
 
-  // Create new v4 project
+  // Create new v5 project
   const workspaceName = path.basename(workspaceUri.fsPath);
 
-  // Create v4 project with environment configuration
-  const newProject: ProjectFileV4 = {
-    version: 4,
+  const newProject: ProjectFileV5 = {
+    version: 5,
     name: workspaceName,
-    provider: {
-      type: providerId,
-      version: DEFAULT_PROVIDER_VERSION,
-      environments: {
-        dev: {
-          topLevelName: `dev_${workspaceName}`,
-          catalogMappings: {},
-          description: "Development environment",
-          allowDrift: true,
-          requireSnapshot: false,
-          autoCreateTopLevel: true,
-          autoCreateSchemaxSchema: true,
-        },
-        test: {
-          topLevelName: `test_${workspaceName}`,
-          catalogMappings: {},
-          description: "Test/staging environment",
-          allowDrift: false,
-          requireSnapshot: true,
-          autoCreateTopLevel: true,
-          autoCreateSchemaxSchema: true,
-        },
-        prod: {
-          topLevelName: `prod_${workspaceName}`,
-          catalogMappings: {},
-          description: "Production environment",
-          allowDrift: false,
-          requireSnapshot: true,
-          requireApproval: false,
-          autoCreateTopLevel: false,
-          autoCreateSchemaxSchema: true,
+    targets: {
+      default: {
+        type: providerId,
+        version: DEFAULT_PROVIDER_VERSION,
+        environments: {
+          dev: {
+            topLevelName: `dev_${workspaceName}`,
+            catalogMappings: {},
+            description: "Development environment",
+            allowDrift: true,
+            requireSnapshot: false,
+            autoCreateTopLevel: true,
+            autoCreateSchemaxSchema: true,
+          },
+          test: {
+            topLevelName: `test_${workspaceName}`,
+            catalogMappings: {},
+            description: "Test/staging environment",
+            allowDrift: false,
+            requireSnapshot: true,
+            autoCreateTopLevel: true,
+            autoCreateSchemaxSchema: true,
+          },
+          prod: {
+            topLevelName: `prod_${workspaceName}`,
+            catalogMappings: {},
+            description: "Production environment",
+            allowDrift: false,
+            requireSnapshot: true,
+            requireApproval: false,
+            autoCreateTopLevel: false,
+            autoCreateSchemaxSchema: true,
+          },
         },
       },
     },
+    defaultTarget: "default",
     snapshots: [],
     deployments: [],
     settings: {
@@ -378,31 +445,39 @@ export async function ensureProjectFile(
   const changelogContent = Buffer.from(JSON.stringify(newChangelog, null, 2), "utf8");
   await vscode.workspace.fs.writeFile(changelogPath, changelogContent);
 
-  outputChannel.appendLine(`[SchemaX] Initialized new v4 project: ${workspaceName}`);
+  outputChannel.appendLine(`[SchemaX] Initialized new v5 project: ${workspaceName}`);
   outputChannel.appendLine(`[SchemaX] Provider: ${getProviderDisplayName(providerId)}`);
   outputChannel.appendLine("[SchemaX] Environments: dev, test, prod");
 }
 
 /**
- * Read project file (v4 only)
+ * Read project file (v4 auto-migrated to v5, or v5 native)
  */
-export async function readProject(workspaceUri: vscode.Uri): Promise<ProjectFileV4> {
+export async function readProject(workspaceUri: vscode.Uri): Promise<ProjectFileV5> {
   const projectPath = getProjectFilePath(workspaceUri);
 
   try {
     const content = await vscode.workspace.fs.readFile(projectPath);
-    const project = JSON.parse(content.toString()) as ProjectFileV4;
+    const raw = JSON.parse(content.toString()) as { version: number };
 
-    // Enforce v4
-    if (project.version !== 4) {
-      throw new Error(
-        `Project version ${project.version} not supported. ` +
-          "This version of SchemaX requires v4 projects. " +
-          "Please create a new project or manually migrate to v4."
-      );
+    if (raw.version === 5) {
+      return raw as unknown as ProjectFileV5;
     }
 
-    return project;
+    if (raw.version === 4) {
+      // Transparent v4 → v5 migration
+      const v4 = raw as unknown as ProjectFileV4;
+      const v5 = migrateV4ToV5(v4);
+      // Persist the migrated file
+      const migrated = Buffer.from(JSON.stringify(v5, null, 2), "utf8");
+      await vscode.workspace.fs.writeFile(projectPath, migrated);
+      return v5;
+    }
+
+    throw new Error(
+      `Project version ${raw.version} not supported. ` +
+        "This version of SchemaX requires v4 or v5 projects."
+    );
   } catch (error: unknown) {
     if (isFileNotFoundError(error)) {
       throw new Error("Project file not found. Please initialize a new project first.");
@@ -416,7 +491,7 @@ export async function readProject(workspaceUri: vscode.Uri): Promise<ProjectFile
  */
 export async function writeProject(
   workspaceUri: vscode.Uri,
-  project: ProjectFileV4
+  project: ProjectFileV5
 ): Promise<void> {
   const projectPath = getProjectFilePath(workspaceUri);
   await writeJsonFileCoalesced(projectPath, project);
@@ -640,21 +715,24 @@ function sanitizeCatalogNameForPhysical(name: string): string {
  * This adds default mappings (envName_sanitizedCatalogName) for any new catalog so apply works.
  */
 export function ensureCatalogMappingsForNewCatalogs(
-  project: ProjectFileV4,
-  ops: Operation[]
-): { project: ProjectFileV4; updated: boolean } {
+  project: ProjectFileV5,
+  ops: Operation[],
+  scope?: string | null
+): { project: ProjectFileV5; updated: boolean } {
   const addCatalogOps = ops.filter(
     (op) => op.op?.endsWith("add_catalog") && (op.payload as { name?: string })?.name
   );
   const newNames = [...new Set(addCatalogOps.map((op) => (op.payload as { name: string }).name))];
-  if (newNames.length === 0 || !project.provider?.environments) {
+  if (newNames.length === 0) {
     return { project, updated: false };
   }
+  const resolvedTarget = scope || project.defaultTarget || "default";
+  const targetConfig = getTargetConfig(project, scope);
 
   let updated = false;
   const environments: Record<string, EnvironmentConfig> = {};
 
-  for (const [envName, config] of Object.entries(project.provider.environments)) {
+  for (const [envName, config] of Object.entries(targetConfig.environments)) {
     const catalogMappings = { ...(config.catalogMappings || {}) };
     for (const logicalName of newNames) {
       if (catalogMappings[logicalName] !== undefined) continue;
@@ -670,9 +748,12 @@ export function ensureCatalogMappingsForNewCatalogs(
   return {
     project: {
       ...project,
-      provider: {
-        ...project.provider,
-        environments,
+      targets: {
+        ...project.targets,
+        [resolvedTarget]: {
+          ...targetConfig,
+          environments,
+        },
       },
     },
     updated: true,
@@ -714,7 +795,7 @@ export async function createSnapshot(
   version?: string,
   comment?: string,
   tags: string[] = []
-): Promise<{ project: ProjectFileV4; snapshot: SnapshotFile }> {
+): Promise<{ project: ProjectFileV5; snapshot: SnapshotFile }> {
   const project = await readProject(workspaceUri);
   const changelog = await readChangelog(workspaceUri);
 
@@ -797,16 +878,18 @@ export async function getUncommittedOpsCount(workspaceUri: vscode.Uri): Promise<
 }
 
 /**
- * Get environment configuration
+ * Get environment configuration from a target
  */
 export function getEnvironmentConfig(
-  project: ProjectFileV4,
-  environment: string
+  project: ProjectFileV5,
+  environment: string,
+  scope?: string | null
 ): EnvironmentConfig {
-  const envConfig = project.provider.environments[environment];
+  const target = getTargetConfig(project, scope);
+  const envConfig = target.environments[environment];
 
   if (!envConfig) {
-    const available = Object.keys(project.provider.environments).join(", ");
+    const available = Object.keys(target.environments).join(", ");
     throw new Error(
       `Environment '${environment}' not found in project. ` + `Available environments: ${available}`
     );

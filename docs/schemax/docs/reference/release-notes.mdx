@@ -6,6 +6,26 @@ This page summarizes coordinated SchemaX releases across:
 - VS Code extension (`schemax-vscode`)
 - Documentation site (`docs/schemax`)
 
+## 0.2.11 (2026-03-11)
+
+### Highlights
+
+- **v5 multi-target architecture** — Projects now support multiple provider targets (e.g., multiple Unity Catalog catalogs or mixed providers) via a `targets` dict in `project.json`. Existing v4 projects auto-migrate on first load.
+- **`--scope` CLI parameter** — New flag on `sql`, `validate`, `apply`, and `workspace-state`. Currently plumbed through CLI and interfaces; target-scoped state loading will be enabled in a follow-up release.
+- **Provider-specific settings UI** — Project Settings in the VS Code extension now renders per-provider configuration with target tabs for multi-target projects.
+- **Renamed `target_name` to `scope`** — Eliminated naming confusion between environment target (`--target dev`) and provider scope (`--scope analytics`).
+
+### Package versions
+
+- Python SDK/CLI: `0.2.11`
+- VS Code extension: `0.2.11`
+- Docs site package: `0.2.11`
+
+### Changelogs
+
+- [Python SDK changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/CHANGELOG.md)
+- [VS Code extension changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/vscode-extension/CHANGELOG.md)
+
 ## 0.2.10 (2026-03-10)
 
 ### Highlights

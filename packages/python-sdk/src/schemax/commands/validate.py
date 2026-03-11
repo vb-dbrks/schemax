@@ -221,6 +221,7 @@ def validate_project(
     workspace: Path,
     json_output: bool = False,
     workspace_repo: _WorkspaceRepoPort | None = None,
+    scope: str | None = None,
 ) -> bool:
     """Validate SchemaX project files.
 
@@ -231,6 +232,7 @@ def validate_project(
         workspace: Path to SchemaX workspace
         json_output: If True, output results as JSON instead of rich console
         workspace_repo: Optional repository override for tests/injection
+        scope: Optional v5 multi-target scope (reserved for future use)
 
     Returns:
         True if validation passes
@@ -239,6 +241,7 @@ def validate_project(
         ValidationError: If validation fails
     """
     repository: _WorkspaceRepoPort = workspace_repo or _ValidateWorkspaceRepository()
+    del scope  # v5 multi-target: plumbed from CLI, will be used when per-target state loads
     try:
         project, state, changelog, provider = _load_project_and_state(workspace, repository)
     except FileNotFoundError as e:

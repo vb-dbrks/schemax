@@ -167,9 +167,10 @@ def test_validate_routes_json_option(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     captured: dict[str, object] = {}
 
-    def _run(_self, *, workspace: Path, json_output: bool):
+    def _run(_self, *, workspace: Path, json_output: bool, scope: str | None = None):
         captured["workspace"] = workspace
         captured["json_output"] = json_output
+        captured["scope"] = scope
         return SimpleNamespace(success=True)
 
     monkeypatch.setattr("schemax.cli.ValidateService.run", _run)
@@ -694,9 +695,9 @@ def test_workspace_state_json_output(monkeypatch, temp_workspace: Path) -> None:
         read_project=lambda *, workspace: {
             "name": "demo",
             "latestSnapshot": None,
-            "provider": {"type": "unity", "version": "1.0.0"},
+            "targets": {"default": {"type": "unity", "version": "1.0.0"}},
         },
-        load_current_state=lambda *, workspace, validate=False: (
+        load_current_state=lambda *, workspace, validate=False, scope=None: (
             {"catalogs": [{"id": "cat_1", "name": "demo"}]},
             {
                 "version": 1,

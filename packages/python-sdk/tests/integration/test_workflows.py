@@ -35,8 +35,9 @@ class TestBasicWorkflow:
 
         # Verify initialization
         project = read_project(temp_workspace)
-        assert project["version"] == 4
-        assert project["provider"]["type"] == "unity"
+        assert project["version"] == 5
+        scope = project.get("defaultTarget", "default")
+        assert project["targets"][scope]["type"] == "unity"
 
         # Step 2: Add operations
         ops = [
@@ -547,7 +548,8 @@ class TestDiffWorkflow:
         project = read_project(initialized_workspace)
         from schemax.providers import ProviderRegistry
 
-        provider = ProviderRegistry.get(project["provider"]["type"])
+        scope = project.get("defaultTarget", "default")
+        provider = ProviderRegistry.get(project["targets"][scope]["type"])
         assert provider is not None
 
         differ = provider.get_state_differ(
@@ -589,7 +591,8 @@ class TestDiffWorkflow:
         from schemax.providers import ProviderRegistry
 
         project = read_project(initialized_workspace)
-        provider = ProviderRegistry.get(project["provider"]["type"])
+        scope = project.get("defaultTarget", "default")
+        provider = ProviderRegistry.get(project["targets"][scope]["type"])
         assert provider is not None
 
         differ = provider.get_state_differ(
@@ -648,7 +651,8 @@ class TestDiffWorkflow:
         from schemax.providers import ProviderRegistry
 
         project = read_project(initialized_workspace)
-        provider = ProviderRegistry.get(project["provider"]["type"])
+        scope = project.get("defaultTarget", "default")
+        provider = ProviderRegistry.get(project["targets"][scope]["type"])
         assert provider is not None
 
         differ = provider.get_state_differ(

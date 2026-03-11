@@ -65,7 +65,7 @@ def test_generate_diff_raises_when_provider_not_found(monkeypatch: pytest.Monkey
             "v0.1.0": {"state": {"catalogs": []}},
             "v0.2.0": {"state": {"catalogs": []}},
         },
-        project={"provider": {"type": "missing"}},
+        project={"targets": {"default": {"type": "missing"}}, "defaultTarget": "default"},
     )
 
     with pytest.raises(DiffError, match="Provider 'missing' not found"):
@@ -96,7 +96,8 @@ def test_generate_diff_with_sql_and_target_mapping(monkeypatch: pytest.MonkeyPat
             "v0.2.0": {"state": {"catalogs": [{"name": "demo"}]}, "operations": []},
         },
         project={
-            "provider": {"type": "unity"},
+            "targets": {"default": {"type": "unity"}},
+            "defaultTarget": "default",
             "environments": {"dev": {"topLevelName": "dev_demo"}},
         },
         env_config={"topLevelName": "dev_demo", "catalogMappings": {"demo": "dev_demo"}},
@@ -119,7 +120,7 @@ def test_generate_diff_with_sql_and_target_mapping(monkeypatch: pytest.MonkeyPat
 def test_generate_diff_missing_snapshot_error_has_context(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _RepoStub(
         snapshots={"v0.2.0": {"state": {"catalogs": []}, "operations": []}},
-        project={"provider": {"type": "unity"}},
+        project={"targets": {"default": {"type": "unity"}}, "defaultTarget": "default"},
         raise_on_version="v0.1.0",
     )
 

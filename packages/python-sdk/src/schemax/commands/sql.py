@@ -30,7 +30,7 @@ class _WorkspaceRepoPort(Protocol):
     def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]: ...
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]: ...
 
 
@@ -50,9 +50,11 @@ class _SqlWorkspaceRepository:
         return self._repository.load_current_state(workspace=workspace, validate=validate)
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]:
-        return self._repository.get_environment_config(project=project, environment=environment)
+        return self._repository.get_environment_config(
+            project=project, environment=environment, scope=scope
+        )
 
 
 # TODO: Snapshot-based SQL generation requires issue #56 to be implemented first
@@ -128,6 +130,7 @@ def generate_sql_migration(
     _to_version: str | None = None,
     target_env: str | None = None,
     workspace_repo: _WorkspaceRepoPort | None = None,
+    scope: str | None = None,
 ) -> str:
     """Generate SQL migration script from schema changes
 
@@ -140,6 +143,7 @@ def generate_sql_migration(
         snapshot: Optional snapshot version ('latest' or specific version like 'v0.1.0')
         target_env: Optional target environment (for catalog name mapping)
         workspace_repo: Optional repository override for tests/injection
+        scope: Optional v5 multi-target scope (reserved for future use)
 
     Returns:
         Generated SQL string
@@ -147,6 +151,7 @@ def generate_sql_migration(
     Raises:
         SQLGenerationError: If SQL generation fails
     """
+    del scope  # v5 multi-target: plumbed from CLI, will be used when per-target state loads
     repository: _WorkspaceRepoPort = workspace_repo or _SqlWorkspaceRepository()
     try:
         return _generate_sql_impl(

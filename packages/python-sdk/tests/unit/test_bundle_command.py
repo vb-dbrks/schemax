@@ -16,13 +16,16 @@ def _make_project(environments: dict | None = None) -> dict:
             "prod": {"topLevelName": "prod_catalog", "catalogMappings": {}},
         }
     return {
-        "version": 4,
+        "version": 5,
         "name": "test_project",
-        "provider": {
-            "type": "unity",
-            "version": "1.0.0",
-            "environments": environments,
+        "targets": {
+            "default": {
+                "type": "unity",
+                "version": "1.0.0",
+                "environments": environments,
+            },
         },
+        "defaultTarget": "default",
         "settings": {"catalogMode": "multi"},
     }
 

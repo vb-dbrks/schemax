@@ -339,3 +339,63 @@ class TestBatchStatistics:
         assert stats["average_ops_per_batch"] == 2.5
         assert stats["max_ops_in_batch"] == 3
         assert stats["min_ops_in_batch"] == 2
+
+
+class TestBatchOperationsByType:
+    """Test batch_operations_by_type method"""
+
+    def test_batch_by_type_empty(self):
+        batcher = OperationBatcher()
+        result = batcher.batch_operations_by_type([], lambda op: op.target, lambda op: "default")
+        assert result == {}
+
+    def test_batch_by_type_groups_correctly(self):
+        batcher = OperationBatcher()
+        ops = [
+            Operation(
+                id="op_001",
+                provider="test",
+                ts="2025-01-01T00:00:00Z",
+                op="test.add_column",
+                target="col_001",
+                payload={"tableId": "table_123"},
+            ),
+            Operation(
+                id="op_002",
+                provider="test",
+                ts="2025-01-01T00:01:00Z",
+                op="test.set_property",
+                target="prop_001",
+                payload={"tableId": "table_123"},
+            ),
+        ]
+
+        def get_target(op):
+            return op.payload.get("tableId")
+
+        def categorize(op):
+            if "column" in op.op:
+                return "column_ops"
+            return "property_ops"
+
+        batches = batcher.batch_operations_by_type(ops, get_target, categorize)
+        assert "table_123" in batches
+        assert "column_ops" in batches["table_123"]
+        assert "property_ops" in batches["table_123"]
+        assert len(batches["table_123"]["column_ops"]) == 1
+        assert len(batches["table_123"]["property_ops"]) == 1
+
+    def test_batch_by_type_skips_no_target(self):
+        batcher = OperationBatcher()
+        ops = [
+            Operation(
+                id="op_001",
+                provider="test",
+                ts="2025-01-01T00:00:00Z",
+                op="test.global_op",
+                target="g1",
+                payload={},
+            ),
+        ]
+        batches = batcher.batch_operations_by_type(ops, lambda _: None, lambda _: "cat")
+        assert len(batches) == 0

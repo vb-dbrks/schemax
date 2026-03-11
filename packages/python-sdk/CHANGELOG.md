@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.11] - 2026-03-11
+
+### Added
+
+- **v5 multi-target project schema** — Projects now use a `targets` dict instead of a single `provider` object, enabling multiple provider instances (e.g., multiple Unity Catalog catalogs or mixed providers) in one project. Existing v4 projects auto-migrate to v5 on first load.
+- **`--scope` CLI parameter** — New `--scope` flag on `sql`, `validate`, `apply`, and `workspace-state` commands. Currently plumbed through CLI and interfaces; target-scoped state loading will be enabled in a follow-up release.
+- **`Operation.scope` field** — Operations now carry a `scope` field to associate them with a specific target in multi-target projects.
+- **Provider-specific settings UI** — Project Settings panel renders target-specific configuration per provider type, with tabs for each target in multi-target projects.
+
+### Changed
+
+- **Renamed `target_name` to `scope`** — All internal parameters, CLI flags, and Operation fields renamed from `target_name` to `scope` to avoid confusion with `target` (environment). Breaking change for any code using `--target-name` CLI flag or `Operation.target_name` field.
+- **New projects created as v5** — `ensure_project_file()` and extension "New Project" flow now emit v5 project schema directly.
+
+### Fixed
+
+- **Apply command `target_name` kwarg error** — Fixed `TypeError` where `_build_apply_request()` passed `target_name` to `apply_to_environment()` which didn't accept it, causing `UNEXPECTED_ERROR` instead of proper error codes.
+- **Integration tests updated for v5** — All test files updated to use v5 project schema (`project["targets"][scope]` instead of `project["provider"]`).
+
 ## [0.2.10] - 2026-03-10
 
 ### Added

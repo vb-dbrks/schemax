@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { describe, expect, jest, test, beforeEach } from '@jest/globals';
-import * as vscode from 'vscode';
 
 import { PythonBackendClient } from '../../src/backend/pythonBackendClient';
 
@@ -15,16 +14,40 @@ function readFixture(name: string): unknown {
   return JSON.parse(fs.readFileSync(fixturePath, 'utf8')) as unknown;
 }
 
+// Mock the @vscode/python-extension module
+const mockResolveEnvironment = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockGetActiveEnvironmentPath = jest.fn<(...args: unknown[]) => unknown>();
+
+jest.mock('@vscode/python-extension', () => ({
+  PythonExtension: {
+    api: jest.fn(() =>
+      Promise.resolve({
+        environments: {
+          getActiveEnvironmentPath: mockGetActiveEnvironmentPath,
+          resolveEnvironment: mockResolveEnvironment,
+        },
+      })
+    ),
+  },
+}));
+
 describe('PythonBackendClient.run', () => {
   beforeEach(() => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: jest.fn(() => undefined),
-    });
+    jest.clearAllMocks();
+    // Default: Python extension returns no interpreter
+    mockGetActiveEnvironmentPath.mockReturnValue({ id: '', path: '' });
+    mockResolveEnvironment.mockResolvedValue(undefined);
   });
 
-  test('tries configured interpreter path first when python.defaultInterpreterPath is set', async () => {
-    (vscode.workspace.getConfiguration as jest.Mock).mockReturnValue({
-      get: jest.fn(() => '/home/user/.venv/bin/python'),
+  test('uses Python extension API interpreter as first candidate', async () => {
+    mockGetActiveEnvironmentPath.mockReturnValue({
+      id: 'conda-myenv',
+      path: '/opt/micromamba/envs/myenv',
+    });
+    mockResolveEnvironment.mockResolvedValue({
+      executable: {
+        uri: { fsPath: '/opt/micromamba/envs/myenv/bin/python' },
+      },
     });
 
     const client = new PythonBackendClient();
@@ -44,14 +67,39 @@ describe('PythonBackendClient.run', () => {
     const result = await client.run(['validate', '--json'], '/tmp');
 
     expect(result.success).toBe(true);
-    expect(result.command).toContain('/home/user/.venv/bin/python');
+    expect(result.command).toContain('/opt/micromamba/envs/myenv/bin/python');
     expect(result.command).toContain('-m schemax.cli');
     expect(runSingleMock).toHaveBeenCalledTimes(1);
-    // Configured interpreter paths should use shell: false to handle spaces in paths
+    // Absolute paths use shell: false
     expect(runSingleMock.mock.calls[0][4]).toBe(false);
   });
 
-  test('falls back to python module command when schemax candidate fails', async () => {
+  test('falls back to PATH candidates when Python extension has no resolved env', async () => {
+    const client = new PythonBackendClient();
+    const runSingleMock: jest.Mock = jest.fn();
+    // schemax (first PATH candidate) succeeds
+    runSingleMock.mockImplementationOnce(
+      (_cmd: unknown, _args: unknown, _cwd: unknown, rendered: unknown) =>
+        Promise.resolve({
+          success: true,
+          command: rendered,
+          stdout: '{}',
+          stderr: '',
+          exitCode: 0,
+        })
+    );
+    (client as unknown as { runSingle: (...args: unknown[]) => unknown }).runSingle = runSingleMock;
+
+    const result = await client.run(['validate', '--json'], '/tmp');
+
+    expect(result.success).toBe(true);
+    expect(result.command).toContain('schemax');
+    expect(runSingleMock).toHaveBeenCalledTimes(1);
+    // PATH candidates use shell: true
+    expect(runSingleMock.mock.calls[0][4]).toBe(true);
+  });
+
+  test('falls back to python3 when schemax candidate fails', async () => {
     const client = new PythonBackendClient();
     const runSingleMock: jest.Mock = jest.fn();
     runSingleMock.mockImplementationOnce(() =>
@@ -81,6 +129,48 @@ describe('PythonBackendClient.run', () => {
     expect(runSingleMock).toHaveBeenCalledTimes(2);
   });
 
+  test('still tries PATH candidates after Python extension interpreter fails', async () => {
+    mockGetActiveEnvironmentPath.mockReturnValue({
+      id: 'venv',
+      path: '/home/user/.venv',
+    });
+    mockResolveEnvironment.mockResolvedValue({
+      executable: { uri: { fsPath: '/home/user/.venv/bin/python' } },
+    });
+
+    const client = new PythonBackendClient();
+    const runSingleMock: jest.Mock = jest.fn();
+    // Python extension interpreter fails (schemax not installed in that env)
+    runSingleMock.mockImplementationOnce(
+      (_cmd: unknown, _args: unknown, _cwd: unknown, rendered: unknown) =>
+        Promise.resolve({
+          success: false,
+          command: rendered,
+          stdout: '',
+          stderr: 'No module named schemax',
+          exitCode: 1,
+        })
+    );
+    // schemax on PATH succeeds
+    runSingleMock.mockImplementationOnce(
+      (_cmd: unknown, _args: unknown, _cwd: unknown, rendered: unknown) =>
+        Promise.resolve({
+          success: true,
+          command: rendered,
+          stdout: '{}',
+          stderr: '',
+          exitCode: 0,
+        })
+    );
+    (client as unknown as { runSingle: (...args: unknown[]) => unknown }).runSingle = runSingleMock;
+
+    const result = await client.run(['validate', '--json'], '/tmp');
+
+    expect(result.success).toBe(true);
+    expect(result.command).toContain('schemax');
+    expect(runSingleMock).toHaveBeenCalledTimes(2);
+  });
+
   test('returns cancelled result immediately without trying later candidates', async () => {
     const client = new PythonBackendClient();
     const runSingleMock: jest.Mock = jest.fn();
@@ -104,6 +194,12 @@ describe('PythonBackendClient.run', () => {
 });
 
 describe('PythonBackendClient.runJson', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetActiveEnvironmentPath.mockReturnValue({ id: '', path: '' });
+    mockResolveEnvironment.mockResolvedValue(undefined);
+  });
+
   test('returns native command envelope when stdout already contains one', async () => {
     const client = new PythonBackendClient();
     const fixture = readFixture('workspace_state.success.json');

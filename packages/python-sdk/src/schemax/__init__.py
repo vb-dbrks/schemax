@@ -14,8 +14,10 @@ __version__ = SCHEMAX_VERSION
 # Provider system exports
 # Storage V4 exports (latest)
 from .core.storage import (
+    _get_provider_from_target,
     create_snapshot,
     ensure_project_file,
+    get_target_config,
     load_current_state,
     read_changelog,
     read_project,
@@ -68,12 +70,14 @@ def generate_diff_operations(
     old_snap = read_snapshot(workspace_path, from_version)
     new_snap = read_snapshot(workspace_path, to_version)
 
-    # Get provider
+    # Get provider from default target
     project = read_project(workspace_path)
-    provider = ProviderRegistry.get(project["provider"]["type"])
+    target_cfg = get_target_config(project)
+    provider_type = _get_provider_from_target(target_cfg)
+    provider = ProviderRegistry.get(provider_type)
 
     if not provider:
-        raise ValueError(f"Provider '{project['provider']['type']}' not found")
+        raise ValueError(f"Provider '{provider_type}' not found")
 
     # Generate diff
     differ = provider.get_state_differ(

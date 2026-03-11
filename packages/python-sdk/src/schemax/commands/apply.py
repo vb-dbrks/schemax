@@ -44,7 +44,7 @@ class _WorkspaceRepoPort(Protocol):
     def read_changelog(self, *, workspace: Path) -> dict[str, Any]: ...
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]: ...
 
     def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]: ...
@@ -75,9 +75,11 @@ class _ApplyWorkspaceRepository:
         return self._repository.read_changelog(workspace=workspace)
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]:
-        return self._repository.get_environment_config(project=project, environment=environment)
+        return self._repository.get_environment_config(
+            project=project, environment=environment, scope=scope
+        )
 
     def load_current_state(self, *, workspace: Path, validate: bool = False) -> tuple[Any, ...]:
         return self._repository.load_current_state(workspace=workspace, validate=validate)
@@ -113,6 +115,7 @@ def apply_to_environment(
     auto_rollback: bool = False,
     execution_mode: str = "remote",
     workspace_repo: _WorkspaceRepoPort | None = None,
+    scope: str | None = None,
 ) -> ExecutionResult:
     """Apply changes to target environment
 
@@ -130,6 +133,7 @@ def apply_to_environment(
         auto_rollback: If True, automatically roll back on failed deployment
         execution_mode: "remote" (SQL warehouse) or "local" (spark.sql)
         workspace_repo: Optional repository override for tests/injection
+        scope: Optional v5 multi-target scope (reserved for future use)
 
     Returns:
         ExecutionResult with deployment details
@@ -137,6 +141,7 @@ def apply_to_environment(
     Raises:
         ApplyError: If apply fails
     """
+    del scope  # v5 multi-target: plumbed from CLI, will be used when per-target state loads
     repository: _WorkspaceRepoPort = workspace_repo or _ApplyWorkspaceRepository()
     try:
         return _ApplyCommand(

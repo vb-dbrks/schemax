@@ -12,10 +12,10 @@ import { validateRuntimeInfo } from "./backend/runtimeCompatibility";
 
 let outputChannel: vscode.OutputChannel;
 let currentPanel: vscode.WebviewPanel | undefined;
-const pythonBackend = new PythonBackendClient();
+let pythonBackend: PythonBackendClient;
 let extensionContextRef: vscode.ExtensionContext | undefined;
 const REQUIRED_ENVELOPE_SCHEMA_VERSION = "1";
-const MIN_SUPPORTED_CLI_VERSION = "0.2.10";
+const MIN_SUPPORTED_CLI_VERSION = "0.2.11";
 
 interface BackendCompatibilityState {
   checked: boolean;
@@ -144,6 +144,7 @@ function parseUndoRequestPayload(payload: unknown): UndoRequestPayload | null {
 export function activate(context: vscode.ExtensionContext) {
   extensionContextRef = context;
   outputChannel = vscode.window.createOutputChannel("SchemaX");
+  pythonBackend = new PythonBackendClient((msg) => outputChannel.appendLine(msg));
   outputChannel.appendLine("[SchemaX] Extension activating...");
   outputChannel.appendLine("[SchemaX] Extension Activated!");
   outputChannel.appendLine(`[SchemaX] Extension path: ${context.extensionPath}`);
@@ -559,7 +560,8 @@ function parseImportProgressLine(line: string): ImportProgressUpdate | null {
 
 async function promptImportRequest(workspaceUri: vscode.Uri): Promise<ImportRequest | null> {
   const project = await storageV4.readProject(workspaceUri);
-  const envNames = Object.keys(project.provider.environments || {});
+  const defaultTarget = storageV4.getTargetConfig(project);
+  const envNames = Object.keys(defaultTarget.environments || {});
   if (envNames.length === 0) {
     vscode.window.showErrorMessage("SchemaX: No environments configured in project.json");
     return null;
@@ -1121,15 +1123,18 @@ async function promptForProjectSetup(
   try {
     await storageV4.ensureSchemaxDir(workspaceUri);
 
-    // Create v4 project
-    const newProject: storageV4.ProjectFileV4 = {
-      version: 4,
+    // Create v5 project with multi-target support
+    const newProject: storageV4.ProjectFileV5 = {
+      version: 5,
       name: projectName,
-      provider: {
-        type: selectedProvider.id,
-        version: selectedProvider.version,
-        environments: environments,
+      targets: {
+        default: {
+          type: selectedProvider.id,
+          version: selectedProvider.version,
+          environments: environments,
+        },
       },
+      defaultTarget: "default",
       snapshots: [],
       deployments: [],
       settings: {
@@ -1344,6 +1349,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         }
       }
 
+      const defaultTarget = storageV4.getTargetConfig(project);
       const payloadForWebview = {
         ...project,
         state,
@@ -1352,7 +1358,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         staleSnapshots: staleSnapshots.length > 0 ? staleSnapshots : null,
         validationResult,
         provider: {
-          ...project.provider,
+          ...defaultTarget,
           id: provider.id,
           name: provider.name,
           version: provider.version,
@@ -1491,13 +1497,14 @@ async function openDesigner(context: vscode.ExtensionContext) {
             }
 
             // Send combined data to webview including provider info
+            const defaultTargetCfg = storageV4.getTargetConfig(project);
             const payloadForWebview = {
               ...project,
               state,
               ops: changelog.ops,
               conflicts, // Include conflict info if present
               provider: {
-                ...project.provider, // Keep environments and other project provider config
+                ...defaultTargetCfg, // Keep environments and other target config
                 id: provider.id,
                 name: provider.name,
                 version: provider.version,
@@ -1671,12 +1678,13 @@ async function openDesigner(context: vscode.ExtensionContext) {
             outputChannel.appendLine(`[SchemaX] - Snapshots: ${project.snapshots.length}`);
 
             // Send updated data to webview including provider info
+            const defaultTargetForPayload = storageV4.getTargetConfig(project);
             const payloadForWebview = {
               ...project,
               state,
               ops: changelog.ops,
               provider: {
-                ...project.provider, // Keep environments and other project provider config
+                ...defaultTargetForPayload, // Keep environments and other target config
                 id: provider.id,
                 name: provider.name,
                 version: provider.version,
@@ -1794,12 +1802,13 @@ async function openDesigner(context: vscode.ExtensionContext) {
             outputChannel.appendLine(`[SchemaX] Project configuration updated successfully`);
 
             // Send updated data to webview
+            const updatedDefaultTarget = storageV4.getTargetConfig(project);
             const payloadForWebview = {
               ...project,
               state,
               ops: changelog.ops,
               provider: {
-                ...project.provider,
+                ...updatedDefaultTarget,
                 id: provider.id,
                 name: provider.name,
                 version: provider.version,
@@ -1895,7 +1904,8 @@ async function showLastOps() {
     outputChannel.clear();
     outputChannel.appendLine("SchemaX: Last 20 Emitted Changes");
     outputChannel.appendLine("=".repeat(80));
-    outputChannel.appendLine(`Provider: ${project.provider.type}`);
+    const defaultTargetForOps = storageV4.getTargetConfig(project);
+    outputChannel.appendLine(`Provider: ${defaultTargetForOps.type}`);
     outputChannel.appendLine("");
 
     if (lastOps.length === 0) {
@@ -1910,7 +1920,7 @@ async function showLastOps() {
     }
 
     outputChannel.show();
-    trackEvent("last_ops_shown", { count: lastOps.length, provider: project.provider.type });
+    trackEvent("last_ops_shown", { count: lastOps.length, provider: defaultTargetForOps.type });
   } catch (error) {
     vscode.window.showErrorMessage(`Failed to read operations: ${error}`);
   }
@@ -1978,7 +1988,8 @@ async function createSnapshotCommand_impl() {
     const changelog = await storageV4.readChangelog(workspaceFolder.uri);
     const uncommittedOpsCount = changelog.ops.length;
 
-    outputChannel.appendLine(`[SchemaX] Provider: ${project.provider.type}`);
+    const snapshotTarget = storageV4.getTargetConfig(project);
+    outputChannel.appendLine(`[SchemaX] Provider: ${snapshotTarget.type}`);
     outputChannel.appendLine(`[SchemaX] Uncommitted operations: ${uncommittedOpsCount}`);
     outputChannel.appendLine(`[SchemaX] Existing snapshots: ${project.snapshots.length}`);
 
@@ -2102,12 +2113,13 @@ async function createSnapshotCommand_impl() {
             workspaceFolder.uri,
             false
           );
+          const snapshotDefaultTarget = storageV4.getTargetConfig(updatedProject);
           const payloadForWebview = {
             ...updatedProject,
             state,
             ops: changelog.ops,
             provider: {
-              ...updatedProject.provider, // Keep environments and other project provider config
+              ...snapshotDefaultTarget, // Keep environments and other target config
               id: provider.id,
               name: provider.name,
               version: provider.version,
@@ -2130,7 +2142,7 @@ async function createSnapshotCommand_impl() {
         trackEvent("snapshot_created", {
           version: snapshot.version,
           opsCount: uncommittedOpsCount,
-          provider: updatedProject.provider.type,
+          provider: storageV4.getTargetConfig(updatedProject).type,
         });
       }
     );
@@ -2170,7 +2182,8 @@ async function generateSQLMigration() {
     const project = await storageV4.readProject(workspaceFolder.uri);
 
     // Ask for target environment
-    const environments = Object.keys(project.provider.environments);
+    const sqlTarget = storageV4.getTargetConfig(project);
+    const environments = Object.keys(sqlTarget.environments);
     if (environments.length === 0) {
       vscode.window.showErrorMessage("No environments configured in project.json");
       return;
@@ -2225,7 +2238,7 @@ async function generateSQLMigration() {
 
     trackEvent("sql_generated", {
       sqlLength: fileContent.length,
-      provider: project.provider.type,
+      provider: sqlTarget.type,
     });
   } catch (error) {
     outputChannel.appendLine(`[SchemaX] ERROR: SQL generation failed: ${error}`);

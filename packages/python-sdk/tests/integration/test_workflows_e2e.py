@@ -168,7 +168,8 @@ class TestWorkflowS3Brownfield:
         create_snapshot(initialized_workspace, "Baseline", version="v0.1.0")
 
         project = read_project(initialized_workspace)
-        project["provider"]["environments"]["dev"]["importBaselineSnapshot"] = "v0.1.0"
+        scope = project.get("defaultTarget", "default")
+        project["targets"][scope]["environments"]["dev"]["importBaselineSnapshot"] = "v0.1.0"
         write_project(initialized_workspace, project)
 
         with pytest.raises(RollbackError) as exc_info:

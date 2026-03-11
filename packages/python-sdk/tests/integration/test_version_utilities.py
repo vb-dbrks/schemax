@@ -120,15 +120,16 @@ class TestStorageEdgeCases:
     def test_ensure_project_file_creates_structure(self, temp_workspace: Path) -> None:
         ensure_project_file(temp_workspace, provider_id="unity")
         project = read_project(temp_workspace)
-        assert project["provider"]["type"] == "unity"
-        assert "environments" in project["provider"]
-        assert "dev" in project["provider"]["environments"]
+        scope = project.get("defaultTarget", "default")
+        assert project["targets"][scope]["type"] == "unity"
+        assert "environments" in project["targets"][scope]
+        assert "dev" in project["targets"][scope]["environments"]
 
     def test_ensure_project_file_idempotent(self, temp_workspace: Path) -> None:
         ensure_project_file(temp_workspace, provider_id="unity")
         ensure_project_file(temp_workspace, provider_id="unity")
         project = read_project(temp_workspace)
-        assert project["version"] == 4
+        assert project["version"] == 5
 
     def test_append_ops_adds_to_changelog(self, temp_workspace: Path) -> None:
         ensure_project_file(temp_workspace, provider_id="unity")

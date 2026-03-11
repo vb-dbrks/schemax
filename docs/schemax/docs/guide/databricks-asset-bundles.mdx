@@ -164,13 +164,13 @@ resources:
       tags:
         managed_by: "schemax"
         schemax_project: "<project_name>"
-        schemax_version: "0.2.10"
+        schemax_version: "0.2.11"
       environments:
         - environment_key: schemax
           spec:
             environment_version: "2"
             dependencies:
-              - schemaxpy>=0.2.10
+              - schemaxpy>=0.2.11
       tasks:
         - task_key: schemax_apply
           environment_key: schemax
@@ -228,7 +228,7 @@ When the DAB job runs, the following happens:
 1. **File sync** -- `databricks bundle deploy` uploads your `.schemax/` project files and `resources/schemax_deploy.py` to the workspace.
 2. **Job creation** -- The DAB CLI creates (or updates) the job defined in `resources/schemax.yml`.
 3. **Job execution** -- When the job runs (either via `databricks bundle run` or a manual trigger), it:
-   - Spins up a serverless Python environment (version 2) with `schemaxpy>=0.2.10` installed.
+   - Spins up a serverless Python environment (version 2) with `schemaxpy>=0.2.11` installed.
    - Executes `resources/schemax_deploy.py` as a `spark_python_task`.
    - The deploy script locates the `.schemax/` project root (one level up from `resources/`) and invokes `schemax apply` **in-process** to inherit Databricks runtime authentication.
    - The target environment, warehouse ID, and auto-rollback flag are passed as `parameters` via `sys.argv`.

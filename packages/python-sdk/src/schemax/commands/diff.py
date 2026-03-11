@@ -14,6 +14,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
+from schemax.core.storage import _get_provider_from_target, get_target_config
 from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.provider import Provider
@@ -32,7 +33,7 @@ class _WorkspaceRepoPort(Protocol):
     def read_snapshot(self, *, workspace: Path, version: str) -> dict[str, Any]: ...
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]: ...
 
 
@@ -49,9 +50,11 @@ class _DiffWorkspaceRepository:
         return self._repository.read_snapshot(workspace=workspace, version=version)
 
     def get_environment_config(
-        self, *, project: dict[str, Any], environment: str
+        self, *, project: dict[str, Any], environment: str, scope: str | None = None
     ) -> dict[str, Any]:
-        return self._repository.get_environment_config(project=project, environment=environment)
+        return self._repository.get_environment_config(
+            project=project, environment=environment, scope=scope
+        )
 
 
 def generate_diff(
@@ -89,7 +92,8 @@ def generate_diff(
     )
 
     project = repository.read_project(workspace=workspace)
-    provider_id = project["provider"]["type"]
+    target_cfg = get_target_config(project)
+    provider_id = _get_provider_from_target(target_cfg)
     provider = ProviderRegistry.get(provider_id)
     if not provider:
         raise DiffError(f"Provider '{provider_id}' not found in registry")
