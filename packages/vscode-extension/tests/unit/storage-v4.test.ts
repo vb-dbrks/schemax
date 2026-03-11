@@ -1,5 +1,5 @@
 /**
- * Tests for storage-v4.ts - V4 storage layer with multi-environment support
+ * Tests for storage-v4.ts - storage layer functions
  */
 
 import { describe, test, expect, jest } from '@jest/globals';
@@ -8,38 +8,40 @@ import {
   ensureCatalogMappingsForNewCatalogs,
   getEnvironmentConfig,
   loadCurrentState,
-  migrateV4ToV5,
   normalizeProviderCapabilities,
-  ProjectFileV4,
+  ProjectFileV5,
 } from '../../src/storage-v4';
 import { PythonBackendClient } from '../../src/backend/pythonBackendClient';
 import type { Operation } from '../../src/contracts/workspace';
 
-describe('Storage V4 - Environment Configuration', () => {
+describe('Storage - Environment Configuration', () => {
   test('should retrieve environment configuration', () => {
-    const project: ProjectFileV4 = {
-      version: 4,
+    const project: ProjectFileV5 = {
+      version: 5,
       name: 'test-project',
-      provider: {
-        type: 'unity',
-        version: '1.0.0',
-        environments: {
-          dev: {
-            topLevelName: 'dev_catalog',
-            allowDrift: true,
-            requireSnapshot: false,
-            autoCreateTopLevel: true,
-            autoCreateSchemaxSchema: true,
-          },
-          prod: {
-            topLevelName: 'prod_catalog',
-            allowDrift: false,
-            requireSnapshot: true,
-            autoCreateTopLevel: false,
-            autoCreateSchemaxSchema: true,
+      targets: {
+        default: {
+          type: 'unity',
+          version: '1.0.0',
+          environments: {
+            dev: {
+              topLevelName: 'dev_catalog',
+              allowDrift: true,
+              requireSnapshot: false,
+              autoCreateTopLevel: true,
+              autoCreateSchemaxSchema: true,
+            },
+            prod: {
+              topLevelName: 'prod_catalog',
+              allowDrift: false,
+              requireSnapshot: true,
+              autoCreateTopLevel: false,
+              autoCreateSchemaxSchema: true,
+            },
           },
         },
       },
+      defaultTarget: 'default',
       snapshots: [],
       deployments: [],
       settings: {
@@ -49,35 +51,37 @@ describe('Storage V4 - Environment Configuration', () => {
       latestSnapshot: null,
     };
 
-    const v5 = migrateV4ToV5(project);
-    const devConfig = getEnvironmentConfig(v5, 'dev');
+    const devConfig = getEnvironmentConfig(project, 'dev');
     expect(devConfig.topLevelName).toBe('dev_catalog');
     expect(devConfig.allowDrift).toBe(true);
     expect(devConfig.requireSnapshot).toBe(false);
 
-    const prodConfig = getEnvironmentConfig(v5, 'prod');
+    const prodConfig = getEnvironmentConfig(project, 'prod');
     expect(prodConfig.topLevelName).toBe('prod_catalog');
     expect(prodConfig.allowDrift).toBe(false);
     expect(prodConfig.requireSnapshot).toBe(true);
   });
 
   test('should throw error for non-existent environment', () => {
-    const project: ProjectFileV4 = {
-      version: 4,
+    const project: ProjectFileV5 = {
+      version: 5,
       name: 'test-project',
-      provider: {
-        type: 'unity',
-        version: '1.0.0',
-        environments: {
-          dev: {
-            topLevelName: 'dev_catalog',
-            allowDrift: true,
-            requireSnapshot: false,
-            autoCreateTopLevel: true,
-            autoCreateSchemaxSchema: true,
+      targets: {
+        default: {
+          type: 'unity',
+          version: '1.0.0',
+          environments: {
+            dev: {
+              topLevelName: 'dev_catalog',
+              allowDrift: true,
+              requireSnapshot: false,
+              autoCreateTopLevel: true,
+              autoCreateSchemaxSchema: true,
+            },
           },
         },
       },
+      defaultTarget: 'default',
       snapshots: [],
       deployments: [],
       settings: {
@@ -87,40 +91,43 @@ describe('Storage V4 - Environment Configuration', () => {
       latestSnapshot: null,
     };
 
-    expect(() => getEnvironmentConfig(migrateV4ToV5(project), 'staging')).toThrow();
+    expect(() => getEnvironmentConfig(project, 'staging')).toThrow();
   });
 
   test('should handle multiple environments', () => {
-    const project: ProjectFileV4 = {
-      version: 4,
+    const project: ProjectFileV5 = {
+      version: 5,
       name: 'test-project',
-      provider: {
-        type: 'unity',
-        version: '1.0.0',
-        environments: {
-          dev: {
-            topLevelName: 'dev_catalog',
-            allowDrift: true,
-            requireSnapshot: false,
-            autoCreateTopLevel: true,
-            autoCreateSchemaxSchema: true,
-          },
-          test: {
-            topLevelName: 'test_catalog',
-            allowDrift: false,
-            requireSnapshot: true,
-            autoCreateTopLevel: true,
-            autoCreateSchemaxSchema: true,
-          },
-          prod: {
-            topLevelName: 'prod_catalog',
-            allowDrift: false,
-            requireSnapshot: true,
-            autoCreateTopLevel: false,
-            autoCreateSchemaxSchema: true,
+      targets: {
+        default: {
+          type: 'unity',
+          version: '1.0.0',
+          environments: {
+            dev: {
+              topLevelName: 'dev_catalog',
+              allowDrift: true,
+              requireSnapshot: false,
+              autoCreateTopLevel: true,
+              autoCreateSchemaxSchema: true,
+            },
+            test: {
+              topLevelName: 'test_catalog',
+              allowDrift: false,
+              requireSnapshot: true,
+              autoCreateTopLevel: true,
+              autoCreateSchemaxSchema: true,
+            },
+            prod: {
+              topLevelName: 'prod_catalog',
+              allowDrift: false,
+              requireSnapshot: true,
+              autoCreateTopLevel: false,
+              autoCreateSchemaxSchema: true,
+            },
           },
         },
       },
+      defaultTarget: 'default',
       snapshots: [],
       deployments: [],
       settings: {
@@ -130,31 +137,34 @@ describe('Storage V4 - Environment Configuration', () => {
       latestSnapshot: null,
     };
 
-    const testConfig = getEnvironmentConfig(migrateV4ToV5(project), 'test');
+    const testConfig = getEnvironmentConfig(project, 'test');
     expect(testConfig.topLevelName).toBe('test_catalog');
     expect(testConfig.requireSnapshot).toBe(true);
     expect(testConfig.autoCreateTopLevel).toBe(true);
   });
 });
 
-describe('Storage V4 - Project Schema', () => {
-  test('should validate v4 project structure', () => {
-    const project: ProjectFileV4 = {
-      version: 4,
+describe('Storage - Project Schema', () => {
+  test('should validate v5 project structure', () => {
+    const project: ProjectFileV5 = {
+      version: 5,
       name: 'test-project',
-      provider: {
-        type: 'unity',
-        version: '1.0.0',
-        environments: {
-          dev: {
-            topLevelName: 'dev_catalog',
-            allowDrift: true,
-            requireSnapshot: false,
-            autoCreateTopLevel: true,
-            autoCreateSchemaxSchema: true,
+      targets: {
+        default: {
+          type: 'unity',
+          version: '1.0.0',
+          environments: {
+            dev: {
+              topLevelName: 'dev_catalog',
+              allowDrift: true,
+              requireSnapshot: false,
+              autoCreateTopLevel: true,
+              autoCreateSchemaxSchema: true,
+            },
           },
         },
       },
+      defaultTarget: 'default',
       snapshots: [],
       deployments: [],
       settings: {
@@ -164,20 +174,23 @@ describe('Storage V4 - Project Schema', () => {
       latestSnapshot: null,
     };
 
-    expect(project.version).toBe(4);
-    expect(project.provider.type).toBe('unity');
-    expect(project.provider.environments).toHaveProperty('dev');
+    expect(project.version).toBe(5);
+    expect(project.targets['default'].type).toBe('unity');
+    expect(project.targets['default'].environments).toHaveProperty('dev');
   });
 
   test('should handle empty snapshots and deployments', () => {
-    const project: ProjectFileV4 = {
-      version: 4,
+    const project: ProjectFileV5 = {
+      version: 5,
       name: 'test-project',
-      provider: {
-        type: 'unity',
-        version: '1.0.0',
-        environments: {},
+      targets: {
+        default: {
+          type: 'unity',
+          version: '1.0.0',
+          environments: {},
+        },
       },
+      defaultTarget: 'default',
       snapshots: [],
       deployments: [],
       settings: {
@@ -193,35 +206,38 @@ describe('Storage V4 - Project Schema', () => {
   });
 });
 
-describe('Storage V4 - Catalog mapping defaults', () => {
-  function baseProject(): ProjectFileV4 {
+describe('Storage - Catalog mapping defaults', () => {
+  function baseProject(): ProjectFileV5 {
     return {
-      version: 4,
+      version: 5,
       name: 'test-project',
-      provider: {
-        type: 'unity',
-        version: '1.0.0',
-        environments: {
-          dev: {
-            topLevelName: 'dev_catalog',
-            allowDrift: true,
-            requireSnapshot: false,
-            autoCreateTopLevel: true,
-            autoCreateSchemaxSchema: true,
-            catalogMappings: {},
-          },
-          prod: {
-            topLevelName: 'prod_catalog',
-            allowDrift: false,
-            requireSnapshot: true,
-            autoCreateTopLevel: false,
-            autoCreateSchemaxSchema: true,
-            catalogMappings: {
-              existing: 'prod_existing',
+      targets: {
+        default: {
+          type: 'unity',
+          version: '1.0.0',
+          environments: {
+            dev: {
+              topLevelName: 'dev_catalog',
+              allowDrift: true,
+              requireSnapshot: false,
+              autoCreateTopLevel: true,
+              autoCreateSchemaxSchema: true,
+              catalogMappings: {},
+            },
+            prod: {
+              topLevelName: 'prod_catalog',
+              allowDrift: false,
+              requireSnapshot: true,
+              autoCreateTopLevel: false,
+              autoCreateSchemaxSchema: true,
+              catalogMappings: {
+                existing: 'prod_existing',
+              },
             },
           },
         },
       },
+      defaultTarget: 'default',
       snapshots: [],
       deployments: [],
       settings: {
@@ -233,7 +249,7 @@ describe('Storage V4 - Catalog mapping defaults', () => {
   }
 
   test('adds missing mappings for new add_catalog operations', () => {
-    const v5 = migrateV4ToV5(baseProject());
+    const project = baseProject();
     const ops: Operation[] = [
       {
         id: 'op_1',
@@ -245,24 +261,18 @@ describe('Storage V4 - Catalog mapping defaults', () => {
       },
     ];
 
-    const result = ensureCatalogMappingsForNewCatalogs(v5, ops);
+    const result = ensureCatalogMappingsForNewCatalogs(project, ops);
 
     expect(result.updated).toBe(true);
     const target = result.project.targets['default'];
-    expect(target.environments.dev.catalogMappings?.['bronze-layer']).toBe(
-      'dev_bronze_layer'
-    );
-    expect(target.environments.prod.catalogMappings?.['bronze-layer']).toBe(
-      'prod_bronze_layer'
-    );
-    expect(target.environments.prod.catalogMappings?.existing).toBe(
-      'prod_existing'
-    );
+    expect(target.environments.dev.catalogMappings?.['bronze-layer']).toBe('dev_bronze_layer');
+    expect(target.environments.prod.catalogMappings?.['bronze-layer']).toBe('prod_bronze_layer');
+    expect(target.environments.prod.catalogMappings?.existing).toBe('prod_existing');
   });
 
   test('does not update when all mappings already exist', () => {
-    const v5 = migrateV4ToV5(baseProject());
-    const target = v5.targets['default'];
+    const project = baseProject();
+    const target = project.targets['default'];
     target.environments.dev.catalogMappings = {
       'bronze-layer': 'dev_bronze_layer',
     };
@@ -281,14 +291,14 @@ describe('Storage V4 - Catalog mapping defaults', () => {
       },
     ];
 
-    const result = ensureCatalogMappingsForNewCatalogs(v5, ops);
+    const result = ensureCatalogMappingsForNewCatalogs(project, ops);
 
     expect(result.updated).toBe(false);
-    expect(result.project).toBe(v5);
+    expect(result.project).toBe(project);
   });
 });
 
-describe('Storage V4 - Provider capability normalization', () => {
+describe('Storage - Provider capability normalization', () => {
   test('normalizes snake_case capability payload to camelCase contract', () => {
     const normalized = normalizeProviderCapabilities({
       supported_operations: ['unity.add_catalog'],
@@ -330,7 +340,7 @@ describe('Storage V4 - Provider capability normalization', () => {
   });
 });
 
-describe('Storage V4 - Python transport contract', () => {
+describe('Storage - Python transport contract', () => {
   test('loadCurrentState normalizes provider capabilities and validation payload', async () => {
     const runJsonSpy = jest
       .spyOn(PythonBackendClient.prototype, 'runJson')

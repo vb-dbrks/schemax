@@ -11,7 +11,7 @@ This page summarizes coordinated SchemaX releases across:
 ### Highlights
 
 - **v5 multi-target architecture** — Projects now support multiple provider targets (e.g., multiple Unity Catalog catalogs or mixed providers) via a `targets` dict in `project.json`. Existing v4 projects auto-migrate on first load.
-- **`--scope` CLI parameter** — New flag on `sql`, `validate`, `apply`, and `workspace-state` to select which target to operate on. Defaults to `defaultTarget`.
+- **`--scope` CLI parameter** — New flag on `sql`, `validate`, `apply`, and `workspace-state`. Currently plumbed through CLI and interfaces; target-scoped state loading will be enabled in a follow-up release.
 - **Provider-specific settings UI** — Project Settings in the VS Code extension now renders per-provider configuration with target tabs for multi-target projects.
 - **Renamed `target_name` to `scope`** — Eliminated naming confusion between environment target (`--target dev`) and provider scope (`--scope analytics`).
 

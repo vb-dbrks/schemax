@@ -30,7 +30,12 @@ export const EnvironmentSummary: React.FC<EnvironmentSummaryProps> = ({ classNam
     }
   }, []);
 
-  const environments = project ? getDefaultTargetConfig(project).environments : undefined;
+  let environments: Record<string, unknown> | undefined;
+  try {
+    environments = project ? getDefaultTargetConfig(project).environments : undefined;
+  } catch {
+    environments = undefined;
+  }
   if (!environments || Object.keys(environments).length === 0) {
     return null;
   }

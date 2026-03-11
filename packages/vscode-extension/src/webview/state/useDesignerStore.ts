@@ -54,7 +54,7 @@ interface DesignerState {
   // Actions
   setProject: (project: ProjectFile) => void;
   setProvider: (provider: ProviderMetadata) => void;
-  setActiveTarget: (scope: string) => void;
+  setActiveTarget: (scope: string | null) => void;
   selectCatalog: (catalogId: string | null) => void;
   selectSchema: (schemaId: string | null) => void;
   selectTable: (tableId: string | null) => void;

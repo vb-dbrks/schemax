@@ -42,9 +42,19 @@ async function getPythonExtensionInterpreterPath(): Promise<string | undefined> 
     if (resolved?.executable?.uri) {
       return resolved.executable.uri.fsPath;
     }
-    // envPath.path may be a folder — try appending bin/python
+    // envPath.path may be a folder (environment root) — resolve to executable
     if (envPath?.path) {
-      return envPath.path;
+      const fs = await import("fs");
+      const path = await import("path");
+      const candidate = path.join(envPath.path, "bin", "python");
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+      // On Windows, check Scripts/python.exe
+      const winCandidate = path.join(envPath.path, "Scripts", "python.exe");
+      if (fs.existsSync(winCandidate)) {
+        return winCandidate;
+      }
     }
   } catch {
     // Python extension not installed or not activated — fall through.

@@ -100,7 +100,7 @@ export function UnityTargetSettings({
 
   useEffect(() => {
     onMappingErrorChange(Object.values(mappingErrorByEnv).some(Boolean));
-  }, [mappingErrorByEnv]);
+  }, [mappingErrorByEnv, onMappingErrorChange]);
 
   const toggleEnv = (envName: string) => {
     const next = new Set(expandedEnvs);

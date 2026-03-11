@@ -5,7 +5,7 @@
 ### Added
 
 - **v5 multi-target project schema** — Projects now use a `targets` dict instead of a single `provider` object, enabling multiple provider instances (e.g., multiple Unity Catalog catalogs or mixed providers) in one project. Existing v4 projects auto-migrate to v5 on first load.
-- **`--scope` CLI parameter** — New `--scope` flag on `sql`, `validate`, `apply`, and `workspace-state` commands selects which target to operate on. Defaults to `defaultTarget` from the project file.
+- **`--scope` CLI parameter** — New `--scope` flag on `sql`, `validate`, `apply`, and `workspace-state` commands. Currently plumbed through CLI and interfaces; target-scoped state loading will be enabled in a follow-up release.
 - **`Operation.scope` field** — Operations now carry a `scope` field to associate them with a specific target in multi-target projects.
 - **Provider-specific settings UI** — Project Settings panel renders target-specific configuration per provider type, with tabs for each target in multi-target projects.
 

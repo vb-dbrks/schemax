@@ -190,7 +190,7 @@ export type ProjectFile = ProjectFileV5;
 /**
  * Migrate a v4 project to v5 in-memory by wrapping provider into targets.
  */
-export function migrateV4ToV5(v4: ProjectFileV4): ProjectFileV5 {
+function migrateV4ToV5(v4: ProjectFileV4): ProjectFileV5 {
   const { provider, version: _version, ...rest } = v4;
   return {
     ...rest,
@@ -723,11 +723,11 @@ export function ensureCatalogMappingsForNewCatalogs(
     (op) => op.op?.endsWith("add_catalog") && (op.payload as { name?: string })?.name
   );
   const newNames = [...new Set(addCatalogOps.map((op) => (op.payload as { name: string }).name))];
-  const resolvedTarget = scope || project.defaultTarget || "default";
-  const targetConfig = project.targets[resolvedTarget];
-  if (newNames.length === 0 || !targetConfig?.environments) {
+  if (newNames.length === 0) {
     return { project, updated: false };
   }
+  const resolvedTarget = scope || project.defaultTarget || "default";
+  const targetConfig = getTargetConfig(project, scope);
 
   let updated = false;
   const environments: Record<string, EnvironmentConfig> = {};
