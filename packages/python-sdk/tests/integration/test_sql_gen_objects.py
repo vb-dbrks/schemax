@@ -185,9 +185,12 @@ class TestViewSqlGeneration:
             builder.catalog.add_catalog("cat_1", "analytics", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
             builder.view.add_view(
-                "v1", "active_users", "s1",
+                "v1",
+                "active_users",
+                "s1",
                 "SELECT * FROM users WHERE active = true",
-                comment="Active users only", op_id="op_3",
+                comment="Active users only",
+                op_id="op_3",
             ),
         ]
         sql = _gen_single(ops, target_op_index=2)
@@ -205,9 +208,15 @@ class TestFunctionSqlGeneration:
             builder.catalog.add_catalog("cat_1", "analytics", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
             builder.function.add_function(
-                "f1", "add_numbers", "s1", "SQL", "INT", "a + b",
+                "f1",
+                "add_numbers",
+                "s1",
+                "SQL",
+                "INT",
+                "a + b",
                 parameters=[{"name": "a", "type": "INT"}, {"name": "b", "type": "INT"}],
-                comment="Adds two numbers", op_id="op_3",
+                comment="Adds two numbers",
+                op_id="op_3",
             ),
         ]
         sql = _gen_single(ops, target_op_index=2)
@@ -225,9 +234,13 @@ class TestVolumeSqlGeneration:
             builder.catalog.add_catalog("cat_1", "analytics", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
             builder.volume.add_volume(
-                "v1", "raw_files", "s1", "external",
+                "v1",
+                "raw_files",
+                "s1",
+                "external",
                 location="abfss://container@account.dfs.core.windows.net/raw",
-                comment="Raw file storage", op_id="op_3",
+                comment="Raw file storage",
+                op_id="op_3",
             ),
         ]
         sql = _gen_single(ops, target_op_index=2)
@@ -254,9 +267,7 @@ class TestGrantSqlGeneration:
     def test_grant_on_table(self) -> None:
         builder = OperationBuilder()
         ops = ops_catalog_schema_table(builder) + [
-            builder.grant.add_grant(
-                "table", "t1", "analysts", ["SELECT", "MODIFY"], op_id="op_4"
-            ),
+            builder.grant.add_grant("table", "t1", "analysts", ["SELECT", "MODIFY"], op_id="op_4"),
         ]
         sql = _gen_sql(ops)
         assert "GRANT" in sql and "analysts" in sql
@@ -266,9 +277,7 @@ class TestGrantSqlGeneration:
         ops = [
             builder.catalog.add_catalog("cat_1", "analytics", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
-            builder.grant.add_grant(
-                "schema", "s1", "data_team", ["CREATE TABLE"], op_id="op_3"
-            ),
+            builder.grant.add_grant("schema", "s1", "data_team", ["CREATE TABLE"], op_id="op_3"),
             builder.grant.revoke_grant("schema", "s1", "data_team", op_id="op_4"),
         ]
         sql = _gen_sql(ops)
@@ -285,8 +294,13 @@ class TestGovernanceSqlGeneration:
         ops = ops_catalog_schema_table(builder) + [
             builder.column.add_column("c1", "t1", "region", "STRING", op_id="op_4"),
             builder.row_filter.add_row_filter(
-                "rf1", "t1", "region_filter", "region = current_user()",
-                enabled=True, description="Filter by region", op_id="op_5",
+                "rf1",
+                "t1",
+                "region_filter",
+                "region = current_user()",
+                enabled=True,
+                description="Filter by region",
+                op_id="op_5",
             ),
         ]
         sql = _gen_single(ops)
@@ -297,9 +311,14 @@ class TestGovernanceSqlGeneration:
         ops = ops_catalog_schema_table(builder) + [
             builder.column.add_column("c1", "t1", "ssn", "STRING", op_id="op_4"),
             builder.column_mask.add_column_mask(
-                "cm1", "t1", "c1", "mask_ssn",
+                "cm1",
+                "t1",
+                "c1",
+                "mask_ssn",
                 "CASE WHEN is_account_group_member('admins') THEN ssn ELSE 'XXX' END",
-                enabled=True, description="Mask SSN", op_id="op_5",
+                enabled=True,
+                description="Mask SSN",
+                op_id="op_5",
             ),
         ]
         sql = _gen_single(ops)
@@ -322,8 +341,12 @@ class TestGovernanceSqlGeneration:
         ops = ops_catalog_schema_table(builder) + [
             builder.column.add_column("c1", "t1", "ssn", "STRING", op_id="op_4"),
             builder.column_mask.add_column_mask(
-                "cm1", "t1", "c1", "mask_ssn",
-                "CASE WHEN true THEN ssn ELSE 'X' END", op_id="op_5",
+                "cm1",
+                "t1",
+                "c1",
+                "mask_ssn",
+                "CASE WHEN true THEN ssn ELSE 'X' END",
+                op_id="op_5",
             ),
             builder.column_mask.remove_column_mask("cm1", "t1", "c1", op_id="op_6"),
         ]
@@ -388,8 +411,11 @@ class TestDependencyOrderedSql:
             builder.table.add_table("t1", "events", "s1", "delta", op_id="op_3"),
             builder.column.add_column("c1", "t1", "id", "INT", op_id="op_4"),
             builder.view.add_view(
-                "v1", "events_summary", "s1",
-                "SELECT COUNT(*) FROM events", op_id="op_5",
+                "v1",
+                "events_summary",
+                "s1",
+                "SELECT COUNT(*) FROM events",
+                op_id="op_5",
             ),
         ]
         state = apply_operations(_empty(), ops)
@@ -421,24 +447,32 @@ class TestComplexSchemaGeneration:
                 "t1", "delta.autoOptimize.optimizeWrite", "true", op_id="op_08"
             ),
             builder.table.add_table("t2", "customers", "s1", "delta", op_id="op_09"),
-            builder.column.add_column(
-                "c4", "t2", "id", "BIGINT", nullable=False, op_id="op_10"
-            ),
+            builder.column.add_column("c4", "t2", "id", "BIGINT", nullable=False, op_id="op_10"),
             builder.column.add_column("c5", "t2", "ssn", "STRING", op_id="op_11"),
             builder.column_mask.add_column_mask(
-                "cm1", "t2", "c5", "mask_ssn",
+                "cm1",
+                "t2",
+                "c5",
+                "mask_ssn",
                 "CASE WHEN is_account_group_member('admins') THEN ssn ELSE '***' END",
                 op_id="op_12",
             ),
             builder.view.add_view(
-                "v1", "order_summary", "s1",
+                "v1",
+                "order_summary",
+                "s1",
                 "SELECT customer_id, SUM(amount) FROM orders GROUP BY customer_id",
                 op_id="op_13",
             ),
             builder.function.add_function(
-                "f1", "format_amount", "s1", "SQL", "STRING",
+                "f1",
+                "format_amount",
+                "s1",
+                "SQL",
+                "STRING",
                 "CONCAT('$', CAST(amount AS STRING))",
-                parameters=[{"name": "amount", "type": "DECIMAL(10,2)"}], op_id="op_14",
+                parameters=[{"name": "amount", "type": "DECIMAL(10,2)"}],
+                op_id="op_14",
             ),
             builder.volume.add_volume(
                 "vol1", "raw_files", "s1", "managed", comment="Raw data", op_id="op_15"

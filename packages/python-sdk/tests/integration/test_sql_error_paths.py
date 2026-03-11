@@ -8,7 +8,6 @@ Covers:
 - Managed/external location logging
 """
 
-import json
 from pathlib import Path
 
 import pytest

@@ -108,9 +108,7 @@ class TestSqlCommand:
         )
         project = read_project(temp_workspace)
         scope = project.get("defaultTarget", "default")
-        project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {
-            "demo": "dev_demo"
-        }
+        project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {"demo": "dev_demo"}
         write_project(temp_workspace, project)
 
         result = invoke_cli("sql", "--target", "dev", str(temp_workspace))
@@ -185,9 +183,7 @@ class TestSqlCommand:
         )
         project = read_project(temp_workspace)
         scope = project.get("defaultTarget", "default")
-        project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {
-            "demo": "dev_demo"
-        }
+        project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {"demo": "dev_demo"}
         write_project(temp_workspace, project)
 
         invoke_cli("snapshot", "create", "--name", "S1", "--version", "v0.1.0", str(temp_workspace))
@@ -255,9 +251,7 @@ class TestDiffCommand:
         self._setup_two_snapshots(temp_workspace)
         project = read_project(temp_workspace)
         scope = project.get("defaultTarget", "default")
-        project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {
-            "demo": "dev_demo"
-        }
+        project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {"demo": "dev_demo"}
         write_project(temp_workspace, project)
 
         result = invoke_cli(

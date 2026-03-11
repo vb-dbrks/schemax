@@ -15,7 +15,6 @@ from schemax.commands.sql import (
 )
 from schemax.providers.base.operations import Operation
 
-
 # ── build_catalog_mapping ──────────────────────────────────────────────
 
 
@@ -55,38 +54,63 @@ class TestBuildCatalogMapping:
 class TestExtractAddTablePayload:
     def test_non_add_table_op_returns_none(self):
         op = Operation(
-            id="op1", ts="2025-01-01T00:00:00Z", provider="unity",
-            op="unity.add_schema", target="s1", payload={},
+            id="op1",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_schema",
+            target="s1",
+            payload={},
         )
         assert _extract_add_table_payload(op) is None
 
     def test_non_external_table_returns_none(self):
         op = Operation(
-            id="op1", ts="2025-01-01T00:00:00Z", provider="unity",
-            op="unity.add_table", target="t1", payload={"name": "tbl"},
+            id="op1",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_table",
+            target="t1",
+            payload={"name": "tbl"},
         )
         assert _extract_add_table_payload(op) is None
 
     def test_external_table_operation(self):
         op = Operation(
-            id="op1", ts="2025-01-01T00:00:00Z", provider="unity",
-            op="unity.add_table", target="t1",
-            payload={"name": "ext_tbl", "external": True, "externalLocationName": "loc1", "path": "data/"},
+            id="op1",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_table",
+            target="t1",
+            payload={
+                "name": "ext_tbl",
+                "external": True,
+                "externalLocationName": "loc1",
+                "path": "data/",
+            },
         )
         result = _extract_add_table_payload(op)
         assert result == ("ext_tbl", "loc1", "data/")
 
     def test_dict_operation_non_external(self):
-        assert _extract_add_table_payload({"op": "unity.add_table", "payload": {"name": "t"}}) is None
+        assert (
+            _extract_add_table_payload({"op": "unity.add_table", "payload": {"name": "t"}}) is None
+        )
 
     def test_dict_operation_non_add_table(self):
         assert _extract_add_table_payload({"op": "unity.add_schema"}) is None
 
     def test_dict_external_table(self):
-        result = _extract_add_table_payload({
-            "op": "unity.add_table",
-            "payload": {"name": "ext", "external": True, "externalLocationName": "loc", "path": "p/"},
-        })
+        result = _extract_add_table_payload(
+            {
+                "op": "unity.add_table",
+                "payload": {
+                    "name": "ext",
+                    "external": True,
+                    "externalLocationName": "loc",
+                    "path": "p/",
+                },
+            }
+        )
         assert result == ("ext", "loc", "p/")
 
 
@@ -97,8 +121,12 @@ class TestPrepareOperations:
     def test_converts_dicts_to_operations(self):
         ops = [
             {
-                "id": "op1", "ts": "2025-01-01T00:00:00Z", "provider": "unity",
-                "op": "unity.add_table", "target": "t1", "payload": {},
+                "id": "op1",
+                "ts": "2025-01-01T00:00:00Z",
+                "provider": "unity",
+                "op": "unity.add_table",
+                "target": "t1",
+                "payload": {},
             }
         ]
         result = _prepare_operations(ops, None, None)
@@ -106,8 +134,12 @@ class TestPrepareOperations:
 
     def test_passes_through_operation_objects(self):
         op = Operation(
-            id="op1", ts="2025-01-01T00:00:00Z", provider="unity",
-            op="unity.add_table", target="t1", payload={},
+            id="op1",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_table",
+            target="t1",
+            payload={},
         )
         result = _prepare_operations([op], None, None)
         assert result[0] is op
@@ -153,8 +185,12 @@ class TestGenerateSqlMigration:
 
         ops = [
             {
-                "id": "op1", "ts": "2025-01-01T00:00:00Z", "provider": "unity",
-                "op": "unity.add_catalog", "target": "c1", "payload": {"name": "demo"},
+                "id": "op1",
+                "ts": "2025-01-01T00:00:00Z",
+                "provider": "unity",
+                "op": "unity.add_catalog",
+                "target": "c1",
+                "payload": {"name": "demo"},
             }
         ]
         repo = _FakeRepo(
@@ -186,8 +222,12 @@ class TestGenerateSqlMigration:
         provider.get_sql_generator.return_value.generate_sql.return_value = "ALTER TABLE t1;"
         ops = [
             {
-                "id": "op1", "ts": "2025-01-01T00:00:00Z", "provider": "unity",
-                "op": "unity.add_column", "target": "col1", "payload": {},
+                "id": "op1",
+                "ts": "2025-01-01T00:00:00Z",
+                "provider": "unity",
+                "op": "unity.add_column",
+                "target": "col1",
+                "payload": {},
             }
         ]
         repo = _FakeRepo(
@@ -215,14 +255,18 @@ class TestGenerateSqlMigration:
 
         ops = [
             {
-                "id": "op1", "ts": "2025-01-01T00:00:00Z", "provider": "unity",
-                "op": "unity.add_table", "target": "t1", "payload": {},
+                "id": "op1",
+                "ts": "2025-01-01T00:00:00Z",
+                "provider": "unity",
+                "op": "unity.add_table",
+                "target": "t1",
+                "payload": {},
             }
         ]
         repo = _FakeRepo(
             state_result=({"catalogs": []}, {"ops": ops}, provider, None),
         )
         output = tmp_path / "out.sql"
-        result = generate_sql_migration(Path("/tmp"), output=output, workspace_repo=repo)
+        generate_sql_migration(Path("/tmp"), output=output, workspace_repo=repo)
         assert output.exists()
         assert output.read_text() == "CREATE TABLE t1;"

@@ -2,8 +2,6 @@
 Extended tests for sql_parser.py — covers internal functions for coverage.
 """
 
-import pytest
-
 from schemax.providers.base.sql_parser import (
     _parse_table_reference,
     _resolve_from_schema,
@@ -13,7 +11,6 @@ from schemax.providers.base.sql_parser import (
     resolve_table_or_view,
     validate_sql_syntax,
 )
-
 
 # ── extract_table_references ───────────────────────────────────────────
 
@@ -275,9 +272,7 @@ class TestExtractDependenciesFromView:
 
     def test_unresolved_dependency(self):
         state = {"catalogs": []}
-        deps = extract_dependencies_from_view(
-            "SELECT * FROM cat.sch.unknown", state
-        )
+        deps = extract_dependencies_from_view("SELECT * FROM cat.sch.unknown", state)
         assert len(deps["unresolved"]) >= 1
 
     def test_invalid_sql_returns_empty(self):

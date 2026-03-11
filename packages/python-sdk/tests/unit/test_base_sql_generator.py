@@ -2,21 +2,12 @@
 Tests for providers/base/sql_generator.py — covers BaseSQLGenerator internals.
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
-import pytest
-
-from schemax.providers.base.dependency_graph import (
-    DependencyEnforcement,
-    DependencyGraph,
-    DependencyNode,
-    DependencyType,
-)
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.sql_generator import (
     BaseSQLGenerator,
     SQLGenerationResult,
-    SQLGenerator,
     StatementInfo,
 )
 

@@ -8,7 +8,6 @@ from click.testing import CliRunner
 
 from schemax.cli import cli
 
-
 # ── SQL command error paths ────────────────────────────────────────────
 
 
@@ -147,9 +146,7 @@ def test_diff_non_json_diff_error(monkeypatch, temp_workspace: Path) -> None:
 
     monkeypatch.setattr("schemax.cli.DiffService.run", _raise)
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["diff", "--from", "v0.1.0", "--to", "v0.2.0", str(temp_workspace)]
-    )
+    result = runner.invoke(cli, ["diff", "--from", "v0.1.0", "--to", "v0.2.0", str(temp_workspace)])
     assert result.exit_code == 1
     assert "Diff generation failed" in result.output
 
@@ -190,9 +187,7 @@ def test_diff_non_json_unexpected_error(monkeypatch, temp_workspace: Path) -> No
 
     monkeypatch.setattr("schemax.cli.DiffService.run", _raise)
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["diff", "--from", "v0.1.0", "--to", "v0.2.0", str(temp_workspace)]
-    )
+    result = runner.invoke(cli, ["diff", "--from", "v0.1.0", "--to", "v0.2.0", str(temp_workspace)])
     assert result.exit_code == 1
     assert "Unexpected error" in result.output
 
@@ -711,7 +706,17 @@ def test_snapshot_create_with_ops(monkeypatch, temp_workspace: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["snapshot", "create", "--name", "test", "--comment", "a comment", "--tags", "t1", str(temp_workspace)],
+        [
+            "snapshot",
+            "create",
+            "--name",
+            "test",
+            "--comment",
+            "a comment",
+            "--tags",
+            "t1",
+            str(temp_workspace),
+        ],
     )
     assert result.exit_code == 0
     assert "Snapshot created" in result.output
@@ -730,9 +735,7 @@ def test_snapshot_create_file_not_found(monkeypatch, temp_workspace: Path) -> No
         ),
     )
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["snapshot", "create", "--name", "test", str(temp_workspace)]
-    )
+    result = runner.invoke(cli, ["snapshot", "create", "--name", "test", str(temp_workspace)])
     assert result.exit_code == 1
     assert "SchemaX project" in result.output
 
@@ -809,8 +812,12 @@ def test_serialize_operation_model() -> None:
     from schemax.providers.base.operations import Operation
 
     op = Operation(
-        id="op_1", ts="2025-01-01T00:00:00Z", provider="unity",
-        op="unity.add_catalog", target="c1", payload={}
+        id="op_1",
+        ts="2025-01-01T00:00:00Z",
+        provider="unity",
+        op="unity.add_catalog",
+        target="c1",
+        payload={},
     )
     result = _serialize_operation(op)
     assert result["id"] == "op_1"
@@ -818,6 +825,7 @@ def test_serialize_operation_model() -> None:
 
 def test_serialize_operation_unsupported() -> None:
     import pytest
+
     from schemax.cli import _serialize_operation
 
     with pytest.raises(TypeError, match="Unsupported"):
@@ -829,8 +837,12 @@ def test_serialize_provider_capabilities_with_hierarchy() -> None:
     from schemax.providers.base.hierarchy import Hierarchy, HierarchyLevel
 
     levels = [
-        HierarchyLevel(name="catalog", display_name="Catalog", plural_name="catalogs", is_container=True),
-        HierarchyLevel(name="table", display_name="Table", plural_name="tables", is_container=False),
+        HierarchyLevel(
+            name="catalog", display_name="Catalog", plural_name="catalogs", is_container=True
+        ),
+        HierarchyLevel(
+            name="table", display_name="Table", plural_name="tables", is_container=False
+        ),
     ]
     hierarchy = Hierarchy(levels)
     caps = SimpleNamespace(

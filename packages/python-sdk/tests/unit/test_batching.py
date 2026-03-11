@@ -353,12 +353,20 @@ class TestBatchOperationsByType:
         batcher = OperationBatcher()
         ops = [
             Operation(
-                id="op_001", provider="test", ts="2025-01-01T00:00:00Z",
-                op="test.add_column", target="col_001", payload={"tableId": "table_123"},
+                id="op_001",
+                provider="test",
+                ts="2025-01-01T00:00:00Z",
+                op="test.add_column",
+                target="col_001",
+                payload={"tableId": "table_123"},
             ),
             Operation(
-                id="op_002", provider="test", ts="2025-01-01T00:01:00Z",
-                op="test.set_property", target="prop_001", payload={"tableId": "table_123"},
+                id="op_002",
+                provider="test",
+                ts="2025-01-01T00:01:00Z",
+                op="test.set_property",
+                target="prop_001",
+                payload={"tableId": "table_123"},
             ),
         ]
 
@@ -381,8 +389,12 @@ class TestBatchOperationsByType:
         batcher = OperationBatcher()
         ops = [
             Operation(
-                id="op_001", provider="test", ts="2025-01-01T00:00:00Z",
-                op="test.global_op", target="g1", payload={},
+                id="op_001",
+                provider="test",
+                ts="2025-01-01T00:00:00Z",
+                op="test.global_op",
+                target="g1",
+                payload={},
             ),
         ]
         batches = batcher.batch_operations_by_type(ops, lambda _: None, lambda _: "cat")

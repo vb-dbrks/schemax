@@ -3,18 +3,13 @@ Extended tests for snapshot rebase — covers internal functions for coverage.
 """
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
 from schemax.commands.snapshot_rebase import (
-    ConflictError,
-    RebaseContext,
     RebaseError,
-    RebaseResult,
-    ReplayResult,
     _clear_changelog,
     _has_conflict,
     _load_rebase_context,
@@ -30,7 +25,6 @@ from schemax.commands.snapshot_rebase import (
     rebase_snapshot,
 )
 from schemax.providers.base.operations import Operation
-
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -159,9 +153,7 @@ class TestLoadRebaseContext:
     def test_rebase_needed(self):
         ops = [_op_dict()]
         repo = _FakeRepo(
-            snapshots={
-                "v0.2.0": {"previousSnapshot": "v0.1.0", "state": {}, "operations": ops}
-            }
+            snapshots={"v0.2.0": {"previousSnapshot": "v0.1.0", "state": {}, "operations": ops}}
         )
         ctx = _load_rebase_context(Path("/tmp"), "v0.2.0", "v0.1.5", repo)
         assert ctx.rebase_needed is True
@@ -171,9 +163,7 @@ class TestLoadRebaseContext:
 
     def test_auto_detects_latest_snapshot(self):
         repo = _FakeRepo(
-            snapshots={
-                "v0.2.0": {"previousSnapshot": "v0.1.0", "state": {}, "operations": []}
-            },
+            snapshots={"v0.2.0": {"previousSnapshot": "v0.1.0", "state": {}, "operations": []}},
             project={"latestSnapshot": "v0.1.5", "snapshots": []},
         )
         ctx = _load_rebase_context(Path("/tmp"), "v0.2.0", None, repo)
@@ -233,7 +223,9 @@ class TestReplayOperationsOnBase:
 
 class TestChangelogHelpers:
     def test_clear_changelog(self):
-        repo = _FakeRepo(changelog={"ops": [{"id": "x"}], "_rebase_temp": True, "_rebase_message": "msg"})
+        repo = _FakeRepo(
+            changelog={"ops": [{"id": "x"}], "_rebase_temp": True, "_rebase_message": "msg"}
+        )
         _clear_changelog(Path("/tmp"), "v0.1.0", repo)
         cl = repo._changelog
         assert cl["ops"] == []
@@ -265,7 +257,10 @@ class TestChangelogHelpers:
 class TestSaveConflictLog:
     def test_writes_json_file(self, tmp_path):
         path = _save_conflict_log(
-            tmp_path, "v0.4.0", "v0.3.0", "v0.3.1",
+            tmp_path,
+            "v0.4.0",
+            "v0.3.0",
+            "v0.3.1",
             applied_ops=[_op_dict()],
             conflicting_ops=[{"operation": _op_dict(id="op_c"), "index": 1, "reason": "boom"}],
         )
@@ -295,17 +290,13 @@ class TestRemoveSnapshotFromProject:
         assert repo._project["latestSnapshot"] == "v0.1.0"
 
     def test_clears_latest_when_last(self):
-        repo = _FakeRepo(
-            project={"snapshots": [{"version": "v0.1.0"}], "latestSnapshot": "v0.1.0"}
-        )
+        repo = _FakeRepo(project={"snapshots": [{"version": "v0.1.0"}], "latestSnapshot": "v0.1.0"})
         _remove_snapshot_from_project(Path("/tmp"), "v0.1.0", repo)
         assert repo._project["snapshots"] == []
         assert repo._project["latestSnapshot"] is None
 
     def test_noop_when_version_not_found(self):
-        repo = _FakeRepo(
-            project={"snapshots": [{"version": "v0.1.0"}], "latestSnapshot": "v0.1.0"}
-        )
+        repo = _FakeRepo(project={"snapshots": [{"version": "v0.1.0"}], "latestSnapshot": "v0.1.0"})
         _remove_snapshot_from_project(Path("/tmp"), "v9.9.9", repo)
         assert len(repo._project["snapshots"]) == 1
 

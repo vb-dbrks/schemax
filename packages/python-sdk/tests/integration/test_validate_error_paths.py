@@ -17,8 +17,6 @@ from schemax.core.storage import (
     append_ops,
     create_snapshot,
     ensure_project_file,
-    read_project,
-    write_project,
 )
 from tests.utils import OperationBuilder
 from tests.utils.cli_helpers import invoke_cli

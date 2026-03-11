@@ -169,9 +169,13 @@ class TestBatchedCreateTable:
             builder.table.add_table("t1", "events", "s1", "delta", op_id="op_3"),
             builder.column.add_column("c1", "t1", "ssn", "STRING", op_id="op_4"),
             builder.column_mask.add_column_mask(
-                "cm1", "t1", "c1", "ssn_mask",
+                "cm1",
+                "t1",
+                "c1",
+                "ssn_mask",
                 "CASE WHEN is_account_group_member('admins') THEN ssn ELSE '***' END",
-                enabled=True, op_id="op_5",
+                enabled=True,
+                op_id="op_5",
             ),
         ]
         result = _gen_with_mapping(ops)
@@ -245,8 +249,12 @@ class TestBatchedAlterTable:
                 "rf1", "t1", "region_filter", "region = 'US'", op_id="op_5"
             ),
             builder.column_mask.add_column_mask(
-                "cm1", "t1", "c1", "ssn_mask",
-                "CASE WHEN true THEN ssn ELSE '***' END", op_id="op_6",
+                "cm1",
+                "t1",
+                "c1",
+                "ssn_mask",
+                "CASE WHEN true THEN ssn ELSE '***' END",
+                op_id="op_6",
             ),
         ]
         result = _gen_with_mapping(ops)

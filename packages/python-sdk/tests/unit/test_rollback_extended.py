@@ -3,7 +3,6 @@ Extended tests for rollback.py — covers internal functions for coverage.
 """
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -17,11 +16,8 @@ from schemax.commands.rollback import (
     _enforce_import_baseline_guard,
     rollback_complete,
 )
-from schemax.providers.base.executor import ExecutionResult, StatementResult
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.reverse_generator import SafetyLevel, SafetyReport
-from schemax.providers.base.sql_generator import SQLGenerationResult, StatementInfo
-
 
 # ── _enforce_import_baseline_guard ─────────────────────────────────────
 
@@ -51,15 +47,15 @@ class TestEnforceImportBaselineGuard:
     def test_invalid_version_strings_noop(self):
         env_config = {"importBaselineSnapshot": "not-a-version"}
         # Invalid versions → ValueError caught → noop
-        _enforce_import_baseline_guard(env_config, "also-invalid", force=False, no_interaction=False)
+        _enforce_import_baseline_guard(
+            env_config, "also-invalid", force=False, no_interaction=False
+        )
 
     @patch("schemax.commands.rollback.Confirm.ask", return_value=False)
     def test_force_user_cancels(self, mock_ask):
         env_config = {"importBaselineSnapshot": "v0.2.0"}
         with pytest.raises(RollbackError, match="cancelled by user"):
-            _enforce_import_baseline_guard(
-                env_config, "v0.1.0", force=True, no_interaction=False
-            )
+            _enforce_import_baseline_guard(env_config, "v0.1.0", force=True, no_interaction=False)
 
 
 # ── _check_already_at_target_version ───────────────────────────────────
@@ -159,8 +155,22 @@ class TestClassifyCompleteRollbackSafety:
         validator.validate.side_effect = reports
         ops = [self._make_op() for _ in range(3)]
         # Fix unique IDs
-        ops[1] = Operation(id="op_2", ts="2025-01-01T00:00:00Z", provider="unity", op="unity.drop_schema", target="s1", payload={})
-        ops[2] = Operation(id="op_3", ts="2025-01-01T00:00:00Z", provider="unity", op="unity.drop_catalog", target="c1", payload={})
+        ops[1] = Operation(
+            id="op_2",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.drop_schema",
+            target="s1",
+            payload={},
+        )
+        ops[2] = Operation(
+            id="op_3",
+            ts="2025-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.drop_catalog",
+            target="c1",
+            payload={},
+        )
         safe, risky, destructive = _classify_complete_rollback_safety(ops, validator, None)
         assert len(safe) == 1
         assert len(risky) == 1
@@ -200,7 +210,7 @@ class TestBuildPreDeploymentState:
         tracker.get_deployment_by_id.return_value = {"id": "d0"}  # No opsDetails key
         deployment = {"previousDeploymentId": "d0"}
 
-        state = _build_pre_deployment_state(
+        _build_pre_deployment_state(
             Path("/tmp"), _RepoStub(), provider, tracker, "dev", "d1", deployment
         )
         provider.create_initial_state.assert_called()
@@ -229,9 +239,7 @@ class TestBuildPreDeploymentState:
         deployment = {"previousDeploymentId": "d0"}
 
         repo = _RepoStub(snapshots={"v0.1.0": {"state": {"catalogs": []}}})
-        state = _build_pre_deployment_state(
-            Path("/tmp"), repo, provider, tracker, "dev", "d1", deployment
-        )
+        _build_pre_deployment_state(Path("/tmp"), repo, provider, tracker, "dev", "d1", deployment)
         provider.apply_operations.assert_called_once()
 
     def test_uses_get_previous_deployment_fallback(self):
@@ -256,7 +264,7 @@ class TestBuildPreDeploymentState:
         provider.apply_operations.return_value = {"catalogs": [{"id": "c1"}]}
         deployment = {"previousDeploymentId": "d_missing"}
 
-        state = _build_pre_deployment_state(
+        _build_pre_deployment_state(
             Path("/tmp"), _RepoStub(), provider, tracker, "dev", "d1", deployment
         )
         tracker.get_previous_deployment.assert_called_once()
@@ -271,8 +279,22 @@ class TestBuildPreDeploymentState:
             "id": "d0",
             "fromVersion": None,
             "opsDetails": [
-                {"id": "op_ok", "status": "success", "executionOrder": 1, "type": "unity.add_catalog", "target": "c1", "payload": {}},
-                {"id": "op_fail", "status": "failed", "executionOrder": 2, "type": "unity.add_schema", "target": "s1", "payload": {}},
+                {
+                    "id": "op_ok",
+                    "status": "success",
+                    "executionOrder": 1,
+                    "type": "unity.add_catalog",
+                    "target": "c1",
+                    "payload": {},
+                },
+                {
+                    "id": "op_fail",
+                    "status": "failed",
+                    "executionOrder": 2,
+                    "type": "unity.add_schema",
+                    "target": "s1",
+                    "payload": {},
+                },
             ],
         }
         tracker = Mock()
@@ -306,7 +328,9 @@ class TestRollbackResult:
 
 
 class _FullRepoStub:
-    def __init__(self, *, env_config=None, snapshots=None, project=None, changelog=None, state_result=None):
+    def __init__(
+        self, *, env_config=None, snapshots=None, project=None, changelog=None, state_result=None
+    ):
         self._env_config = env_config or {"topLevelName": "dev_cat"}
         self._snapshots = snapshots or {}
         self._project = project or {"name": "test"}

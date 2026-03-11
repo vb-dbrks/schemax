@@ -191,12 +191,8 @@ class TestViewOperations:
         ops = [
             builder.catalog.add_catalog("cat_1", "analytics", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
-            builder.view.add_view(
-                "v1", "user_summary", "s1", "SELECT 1", op_id="op_3"
-            ),
-            builder.view.update_view(
-                "v1", definition="SELECT id, name FROM users", op_id="op_4"
-            ),
+            builder.view.add_view("v1", "user_summary", "s1", "SELECT 1", op_id="op_3"),
+            builder.view.update_view("v1", definition="SELECT id, name FROM users", op_id="op_4"),
         ]
         state = apply_operations(_empty(), ops)
         view = state.catalogs[0].schemas[0].views[0]
@@ -207,9 +203,7 @@ class TestViewOperations:
         ops = [
             builder.catalog.add_catalog("cat_1", "analytics", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
-            builder.view.add_view(
-                "v1", "user_summary", "s1", "SELECT 1", op_id="op_3"
-            ),
+            builder.view.add_view("v1", "user_summary", "s1", "SELECT 1", op_id="op_3"),
             builder.view.set_view_tag("v1", "domain", "analytics", op_id="op_4"),
         ]
         state = apply_operations(_empty(), ops)
@@ -221,9 +215,7 @@ class TestViewOperations:
         ops = [
             builder.catalog.add_catalog("cat_1", "analytics", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
-            builder.view.add_view(
-                "v1", "user_summary", "s1", "SELECT 1", op_id="op_3"
-            ),
+            builder.view.add_view("v1", "user_summary", "s1", "SELECT 1", op_id="op_3"),
             builder.view.set_view_tag("v1", "domain", "analytics", op_id="op_4"),
             builder.view.unset_view_tag("v1", "domain", op_id="op_5"),
         ]
@@ -236,9 +228,7 @@ class TestViewOperations:
         ops = [
             builder.catalog.add_catalog("cat_1", "analytics", op_id="op_1"),
             builder.schema.add_schema("s1", "raw", "cat_1", op_id="op_2"),
-            builder.view.add_view(
-                "v1", "user_summary", "s1", "SELECT 1", op_id="op_3"
-            ),
+            builder.view.add_view("v1", "user_summary", "s1", "SELECT 1", op_id="op_3"),
             # rename_view: (view_id, new_name, old_name)
             builder.view.rename_view("v1", "user_overview", "user_summary", op_id="op_4"),
         ]
@@ -296,12 +286,10 @@ class TestConstraintInsertAt:
         builder = OperationBuilder()
         ops = _base_table_ops(builder) + [
             builder.constraint.add_constraint(
-                "ck1", "t1", "check", ["c1"],
-                name="ck_positive", expression="id > 0", op_id="op_7"
+                "ck1", "t1", "check", ["c1"], name="ck_positive", expression="id > 0", op_id="op_7"
             ),
             builder.constraint.add_constraint(
-                "pk1", "t1", "primary_key", ["c1"],
-                name="pk_events", insertAt=0, op_id="op_8"
+                "pk1", "t1", "primary_key", ["c1"], name="pk_events", insertAt=0, op_id="op_8"
             ),
         ]
         state = apply_operations(_empty(), ops)
@@ -315,8 +303,7 @@ class TestConstraintInsertAt:
         builder = OperationBuilder()
         ops = _base_table_ops(builder) + [
             builder.constraint.add_constraint(
-                "pk1", "t1", "primary_key", ["c1"],
-                name="pk_events", op_id="op_7"
+                "pk1", "t1", "primary_key", ["c1"], name="pk_events", op_id="op_7"
             ),
             builder.constraint.drop_constraint("pk1", "t1", op_id="op_8"),
         ]
@@ -334,8 +321,7 @@ class TestRowFilterAndColumnMask:
         builder = OperationBuilder()
         ops = _base_table_ops(builder) + [
             builder.row_filter.add_row_filter(
-                "rf1", "t1", "region_filter", "region = 'US'",
-                enabled=True, op_id="op_7"
+                "rf1", "t1", "region_filter", "region = 'US'", enabled=True, op_id="op_7"
             ),
             # update_row_filter: (filter_id, table_id, **kwargs)
             builder.row_filter.update_row_filter(
@@ -350,8 +336,7 @@ class TestRowFilterAndColumnMask:
         builder = OperationBuilder()
         ops = _base_table_ops(builder) + [
             builder.row_filter.add_row_filter(
-                "rf1", "t1", "region_filter", "region = 'US'",
-                enabled=True, op_id="op_7"
+                "rf1", "t1", "region_filter", "region = 'US'", enabled=True, op_id="op_7"
             ),
             builder.row_filter.remove_row_filter("rf1", "t1", op_id="op_8"),
         ]
@@ -362,14 +347,20 @@ class TestRowFilterAndColumnMask:
         builder = OperationBuilder()
         ops = _base_table_ops(builder) + [
             builder.column_mask.add_column_mask(
-                "cm1", "t1", "c2", "name_mask",
+                "cm1",
+                "t1",
+                "c2",
+                "name_mask",
                 "CASE WHEN true THEN name ELSE '***' END",
-                enabled=True, op_id="op_7"
+                enabled=True,
+                op_id="op_7",
             ),
             # update_column_mask: (mask_id, table_id, **kwargs)
             builder.column_mask.update_column_mask(
-                "cm1", "t1", op_id="op_8",
-                maskFunction="CASE WHEN is_admin() THEN name ELSE 'REDACTED' END"
+                "cm1",
+                "t1",
+                op_id="op_8",
+                maskFunction="CASE WHEN is_admin() THEN name ELSE 'REDACTED' END",
             ),
         ]
         state = apply_operations(_empty(), ops)
@@ -380,9 +371,13 @@ class TestRowFilterAndColumnMask:
         builder = OperationBuilder()
         ops = _base_table_ops(builder) + [
             builder.column_mask.add_column_mask(
-                "cm1", "t1", "c2", "name_mask",
+                "cm1",
+                "t1",
+                "c2",
+                "name_mask",
                 "CASE WHEN true THEN name ELSE '***' END",
-                enabled=True, op_id="op_7"
+                enabled=True,
+                op_id="op_7",
             ),
             builder.column_mask.remove_column_mask("cm1", "t1", "c2", op_id="op_8"),
         ]
