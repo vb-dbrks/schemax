@@ -16,11 +16,21 @@ export const workspace = {
   getConfiguration: jest.fn(() => ({
     get: jest.fn(() => undefined),
   })),
+  fs: {
+    readFile: jest.fn(),
+    writeFile: jest.fn(),
+    stat: jest.fn(),
+    createDirectory: jest.fn(),
+  },
 };
 
 export const Uri = {
   file: (path: string) => ({ fsPath: path, path }),
   parse: (uri: string) => ({ fsPath: uri, path: uri }),
+  joinPath: (base: { fsPath: string }, ...segments: string[]) => {
+    const joined = [base.fsPath, ...segments].join('/');
+    return { fsPath: joined, path: joined };
+  },
 };
 
 export const commands = {
