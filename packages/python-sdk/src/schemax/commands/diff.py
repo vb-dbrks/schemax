@@ -14,6 +14,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 
 from schemax.commands.sql import SQLGenerationError, build_catalog_mapping
+from schemax.core.storage import _get_provider_from_target, get_target_config
 from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.operations import Operation
 from schemax.providers.base.provider import Provider
@@ -89,7 +90,6 @@ def generate_diff(
     )
 
     project = repository.read_project(workspace=workspace)
-    from schemax.core.storage import get_target_config, _get_provider_from_target
     target_cfg = get_target_config(project)
     provider_id = _get_provider_from_target(target_cfg)
     provider = ProviderRegistry.get(provider_id)

@@ -235,12 +235,12 @@ export interface ProjectFile {
  * Get the default target config from a project.
  */
 export function getDefaultTargetConfig(project: ProjectFile): TargetConfig {
-  const targetName = project.defaultTarget || "default";
-  const config = project.targets?.[targetName];
+  const scope = project.defaultTarget || "default";
+  const config = project.targets?.[scope];
   if (config) return config;
   // Fallback for v4-shaped data that hasn't been fully migrated in webview
   if (project.provider) return project.provider;
-  throw new Error(`Target '${targetName}' not found in project`);
+  throw new Error(`Target '${scope}' not found in project`);
 }
 
 // Legacy compatibility aliases used across webview components.

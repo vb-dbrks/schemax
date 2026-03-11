@@ -107,7 +107,10 @@ class TestSqlCommand:
             ],
         )
         project = read_project(temp_workspace)
-        project["provider"]["environments"]["dev"]["catalogMappings"] = {"demo": "dev_demo"}
+        scope = project.get("defaultTarget", "default")
+        project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {
+            "demo": "dev_demo"
+        }
         write_project(temp_workspace, project)
 
         result = invoke_cli("sql", "--target", "dev", str(temp_workspace))
@@ -181,7 +184,10 @@ class TestSqlCommand:
             ],
         )
         project = read_project(temp_workspace)
-        project["provider"]["environments"]["dev"]["catalogMappings"] = {"demo": "dev_demo"}
+        scope = project.get("defaultTarget", "default")
+        project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {
+            "demo": "dev_demo"
+        }
         write_project(temp_workspace, project)
 
         invoke_cli("snapshot", "create", "--name", "S1", "--version", "v0.1.0", str(temp_workspace))
@@ -248,7 +254,10 @@ class TestDiffCommand:
     def test_diff_with_target_env(self, temp_workspace: Path) -> None:
         self._setup_two_snapshots(temp_workspace)
         project = read_project(temp_workspace)
-        project["provider"]["environments"]["dev"]["catalogMappings"] = {"demo": "dev_demo"}
+        scope = project.get("defaultTarget", "default")
+        project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {
+            "demo": "dev_demo"
+        }
         write_project(temp_workspace, project)
 
         result = invoke_cli(

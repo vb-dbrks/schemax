@@ -2451,8 +2451,8 @@ body {
 
 .target-tab {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 6px;
   padding: 10px 18px;
   background: transparent;
   border: none;
@@ -2460,6 +2460,7 @@ body {
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
   font-family: inherit;
+  font-size: 13px;
   text-align: left;
   transition: color 0.15s, border-color 0.15s;
 }
@@ -2474,13 +2475,12 @@ body {
 }
 
 .target-tab__name {
-  font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .target-tab__provider {
   font-size: 11px;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 /* Environment Sections */

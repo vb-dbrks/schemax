@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.11] - 2026-03-11
+
+### Added
+
+- **Multi-target project support** — Extension reads v5 project schema with `targets` dict. The webview receives per-target configuration and renders target-specific settings.
+- **Provider-specific settings panels** — Project Settings now shows target tabs with provider-specific configuration. Unity Catalog settings (environments, catalog mappings, tracking catalog, deployment scope) are rendered by a dedicated `UnityTargetSettings` component.
+- **Target tab UI** — New tabbed interface in Project Settings for switching between targets in multi-target projects. Single-target projects display identically to before.
+
+### Changed
+
+- **`Operation.scope` field** — Operations use `scope` (renamed from `target_name`) to associate with a specific target.
+- **Runtime compatibility floor** — Updated minimum supported CLI version to `0.2.11`.
+- **Project creation** — New projects emit v5 schema with `targets` dict directly.
+
+### Fixed
+
+- **Extension data pipeline for v5** — All `project.provider` references in `extension.ts` updated to `getTargetConfig(project)` for v5 compatibility (6+ locations).
+- **Environment summary** — `EnvironmentSummary` component reads environments from `getDefaultTargetConfig()` instead of `project.provider.environments`.
+
 ## [0.2.10] - 2026-03-10
 
 ### Added

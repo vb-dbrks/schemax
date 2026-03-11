@@ -3,7 +3,7 @@
   "displayName": "SchemaX",
   "description": "Declarative schema management for Databricks Unity Catalog. Visual designer, Git-based versioning, governance (grants, tags, row filters), and CI/CD-ready deployment across environments.",
   "publisher": "schematic-dev",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "author": {
     "name": "Field Engineering"
   },

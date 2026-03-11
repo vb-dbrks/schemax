@@ -35,7 +35,8 @@ def write_project_env_overrides(
     """Override dev env topLevelName and catalogMappings in project.json."""
     project_path = workspace / ".schemax" / "project.json"
     project = json.loads(project_path.read_text())
-    dev_env = project["provider"]["environments"]["dev"]
+    scope = project.get("defaultTarget", "default")
+    dev_env = project["targets"][scope]["environments"]["dev"]
     dev_env["topLevelName"] = top_level_name
     dev_env["catalogMappings"] = catalog_mappings
     project_path.write_text(json.dumps(project, indent=2))
@@ -50,7 +51,8 @@ def write_project_managed_scope(
     """Set dev env managedCategories and/or existingObjects.catalog for scope filter tests."""
     project_path = workspace / ".schemax" / "project.json"
     project = json.loads(project_path.read_text())
-    dev_env = project["provider"]["environments"]["dev"]
+    scope = project.get("defaultTarget", "default")
+    dev_env = project["targets"][scope]["environments"]["dev"]
     if managed_categories is not None:
         dev_env["managedCategories"] = managed_categories
     if existing_catalogs is not None:
@@ -71,7 +73,8 @@ def write_project_promote_envs(
     """
     project_path = workspace / ".schemax" / "project.json"
     project = json.loads(project_path.read_text())
-    envs = project["provider"]["environments"]
+    scope = project.get("defaultTarget", "default")
+    envs = project["targets"][scope]["environments"]
 
     tracking_dev = f"{resource_prefix}_promote_track_dev_{suffix}"
     physical_dev = f"{resource_prefix}_promote_dev_{suffix}"

@@ -205,9 +205,9 @@ function migrateV4ToV5(v4: ProjectFileV4): ProjectFileV5 {
  */
 export function getTargetConfig(
   project: ProjectFileV5,
-  targetName?: string | null
+  scope?: string | null
 ): TargetConfig {
-  const resolved = targetName || project.defaultTarget || "default";
+  const resolved = scope || project.defaultTarget || "default";
   const config = project.targets[resolved];
   if (!config) {
     const available = Object.keys(project.targets).join(", ");
@@ -717,13 +717,13 @@ function sanitizeCatalogNameForPhysical(name: string): string {
 export function ensureCatalogMappingsForNewCatalogs(
   project: ProjectFileV5,
   ops: Operation[],
-  targetName?: string | null
+  scope?: string | null
 ): { project: ProjectFileV5; updated: boolean } {
   const addCatalogOps = ops.filter(
     (op) => op.op?.endsWith("add_catalog") && (op.payload as { name?: string })?.name
   );
   const newNames = [...new Set(addCatalogOps.map((op) => (op.payload as { name: string }).name))];
-  const resolvedTarget = targetName || project.defaultTarget || "default";
+  const resolvedTarget = scope || project.defaultTarget || "default";
   const targetConfig = project.targets[resolvedTarget];
   if (newNames.length === 0 || !targetConfig?.environments) {
     return { project, updated: false };
@@ -883,9 +883,9 @@ export async function getUncommittedOpsCount(workspaceUri: vscode.Uri): Promise<
 export function getEnvironmentConfig(
   project: ProjectFileV5,
   environment: string,
-  targetName?: string | null
+  scope?: string | null
 ): EnvironmentConfig {
-  const target = getTargetConfig(project, targetName);
+  const target = getTargetConfig(project, scope);
   const envConfig = target.environments[environment];
 
   if (!envConfig) {

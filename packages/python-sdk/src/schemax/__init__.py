@@ -14,8 +14,10 @@ __version__ = SCHEMAX_VERSION
 # Provider system exports
 # Storage V4 exports (latest)
 from .core.storage import (
+    _get_provider_from_target,
     create_snapshot,
     ensure_project_file,
+    get_target_config,
     load_current_state,
     read_changelog,
     read_project,
@@ -70,7 +72,6 @@ def generate_diff_operations(
 
     # Get provider from default target
     project = read_project(workspace_path)
-    from schemax.core.storage import get_target_config, _get_provider_from_target
     target_cfg = get_target_config(project)
     provider_type = _get_provider_from_target(target_cfg)
     provider = ProviderRegistry.get(provider_type)

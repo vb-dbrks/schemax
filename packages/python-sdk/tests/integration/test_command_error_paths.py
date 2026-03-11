@@ -25,7 +25,10 @@ def test_apply_json_fails_with_auth_error_non_live(temp_workspace: Path) -> None
         ],
     )
     project = read_project(temp_workspace)
-    project["provider"]["environments"]["dev"]["catalogMappings"] = {"bronze": "dev_bronze"}
+    scope = project.get("defaultTarget", "default")
+    project["targets"][scope]["environments"]["dev"]["catalogMappings"] = {
+        "bronze": "dev_bronze"
+    }
     write_project(temp_workspace, project)
     create_result = invoke_cli(
         "snapshot",

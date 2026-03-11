@@ -54,7 +54,7 @@ interface DesignerState {
   // Actions
   setProject: (project: ProjectFile) => void;
   setProvider: (provider: ProviderMetadata) => void;
-  setActiveTarget: (targetName: string) => void;
+  setActiveTarget: (scope: string) => void;
   selectCatalog: (catalogId: string | null) => void;
   selectSchema: (schemaId: string | null) => void;
   selectTable: (tableId: string | null) => void;
@@ -375,7 +375,7 @@ function createOperation(
     op: `${provider.id}.${opType}`, // Prefix with provider ID
     target,
     payload,
-    target_name: store.activeTarget || undefined, // v5: scope op to active target
+    scope: store.activeTarget || undefined, // v5: scope op to active target
   };
 }
 
@@ -391,7 +391,7 @@ export const useDesignerStore = create<DesignerState>((set, get) => ({
 
   setProject: (project) => set({ project }),
   setProvider: (provider) => set({ provider }),
-  setActiveTarget: (targetName) => set({ activeTarget: targetName }),
+  setActiveTarget: (scope) => set({ activeTarget: scope }),
   selectCatalog: (catalogId) => set({ selectedCatalogId: catalogId }),
   selectSchema: (schemaId) => set({ selectedSchemaId: schemaId }),
   selectTable: (tableId) => set({ selectedTableId: tableId }),

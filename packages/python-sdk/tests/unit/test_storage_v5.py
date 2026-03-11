@@ -49,7 +49,12 @@ class TestV4ToV5Migration:
             json.dump(project_data, f, indent=2)
         # Also write an empty changelog
         changelog_path = storage.get_changelog_file_path(tmp_path)
-        changelog = {"version": 1, "sinceSnapshot": None, "ops": [], "lastModified": "2024-01-01T00:00:00Z"}
+        changelog = {
+            "version": 1,
+            "sinceSnapshot": None,
+            "ops": [],
+            "lastModified": "2024-01-01T00:00:00Z",
+        }
         with open(changelog_path, "w", encoding="utf-8") as f:
             json.dump(changelog, f, indent=2)
 
@@ -194,7 +199,7 @@ class TestV5TargetConfig:
             storage.get_target_config(project, "nonexistent")
 
     def test_get_environment_config_with_target(self, tmp_path):
-        """get_environment_config should accept target_name parameter."""
+        """get_environment_config should accept scope parameter."""
         storage.ensure_project_file(tmp_path, "unity")
         project = storage.read_project(tmp_path)
 
@@ -203,75 +208,91 @@ class TestV5TargetConfig:
         assert "topLevelName" in dev_config
 
         # Explicit target name
-        dev_config2 = storage.get_environment_config(project, "dev", target_name="default")
+        dev_config2 = storage.get_environment_config(project, "dev", scope="default")
         assert dev_config2["topLevelName"] == dev_config["topLevelName"]
 
 
-class TestV5OperationTargetName:
-    """Test target_name field on Operation."""
+class TestV5OperationScope:
+    """Test scope field on Operation."""
 
-    def test_operation_target_name_default_none(self):
-        """Operation target_name should default to None."""
+    def test_operation_scope_default_none(self):
+        """Operation scope should default to None."""
         op = Operation(
-            id="op_1", ts="2024-01-01T00:00:00Z", provider="unity",
-            op="unity.add_catalog", target="cat_1", payload={"name": "test"},
+            id="op_1",
+            ts="2024-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_catalog",
+            target="cat_1",
+            payload={"name": "test"},
         )
-        assert op.target_name is None
+        assert op.scope is None
 
-    def test_operation_target_name_set(self):
-        """Operation target_name should be settable."""
+    def test_operation_scope_set(self):
+        """Operation scope should be settable."""
         op = Operation(
-            id="op_1", ts="2024-01-01T00:00:00Z", provider="unity",
-            op="unity.add_catalog", target="cat_1", payload={"name": "test"},
-            target_name="analytics",
+            id="op_1",
+            ts="2024-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_catalog",
+            target="cat_1",
+            payload={"name": "test"},
+            scope="analytics",
         )
-        assert op.target_name == "analytics"
+        assert op.scope == "analytics"
 
-    def test_create_operation_with_target_name(self):
-        """create_operation should accept target_name."""
+    def test_create_operation_with_scope(self):
+        """create_operation should accept scope."""
         op = create_operation(
             provider="unity",
             op_type="add_catalog",
             target="cat_1",
             payload={"name": "test"},
-            target_name="raw",
+            scope="raw",
         )
-        assert op.target_name == "raw"
+        assert op.scope == "raw"
 
-    def test_create_operation_without_target_name(self):
-        """create_operation without target_name should default to None."""
+    def test_create_operation_without_scope(self):
+        """create_operation without scope should default to None."""
         op = create_operation(
             provider="unity",
             op_type="add_catalog",
             target="cat_1",
             payload={"name": "test"},
         )
-        assert op.target_name is None
+        assert op.scope is None
 
-    def test_operation_serialization_includes_target_name(self):
-        """target_name should survive serialization round-trip."""
+    def test_operation_serialization_includes_scope(self):
+        """scope should survive serialization round-trip."""
         op = Operation(
-            id="op_1", ts="2024-01-01T00:00:00Z", provider="unity",
-            op="unity.add_catalog", target="cat_1", payload={"name": "test"},
-            target_name="analytics",
+            id="op_1",
+            ts="2024-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_catalog",
+            target="cat_1",
+            payload={"name": "test"},
+            scope="analytics",
         )
         dumped = op.model_dump(by_alias=True)
-        assert dumped["target_name"] == "analytics"
+        assert dumped["scope"] == "analytics"
 
         restored = Operation(**dumped)
-        assert restored.target_name == "analytics"
+        assert restored.scope == "analytics"
 
-    def test_operation_serialization_null_target_name(self):
-        """Null target_name should round-trip cleanly."""
+    def test_operation_serialization_null_scope(self):
+        """Null scope should round-trip cleanly."""
         op = Operation(
-            id="op_1", ts="2024-01-01T00:00:00Z", provider="unity",
-            op="unity.add_catalog", target="cat_1", payload={"name": "test"},
+            id="op_1",
+            ts="2024-01-01T00:00:00Z",
+            provider="unity",
+            op="unity.add_catalog",
+            target="cat_1",
+            payload={"name": "test"},
         )
         dumped = op.model_dump(by_alias=True)
-        assert dumped["target_name"] is None
+        assert dumped["scope"] is None
 
         restored = Operation(**dumped)
-        assert restored.target_name is None
+        assert restored.scope is None
 
 
 class TestV5LoadCurrentState:
@@ -284,16 +305,14 @@ class TestV5LoadCurrentState:
         assert provider is not None
         assert provider.info.id == "unity"
 
-    def test_load_current_state_explicit_target(self, tmp_path):
-        """load_current_state should accept target_name."""
+    def test_load_current_state_explicit_scope(self, tmp_path):
+        """load_current_state should accept scope."""
         storage.ensure_project_file(tmp_path, "unity")
-        state, changelog, provider, _ = storage.load_current_state(
-            tmp_path, target_name="default"
-        )
+        state, changelog, provider, _ = storage.load_current_state(tmp_path, scope="default")
         assert provider.info.id == "unity"
 
-    def test_load_current_state_invalid_target(self, tmp_path):
-        """load_current_state should raise for invalid target."""
+    def test_load_current_state_invalid_scope(self, tmp_path):
+        """load_current_state should raise for invalid scope."""
         storage.ensure_project_file(tmp_path, "unity")
         with pytest.raises(ValueError, match="Target 'nonexistent' not found"):
-            storage.load_current_state(tmp_path, target_name="nonexistent")
+            storage.load_current_state(tmp_path, scope="nonexistent")

@@ -1,6 +1,6 @@
 [project]
 name = "schemaxpy"
-version = "0.2.10"
+version = "0.2.11"
 description = "Declarative schema management, governance, and migration for Databricks Unity Catalog. Version control schemas, generate SQL, deploy across environments."
 readme = "README.md"
 requires-python = ">=3.11"

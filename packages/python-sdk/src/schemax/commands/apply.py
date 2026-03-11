@@ -113,6 +113,7 @@ def apply_to_environment(
     auto_rollback: bool = False,
     execution_mode: str = "remote",
     workspace_repo: _WorkspaceRepoPort | None = None,
+    scope: str | None = None,
 ) -> ExecutionResult:
     """Apply changes to target environment
 
@@ -130,6 +131,7 @@ def apply_to_environment(
         auto_rollback: If True, automatically roll back on failed deployment
         execution_mode: "remote" (SQL warehouse) or "local" (spark.sql)
         workspace_repo: Optional repository override for tests/injection
+        scope: Optional v5 multi-target scope (reserved for future use)
 
     Returns:
         ExecutionResult with deployment details
@@ -137,6 +139,7 @@ def apply_to_environment(
     Raises:
         ApplyError: If apply fails
     """
+    del scope  # v5 multi-target: plumbed from CLI, will be used when per-target state loads
     repository: _WorkspaceRepoPort = workspace_repo or _ApplyWorkspaceRepository()
     try:
         return _ApplyCommand(

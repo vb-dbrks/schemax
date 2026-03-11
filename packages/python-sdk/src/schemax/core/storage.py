@@ -294,12 +294,12 @@ def _get_provider_from_target(target_config: dict[str, Any]) -> str:
     return str(target_config.get("type", "unity"))
 
 
-def get_target_config(project: dict[str, Any], target_name: str | None = None) -> dict[str, Any]:
+def get_target_config(project: dict[str, Any], scope: str | None = None) -> dict[str, Any]:
     """Get a specific target's configuration from a v5 project.
 
     Args:
         project: Project data (v5)
-        target_name: Target name. If None, uses defaultTarget.
+        scope: Target scope name. If None, uses defaultTarget.
 
     Returns:
         Target configuration dict (contains type, version, environments, etc.)
@@ -308,7 +308,7 @@ def get_target_config(project: dict[str, Any], target_name: str | None = None) -
         ValueError: If target not found
     """
     targets = project.get("targets", {})
-    resolved_name = target_name or project.get("defaultTarget", "default")
+    resolved_name = scope or project.get("defaultTarget", "default")
     if resolved_name not in targets:
         available = ", ".join(targets.keys())
         raise ValueError(
@@ -522,14 +522,14 @@ def write_snapshot(workspace_path: Path, snapshot: dict[str, Any]) -> None:
 
 
 def load_current_state(
-    workspace_path: Path, validate: bool = False, target_name: str | None = None
+    workspace_path: Path, validate: bool = False, scope: str | None = None
 ) -> tuple[ProviderState, dict[str, Any], Provider, dict[str, Any] | None]:
     """Load current state using provider
 
     Args:
         workspace_path: Path to workspace
         validate: Whether to validate dependencies (default False for performance)
-        target_name: Optional target name (v5). Uses defaultTarget if None.
+        scope: Optional target scope (v5). Uses defaultTarget if None.
 
     Returns:
         Tuple of (state, changelog, provider, validation_result)
@@ -541,7 +541,7 @@ def load_current_state(
     changelog = read_changelog(workspace_path)
 
     return _load_current_state_from_data(
-        workspace_path, project, changelog, validate=validate, target_name=target_name
+        workspace_path, project, changelog, validate=validate, scope=scope
     )
 
 
@@ -551,18 +551,17 @@ def _load_current_state_from_data(
     changelog: dict[str, Any],
     *,
     validate: bool,
-    target_name: str | None = None,
+    scope: str | None = None,
 ) -> tuple[ProviderState, dict[str, Any], Provider, dict[str, Any] | None]:
     """Load state using preloaded project/changelog data to avoid duplicate disk reads."""
     validate_workspace_not_legacy_implicit(project, changelog)
     # v5: resolve provider type from the target config
-    target_cfg = get_target_config(project, target_name)
+    target_cfg = get_target_config(project, scope)
     provider_type = _get_provider_from_target(target_cfg)
     provider = ProviderRegistry.get(provider_type)
     if provider is None:
         raise ValueError(
-            f"Provider '{provider_type}' not found. "
-            "Please ensure the provider is installed."
+            f"Provider '{provider_type}' not found. Please ensure the provider is installed."
         )
 
     if project["latestSnapshot"]:
@@ -627,18 +626,18 @@ def validate_dependencies_internal(
     return {"errors": errors, "warnings": warnings}
 
 
-def append_ops(workspace_path: Path, ops: list[Operation], target_name: str | None = None) -> None:
+def append_ops(workspace_path: Path, ops: list[Operation], scope: str | None = None) -> None:
     """Append operations to changelog
 
     Args:
         workspace_path: Path to workspace
         ops: Operations to append
-        target_name: Optional target name (v5). Uses defaultTarget if None.
+        scope: Optional target scope (v5). Uses defaultTarget if None.
     """
     with WorkspaceSession(workspace_path) as session:
         project = session.read_project()
         changelog = session.read_changelog()
-        target_cfg = get_target_config(project, target_name)
+        target_cfg = get_target_config(project, scope)
         provider_type = _get_provider_from_target(target_cfg)
         provider = ProviderRegistry.get(provider_type)
 
@@ -847,7 +846,7 @@ def _get_next_version(current_version: str | None, settings: dict[str, Any]) -> 
 
 
 def get_environment_config(
-    project: dict[str, Any], environment: str, target_name: str | None = None
+    project: dict[str, Any], environment: str, scope: str | None = None
 ) -> dict[str, Any]:
     """Get environment configuration from project.
 
@@ -866,7 +865,7 @@ def get_environment_config(
     Args:
         project: Project data (v5)
         environment: Environment name (e.g., "dev", "prod")
-        target_name: Optional target name. Uses defaultTarget if None.
+        scope: Optional target scope. Uses defaultTarget if None.
 
     Returns:
         Environment configuration (reference into project dict)
@@ -874,7 +873,7 @@ def get_environment_config(
     Raises:
         ValueError: If environment not found
     """
-    target_cfg = get_target_config(project, target_name)
+    target_cfg = get_target_config(project, scope)
     environments = target_cfg.get("environments", {})
 
     if environment not in environments:
