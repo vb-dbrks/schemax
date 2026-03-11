@@ -8,6 +8,7 @@ import {
   ensureCatalogMappingsForNewCatalogs,
   getEnvironmentConfig,
   loadCurrentState,
+  migrateV4ToV5,
   normalizeProviderCapabilities,
   ProjectFileV4,
 } from '../../src/storage-v4';
@@ -48,12 +49,13 @@ describe('Storage V4 - Environment Configuration', () => {
       latestSnapshot: null,
     };
 
-    const devConfig = getEnvironmentConfig(project, 'dev');
+    const v5 = migrateV4ToV5(project);
+    const devConfig = getEnvironmentConfig(v5, 'dev');
     expect(devConfig.topLevelName).toBe('dev_catalog');
     expect(devConfig.allowDrift).toBe(true);
     expect(devConfig.requireSnapshot).toBe(false);
 
-    const prodConfig = getEnvironmentConfig(project, 'prod');
+    const prodConfig = getEnvironmentConfig(v5, 'prod');
     expect(prodConfig.topLevelName).toBe('prod_catalog');
     expect(prodConfig.allowDrift).toBe(false);
     expect(prodConfig.requireSnapshot).toBe(true);
@@ -85,7 +87,7 @@ describe('Storage V4 - Environment Configuration', () => {
       latestSnapshot: null,
     };
 
-    expect(() => getEnvironmentConfig(project, 'staging')).toThrow();
+    expect(() => getEnvironmentConfig(migrateV4ToV5(project), 'staging')).toThrow();
   });
 
   test('should handle multiple environments', () => {
@@ -128,7 +130,7 @@ describe('Storage V4 - Environment Configuration', () => {
       latestSnapshot: null,
     };
 
-    const testConfig = getEnvironmentConfig(project, 'test');
+    const testConfig = getEnvironmentConfig(migrateV4ToV5(project), 'test');
     expect(testConfig.topLevelName).toBe('test_catalog');
     expect(testConfig.requireSnapshot).toBe(true);
     expect(testConfig.autoCreateTopLevel).toBe(true);
@@ -231,7 +233,7 @@ describe('Storage V4 - Catalog mapping defaults', () => {
   }
 
   test('adds missing mappings for new add_catalog operations', () => {
-    const project = baseProject();
+    const v5 = migrateV4ToV5(baseProject());
     const ops: Operation[] = [
       {
         id: 'op_1',
@@ -243,27 +245,29 @@ describe('Storage V4 - Catalog mapping defaults', () => {
       },
     ];
 
-    const result = ensureCatalogMappingsForNewCatalogs(project, ops);
+    const result = ensureCatalogMappingsForNewCatalogs(v5, ops);
 
     expect(result.updated).toBe(true);
-    expect(result.project.provider.environments.dev.catalogMappings?.['bronze-layer']).toBe(
+    const target = result.project.targets['default'];
+    expect(target.environments.dev.catalogMappings?.['bronze-layer']).toBe(
       'dev_bronze_layer'
     );
-    expect(result.project.provider.environments.prod.catalogMappings?.['bronze-layer']).toBe(
+    expect(target.environments.prod.catalogMappings?.['bronze-layer']).toBe(
       'prod_bronze_layer'
     );
-    expect(result.project.provider.environments.prod.catalogMappings?.existing).toBe(
+    expect(target.environments.prod.catalogMappings?.existing).toBe(
       'prod_existing'
     );
   });
 
   test('does not update when all mappings already exist', () => {
-    const project = baseProject();
-    project.provider.environments.dev.catalogMappings = {
+    const v5 = migrateV4ToV5(baseProject());
+    const target = v5.targets['default'];
+    target.environments.dev.catalogMappings = {
       'bronze-layer': 'dev_bronze_layer',
     };
-    project.provider.environments.prod.catalogMappings = {
-      ...project.provider.environments.prod.catalogMappings,
+    target.environments.prod.catalogMappings = {
+      ...target.environments.prod.catalogMappings,
       'bronze-layer': 'prod_bronze_layer',
     };
     const ops: Operation[] = [
@@ -277,10 +281,10 @@ describe('Storage V4 - Catalog mapping defaults', () => {
       },
     ];
 
-    const result = ensureCatalogMappingsForNewCatalogs(project, ops);
+    const result = ensureCatalogMappingsForNewCatalogs(v5, ops);
 
     expect(result.updated).toBe(false);
-    expect(result.project).toBe(project);
+    expect(result.project).toBe(v5);
   });
 });
 

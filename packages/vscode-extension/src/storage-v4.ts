@@ -190,7 +190,7 @@ export type ProjectFile = ProjectFileV5;
 /**
  * Migrate a v4 project to v5 in-memory by wrapping provider into targets.
  */
-function migrateV4ToV5(v4: ProjectFileV4): ProjectFileV5 {
+export function migrateV4ToV5(v4: ProjectFileV4): ProjectFileV5 {
   const { provider, version: _version, ...rest } = v4;
   return {
     ...rest,
