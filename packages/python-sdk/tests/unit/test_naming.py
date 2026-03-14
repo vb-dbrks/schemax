@@ -7,6 +7,7 @@ and validate_naming_standards().
 
 import pytest
 
+from schemax.commands.validate import get_naming_validation_errors_and_warnings
 from schemax.core.naming import (
     NamingRule,
     NamingStandardsConfig,
@@ -70,6 +71,12 @@ class TestNamingStandardsConfigFromDict:
     def test_apply_to_renames(self) -> None:
         config = NamingStandardsConfig.from_dict({"applyToRenames": True})
         assert config.apply_to_renames is True
+
+    def test_strict_mode(self) -> None:
+        config = NamingStandardsConfig.from_dict({})
+        assert config.strict_mode is False
+        config = NamingStandardsConfig.from_dict({"strictMode": True})
+        assert config.strict_mode is True
 
     def test_with_table_rule(self) -> None:
         config = NamingStandardsConfig.from_dict(
@@ -318,3 +325,47 @@ class TestValidateNamingStandards:
         )
         violations = validate_naming_standards(state, config)
         assert any("MyView" in v for v in violations)
+
+
+# ---------------------------------------------------------------------------
+# get_naming_validation_errors_and_warnings (strict mode)
+# ---------------------------------------------------------------------------
+
+
+class TestGetNamingValidationErrorsAndWarnings:
+    def _make_project_and_state(self, strict_mode: bool = False) -> tuple[dict, dict]:
+        project = {
+            "settings": {
+                "namingStandards": {
+                    "strictMode": strict_mode,
+                    "catalog": {"pattern": "^[a-z][a-z0-9_]*$", "enabled": True},
+                }
+            }
+        }
+        state = {
+            "catalogs": [
+                {"name": "MyCatalog", "schemas": [{"name": "my_schema", "tables": []}]}
+            ]
+        }
+        return project, state
+
+    def test_strict_mode_violations_in_errors(self) -> None:
+        project, state = self._make_project_and_state(strict_mode=True)
+        errors, warnings = get_naming_validation_errors_and_warnings(project, state)
+        assert len(errors) > 0
+        assert any("MyCatalog" in e for e in errors)
+        assert len(warnings) == 0
+
+    def test_non_strict_violations_in_warnings(self) -> None:
+        project, state = self._make_project_and_state(strict_mode=False)
+        errors, warnings = get_naming_validation_errors_and_warnings(project, state)
+        assert len(errors) == 0
+        assert len(warnings) > 0
+        assert any("MyCatalog" in w for w in warnings)
+
+    def test_no_naming_config_returns_empty(self) -> None:
+        project = {"settings": {}}
+        state = {"catalogs": [{"name": "Anything", "schemas": []}]}
+        errors, warnings = get_naming_validation_errors_and_warnings(project, state)
+        assert errors == []
+        assert warnings == []

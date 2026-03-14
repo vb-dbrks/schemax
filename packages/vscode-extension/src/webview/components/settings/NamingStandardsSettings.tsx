@@ -81,7 +81,7 @@ function applyTemplate(
   current: NamingStandardsConfig | undefined,
   template: TemplatePreset
 ): NamingStandardsConfig {
-  const base: NamingStandardsConfig = current ?? { applyToRenames: false };
+  const base: NamingStandardsConfig = current ?? { applyToRenames: false, strictMode: false };
   const updated = { ...base };
   for (const { key } of OBJECT_TYPES) {
     const t = template.rules[key];
@@ -102,8 +102,15 @@ export function NamingStandardsSettings({
 }: NamingStandardsSettingsProps): React.ReactElement {
   const [showTemplates, setShowTemplates] = useState(false);
 
+  const baseConfig = (): NamingStandardsConfig =>
+    config ?? { applyToRenames: false, strictMode: false };
+
   const handleApplyToRenamesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...(config ?? { applyToRenames: false }), applyToRenames: e.target.checked });
+    onChange({ ...baseConfig(), applyToRenames: e.target.checked });
+  };
+
+  const handleStrictModeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...baseConfig(), strictMode: e.target.checked });
   };
 
   const handleRuleChange = (
@@ -113,33 +120,54 @@ export function NamingStandardsSettings({
   ) => {
     const currentRule: NamingRule = config?.[key] ?? emptyRule();
     const updatedRule: NamingRule = { ...currentRule, [field]: value };
-    onChange({ ...(config ?? { applyToRenames: false }), [key]: updatedRule });
+    onChange({ ...baseConfig(), [key]: updatedRule });
   };
 
   const handleEnableRule = (key: ObjectTypeName, enabled: boolean) => {
     if (!enabled && !config?.[key]) return;
     const currentRule: NamingRule = config?.[key] ?? emptyRule();
-    onChange({ ...(config ?? { applyToRenames: false }), [key]: { ...currentRule, enabled } });
+    onChange({ ...baseConfig(), [key]: { ...currentRule, enabled } });
   };
 
   return (
     <div className="settings-section">
-      <h3>Naming Standards</h3>
-      <p className="section-description">
-        Enforce naming conventions on catalog objects. Names are validated by the Python SDK at
-        creation time; violations on add are blocked, and violations on rename show a warning.
+      <p
+        className="section-description"
+        title="Violations on add are blocked; violations on rename show a warning."
+      >
+        Enforce naming conventions on catalog objects (validated by Python SDK at add/rename).
       </p>
 
       <div className="naming-standards-header">
-        <label className="naming-standards-checkbox">
-          <input
-            type="checkbox"
-            checked={config?.applyToRenames ?? false}
-            onChange={handleApplyToRenamesChange}
-          />
-          <span>Also enforce on renames (shows warning, not a hard block)</span>
-        </label>
-
+        <div className="naming-standards-options">
+          <label
+            className="naming-standards-checkbox"
+            title="Shows warning, not a hard block"
+          >
+            <input
+              type="checkbox"
+              checked={config?.applyToRenames ?? false}
+              onChange={handleApplyToRenamesChange}
+            />
+            <span>Enforce on renames (warning only)</span>
+          </label>
+          <div>
+            <label
+              className="naming-standards-checkbox"
+              title="When ON: applies to both existing and new objects — validate/sql/apply fail and new non-compliant adds are blocked. When OFF: existing objects may violate (warnings only); new objects are still validated on add."
+            >
+              <input
+                type="checkbox"
+                checked={config?.strictMode ?? false}
+                onChange={handleStrictModeChange}
+              />
+              <span>Strict mode</span>
+            </label>
+            <p className="naming-standards-hint">
+              When on: existing and new must comply; CLI fails, non-compliant adds blocked.
+            </p>
+          </div>
+        </div>
         <VSCodeButton
           appearance="secondary"
           onClick={() => setShowTemplates((v) => !v)}

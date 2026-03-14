@@ -125,6 +125,7 @@ export interface NamingRule {
 
 export interface NamingStandardsConfig {
   applyToRenames: boolean;
+  strictMode?: boolean;
   catalog?: NamingRule;
   schema?: NamingRule;
   table?: NamingRule;

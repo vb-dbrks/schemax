@@ -13,6 +13,8 @@ from rich.syntax import Syntax
 
 from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.operations import Operation
+
+from .validate import run_preflight_validation
 from schemax.providers.base.scope_filter import filter_operations_by_managed_scope
 
 console = Console()
@@ -184,6 +186,17 @@ def _generate_sql_impl(
         snapshot=snapshot,
         workspace_repo=workspace_repo,
     )
+    errors, warnings = run_preflight_validation(
+        project, source.state, {"ops": source.ops}, source.provider
+    )
+    if errors:
+        raise SQLGenerationError(
+            "Validation failed. Fix the following before generating SQL:\n  "
+            + "\n  ".join(errors)
+        )
+    if warnings:
+        for w in warnings:
+            console.print(f"[yellow]⚠[/yellow] {w}")
     if not source.ops:
         console.print("[yellow]No operations to generate SQL for[/yellow]")
         return ""

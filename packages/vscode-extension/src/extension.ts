@@ -1298,15 +1298,17 @@ async function openDesigner(context: vscode.ExtensionContext) {
   // Helper function to reload project data and send to webview
   async function reloadProject(
     workspaceFolder: vscode.WorkspaceFolder,
-    panel: vscode.WebviewPanel | undefined
+    panel: vscode.WebviewPanel | undefined,
+    options?: { validate?: boolean }
   ) {
     if (!panel) return;
 
+    const runValidation = options?.validate ?? false;
     try {
       const project = await storageV4.readProject(workspaceFolder.uri);
       const { state, changelog, provider, validationResult } = await storageV4.loadCurrentState(
         workspaceFolder.uri,
-        true
+        runValidation
       );
 
       // Check for conflicts
@@ -1356,7 +1358,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         ops: changelog.ops,
         conflicts,
         staleSnapshots: staleSnapshots.length > 0 ? staleSnapshots : null,
-        validationResult,
+        validationResult: runValidation ? validationResult : null,
         provider: {
           ...defaultTarget,
           id: provider.id,
@@ -1390,12 +1392,12 @@ async function openDesigner(context: vscode.ExtensionContext) {
   // Reload project when conflict files are created or deleted
   conflictWatcher.onDidCreate(async () => {
     outputChannel.appendLine("[SchemaX] Conflict file detected - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   conflictWatcher.onDidDelete(async () => {
     outputChannel.appendLine("[SchemaX] Conflict file removed - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   // Watch for snapshot file changes (to detect stale snapshots)
@@ -1405,17 +1407,17 @@ async function openDesigner(context: vscode.ExtensionContext) {
   // Reload project when snapshots are created, changed, or deleted
   snapshotsWatcher.onDidCreate(async () => {
     outputChannel.appendLine("[SchemaX] Snapshot file created - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   snapshotsWatcher.onDidChange(async () => {
     outputChannel.appendLine("[SchemaX] Snapshot file changed - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   snapshotsWatcher.onDidDelete(async () => {
     outputChannel.appendLine("[SchemaX] Snapshot file deleted - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   // Watch for project.json changes (snapshot metadata)
@@ -1424,7 +1426,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
 
   projectJsonWatcher.onDidChange(async () => {
     outputChannel.appendLine("[SchemaX] project.json changed - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   // Reset when panel is closed
@@ -1443,7 +1445,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
       switch (message.type) {
         case "refresh-project": {
           outputChannel.appendLine("[SchemaX] Manual refresh requested");
-          await reloadProject(workspaceFolder, currentPanel);
+          await reloadProject(workspaceFolder, currentPanel, { validate: true });
           break;
         }
 
@@ -1757,7 +1759,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
               throw new Error(`[${errorCode}] ${errorMessage}`);
             }
 
-            await reloadProject(workspaceFolder, currentPanel);
+            await reloadProject(workspaceFolder, currentPanel, { validate: false });
             currentPanel?.webview.postMessage({
               type: "undo-completed",
               payload: {
@@ -1852,10 +1854,10 @@ async function openDesigner(context: vscode.ExtensionContext) {
             const result = await runImportWithRequest(workspaceFolder, request, currentPanel);
             const wasDryRun = isImportFromSql(request) ? request.fromSql.dryRun : request.dryRun;
             if (result.success && !wasDryRun) {
-              await reloadProject(workspaceFolder, currentPanel);
+              await reloadProject(workspaceFolder, currentPanel, { validate: false });
             } else if (result.cancelled && !wasDryRun) {
               // Re-sync UI with disk in case cancellation happened during file writes.
-              await reloadProject(workspaceFolder, currentPanel);
+              await reloadProject(workspaceFolder, currentPanel, { validate: false });
             }
           } catch (error) {
             outputChannel.appendLine(`[SchemaX] ERROR: Import run failed: ${error}`);

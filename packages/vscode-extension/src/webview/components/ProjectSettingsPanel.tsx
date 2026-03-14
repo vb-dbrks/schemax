@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { VSCodeButton, VSCodeTextField } from "@vscode/webview-ui-toolkit/react";
 import type { NamingStandardsConfig, ProjectFile, TargetConfig } from "../models/unity";
 import { getVsCodeApi } from "../vscode-api";
+import { CollapsibleSection } from "./settings/CollapsibleSection";
 import { NamingStandardsSettings } from "./settings/NamingStandardsSettings";
 import { UnityTargetSettings } from "./settings/UnityTargetSettings";
 
@@ -271,22 +272,22 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
             </>
           )}
 
-          {/* Naming Standards */}
-          <NamingStandardsSettings
-            config={editedProject.settings?.namingStandards as NamingStandardsConfig | undefined}
-            onChange={(updated) => {
-              setEditedProject({
-                ...editedProject,
-                settings: { ...editedProject.settings, namingStandards: updated },
-              });
-              setIsDirty(true);
-            }}
-          />
+          <CollapsibleSection title="Naming Standards">
+            <NamingStandardsSettings
+              config={editedProject.settings?.namingStandards as NamingStandardsConfig | undefined}
+              onChange={(updated) => {
+                setEditedProject({
+                  ...editedProject,
+                  settings: { ...editedProject.settings, namingStandards: updated },
+                });
+                setIsDirty(true);
+              }}
+            />
+          </CollapsibleSection>
 
-          {/* Project-level Managed Locations */}
-          <div className="settings-section">
-            <h3>Physical Isolation (Managed Tables)</h3>
-            <p className="section-description">
+          <CollapsibleSection title="Physical Isolation (Managed Tables)">
+            <div className="settings-section">
+              <p className="section-description">
               Configure storage locations for managed tables at the catalog or schema level. Define
               location names here and specify paths for each environment.
             </p>
@@ -338,12 +339,12 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
             <VSCodeButton onClick={() => openAddLocationModal("managed")}>
               + Add Managed Location
             </VSCodeButton>
-          </div>
+            </div>
+          </CollapsibleSection>
 
-          {/* Project-level External Locations */}
-          <div className="settings-section">
-            <h3>External Locations (External Tables)</h3>
-            <p className="section-description">
+          <CollapsibleSection title="External Locations (External Tables)">
+            <div className="settings-section">
+              <p className="section-description">
               Configure storage locations for external tables. Define location names here and
               specify paths for each environment.
             </p>
@@ -392,7 +393,8 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
             <VSCodeButton onClick={() => openAddLocationModal("external")}>
               + Add External Location
             </VSCodeButton>
-          </div>
+            </div>
+          </CollapsibleSection>
         </div>
 
         <div className="modal-footer">

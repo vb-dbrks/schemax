@@ -169,17 +169,53 @@ def _print_stale_snapshots_remediation(stale: list[dict]) -> None:
     console.print("[yellow]⚠️ Validation passed but snapshots need rebasing[/yellow]")
 
 
-def _get_naming_warnings(project: dict, state: Any) -> list[str]:
-    """Return naming-standard violations as warning strings (soft check)."""
+def run_preflight_validation(
+    project: dict[str, Any],
+    state: Any,
+    changelog: dict[str, Any],
+    provider: Any,
+) -> tuple[list[str], list[str]]:
+    """Run dependency and naming validation. Returns (errors, warnings).
+
+    Used by sql and apply to fail when strict mode + naming violations or dependency errors.
+    """
+    dep_errors, dep_warnings = validate_dependencies(
+        state, changelog.get("ops", []), provider
+    )
+    naming_errors, naming_warnings = get_naming_validation_errors_and_warnings(
+        project, state
+    )
+    errors = dep_errors + naming_errors
+    warnings = dep_warnings + naming_warnings
+    return (errors, warnings)
+
+
+def get_naming_validation_errors_and_warnings(
+    project: dict[str, Any], state: Any
+) -> tuple[list[str], list[str]]:
+    """Return (errors, warnings) for naming standards.
+
+    When strict_mode is enabled, violations go to errors; otherwise to warnings.
+    Reused by validate command, workspace-state, and sql/apply pre-flight.
+    """
     try:
         settings: dict[str, Any] = project.get("settings", {})
         naming_raw: dict[str, Any] = settings.get("namingStandards", {})
         if not naming_raw:
-            return []
+            return [], []
         config = NamingStandardsConfig.from_dict(naming_raw)
-        return validate_naming_standards(state, config)
+        violations = validate_naming_standards(state, config)
+        if config.strict_mode and violations:
+            return (violations, [])
+        return ([], violations)
     except Exception:
-        return []  # naming check failures are never fatal
+        return [], []  # naming check failures are never fatal in this helper
+
+
+def _get_naming_warnings(project: dict, state: Any) -> list[str]:
+    """Return naming-standard violations as warning strings (soft check)."""
+    _errs, warnings = get_naming_validation_errors_and_warnings(project, state)
+    return warnings
 
 
 def _run_validation_steps(
@@ -212,7 +248,22 @@ def _run_validation_steps(
 
     _print_dependency_status(dep_warnings, json_output)
 
-    naming_warnings = _get_naming_warnings(project, state)
+    naming_errors, naming_warnings = get_naming_validation_errors_and_warnings(project, state)
+    if naming_errors:
+        if json_output:
+            result = {
+                "valid": False,
+                "errors": naming_errors,
+                "warnings": dep_warnings,
+                "staleSnapshots": [],
+            }
+            print(json.dumps(result))
+        else:
+            console.print("[red]✗ Naming standard violations (strict mode):[/red]")
+            for msg in naming_errors:
+                console.print(f"  [red]•[/red] {msg}")
+        raise ValidationError("Naming standard violations (strict mode)")
+
     all_warnings = dep_warnings + naming_warnings
 
     if not json_output and naming_warnings:

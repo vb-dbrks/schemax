@@ -18,6 +18,7 @@ from rich.prompt import Confirm, Prompt
 from schemax.commands._preview import print_sql_statements_preview
 from schemax.commands.rollback import RollbackError, rollback_partial
 from schemax.commands.sql import build_catalog_mapping
+from schemax.commands.validate import run_preflight_validation
 from schemax.core.deployment import DeploymentTracker
 from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.exceptions import SchemaXProviderError
@@ -416,6 +417,21 @@ class _ApplyCommand:
         runtime.catalog_mapping = build_catalog_mapping(desired_state_dict, runtime.env_config)
         runtime.deployment_catalog = runtime.env_config["topLevelName"]
         console.print(f"[blue]Deployment tracking catalog:[/blue] {runtime.deployment_catalog}")
+        errors, warnings = run_preflight_validation(
+            runtime.project,
+            desired_state_dict,
+            runtime.changelog,
+            runtime.provider,
+        )
+        if errors:
+            console.print("[red]✗ Validation failed[/red]")
+            for msg in errors:
+                console.print(f"  [red]•[/red] {msg}")
+            raise ApplyError(
+                "Validation failed (dependency or naming in strict mode). Fix errors above before applying."
+            )
+        for w in warnings:
+            console.print(f"[yellow]⚠[/yellow] {w}")
 
     def _create_tracker(self) -> DeploymentTracker:
         """Create a DeploymentTracker using the appropriate runner for the execution mode."""

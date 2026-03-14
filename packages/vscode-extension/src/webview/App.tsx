@@ -342,8 +342,8 @@ export const App: React.FC = () => {
               setIsRefreshing(true);
               vscode.postMessage({ type: "refresh-project" });
             }}
-            title="Refresh project state (re-check for stale snapshots and conflicts)"
-            aria-label="Refresh project"
+            title="Refresh and validate (re-check dependencies and naming standards)"
+            aria-label="Refresh and validate"
             disabled={isRefreshing}
             data-refreshing={isRefreshing}
           >

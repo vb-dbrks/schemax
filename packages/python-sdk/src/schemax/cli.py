@@ -37,6 +37,7 @@ from .commands import (
 from .commands import (
     ValidationError as CommandValidationError,
 )
+from .commands.validate import get_naming_validation_errors_and_warnings
 from .commands.validate_name import validate_name_command
 from .commands.rollback import RollbackError
 from .commands.snapshot_rebase import RebaseError
@@ -1757,6 +1758,18 @@ def _run_workspace_state(
     state, changelog, provider, validation = workspace_repo.load_current_state(
         workspace=workspace_path, validate=validate_dependencies, scope=scope
     )
+    validation = validation or {"errors": [], "warnings": []}
+    if validate_dependencies:
+        naming_errors, naming_warnings = get_naming_validation_errors_and_warnings(
+            project, state
+        )
+        err_list = list(validation.get("errors", []))
+        warn_list = list(validation.get("warnings", []))
+        for msg in naming_errors:
+            err_list.append({"type": "naming_violation", "message": msg})
+        for msg in naming_warnings:
+            warn_list.append({"type": "naming_violation", "message": msg})
+        validation = {"errors": err_list, "warnings": warn_list}
     serialized_ops = [_serialize_operation(op) for op in changelog.get("ops", [])]
     changelog_payload: dict[str, Any] = {
         **changelog,
@@ -1781,7 +1794,7 @@ def _run_workspace_state(
             "targets": project.get("targets", {}),
             "defaultTarget": project.get("defaultTarget", "default"),
         },
-        "validation": validation or {"errors": [], "warnings": []},
+        "validation": validation,
     }
     if json_output:
         _emit_json_success(

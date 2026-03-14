@@ -39,6 +39,7 @@ class NamingStandardsConfig:
     """Project-level naming standards configuration."""
 
     apply_to_renames: bool = False
+    strict_mode: bool = False
     catalog: NamingRule | None = None
     schema: NamingRule | None = None
     table: NamingRule | None = None
@@ -57,6 +58,7 @@ class NamingStandardsConfig:
 
         return cls(
             apply_to_renames=bool(d.get("applyToRenames", False)),
+            strict_mode=bool(d.get("strictMode", False)),
             catalog=_rule("catalog"),
             schema=_rule("schema"),
             table=_rule("table"),

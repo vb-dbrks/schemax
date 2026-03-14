@@ -2405,6 +2405,57 @@ body {
   margin-bottom: 0;
 }
 
+/* Collapsible section headers (Project Settings) */
+.collapsible-section {
+  margin-bottom: 24px;
+}
+
+.collapsible-section:last-child {
+  margin-bottom: 0;
+}
+
+.collapsible-section__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 8px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.collapsible-section__header:hover {
+  color: var(--vscode-foreground);
+}
+
+.collapsible-section__header .codicon {
+  font-size: 14px;
+  color: var(--vscode-descriptionForeground);
+  flex-shrink: 0;
+}
+
+.collapsible-section__title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.collapsible-section__body {
+  margin-top: 4px;
+}
+
+.collapsible-section__body > .settings-section {
+  margin-bottom: 0;
+}
+
 .settings-section h3 {
   margin: 0 0 8px 0;
   font-size: 11px;
@@ -3359,10 +3410,22 @@ body {
 
 .naming-standards-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.naming-standards-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.naming-standards-hint {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin: 2px 0 0 24px;
 }
 
 .naming-standards-checkbox {
