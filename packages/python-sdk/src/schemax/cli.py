@@ -37,6 +37,7 @@ from .commands import (
 from .commands import (
     ValidationError as CommandValidationError,
 )
+from .commands.validate_name import validate_name_command
 from .commands.rollback import RollbackError
 from .commands.snapshot_rebase import RebaseError
 from .core.workspace_repository import WorkspaceRepository
@@ -498,6 +499,52 @@ def validate(workspace: str, json_output: bool, scope: str | None) -> None:
             )
         else:
             console.print(f"[red]✗ Unexpected error:[/red] {e}")
+        sys.exit(1)
+
+
+@cli.command(name="validate-name")
+@click.option("--name", "name", required=True, help="Object name to validate")
+@click.option(
+    "--type",
+    "object_type",
+    required=True,
+    type=click.Choice(["catalog", "schema", "table", "view", "column"]),
+    help="Object type",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def validate_name_cli(name: str, object_type: str, json_output: bool, workspace: str) -> None:
+    """Validate a single object name against the project's naming standards."""
+    started_at = perf_counter()
+    workspace_path = Path(workspace).resolve()
+    try:
+        data = validate_name_command(name=name, object_type=object_type, workspace=workspace_path)
+        if json_output:
+            _emit_json_success(
+                command="validate-name",
+                data=data,
+                warnings=[],
+                started_at=started_at,
+                exit_code=0,
+            )
+            return
+        if data["valid"]:
+            console.print(f"[green]✓[/green] Name '{name}' is valid")
+        else:
+            console.print(f"[red]✗[/red] Name '{name}' is invalid: {data['error']}")
+            if data.get("suggestion"):
+                console.print(f"  Suggestion: {data['suggestion']}")
+    except Exception as e:
+        if json_output:
+            _emit_json_error(
+                command="validate-name",
+                code="UNEXPECTED_ERROR",
+                message=str(e),
+                started_at=started_at,
+                exit_code=1,
+            )
+        else:
+            console.print(f"[red]✗ Error:[/red] {e}")
         sys.exit(1)
 
 

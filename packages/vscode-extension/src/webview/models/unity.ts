@@ -1,5 +1,21 @@
 import type { Operation } from "../../contracts/workspace";
 
+export interface NamingRule {
+  pattern: string;
+  enabled: boolean;
+  description?: string;
+  examples?: { valid: string[]; invalid: string[] };
+}
+
+export interface NamingStandardsConfig {
+  applyToRenames: boolean;
+  catalog?: NamingRule;
+  schema?: NamingRule;
+  table?: NamingRule;
+  view?: NamingRule;
+  column?: NamingRule;
+}
+
 interface BaseObject {
   id: string;
   name: string;
@@ -227,6 +243,7 @@ export interface ProjectFile {
   settings: {
     autoIncrementVersion: boolean;
     versionPrefix: string;
+    namingStandards?: NamingStandardsConfig;
   };
   latestSnapshot: string | null;
 }

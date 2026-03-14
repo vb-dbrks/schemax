@@ -8,6 +8,8 @@ import {
 import type { Column } from "../models/unity";
 import { useDesignerStore } from "../state/useDesignerStore";
 import { validateUnityCatalogObjectName } from "../utils/unityNames";
+import { useNameValidation } from "../utils/useNameValidation";
+import { NamingWarningModal } from "./NamingWarningModal";
 
 interface ColumnGridProps {
   tableId: string;
@@ -37,6 +39,7 @@ const IconClose: React.FC = () => (
 
 export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
   const {
+    project,
     addColumn,
     renameColumn,
     dropColumn,
@@ -47,6 +50,13 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     setColumnTag,
     unsetColumnTag,
   } = useDesignerStore();
+
+  const { validate: validateNaming, pending: namingValidationPending } = useNameValidation();
+  const [namingWarningModal, setNamingWarningModal] = useState<{
+    error: string;
+    suggestion: string | null;
+    onProceed: () => void;
+  } | null>(null);
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [editingColId, setEditingColId] = useState<string | null>(null);
@@ -114,7 +124,23 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     });
   };
 
-  const handleSaveColumn = (colId: string) => {
+  const applyColumnEdits = (col: Column, colId: string, trimmedName: string) => {
+    if (editValues.name !== col.name) {
+      renameColumn(tableId, colId, trimmedName);
+    }
+    if (editValues.type !== col.type) {
+      changeColumnType(tableId, colId, editValues.type);
+    }
+    if (editValues.nullable !== col.nullable) {
+      setColumnNullable(tableId, colId, editValues.nullable);
+    }
+    if (editValues.comment !== (col.comment || "")) {
+      setColumnComment(tableId, colId, editValues.comment);
+    }
+    setEditingColId(null);
+  };
+
+  const handleSaveColumn = async (colId: string) => {
     const col = columns.find((c) => c.id === colId);
     if (!col) return;
 
@@ -131,19 +157,26 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
         setColumnEditError(`A column named "${trimmedName}" already exists.`);
         return;
       }
-      renameColumn(tableId, colId, trimmedName);
-    }
-    if (editValues.type !== col.type) {
-      changeColumnType(tableId, colId, editValues.type);
-    }
-    if (editValues.nullable !== col.nullable) {
-      setColumnNullable(tableId, colId, editValues.nullable);
-    }
-    if (editValues.comment !== (col.comment || "")) {
-      setColumnComment(tableId, colId, editValues.comment);
+
+      const namingStandards = project?.settings?.namingStandards;
+      const applyToRenames = namingStandards?.applyToRenames ?? false;
+      if (applyToRenames) {
+        const result = await validateNaming(trimmedName, "column");
+        if (!result.valid && result.error) {
+          setNamingWarningModal({
+            error: result.error,
+            suggestion: result.suggestion,
+            onProceed: () => {
+              setNamingWarningModal(null);
+              applyColumnEdits(col, colId, trimmedName);
+            },
+          });
+          return;
+        }
+      }
     }
 
-    setEditingColId(null);
+    applyColumnEdits(col, colId, trimmedName);
   };
 
   const handleCancelEdit = () => {
@@ -155,7 +188,7 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
     setDropDialog({ colId, name });
   };
 
-  const handleAddColumn = (name: string, type: string, nullable: boolean, comment: string) => {
+  const handleAddColumn = async (name: string, type: string, nullable: boolean, comment: string) => {
     if (!name || !type) return;
     setAddColError(null);
     const trimmedName = name.trim();
@@ -169,6 +202,15 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
       setAddColError(`A column named "${trimmedName}" already exists.`);
       return;
     }
+
+    if (project?.settings?.namingStandards?.column?.enabled) {
+      const result = await validateNaming(trimmedName, "column");
+      if (!result.valid && result.error) {
+        setAddColError(result.error + (result.suggestion ? ` Suggestion: ${result.suggestion}` : ""));
+        return;
+      }
+    }
+
     addColumn(tableId, trimmedName, type, nullable, comment || undefined, addColumnTags);
     setAddDialog(false);
     setAddColForm({ name: "", type: "STRING", nullable: true, comment: "" });
@@ -597,9 +639,9 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
                     addColForm.comment
                   )
                 }
-                disabled={!addColForm.name.trim()}
+                disabled={!addColForm.name.trim() || namingValidationPending}
               >
-                Add
+                {namingValidationPending ? "Checking…" : "Add"}
               </VSCodeButton>
               <VSCodeButton appearance="secondary" onClick={closeAddColumnDialog}>
                 Cancel
@@ -820,6 +862,25 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
             </div>
           );
         })()}
+
+      {namingWarningModal && (
+        <NamingWarningModal
+          error={namingWarningModal.error}
+          suggestion={namingWarningModal.suggestion}
+          onUseSuggestion={(suggested) => {
+            setNamingWarningModal(null);
+            const editingId = editingColId;
+            if (editingId) {
+              const col = columns.find((c) => c.id === editingId);
+              if (col) {
+                applyColumnEdits(col, editingId, suggested);
+              }
+            }
+          }}
+          onProceed={namingWarningModal.onProceed}
+          onCancel={() => setNamingWarningModal(null)}
+        />
+      )}
     </div>
   );
 };

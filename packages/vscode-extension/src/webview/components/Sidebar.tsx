@@ -8,6 +8,8 @@ import {
 import { useDesignerStore } from "../state/useDesignerStore";
 import { extractDependenciesFromView } from "../utils/sqlParser";
 import { validateUnityCatalogObjectName } from "../utils/unityNames";
+import { useNameValidation } from "../utils/useNameValidation";
+import { NamingWarningModal } from "./NamingWarningModal";
 import type {
   UnityFunction,
   UnityMaterializedView,
@@ -222,6 +224,14 @@ export const Sidebar: React.FC = () => {
   const [addMVComment, setAddMVComment] = useState("");
   const [addMVSchedule, setAddMVSchedule] = useState("");
 
+  // Naming standards validation
+  const { validate: validateNaming, pending: namingValidationPending } = useNameValidation();
+  const [namingWarningModal, setNamingWarningModal] = useState<{
+    error: string;
+    suggestion: string | null;
+    onProceed: () => void;
+  } | null>(null);
+
   const toggleCatalog = (catalogId: string) => {
     const newExpanded = new Set(expandedCatalogs);
     if (newExpanded.has(catalogId)) {
@@ -366,7 +376,27 @@ export const Sidebar: React.FC = () => {
     setAddVolumeLocation("");
   };
 
-  const handleRenameConfirm = (newName: string) => {
+  const applyRename = (id: string, type: string, newName: string) => {
+    if (type === "catalog") {
+      renameCatalog(id, newName);
+    } else if (type === "schema") {
+      renameSchema(id, newName);
+    } else if (type === "table") {
+      renameTable(id, newName);
+    } else if (type === "view") {
+      renameView(id, newName);
+    } else if (type === "volume") {
+      renameVolume(id, newName);
+    } else if (type === "function") {
+      renameFunction(id, newName);
+    } else if (type === "materialized_view") {
+      renameMaterializedView(id, newName);
+    }
+    setRenameError(null);
+    closeRenameDialog();
+  };
+
+  const handleRenameConfirm = async (newName: string) => {
     if (!renameDialog) {
       return;
     }
@@ -383,24 +413,29 @@ export const Sidebar: React.FC = () => {
       return;
     }
 
-    // Handle rename based on type
-    if (renameDialog.type === "catalog") {
-      renameCatalog(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "schema") {
-      renameSchema(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "table") {
-      renameTable(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "view") {
-      renameView(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "volume") {
-      renameVolume(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "function") {
-      renameFunction(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "materialized_view") {
-      renameMaterializedView(renameDialog.id, trimmedName);
+    const namingStandards = project?.settings?.namingStandards;
+    const applyToRenames = namingStandards?.applyToRenames ?? false;
+    const namingTypes = ["catalog", "schema", "table", "view"] as const;
+    type NamingType = typeof namingTypes[number];
+    const isNamingType = (t: string): t is NamingType =>
+      (namingTypes as readonly string[]).includes(t);
+
+    if (applyToRenames && isNamingType(renameDialog.type)) {
+      const result = await validateNaming(trimmedName, renameDialog.type);
+      if (!result.valid && result.error) {
+        setNamingWarningModal({
+          error: result.error,
+          suggestion: result.suggestion,
+          onProceed: () => {
+            setNamingWarningModal(null);
+            applyRename(renameDialog.id, renameDialog.type, trimmedName);
+          },
+        });
+        return;
+      }
     }
-    setRenameError(null);
-    closeRenameDialog();
+
+    applyRename(renameDialog.id, renameDialog.type, trimmedName);
   };
 
   const handleDropConfirm = () => {
@@ -424,7 +459,7 @@ export const Sidebar: React.FC = () => {
     setDropDialog(null);
   };
 
-  const handleAddConfirm = (name: string, format?: "delta" | "iceberg") => {
+  const handleAddConfirm = async (name: string, format?: "delta" | "iceberg") => {
     if (!addDialog) {
       return;
     }
@@ -434,6 +469,32 @@ export const Sidebar: React.FC = () => {
     if (nameError) {
       setAddError(nameError);
       return;
+    }
+
+    // Determine object type for naming standards check, but only if a rule is configured
+    const namingStandards = project?.settings?.namingStandards;
+    let namingObjectType: string | null = null;
+    if (namingStandards) {
+      if (addDialog.type === "catalog" && namingStandards.catalog?.enabled) {
+        namingObjectType = "catalog";
+      } else if (addDialog.type === "schema" && namingStandards.schema?.enabled) {
+        namingObjectType = "schema";
+      } else if (addDialog.type === "table") {
+        const effectiveObjType = addDialog.objectType === "view" ? "view" : "table";
+        if (effectiveObjType === "view" && namingStandards.view?.enabled) {
+          namingObjectType = "view";
+        } else if (effectiveObjType === "table" && namingStandards.table?.enabled) {
+          namingObjectType = "table";
+        }
+      }
+    }
+
+    if (namingObjectType) {
+      const result = await validateNaming(trimmedName, namingObjectType);
+      if (!result.valid && result.error) {
+        setAddError(result.error + (result.suggestion ? ` Suggestion: ${result.suggestion}` : ""));
+        return;
+      }
     }
 
     // Flush any tag that was typed but not yet confirmed via "+"
@@ -1168,7 +1229,9 @@ export const Sidebar: React.FC = () => {
             </div>
 
             <div className="modal-buttons">
-              <VSCodeButton type="submit">Save</VSCodeButton>
+              <VSCodeButton type="submit" disabled={namingValidationPending}>
+                {namingValidationPending ? "Checking…" : "Save"}
+              </VSCodeButton>
               <VSCodeButton type="button" appearance="secondary" onClick={closeRenameDialog}>
                 Cancel
               </VSCodeButton>
@@ -2008,13 +2071,30 @@ export const Sidebar: React.FC = () => {
             )}
             {addError && <p className="form-error">{addError}</p>}
             <div className="modal-buttons">
-              <VSCodeButton type="submit">Add</VSCodeButton>
+              <VSCodeButton type="submit" disabled={namingValidationPending}>
+                {namingValidationPending ? "Checking…" : "Add"}
+              </VSCodeButton>
               <VSCodeButton type="button" appearance="secondary" onClick={closeAddDialog}>
                 Cancel
               </VSCodeButton>
             </div>
           </form>
         </div>
+      )}
+
+      {namingWarningModal && (
+        <NamingWarningModal
+          error={namingWarningModal.error}
+          suggestion={namingWarningModal.suggestion}
+          onUseSuggestion={(suggested) => {
+            setNamingWarningModal(null);
+            if (renameDialog) {
+              applyRename(renameDialog.id, renameDialog.type, suggested);
+            }
+          }}
+          onProceed={namingWarningModal.onProceed}
+          onCancel={() => setNamingWarningModal(null)}
+        />
       )}
     </div>
   );

@@ -116,9 +116,26 @@ export interface TargetConfig {
   environments: Record<string, EnvironmentConfig>;
 }
 
+export interface NamingRule {
+  pattern: string;
+  enabled: boolean;
+  description?: string;
+  examples?: { valid: string[]; invalid: string[] };
+}
+
+export interface NamingStandardsConfig {
+  applyToRenames: boolean;
+  catalog?: NamingRule;
+  schema?: NamingRule;
+  table?: NamingRule;
+  view?: NamingRule;
+  column?: NamingRule;
+}
+
 interface ProjectSettings {
   autoIncrementVersion: boolean;
   versionPrefix: string;
+  namingStandards?: NamingStandardsConfig;
 }
 
 interface SnapshotMetadata {

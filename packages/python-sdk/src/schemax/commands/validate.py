@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from rich.console import Console
 
+from schemax.core.naming import NamingStandardsConfig, validate_naming_standards
 from schemax.core.workspace_repository import WorkspaceRepository
 
 from .snapshot_rebase import detect_stale_snapshots
@@ -168,6 +169,19 @@ def _print_stale_snapshots_remediation(stale: list[dict]) -> None:
     console.print("[yellow]⚠️ Validation passed but snapshots need rebasing[/yellow]")
 
 
+def _get_naming_warnings(project: dict, state: Any) -> list[str]:
+    """Return naming-standard violations as warning strings (soft check)."""
+    try:
+        settings: dict[str, Any] = project.get("settings", {})
+        naming_raw: dict[str, Any] = settings.get("namingStandards", {})
+        if not naming_raw:
+            return []
+        config = NamingStandardsConfig.from_dict(naming_raw)
+        return validate_naming_standards(state, config)
+    except Exception:
+        return []  # naming check failures are never fatal
+
+
 def _run_validation_steps(
     workspace: Path,
     project: dict,
@@ -176,7 +190,7 @@ def _run_validation_steps(
     provider: Any,
     json_output: bool,
 ) -> bool:
-    """Run state, dependency, and stale-snapshot checks. Returns True if valid."""
+    """Run state, dependency, naming, and stale-snapshot checks. Returns True if valid."""
     if not json_output:
         console.print("Validating project files...")
         console.print(f"  [green]✓[/green] project.json (version {project['version']})")
@@ -197,13 +211,22 @@ def _run_validation_steps(
         raise ValidationError("Circular dependencies detected")
 
     _print_dependency_status(dep_warnings, json_output)
+
+    naming_warnings = _get_naming_warnings(project, state)
+    all_warnings = dep_warnings + naming_warnings
+
+    if not json_output and naming_warnings:
+        console.print("[yellow]⚠  Naming standard violations:[/yellow]")
+        for w in naming_warnings:
+            console.print(f"  [yellow]•[/yellow] {w}")
+
     stale = detect_stale_snapshots(workspace)
 
     if json_output:
         result = {
             "valid": True,
             "errors": [],
-            "warnings": dep_warnings,
+            "warnings": all_warnings,
             "staleSnapshots": stale,
         }
         print(json.dumps(result))

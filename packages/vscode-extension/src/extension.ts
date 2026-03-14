@@ -1876,6 +1876,39 @@ async function openDesigner(context: vscode.ExtensionContext) {
           outputChannel.appendLine("[SchemaX] Import cancellation requested from webview");
           break;
         }
+        case "validate-name": {
+          const { name, objectType } = message.payload as { name: string; objectType: string };
+          outputChannel.appendLine(
+            `[SchemaX] validate-name: name="${name}" type="${objectType}"`
+          );
+          try {
+            const envelope = await pythonBackend.runJson<{
+              valid: boolean;
+              name: string;
+              objectType: string;
+              error: string | null;
+              suggestion: string | null;
+              pattern: string | null;
+              description: string | null;
+            }>(
+              "validate-name",
+              ["validate-name", "--name", name, "--type", objectType, workspaceFolder.uri.fsPath],
+              workspaceFolder.uri.fsPath
+            );
+            const result = envelope.data ?? { valid: true };
+            currentPanel?.webview.postMessage({
+              type: "name-validation-result",
+              payload: result,
+            });
+          } catch (error) {
+            outputChannel.appendLine(`[SchemaX] ERROR: validate-name failed: ${error}`);
+            currentPanel?.webview.postMessage({
+              type: "name-validation-result",
+              payload: { valid: true },
+            });
+          }
+          break;
+        }
       }
     },
     undefined,

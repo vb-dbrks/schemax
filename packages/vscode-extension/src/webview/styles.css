@@ -3352,3 +3352,142 @@ body {
   font-size: 12px;
   line-height: 1.4;
 }
+
+/* =========================================================
+   Naming Standards Settings
+   ========================================================= */
+
+.naming-standards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.naming-standards-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+}
+
+.naming-standards-checkbox input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.naming-standards-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+}
+
+.naming-standards-template-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.naming-standards-template-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.naming-standards-template-info strong {
+  font-size: 12px;
+  color: var(--vscode-foreground);
+}
+
+.naming-standards-template-info span {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.naming-standards-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.naming-standards-rule {
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  background: var(--vscode-editor-background);
+}
+
+.naming-standards-rule.is-enabled {
+  border-color: var(--vscode-focusBorder);
+}
+
+.naming-standards-rule-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.naming-standards-rule-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.naming-standards-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.naming-standards-field label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* =========================================================
+   Naming Warning Modal
+   ========================================================= */
+
+.naming-warning-modal {
+  max-width: 420px;
+}
+
+.naming-warning-modal__message {
+  font-size: 12px;
+  color: var(--vscode-foreground);
+  margin: 8px 0 12px;
+  line-height: 1.5;
+}
+
+.naming-warning-modal__suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.naming-warning-modal__suggestion-btn {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  cursor: pointer;
+}
+
+.naming-warning-modal__suggestion-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}

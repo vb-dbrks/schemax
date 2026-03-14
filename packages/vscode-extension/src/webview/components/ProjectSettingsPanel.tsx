@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { VSCodeButton, VSCodeTextField } from "@vscode/webview-ui-toolkit/react";
-import type { ProjectFile, TargetConfig } from "../models/unity";
+import type { NamingStandardsConfig, ProjectFile, TargetConfig } from "../models/unity";
 import { getVsCodeApi } from "../vscode-api";
+import { NamingStandardsSettings } from "./settings/NamingStandardsSettings";
 import { UnityTargetSettings } from "./settings/UnityTargetSettings";
 
 const vscode = getVsCodeApi();
@@ -269,6 +270,18 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
               {activeTargetConfig && renderTargetSettings(activeTargetTab, activeTargetConfig)}
             </>
           )}
+
+          {/* Naming Standards */}
+          <NamingStandardsSettings
+            config={editedProject.settings?.namingStandards as NamingStandardsConfig | undefined}
+            onChange={(updated) => {
+              setEditedProject({
+                ...editedProject,
+                settings: { ...editedProject.settings, namingStandards: updated },
+              });
+              setIsDirty(true);
+            }}
+          />
 
           {/* Project-level Managed Locations */}
           <div className="settings-section">

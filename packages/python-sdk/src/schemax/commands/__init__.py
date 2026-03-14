@@ -13,6 +13,7 @@ from .import_assets import ImportCommandError, import_from_provider, import_from
 from .rollback import RollbackError, RollbackResult, rollback_complete, rollback_partial
 from .sql import SQLGenerationError, generate_sql_migration
 from .validate import ValidationError, validate_project
+from .validate_name import validate_name_command
 
 __all__ = [
     "apply_to_environment",
@@ -27,6 +28,7 @@ __all__ = [
     "SQLGenerationError",
     "validate_project",
     "ValidationError",
+    "validate_name_command",
     "rollback_partial",
     "rollback_complete",
     "RollbackResult",
