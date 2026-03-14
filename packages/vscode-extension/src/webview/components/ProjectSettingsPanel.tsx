@@ -58,6 +58,18 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
   const environmentNames = Object.keys(activeTargetConfig?.environments || {});
 
   const handleSave = () => {
+    const naming = (editedProject as { settings?: { namingStandards?: Record<string, { pattern?: string; enabled?: boolean }> } })
+      .settings?.namingStandards;
+    if (naming) {
+      const objectTypes = ["catalog", "schema", "table", "view", "column"] as const;
+      for (const key of objectTypes) {
+        const rule = naming[key];
+        if (rule && (rule.pattern ?? "").trim() === "") {
+          alert(`Naming rule for "${key}" has an empty pattern. Pattern is required.`);
+          return;
+        }
+      }
+    }
     vscode.postMessage({
       type: "update-project-config",
       payload: editedProject,

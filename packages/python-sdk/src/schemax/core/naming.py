@@ -23,14 +23,14 @@ class NamingRule:
     examples_invalid: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "NamingRule":
+    def from_dict(cls, raw: dict[str, Any]) -> NamingRule:
         """Deserialize from a project.json dict."""
         return cls(
-            pattern=d["pattern"],
-            enabled=bool(d.get("enabled", True)),
-            description=d.get("description", ""),
-            examples_valid=list(d.get("examples", {}).get("valid", [])),
-            examples_invalid=list(d.get("examples", {}).get("invalid", [])),
+            pattern=raw["pattern"],
+            enabled=bool(raw.get("enabled", True)),
+            description=raw.get("description", ""),
+            examples_valid=list(raw.get("examples", {}).get("valid", [])),
+            examples_invalid=list(raw.get("examples", {}).get("invalid", [])),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -61,18 +61,18 @@ class NamingStandardsConfig:
     column: NamingRule | None = None
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "NamingStandardsConfig":
+    def from_dict(cls, raw: dict[str, Any]) -> NamingStandardsConfig:
         """Deserialize from a project.json settings.namingStandards dict."""
 
         def _rule(key: str) -> NamingRule | None:
-            raw = d.get(key)
-            if raw is None or not isinstance(raw, dict):
+            val = raw.get(key)
+            if val is None or not isinstance(val, dict):
                 return None
-            return NamingRule.from_dict(raw)
+            return NamingRule.from_dict(val)
 
         return cls(
-            apply_to_renames=bool(d.get("applyToRenames", False)),
-            strict_mode=bool(d.get("strictMode", False)),
+            apply_to_renames=bool(raw.get("applyToRenames", False)),
+            strict_mode=bool(raw.get("strictMode", False)),
             catalog=_rule("catalog"),
             schema=_rule("schema"),
             table=_rule("table"),
@@ -157,7 +157,7 @@ def suggest_name(name: str, pattern: str) -> str:
 _OBJECT_TYPES_TO_CHECK = ("catalog", "schema", "table", "view", "column")
 
 
-def validate_naming_standards(
+def validate_naming_standards(  # pylint: disable=too-many-nested-blocks,too-complex
     state: Any,
     config: NamingStandardsConfig,
 ) -> list[str]:
@@ -191,14 +191,17 @@ def validate_naming_standards(
             if schema_rule and schema_name:
                 valid, error = validate_name(schema_name, schema_rule)
                 if not valid and error:
-                    violations.append(
-                        f"schema '{catalog_name}.{schema_name}': {error}"
-                    )
+                    violations.append(f"schema '{catalog_name}.{schema_name}': {error}")
 
             for table in schema.get("tables", []):
                 table_name: str = table.get("name", "")
                 table_type: str = table.get("tableType", table.get("type", "table"))
-                is_view = table_type in ("view", "VIEW", "materialized_view", "MATERIALIZED_VIEW")
+                is_view = table_type in {
+                    "view",
+                    "VIEW",
+                    "materialized_view",
+                    "MATERIALIZED_VIEW",
+                }
                 obj_rule = config.view if is_view else config.table
                 if obj_rule and table_name:
                     valid, error = validate_name(table_name, obj_rule)

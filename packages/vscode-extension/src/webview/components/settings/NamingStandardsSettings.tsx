@@ -227,6 +227,11 @@ export function NamingStandardsSettings({
                         handleRuleChange(key, 'pattern', (e.target as HTMLInputElement).value)
                       }
                     />
+                    {(rule?.pattern ?? '').trim() === '' && (
+                      <p className="field-error" style={{ marginTop: 4, fontSize: 12 }}>
+                        Pattern is required.
+                      </p>
+                    )}
                   </div>
                   <div className="naming-standards-field">
                     <label>Description (optional)</label>

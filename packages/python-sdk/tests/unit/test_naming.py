@@ -5,8 +5,6 @@ Tests validate_name(), suggest_name(), NamingStandardsConfig.from_dict(),
 and validate_naming_standards().
 """
 
-import pytest
-
 from schemax.commands.validate import get_naming_validation_errors_and_warnings
 from schemax.core.naming import (
     NamingRule,
@@ -15,7 +13,6 @@ from schemax.core.naming import (
     validate_name,
     validate_naming_standards,
 )
-
 
 # ---------------------------------------------------------------------------
 # NamingRule.from_dict
@@ -382,9 +379,7 @@ class TestGetNamingValidationErrorsAndWarnings:
             }
         }
         state = {
-            "catalogs": [
-                {"name": "MyCatalog", "schemas": [{"name": "my_schema", "tables": []}]}
-            ]
+            "catalogs": [{"name": "MyCatalog", "schemas": [{"name": "my_schema", "tables": []}]}]
         }
         return project, state
 

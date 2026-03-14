@@ -179,12 +179,8 @@ def run_preflight_validation(
 
     Used by sql and apply to fail when strict mode + naming violations or dependency errors.
     """
-    dep_errors, dep_warnings = validate_dependencies(
-        state, changelog.get("ops", []), provider
-    )
-    naming_errors, naming_warnings = get_naming_validation_errors_and_warnings(
-        project, state
-    )
+    dep_errors, dep_warnings = validate_dependencies(state, changelog.get("ops", []), provider)
+    naming_errors, naming_warnings = get_naming_validation_errors_and_warnings(project, state)
     errors = dep_errors + naming_errors
     warnings = dep_warnings + naming_warnings
     return (errors, warnings)
@@ -198,7 +194,8 @@ def get_naming_validation_errors_and_warnings(
     When strict_mode is enabled, violations go to errors; otherwise to warnings.
     Reused by validate command, workspace-state, and sql/apply pre-flight.
     """
-    try:
+
+    def _compute() -> tuple[list[str], list[str]]:
         settings: dict[str, Any] = project.get("settings", {})
         naming_raw: dict[str, Any] = settings.get("namingStandards", {})
         if not naming_raw:
@@ -208,6 +205,9 @@ def get_naming_validation_errors_and_warnings(
         if config.strict_mode and violations:
             return (violations, [])
         return ([], violations)
+
+    try:
+        return _compute()
     except Exception:
         return [], []  # naming check failures are never fatal in this helper
 
@@ -218,7 +218,7 @@ def _get_naming_warnings(project: dict, state: Any) -> list[str]:
     return warnings
 
 
-def _run_validation_steps(
+def _run_validation_steps(  # pylint: disable=too-complex
     workspace: Path,
     project: dict,
     state: Any,

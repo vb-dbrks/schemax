@@ -38,10 +38,10 @@ from .commands import (
     ValidationError as CommandValidationError,
 )
 from .commands import naming_config as naming_config_cmd
-from .commands.validate import get_naming_validation_errors_and_warnings
-from .commands.validate_name import validate_name_command
 from .commands.rollback import RollbackError
 from .commands.snapshot_rebase import RebaseError
+from .commands.validate import get_naming_validation_errors_and_warnings
+from .commands.validate_name import validate_name_command
 from .core.workspace_repository import WorkspaceRepository
 from .domain.envelopes import (
     EnvelopeError,
@@ -561,6 +561,30 @@ def naming_group() -> None:
     """
 
 
+def _run_naming_show(workspace_path: Path, json_output: bool) -> None:
+    """Load naming config and print or emit JSON. Raises on error."""
+    config = naming_config_cmd.get_naming_config(workspace_path)
+    data = config.to_dict()
+    if json_output:
+        started_at = perf_counter()
+        _emit_json_success(
+            command="naming.show",
+            data=data,
+            warnings=[],
+            started_at=started_at,
+            exit_code=0,
+        )
+        return
+    console.print("[bold]Naming standards[/bold]")
+    console.print(f"  Strict mode: {'on' if config.strict_mode else 'off'}")
+    console.print(f"  Enforce on renames: {'on' if config.apply_to_renames else 'off'}")
+    for obj_type in naming_config_cmd.VALID_OBJECT_TYPES:
+        rule = config.get_rule(obj_type)
+        if rule:
+            status = "enabled" if rule.enabled else "disabled"
+            console.print(f"  {obj_type}: {rule.pattern!r} ({status})")
+
+
 @naming_group.command(name="show")
 @click.option(
     "--json",
@@ -571,30 +595,13 @@ def naming_group() -> None:
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def naming_show(json_output: bool, workspace: str) -> None:
     """Show current naming standards (toggles and rules per object type)."""
-    started_at = perf_counter()
     workspace_path = Path(workspace).resolve()
     try:
-        config = naming_config_cmd.get_naming_config(workspace_path)
-        data = config.to_dict()
-        if json_output:
-            _emit_json_success(
-                command="naming.show",
-                data=data,
-                warnings=[],
-                started_at=started_at,
-                exit_code=0,
-            )
-            return
-        console.print("[bold]Naming standards[/bold]")
-        console.print(f"  Strict mode: {'on' if config.strict_mode else 'off'}")
-        console.print(f"  Enforce on renames: {'on' if config.apply_to_renames else 'off'}")
-        for obj_type in naming_config_cmd.VALID_OBJECT_TYPES:
-            rule = config.get_rule(obj_type)
-            if rule:
-                status = "enabled" if rule.enabled else "disabled"
-                console.print(f"  {obj_type}: {rule.pattern!r} ({status})")
-    except FileNotFoundError as e:
-        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        _run_naming_show(workspace_path, json_output)
+    except FileNotFoundError:
+        console.print(
+            "[red]✗[/red] Project file not found. Run 'schemax init' to create a project."
+        )
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Error:[/red] {e}")
@@ -611,7 +618,6 @@ def naming_strict(value: str, workspace: str) -> None:
     blocked. When off: existing objects may violate (warnings only); new objects
     are still validated on add.
     """
-    started_at = perf_counter()
     workspace_path = Path(workspace).resolve()
     try:
         naming_config_cmd.set_strict(workspace_path, value == "on")
@@ -620,7 +626,9 @@ def naming_strict(value: str, workspace: str) -> None:
         else:
             console.print("[green]✓[/green] Strict mode is off")
     except FileNotFoundError:
-        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        console.print(
+            "[red]✗[/red] Project file not found. Run 'schemax init' to create a project."
+        )
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Error:[/red] {e}")
@@ -636,7 +644,6 @@ def naming_enforce_on_renames(value: str, workspace: str) -> None:
     When on: renaming an object to a non-compliant name triggers a warning (does
     not block). When off: renames are not checked against naming rules.
     """
-    started_at = perf_counter()
     workspace_path = Path(workspace).resolve()
     try:
         naming_config_cmd.set_enforce_on_renames(workspace_path, value == "on")
@@ -645,7 +652,9 @@ def naming_enforce_on_renames(value: str, workspace: str) -> None:
         else:
             console.print("[green]✓[/green] Enforce on renames is off")
     except FileNotFoundError:
-        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        console.print(
+            "[red]✗[/red] Project file not found. Run 'schemax init' to create a project."
+        )
         sys.exit(1)
     except Exception as e:
         console.print(f"[red]✗ Error:[/red] {e}")
@@ -693,7 +702,9 @@ def naming_set_rule(
         )
         console.print(f"[green]✓[/green] Rule for {object_type} set to {pattern!r}")
     except FileNotFoundError:
-        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        console.print(
+            "[red]✗[/red] Project file not found. Run 'schemax init' to create a project."
+        )
         sys.exit(1)
     except ValueError as e:
         console.print(f"[red]✗[/red] {e}")
@@ -716,7 +727,9 @@ def naming_remove_rule(object_type: str, workspace: str) -> None:
         naming_config_cmd.remove_rule(workspace_path, object_type)
         console.print(f"[green]✓[/green] Rule for {object_type} removed")
     except FileNotFoundError:
-        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        console.print(
+            "[red]✗[/red] Project file not found. Run 'schemax init' to create a project."
+        )
         sys.exit(1)
     except ValueError as e:
         console.print(f"[red]✗[/red] {e}")
@@ -745,7 +758,9 @@ def naming_load_template(preset: str, workspace: str) -> None:
         naming_config_cmd.load_template(workspace_path, preset)
         console.print(f"[green]✓[/green] Applied preset '{preset}'")
     except FileNotFoundError:
-        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        console.print(
+            "[red]✗[/red] Project file not found. Run 'schemax init' to create a project."
+        )
         sys.exit(1)
     except ValueError as e:
         console.print(f"[red]✗[/red] {e}")
@@ -790,7 +805,9 @@ def naming_apply(
         naming_config_cmd.apply_naming_config_from_json(workspace_path, json_str)
         console.print("[green]✓[/green] Naming config applied")
     except FileNotFoundError:
-        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        console.print(
+            "[red]✗[/red] Project file not found. Run 'schemax init' to create a project."
+        )
         sys.exit(1)
     except ValueError as e:
         console.print(f"[red]✗[/red] {e}")
@@ -2011,9 +2028,7 @@ def _run_workspace_state(
     )
     validation = validation or {"errors": [], "warnings": []}
     if validate_dependencies:
-        naming_errors, naming_warnings = get_naming_validation_errors_and_warnings(
-            project, state
-        )
+        naming_errors, naming_warnings = get_naming_validation_errors_and_warnings(project, state)
         err_list = list(validation.get("errors", []))
         warn_list = list(validation.get("warnings", []))
         for msg in naming_errors:

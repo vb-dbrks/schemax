@@ -13,9 +13,9 @@ from rich.syntax import Syntax
 
 from schemax.core.workspace_repository import WorkspaceRepository
 from schemax.providers.base.operations import Operation
+from schemax.providers.base.scope_filter import filter_operations_by_managed_scope
 
 from .validate import run_preflight_validation
-from schemax.providers.base.scope_filter import filter_operations_by_managed_scope
 
 console = Console()
 
@@ -191,8 +191,7 @@ def _generate_sql_impl(
     )
     if errors:
         raise SQLGenerationError(
-            "Validation failed. Fix the following before generating SQL:\n  "
-            + "\n  ".join(errors)
+            "Validation failed. Fix the following before generating SQL:\n  " + "\n  ".join(errors)
         )
     if warnings:
         for w in warnings:

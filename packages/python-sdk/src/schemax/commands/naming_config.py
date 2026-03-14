@@ -16,9 +16,10 @@ from schemax.core.workspace_repository import WorkspaceRepository
 
 VALID_OBJECT_TYPES = ("catalog", "schema", "table", "view", "column")
 
+
 # Presets aligned with extension TEMPLATES (Databricks Best Practices, etc.)
-def _rule(p: str, desc: str) -> NamingRule:
-    return NamingRule(pattern=p, enabled=True, description=desc)
+def _rule(pattern: str, description: str) -> NamingRule:
+    return NamingRule(pattern=pattern, enabled=True, description=description)
 
 
 PRESETS: dict[str, NamingStandardsConfig] = {
@@ -94,6 +95,7 @@ def apply_naming_config(
 ) -> None:
     """Apply full naming config from a dict (e.g. from UI or --json)."""
     config = NamingStandardsConfig.from_dict(config_dict)
+    _validate_no_empty_patterns(config)
     set_naming_config(workspace, config, workspace_repo=workspace_repo)
 
 
@@ -135,6 +137,16 @@ def set_enforce_on_renames(
     set_naming_config(workspace, updated, workspace_repo)
 
 
+def _validate_no_empty_patterns(config: NamingStandardsConfig) -> None:
+    """Raise ValueError if any rule has an empty or whitespace-only pattern."""
+    for key in VALID_OBJECT_TYPES:
+        rule = config.get_rule(key)
+        if rule is not None and (not rule.pattern or not rule.pattern.strip()):
+            raise ValueError(
+                f"Naming rule for '{key}' has an empty pattern. Pattern is required."
+            )
+
+
 def set_rule(
     workspace: Path,
     object_type: str,
@@ -146,9 +158,10 @@ def set_rule(
     """Add or update the naming rule for object_type. Validates regex."""
     if object_type not in VALID_OBJECT_TYPES:
         raise ValueError(
-            f"Unknown object type '{object_type}'. "
-            f"Must be one of: {', '.join(VALID_OBJECT_TYPES)}."
+            f"Unknown object type '{object_type}'. Must be one of: {', '.join(VALID_OBJECT_TYPES)}."
         )
+    if not pattern or not pattern.strip():
+        raise ValueError("Pattern cannot be empty.")
     try:
         re.compile(pattern)
     except re.error as e:
@@ -176,8 +189,7 @@ def remove_rule(
     """Remove the naming rule for object_type."""
     if object_type not in VALID_OBJECT_TYPES:
         raise ValueError(
-            f"Unknown object type '{object_type}'. "
-            f"Must be one of: {', '.join(VALID_OBJECT_TYPES)}."
+            f"Unknown object type '{object_type}'. Must be one of: {', '.join(VALID_OBJECT_TYPES)}."
         )
     config = get_naming_config(workspace, workspace_repo)
     updated = NamingStandardsConfig(
@@ -200,8 +212,7 @@ def load_template(
     """Apply a preset (databricks, warehouse, camelcase, pascalcase)."""
     if preset_id not in PRESETS:
         raise ValueError(
-            f"Unknown preset '{preset_id}'. "
-            f"Must be one of: {', '.join(sorted(PRESETS))}."
+            f"Unknown preset '{preset_id}'. Must be one of: {', '.join(sorted(PRESETS))}."
         )
     set_naming_config(workspace, PRESETS[preset_id], workspace_repo=workspace_repo)
 

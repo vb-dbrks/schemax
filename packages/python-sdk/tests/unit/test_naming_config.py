@@ -6,7 +6,6 @@ import pytest
 
 from schemax.commands import naming_config as naming_config_cmd
 from schemax.core.naming import NamingRule, NamingStandardsConfig
-from schemax.core.workspace_repository import WorkspaceRepository
 
 
 def _minimal_project(workspace: Path) -> None:
@@ -72,7 +71,11 @@ def test_apply_naming_config_from_dict(workspace_with_project: Path) -> None:
     """apply_naming_config applies dict and persists."""
     naming_config_cmd.apply_naming_config(
         workspace_with_project,
-        {"applyToRenames": True, "strictMode": False, "catalog": {"pattern": "^[a-z]+$", "enabled": True}},
+        {
+            "applyToRenames": True,
+            "strictMode": False,
+            "catalog": {"pattern": "^[a-z]+$", "enabled": True},
+        },
     )
     config = naming_config_cmd.get_naming_config(workspace_with_project)
     assert config.apply_to_renames is True
@@ -129,6 +132,14 @@ def test_set_rule_invalid_regex_raises(workspace_with_project: Path) -> None:
         naming_config_cmd.set_rule(workspace_with_project, "table", "[invalid", enabled=True)
 
 
+def test_set_rule_empty_pattern_raises(workspace_with_project: Path) -> None:
+    """set_rule raises ValueError for empty or whitespace-only pattern."""
+    with pytest.raises(ValueError, match="Pattern cannot be empty"):
+        naming_config_cmd.set_rule(workspace_with_project, "catalog", "", enabled=True)
+    with pytest.raises(ValueError, match="Pattern cannot be empty"):
+        naming_config_cmd.set_rule(workspace_with_project, "schema", "   ", enabled=True)
+
+
 def test_set_rule_invalid_type_raises(workspace_with_project: Path) -> None:
     """set_rule raises ValueError for unknown object type."""
     with pytest.raises(ValueError, match="Unknown object type"):
@@ -175,14 +186,34 @@ def test_apply_naming_config_from_json(workspace_with_project: Path) -> None:
         "strictMode": True,
         "catalog": {"pattern": "^[a-z]+$", "enabled": True, "description": "cat"},
     }
-    naming_config_cmd.apply_naming_config_from_json(
-        workspace_with_project, json.dumps(payload)
-    )
+    naming_config_cmd.apply_naming_config_from_json(workspace_with_project, json.dumps(payload))
     config = naming_config_cmd.get_naming_config(workspace_with_project)
     assert config.apply_to_renames is True
     assert config.strict_mode is True
     assert config.catalog is not None
     assert config.catalog.pattern == "^[a-z]+$"
+
+
+def test_apply_naming_config_empty_pattern_raises(workspace_with_project: Path) -> None:
+    """apply_naming_config raises ValueError when any rule has empty pattern."""
+    with pytest.raises(ValueError, match="empty pattern"):
+        naming_config_cmd.apply_naming_config(
+            workspace_with_project,
+            {
+                "applyToRenames": False,
+                "strictMode": False,
+                "catalog": {"pattern": "", "enabled": True},
+            },
+        )
+    with pytest.raises(ValueError, match="empty pattern"):
+        naming_config_cmd.apply_naming_config(
+            workspace_with_project,
+            {
+                "applyToRenames": False,
+                "strictMode": False,
+                "table": {"pattern": "  ", "enabled": True},
+            },
+        )
 
 
 def test_get_naming_config_missing_project_raises(tmp_path: Path) -> None:
