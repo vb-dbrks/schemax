@@ -1788,13 +1788,56 @@ async function openDesigner(context: vscode.ExtensionContext) {
         }
         case "update-project-config": {
           try {
-            const updatedProject = message.payload;
+            const payload = message.payload as Record<string, unknown>;
             outputChannel.appendLine(`[SchemaX] Updating project configuration`);
 
-            // Write updated project to disk
-            await storageV4.writeProject(workspaceFolder.uri, updatedProject);
+            const currentProject = await storageV4.readProject(workspaceFolder.uri);
+            const payloadNaming = (payload.settings as Record<string, unknown> | undefined)?.namingStandards;
+            const currentNaming = (currentProject as Record<string, unknown>).settings as
+              | Record<string, unknown>
+              | undefined;
+            const namingChanged =
+              JSON.stringify(payloadNaming ?? {}) !==
+              JSON.stringify((currentNaming?.namingStandards as Record<string, unknown>) ?? {});
 
-            // Reload state and provider
+            if (namingChanged) {
+              const namingJson = JSON.stringify(
+                (payload.settings as Record<string, unknown>)?.namingStandards ?? {}
+              );
+              const applyResult = await pythonBackend.run(
+                [
+                  "naming",
+                  "apply",
+                  "--json",
+                  namingJson,
+                  workspaceFolder.uri.fsPath,
+                ],
+                workspaceFolder.uri.fsPath
+              );
+              if (!applyResult.success) {
+                outputChannel.appendLine(
+                  `[SchemaX] ERROR: naming apply failed: ${applyResult.stderr || applyResult.stdout}`
+                );
+                vscode.window.showErrorMessage(
+                  `Failed to apply naming standards: ${applyResult.stderr || applyResult.stdout || "CLI failed"}. Check SchemaX output.`
+                );
+                break;
+              }
+            }
+
+            const projectFromDisk = await storageV4.readProject(workspaceFolder.uri);
+            const mergedProject = { ...payload } as Record<string, unknown>;
+            const diskSettings = (projectFromDisk as Record<string, unknown>).settings as
+              | Record<string, unknown>
+              | undefined;
+            const payloadSettings = (payload.settings as Record<string, unknown>) ?? {};
+            mergedProject.settings = {
+              ...payloadSettings,
+              namingStandards: diskSettings?.namingStandards ?? payloadSettings.namingStandards,
+            };
+
+            await storageV4.writeProject(workspaceFolder.uri, mergedProject as Parameters<typeof storageV4.writeProject>[1]);
+
             const project = await storageV4.readProject(workspaceFolder.uri);
             const { state, changelog, provider } = await storageV4.loadCurrentState(
               workspaceFolder.uri,
@@ -1803,7 +1846,6 @@ async function openDesigner(context: vscode.ExtensionContext) {
 
             outputChannel.appendLine(`[SchemaX] Project configuration updated successfully`);
 
-            // Send updated data to webview
             const updatedDefaultTarget = storageV4.getTargetConfig(project);
             const payloadForWebview = {
               ...project,

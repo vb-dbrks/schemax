@@ -54,6 +54,32 @@ class TestNamingRuleFromDict:
 
 
 # ---------------------------------------------------------------------------
+# NamingRule.to_dict round-trip
+# ---------------------------------------------------------------------------
+
+
+class TestNamingRuleToDict:
+    def test_roundtrip_minimal(self) -> None:
+        d = {"pattern": "^[a-z]+$", "enabled": True}
+        rule = NamingRule.from_dict(d)
+        out = rule.to_dict()
+        assert out["pattern"] == d["pattern"]
+        assert out["enabled"] is True
+        assert NamingRule.from_dict(out).pattern == rule.pattern
+
+    def test_roundtrip_with_examples(self) -> None:
+        d = {
+            "pattern": "^[a-z]+$",
+            "enabled": False,
+            "description": "lower",
+            "examples": {"valid": ["a"], "invalid": ["A"]},
+        }
+        rule = NamingRule.from_dict(d)
+        out = rule.to_dict()
+        assert out.get("examples") == {"valid": ["a"], "invalid": ["A"]}
+
+
+# ---------------------------------------------------------------------------
 # NamingStandardsConfig.from_dict
 # ---------------------------------------------------------------------------
 
@@ -91,6 +117,19 @@ class TestNamingStandardsConfigFromDict:
         assert config.table is not None
         assert config.table.pattern == "^[a-z][a-z0-9_]*$"
         assert config.catalog is None
+
+    def test_to_dict_roundtrip(self) -> None:
+        raw = {
+            "applyToRenames": True,
+            "strictMode": True,
+            "catalog": {"pattern": "^[a-z]+$", "enabled": True, "description": "cat"},
+        }
+        config = NamingStandardsConfig.from_dict(raw)
+        out = config.to_dict()
+        assert out["applyToRenames"] is True
+        assert out["strictMode"] is True
+        assert out["catalog"]["pattern"] == "^[a-z]+$"
+        assert NamingStandardsConfig.from_dict(out).strict_mode is True
 
     def test_all_object_types(self) -> None:
         raw = {

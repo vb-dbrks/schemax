@@ -37,6 +37,7 @@ from .commands import (
 from .commands import (
     ValidationError as CommandValidationError,
 )
+from .commands import naming_config as naming_config_cmd
 from .commands.validate import get_naming_validation_errors_and_warnings
 from .commands.validate_name import validate_name_command
 from .commands.rollback import RollbackError
@@ -546,6 +547,256 @@ def validate_name_cli(name: str, object_type: str, json_output: bool, workspace:
             )
         else:
             console.print(f"[red]✗ Error:[/red] {e}")
+        sys.exit(1)
+
+
+@cli.group(name="naming")
+def naming_group() -> None:
+    """Get or set naming standards in project.json.
+
+    Naming standards are stored under settings.namingStandards and are used by
+    validate, sql, and apply. Use 'naming show' to see the current config and
+    'naming load-template' to apply a preset (databricks, warehouse, camelcase,
+    pascalcase).
+    """
+
+
+@naming_group.command(name="show")
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Output the full naming config as JSON (for scripting or piping to naming apply).",
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def naming_show(json_output: bool, workspace: str) -> None:
+    """Show current naming standards (toggles and rules per object type)."""
+    started_at = perf_counter()
+    workspace_path = Path(workspace).resolve()
+    try:
+        config = naming_config_cmd.get_naming_config(workspace_path)
+        data = config.to_dict()
+        if json_output:
+            _emit_json_success(
+                command="naming.show",
+                data=data,
+                warnings=[],
+                started_at=started_at,
+                exit_code=0,
+            )
+            return
+        console.print("[bold]Naming standards[/bold]")
+        console.print(f"  Strict mode: {'on' if config.strict_mode else 'off'}")
+        console.print(f"  Enforce on renames: {'on' if config.apply_to_renames else 'off'}")
+        for obj_type in naming_config_cmd.VALID_OBJECT_TYPES:
+            rule = config.get_rule(obj_type)
+            if rule:
+                status = "enabled" if rule.enabled else "disabled"
+                console.print(f"  {obj_type}: {rule.pattern!r} ({status})")
+    except FileNotFoundError as e:
+        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Error:[/red] {e}")
+        sys.exit(1)
+
+
+@naming_group.command(name="strict")
+@click.argument("value", type=click.Choice(["on", "off"]), required=True)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def naming_strict(value: str, workspace: str) -> None:
+    """Turn strict mode on or off.
+
+    When on: validate/sql/apply fail on naming violations; non-compliant adds are
+    blocked. When off: existing objects may violate (warnings only); new objects
+    are still validated on add.
+    """
+    started_at = perf_counter()
+    workspace_path = Path(workspace).resolve()
+    try:
+        naming_config_cmd.set_strict(workspace_path, value == "on")
+        if value == "on":
+            console.print("[green]✓[/green] Strict mode is on")
+        else:
+            console.print("[green]✓[/green] Strict mode is off")
+    except FileNotFoundError:
+        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Error:[/red] {e}")
+        sys.exit(1)
+
+
+@naming_group.command(name="enforce-on-renames")
+@click.argument("value", type=click.Choice(["on", "off"]), required=True)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def naming_enforce_on_renames(value: str, workspace: str) -> None:
+    """Turn enforce-on-renames on or off.
+
+    When on: renaming an object to a non-compliant name triggers a warning (does
+    not block). When off: renames are not checked against naming rules.
+    """
+    started_at = perf_counter()
+    workspace_path = Path(workspace).resolve()
+    try:
+        naming_config_cmd.set_enforce_on_renames(workspace_path, value == "on")
+        if value == "on":
+            console.print("[green]✓[/green] Enforce on renames is on")
+        else:
+            console.print("[green]✓[/green] Enforce on renames is off")
+    except FileNotFoundError:
+        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Error:[/red] {e}")
+        sys.exit(1)
+
+
+@naming_group.command(name="set-rule")
+@click.argument(
+    "object_type",
+    type=click.Choice(["catalog", "schema", "table", "view", "column"]),
+)
+@click.argument("pattern", type=str)
+@click.option(
+    "--description",
+    type=str,
+    default="",
+    help="Short description for the rule (e.g. 'Lowercase snake_case').",
+)
+@click.option(
+    "--enabled/--disabled",
+    "enabled",
+    default=True,
+    help="Whether the rule is active (default: enabled).",
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def naming_set_rule(
+    object_type: str,
+    pattern: str,
+    description: str,
+    enabled: bool,
+    workspace: str,
+) -> None:
+    """Add or update the naming rule for an object type.
+
+    The pattern must be a valid regex. Use 'naming remove-rule <type>' to remove.
+    """
+    workspace_path = Path(workspace).resolve()
+    try:
+        naming_config_cmd.set_rule(
+            workspace_path,
+            object_type,
+            pattern,
+            description=description,
+            enabled=enabled,
+        )
+        console.print(f"[green]✓[/green] Rule for {object_type} set to {pattern!r}")
+    except FileNotFoundError:
+        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        sys.exit(1)
+    except ValueError as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Error:[/red] {e}")
+        sys.exit(1)
+
+
+@naming_group.command(name="remove-rule")
+@click.argument(
+    "object_type",
+    type=click.Choice(["catalog", "schema", "table", "view", "column"]),
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def naming_remove_rule(object_type: str, workspace: str) -> None:
+    """Remove the naming rule for an object type (no validation for that type)."""
+    workspace_path = Path(workspace).resolve()
+    try:
+        naming_config_cmd.remove_rule(workspace_path, object_type)
+        console.print(f"[green]✓[/green] Rule for {object_type} removed")
+    except FileNotFoundError:
+        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        sys.exit(1)
+    except ValueError as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Error:[/red] {e}")
+        sys.exit(1)
+
+
+@naming_group.command(name="load-template")
+@click.argument(
+    "preset",
+    type=click.Choice(["databricks", "warehouse", "camelcase", "pascalcase"]),
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def naming_load_template(preset: str, workspace: str) -> None:
+    """Apply a naming preset (replaces all rules; toggles set to off).
+
+    databricks: lowercase snake_case for all types.
+    warehouse: snake_case with prefixed table names (dim_, fact_, stg_, int_).
+    camelcase: camelCase for all types.
+    pascalcase: PascalCase for all types.
+    """
+    workspace_path = Path(workspace).resolve()
+    try:
+        naming_config_cmd.load_template(workspace_path, preset)
+        console.print(f"[green]✓[/green] Applied preset '{preset}'")
+    except FileNotFoundError:
+        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        sys.exit(1)
+    except ValueError as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Error:[/red] {e}")
+        sys.exit(1)
+
+
+@naming_group.command(name="apply")
+@click.option(
+    "--json",
+    "json_str",
+    type=str,
+    default=None,
+    help="Full naming config as JSON (same shape as settings.namingStandards).",
+)
+@click.option(
+    "--stdin",
+    "read_stdin",
+    is_flag=True,
+    help="Read full naming config JSON from stdin.",
+)
+@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
+def naming_apply(
+    json_str: str | None,
+    read_stdin: bool,
+    workspace: str,
+) -> None:
+    """Apply full naming config from JSON (for UI or scripting).
+
+    Provide either --json '{"applyToRenames": false, ...}' or --stdin to pipe
+    the config. Same shape as project.json settings.namingStandards (camelCase).
+    """
+    workspace_path = Path(workspace).resolve()
+    if read_stdin:
+        json_str = sys.stdin.read()
+    if not json_str:
+        console.print("[red]✗[/red] Provide either --json '<config>' or --stdin")
+        sys.exit(1)
+    try:
+        naming_config_cmd.apply_naming_config_from_json(workspace_path, json_str)
+        console.print("[green]✓[/green] Naming config applied")
+    except FileNotFoundError:
+        console.print(f"[red]✗[/red] Project file not found. Run 'schemax init' to create a project.")
+        sys.exit(1)
+    except ValueError as e:
+        console.print(f"[red]✗[/red] {e}")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]✗ Error:[/red] {e}")
         sys.exit(1)
 
 

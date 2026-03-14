@@ -33,6 +33,20 @@ class NamingRule:
             examples_invalid=list(d.get("examples", {}).get("invalid", [])),
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to project.json dict (camelCase keys)."""
+        out: dict[str, Any] = {
+            "pattern": self.pattern,
+            "enabled": self.enabled,
+            "description": self.description,
+        }
+        if self.examples_valid or self.examples_invalid:
+            out["examples"] = {
+                "valid": list(self.examples_valid),
+                "invalid": list(self.examples_invalid),
+            }
+        return out
+
 
 @dataclass(slots=True, frozen=True)
 class NamingStandardsConfig:
@@ -69,6 +83,18 @@ class NamingStandardsConfig:
     def get_rule(self, object_type: str) -> NamingRule | None:
         """Return the rule for *object_type*, or None if unconfigured."""
         return getattr(self, object_type, None)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to project.json settings.namingStandards dict (camelCase keys)."""
+        out: dict[str, Any] = {
+            "applyToRenames": self.apply_to_renames,
+            "strictMode": self.strict_mode,
+        }
+        for key in ("catalog", "schema", "table", "view", "column"):
+            rule = getattr(self, key, None)
+            if rule is not None:
+                out[key] = rule.to_dict()
+        return out
 
 
 # ---------------------------------------------------------------------------
