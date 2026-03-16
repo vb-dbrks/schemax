@@ -8,10 +8,12 @@ interface NamingWarningModalProps {
   suggestion: string | null;
   /** Called when the user accepts the suggestion; receives the suggested name. */
   onUseSuggestion: (name: string) => void;
-  /** Called when the user chooses to rename anyway (proceed with the original name). */
+  /** Called when the user chooses to proceed with the original name. */
   onProceed: () => void;
   /** Called when the user chooses to go back (dismiss). */
   onCancel: () => void;
+  /** Label for the proceed button. Defaults to "Rename Anyway". */
+  proceedLabel?: string;
 }
 
 /**
@@ -25,6 +27,7 @@ export const NamingWarningModal: React.FC<NamingWarningModalProps> = ({
   onUseSuggestion,
   onProceed,
   onCancel,
+  proceedLabel,
 }) => {
   return (
     <div className="modal" role="alertdialog" aria-modal="true" onClick={onCancel}>
@@ -51,7 +54,7 @@ export const NamingWarningModal: React.FC<NamingWarningModalProps> = ({
             Go Back
           </VSCodeButton>
           <VSCodeButton appearance="secondary" onClick={onProceed}>
-            Rename Anyway
+            {proceedLabel ?? 'Rename Anyway'}
           </VSCodeButton>
         </div>
       </div>

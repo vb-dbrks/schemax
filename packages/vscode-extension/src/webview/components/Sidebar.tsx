@@ -229,7 +229,9 @@ export const Sidebar: React.FC = () => {
   const [namingWarningModal, setNamingWarningModal] = useState<{
     error: string;
     suggestion: string | null;
+    onUseSuggestion: (name: string) => void;
     onProceed: () => void;
+    proceedLabel?: string;
   } | null>(null);
 
   const toggleCatalog = (catalogId: string) => {
@@ -426,6 +428,10 @@ export const Sidebar: React.FC = () => {
         setNamingWarningModal({
           error: result.error,
           suggestion: result.suggestion,
+          onUseSuggestion: (suggested) => {
+            setNamingWarningModal(null);
+            applyRename(renameDialog.id, renameDialog.type, suggested);
+          },
           onProceed: () => {
             setNamingWarningModal(null);
             applyRename(renameDialog.id, renameDialog.type, trimmedName);
@@ -489,163 +495,178 @@ export const Sidebar: React.FC = () => {
       }
     }
 
+    const doAdd = (nameToUse: string) => {
+      // Flush any tag that was typed but not yet confirmed via "+"
+      const pendingTags =
+        addTagInput.tagName.trim() && addTagInput.tagValue.trim()
+          ? { ...addTags, [addTagInput.tagName.trim()]: addTagInput.tagValue.trim() }
+          : addTags;
+      const catalogs = project?.state.catalogs ?? [];
+
+      if (addDialog.type === "catalog") {
+        // Check for duplicate catalog name
+        const catalogExists = catalogs.some(
+          (catalog) => catalog.name.toLowerCase() === nameToUse.toLowerCase()
+        );
+        if (catalogExists) {
+          setAddError(`Catalog "${nameToUse}" already exists.`);
+          return;
+        }
+
+        const options: Record<string, unknown> = {};
+        if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
+        if (addComment) options.comment = addComment;
+        if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
+        addCatalog(nameToUse, Object.keys(options).length > 0 ? options : undefined);
+      } else if (addDialog.type === "schema" && addDialog.catalogId) {
+        // Check for duplicate schema name within the same catalog
+        const catalog = catalogs.find((entry) => entry.id === addDialog.catalogId);
+        if (catalog) {
+          const schemaExists = catalog.schemas?.some(
+            (schema) => schema.name.toLowerCase() === nameToUse.toLowerCase()
+          );
+          if (schemaExists) {
+            setAddError(`Schema "${nameToUse}" already exists in this catalog.`);
+            return;
+          }
+        }
+
+        const options: Record<string, unknown> = {};
+        if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
+        if (addComment) options.comment = addComment;
+        if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
+        addSchema(
+          addDialog.catalogId,
+          nameToUse,
+          Object.keys(options).length > 0 ? options : undefined
+        );
+        setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
+      } else if (addDialog.type === "table" && addDialog.schemaId) {
+        // Find the schema to check for duplicate table/view names
+        let schema: UnitySchema | null = null;
+        for (const catalog of catalogs) {
+          schema = catalog.schemas?.find((entry) => entry.id === addDialog.schemaId) ?? null;
+          if (schema) break;
+        }
+
+        if (schema) {
+          // Check for duplicate table or view name within the same schema
+          const tableExists = schema.tables?.some(
+            (table) => table.name.toLowerCase() === nameToUse.toLowerCase()
+          );
+          if (tableExists) {
+            setAddError(`Table or view "${nameToUse}" already exists in this schema.`);
+            return;
+          }
+        }
+
+        if (addDialog.objectType === "volume") {
+          if (addVolumeType === "external" && !addVolumeLocation?.trim()) {
+            setAddError("Location is required for external volumes.");
+            return;
+          }
+          addVolume(addDialog.schemaId!, nameToUse, addVolumeType, {
+            comment: addComment || undefined,
+            location:
+              addVolumeType === "external" ? addVolumeLocation?.trim() || undefined : undefined,
+          });
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
+          closeAddDialog();
+          return;
+        }
+        if (addDialog.objectType === "function") {
+          addFunction(
+            addDialog.schemaId!,
+            nameToUse,
+            addFunctionLanguage,
+            addFunctionBody || "NULL",
+            {
+              returnType: addFunctionReturnType || "STRING",
+              comment: addFunctionComment || undefined,
+            }
+          );
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
+          closeAddDialog();
+          return;
+        }
+        if (addDialog.objectType === "materialized_view") {
+          const mvError = validateMaterializedViewSQL(addMVDefinition || "");
+          if (mvError) {
+            setAddError(mvError);
+            return;
+          }
+          const parsed = parseMaterializedViewSQL(addMVDefinition || "");
+          const definitionToUse = parsed.cleanSQL || addMVDefinition || "SELECT 1";
+          const mvDependencies = extractDependenciesFromView(definitionToUse);
+          addMaterializedView(addDialog.schemaId!, nameToUse, definitionToUse, {
+            comment: addMVComment || undefined,
+            refreshSchedule: addMVSchedule || undefined,
+            extractedDependencies: { tables: mvDependencies.tables, views: mvDependencies.views },
+          });
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
+          closeAddDialog();
+          return;
+        }
+        if (addDialog.objectType === "view") {
+          // VIEW CREATION
+          const sqlError = validateViewSQL(addViewSQL);
+          if (sqlError) {
+            setAddError(sqlError);
+            return;
+          }
+
+          // Extract dependencies using sql-parser
+          const dependencies = extractDependenciesFromView(addViewSQL);
+
+          // Clean SQL (remove CREATE VIEW if present)
+          const parsed = parseViewSQL(addViewSQL);
+          const cleanSQL = parsed.cleanSQL || addViewSQL;
+
+          addView(addDialog.schemaId, nameToUse, cleanSQL, {
+            comment: addViewComment || undefined,
+            extractedDependencies: dependencies,
+          });
+
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
+        } else {
+          // TABLE CREATION
+          const options =
+            addTableType === "external"
+              ? {
+                  external: true,
+                  externalLocationName: addExternalLocationName,
+                  path: addTablePath || undefined,
+                }
+              : undefined;
+
+          addTable(addDialog.schemaId, nameToUse, format || "delta", options);
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
+        }
+      }
+      setAddError(null);
+      closeAddDialog();
+    };
+
     if (namingObjectType) {
       const result = await validateNaming(trimmedName, namingObjectType);
       if (!result.valid && result.error) {
-        setAddError(result.error + (result.suggestion ? ` Suggestion: ${result.suggestion}` : ""));
-        return;
+        if (namingStandards?.strictMode) {
+          setAddError(result.error + (result.suggestion ? ` Suggestion: ${result.suggestion}` : ""));
+          return;
+        } else {
+          setNamingWarningModal({
+            error: result.error,
+            suggestion: result.suggestion,
+            proceedLabel: 'Add Anyway',
+            onUseSuggestion: (s) => { setNamingWarningModal(null); doAdd(s); },
+            onProceed: () => { setNamingWarningModal(null); doAdd(trimmedName); },
+          });
+          return;
+        }
       }
     }
 
-    // Flush any tag that was typed but not yet confirmed via "+"
-    const pendingTags =
-      addTagInput.tagName.trim() && addTagInput.tagValue.trim()
-        ? { ...addTags, [addTagInput.tagName.trim()]: addTagInput.tagValue.trim() }
-        : addTags;
-    const catalogs = project?.state.catalogs ?? [];
-
-    if (addDialog.type === "catalog") {
-      // Check for duplicate catalog name
-      const catalogExists = catalogs.some(
-        (catalog) => catalog.name.toLowerCase() === trimmedName.toLowerCase()
-      );
-      if (catalogExists) {
-        setAddError(`Catalog "${trimmedName}" already exists.`);
-        return;
-      }
-
-      const options: Record<string, unknown> = {};
-      if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
-      if (addComment) options.comment = addComment;
-      if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
-      addCatalog(trimmedName, Object.keys(options).length > 0 ? options : undefined);
-    } else if (addDialog.type === "schema" && addDialog.catalogId) {
-      // Check for duplicate schema name within the same catalog
-      const catalog = catalogs.find((entry) => entry.id === addDialog.catalogId);
-      if (catalog) {
-        const schemaExists = catalog.schemas?.some(
-          (schema) => schema.name.toLowerCase() === trimmedName.toLowerCase()
-        );
-        if (schemaExists) {
-          setAddError(`Schema "${trimmedName}" already exists in this catalog.`);
-          return;
-        }
-      }
-
-      const options: Record<string, unknown> = {};
-      if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
-      if (addComment) options.comment = addComment;
-      if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
-      addSchema(
-        addDialog.catalogId,
-        trimmedName,
-        Object.keys(options).length > 0 ? options : undefined
-      );
-      setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
-    } else if (addDialog.type === "table" && addDialog.schemaId) {
-      // Find the schema to check for duplicate table/view names
-      let schema: UnitySchema | null = null;
-      for (const catalog of catalogs) {
-        schema = catalog.schemas?.find((entry) => entry.id === addDialog.schemaId) ?? null;
-        if (schema) break;
-      }
-
-      if (schema) {
-        // Check for duplicate table or view name within the same schema
-        const tableExists = schema.tables?.some(
-          (table) => table.name.toLowerCase() === trimmedName.toLowerCase()
-        );
-        if (tableExists) {
-          setAddError(`Table or view "${trimmedName}" already exists in this schema.`);
-          return;
-        }
-      }
-
-      if (addDialog.objectType === "volume") {
-        if (addVolumeType === "external" && !addVolumeLocation?.trim()) {
-          setAddError("Location is required for external volumes.");
-          return;
-        }
-        addVolume(addDialog.schemaId!, trimmedName, addVolumeType, {
-          comment: addComment || undefined,
-          location:
-            addVolumeType === "external" ? addVolumeLocation?.trim() || undefined : undefined,
-        });
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
-        closeAddDialog();
-        return;
-      }
-      if (addDialog.objectType === "function") {
-        addFunction(
-          addDialog.schemaId!,
-          trimmedName,
-          addFunctionLanguage,
-          addFunctionBody || "NULL",
-          {
-            returnType: addFunctionReturnType || "STRING",
-            comment: addFunctionComment || undefined,
-          }
-        );
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
-        closeAddDialog();
-        return;
-      }
-      if (addDialog.objectType === "materialized_view") {
-        const mvError = validateMaterializedViewSQL(addMVDefinition || "");
-        if (mvError) {
-          setAddError(mvError);
-          return;
-        }
-        const parsed = parseMaterializedViewSQL(addMVDefinition || "");
-        const definitionToUse = parsed.cleanSQL || addMVDefinition || "SELECT 1";
-        const mvDependencies = extractDependenciesFromView(definitionToUse);
-        addMaterializedView(addDialog.schemaId!, trimmedName, definitionToUse, {
-          comment: addMVComment || undefined,
-          refreshSchedule: addMVSchedule || undefined,
-          extractedDependencies: { tables: mvDependencies.tables, views: mvDependencies.views },
-        });
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
-        closeAddDialog();
-        return;
-      }
-      if (addDialog.objectType === "view") {
-        // VIEW CREATION
-        const sqlError = validateViewSQL(addViewSQL);
-        if (sqlError) {
-          setAddError(sqlError);
-          return;
-        }
-
-        // Extract dependencies using sql-parser
-        const dependencies = extractDependenciesFromView(addViewSQL);
-
-        // Clean SQL (remove CREATE VIEW if present)
-        const parsed = parseViewSQL(addViewSQL);
-        const cleanSQL = parsed.cleanSQL || addViewSQL;
-
-        addView(addDialog.schemaId, trimmedName, cleanSQL, {
-          comment: addViewComment || undefined,
-          extractedDependencies: dependencies,
-        });
-
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
-      } else {
-        // TABLE CREATION
-        const options =
-          addTableType === "external"
-            ? {
-                external: true,
-                externalLocationName: addExternalLocationName,
-                path: addTablePath || undefined,
-              }
-            : undefined;
-
-        addTable(addDialog.schemaId, trimmedName, format || "delta", options);
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
-      }
-    }
-    setAddError(null);
-    closeAddDialog();
+    doAdd(trimmedName);
   };
 
   if (!project) {
@@ -2086,14 +2107,10 @@ export const Sidebar: React.FC = () => {
         <NamingWarningModal
           error={namingWarningModal.error}
           suggestion={namingWarningModal.suggestion}
-          onUseSuggestion={(suggested) => {
-            setNamingWarningModal(null);
-            if (renameDialog) {
-              applyRename(renameDialog.id, renameDialog.type, suggested);
-            }
-          }}
+          onUseSuggestion={namingWarningModal.onUseSuggestion}
           onProceed={namingWarningModal.onProceed}
           onCancel={() => setNamingWarningModal(null)}
+          proceedLabel={namingWarningModal.proceedLabel}
         />
       )}
     </div>

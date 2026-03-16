@@ -55,7 +55,9 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
   const [namingWarningModal, setNamingWarningModal] = useState<{
     error: string;
     suggestion: string | null;
+    onUseSuggestion: (name: string) => void;
     onProceed: () => void;
+    proceedLabel?: string;
   } | null>(null);
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -166,6 +168,10 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
           setNamingWarningModal({
             error: result.error,
             suggestion: result.suggestion,
+            onUseSuggestion: (suggested) => {
+              setNamingWarningModal(null);
+              applyColumnEdits(col, colId, suggested);
+            },
             onProceed: () => {
               setNamingWarningModal(null);
               applyColumnEdits(col, colId, trimmedName);
@@ -203,11 +209,30 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
       return;
     }
 
-    if (project?.settings?.namingStandards?.column?.enabled) {
+    const namingStandards = project?.settings?.namingStandards;
+    if (namingStandards?.column?.enabled) {
       const result = await validateNaming(trimmedName, "column");
       if (!result.valid && result.error) {
-        setAddColError(result.error + (result.suggestion ? ` Suggestion: ${result.suggestion}` : ""));
-        return;
+        if (namingStandards.strictMode) {
+          setAddColError(result.error + (result.suggestion ? ` Suggestion: ${result.suggestion}` : ""));
+          return;
+        } else {
+          const doAddColumn = (nameToUse: string) => {
+            addColumn(tableId, nameToUse, type, nullable, comment || undefined, addColumnTags);
+            setAddDialog(false);
+            setAddColForm({ name: "", type: "STRING", nullable: true, comment: "" });
+            setAddColumnTags({});
+            setAddTagInput({ tagName: "", tagValue: "" });
+          };
+          setNamingWarningModal({
+            error: result.error,
+            suggestion: result.suggestion,
+            proceedLabel: 'Add Anyway',
+            onUseSuggestion: (s) => { setNamingWarningModal(null); doAddColumn(s); },
+            onProceed: () => { setNamingWarningModal(null); doAddColumn(trimmedName); },
+          });
+          return;
+        }
       }
     }
 
@@ -867,18 +892,10 @@ export const ColumnGrid: React.FC<ColumnGridProps> = ({ tableId, columns }) => {
         <NamingWarningModal
           error={namingWarningModal.error}
           suggestion={namingWarningModal.suggestion}
-          onUseSuggestion={(suggested) => {
-            setNamingWarningModal(null);
-            const editingId = editingColId;
-            if (editingId) {
-              const col = columns.find((c) => c.id === editingId);
-              if (col) {
-                applyColumnEdits(col, editingId, suggested);
-              }
-            }
-          }}
+          onUseSuggestion={namingWarningModal.onUseSuggestion}
           onProceed={namingWarningModal.onProceed}
           onCancel={() => setNamingWarningModal(null)}
+          proceedLabel={namingWarningModal.proceedLabel}
         />
       )}
     </div>
