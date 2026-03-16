@@ -13,7 +13,22 @@ Summary of the SchemaX CLI. Run `schemax --help` and `schemax &lt;command&gt; --
 | Command | Description |
 |---------|-------------|
 | `schemax init` | Initialize a new SchemaX project (or use VS Code Designer once). |
-| `schemax validate [workspace]` | Validate `.schemax/` project files and dependency graph. |
+| `schemax validate [workspace]` | Validate `.schemax/` project files and dependency graph. Naming violations are reported as errors (strict mode) or warnings. |
+| `schemax validate --naming --name NAME --type TYPE [workspace]` | Validate a single object name against naming standards. `--type` is one of `catalog`, `schema`, `table`, `view`, `column`. |
+
+## Naming Standards
+
+Manage per-object-type naming rules stored in `project.json` under `settings.namingStandards`. See the [Naming Standards guide](/docs/guide/naming-standards) for full details.
+
+| Command | Description |
+|---------|-------------|
+| `schemax naming show [--json] [workspace]` | Show current naming config (patterns, enabled flags, strict mode, enforce-on-renames). `--json` outputs machine-readable config. |
+| `schemax naming strict on\|off [workspace]` | Toggle strict mode. When **on**: `validate`, `sql`, and `apply` fail on naming violations and non-compliant adds are blocked. When **off**: violations produce warnings only. |
+| `schemax naming enforce-on-renames on\|off [workspace]` | Toggle enforce-on-renames. When **on**: renaming to a non-compliant name shows a soft warning (does not block). |
+| `schemax naming set-rule OBJECT_TYPE PATTERN [--description DESC] [--enabled/--disabled] [workspace]` | Add or update a naming rule for an object type (`catalog`, `schema`, `table`, `view`, `column`). `PATTERN` must be a valid Python regex (e.g. `^[a-z][a-z0-9_]*$`). |
+| `schemax naming remove-rule OBJECT_TYPE [workspace]` | Remove the naming rule for an object type (no validation for that type). |
+| `schemax naming load-template PRESET [workspace]` | Apply a built-in preset — `databricks` (lowercase snake_case for all types) or `warehouse` (prefixed tables: `dim_`, `fact_`, `stg_`, `int_`). Replaces all existing rules; toggles are set to off. |
+| `schemax naming apply [--json CONFIG \| --stdin] [workspace]` | Apply a full naming config from a JSON string or stdin. Same shape as `project.json` `settings.namingStandards` (camelCase). Use `naming show --json` to capture and pipe configs. |
 
 ## SQL and snapshots
 
