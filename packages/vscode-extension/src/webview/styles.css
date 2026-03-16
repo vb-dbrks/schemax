@@ -3469,6 +3469,13 @@ body {
    Naming Standards Settings
    ========================================================= */
 
+.naming-standards-info {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  margin: 0 0 8px 0;
+}
+
 .naming-standards-header {
   display: flex;
   flex-direction: column;

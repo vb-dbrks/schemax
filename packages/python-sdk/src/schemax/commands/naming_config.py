@@ -41,24 +41,6 @@ PRESETS: dict[str, NamingStandardsConfig] = {
         view=_rule("^[a-z][a-z0-9_]*$", "Lowercase snake_case"),
         column=_rule("^[a-z][a-z0-9_]*$", "Lowercase snake_case"),
     ),
-    "camelcase": NamingStandardsConfig(
-        apply_to_renames=False,
-        strict_mode=False,
-        catalog=_rule("^[a-z][a-zA-Z0-9]*$", "camelCase"),
-        schema=_rule("^[a-z][a-zA-Z0-9]*$", "camelCase"),
-        table=_rule("^[a-z][a-zA-Z0-9]*$", "camelCase"),
-        view=_rule("^[a-z][a-zA-Z0-9]*$", "camelCase"),
-        column=_rule("^[a-z][a-zA-Z0-9]*$", "camelCase"),
-    ),
-    "pascalcase": NamingStandardsConfig(
-        apply_to_renames=False,
-        strict_mode=False,
-        catalog=_rule("^[A-Z][a-zA-Z0-9]*$", "PascalCase"),
-        schema=_rule("^[A-Z][a-zA-Z0-9]*$", "PascalCase"),
-        table=_rule("^[A-Z][a-zA-Z0-9]*$", "PascalCase"),
-        view=_rule("^[A-Z][a-zA-Z0-9]*$", "PascalCase"),
-        column=_rule("^[A-Z][a-zA-Z0-9]*$", "PascalCase"),
-    ),
 }
 
 
@@ -142,9 +124,7 @@ def _validate_no_empty_patterns(config: NamingStandardsConfig) -> None:
     for key in VALID_OBJECT_TYPES:
         rule = config.get_rule(key)
         if rule is not None and (not rule.pattern or not rule.pattern.strip()):
-            raise ValueError(
-                f"Naming rule for '{key}' has an empty pattern. Pattern is required."
-            )
+            raise ValueError(f"Naming rule for '{key}' has an empty pattern. Pattern is required.")
 
 
 def set_rule(

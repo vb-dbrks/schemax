@@ -556,8 +556,7 @@ def naming_group() -> None:
 
     Naming standards are stored under settings.namingStandards and are used by
     validate, sql, and apply. Use 'naming show' to see the current config and
-    'naming load-template' to apply a preset (databricks, warehouse, camelcase,
-    pascalcase).
+    'naming load-template' to apply a preset (databricks, warehouse).
     """
 
 
@@ -742,7 +741,7 @@ def naming_remove_rule(object_type: str, workspace: str) -> None:
 @naming_group.command(name="load-template")
 @click.argument(
     "preset",
-    type=click.Choice(["databricks", "warehouse", "camelcase", "pascalcase"]),
+    type=click.Choice(["databricks", "warehouse"]),
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def naming_load_template(preset: str, workspace: str) -> None:
@@ -750,8 +749,6 @@ def naming_load_template(preset: str, workspace: str) -> None:
 
     databricks: lowercase snake_case for all types.
     warehouse: snake_case with prefixed table names (dim_, fact_, stg_, int_).
-    camelcase: camelCase for all types.
-    pascalcase: PascalCase for all types.
     """
     workspace_path = Path(workspace).resolve()
     try:

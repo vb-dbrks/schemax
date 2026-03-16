@@ -55,9 +55,9 @@ describe('UnityTargetSettings Component', () => {
     jest.clearAllMocks();
   });
 
-  test('renders Environment Configuration heading', () => {
+  test('renders environment configuration description', () => {
     renderComponent();
-    expect(screen.getByText('Environment Configuration')).toBeDefined();
+    expect(screen.getByText('Configure catalog mappings (Logical Isolation) for each environment.')).toBeDefined();
   });
 
   test('renders environment names (dev, prod)', () => {

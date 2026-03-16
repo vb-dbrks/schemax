@@ -49,28 +49,6 @@ const TEMPLATES: TemplatePreset[] = [
       column: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
     },
   },
-  {
-    label: 'camelCase',
-    description: 'camelCase identifiers for all types',
-    rules: {
-      catalog: { pattern: '^[a-z][a-zA-Z0-9]*$', description: 'camelCase' },
-      schema: { pattern: '^[a-z][a-zA-Z0-9]*$', description: 'camelCase' },
-      table: { pattern: '^[a-z][a-zA-Z0-9]*$', description: 'camelCase' },
-      view: { pattern: '^[a-z][a-zA-Z0-9]*$', description: 'camelCase' },
-      column: { pattern: '^[a-z][a-zA-Z0-9]*$', description: 'camelCase' },
-    },
-  },
-  {
-    label: 'PascalCase',
-    description: 'PascalCase identifiers for all types',
-    rules: {
-      catalog: { pattern: '^[A-Z][a-zA-Z0-9]*$', description: 'PascalCase' },
-      schema: { pattern: '^[A-Z][a-zA-Z0-9]*$', description: 'PascalCase' },
-      table: { pattern: '^[A-Z][a-zA-Z0-9]*$', description: 'PascalCase' },
-      view: { pattern: '^[A-Z][a-zA-Z0-9]*$', description: 'PascalCase' },
-      column: { pattern: '^[A-Z][a-zA-Z0-9]*$', description: 'PascalCase' },
-    },
-  },
 ];
 
 function emptyRule(): NamingRule {
@@ -131,6 +109,9 @@ export function NamingStandardsSettings({
 
   return (
     <div className="settings-section">
+      <p className="naming-standards-info">
+        Unity Catalog always stores and shows object names in lowercase, regardless of how they are defined here.
+      </p>
       <p
         className="section-description"
         title="Violations on add are blocked; violations on rename show a warning."
