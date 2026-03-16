@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { VSCodeButton, VSCodeTextField } from "@vscode/webview-ui-toolkit/react";
 import type { TargetConfig } from "../../models/unity";
-import { CollapsibleSection } from "./CollapsibleSection";
 
 const ALL_MANAGED_CATEGORIES = [
   { id: "catalog_structure", label: "Catalog structure" },
@@ -190,12 +189,11 @@ export function UnityTargetSettings({
 
   return (
     <>
-      <CollapsibleSection title="Environment Configuration">
-        <p className="section-description">
-          Configure catalog mappings (Logical Isolation) for each environment.
-        </p>
+      <p className="section-description">
+        Configure catalog mappings (Logical Isolation) for each environment.
+      </p>
 
-        {Object.entries(environments).map(([envName, envConfig]) => (
+      {Object.entries(environments).map(([envName, envConfig]) => (
           <div key={envName} className="environment-section">
             <div className="env-header" onClick={() => toggleEnv(envName)}>
               <span className="env-toggle">{expandedEnvs.has(envName) ? "▼" : "▶"}</span>
@@ -333,8 +331,7 @@ export function UnityTargetSettings({
               </div>
             )}
           </div>
-        ))}
-      </CollapsibleSection>
+      ))}
     </>
   );
 }

@@ -41,6 +41,20 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
     editedProject.defaultTarget || targetNames[0] || "default"
   );
 
+  // Section expand/collapse
+  const [envOpen, setEnvOpen] = useState(true);
+  const [namingOpen, setNamingOpen] = useState(true);
+  const [physicalOpen, setPhysicalOpen] = useState(true);
+  const [externalOpen, setExternalOpen] = useState(true);
+  const allExpanded = envOpen && namingOpen && physicalOpen && externalOpen;
+  const toggleAllSections = () => {
+    const next = !allExpanded;
+    setEnvOpen(next);
+    setNamingOpen(next);
+    setPhysicalOpen(next);
+    setExternalOpen(next);
+  };
+
   // Location modal state
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [locationModalData, setLocationModalData] = useState<LocationModalData | null>(null);
@@ -260,9 +274,25 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
             </div>
           </div>
 
-          {/* Target Tabs */}
+          {/* Sections toolbar */}
+          <div className="sections-toolbar">
+            <button
+              type="button"
+              className="sections-toggle-all-btn"
+              onClick={toggleAllSections}
+              title={allExpanded ? "Collapse all sections" : "Expand all sections"}
+            >
+              {allExpanded ? "−" : "+"}
+            </button>
+          </div>
+
+          {/* Environment Configuration */}
           {targetNames.length > 0 && (
-            <>
+            <CollapsibleSection
+              title="Environment Configuration"
+              isOpen={envOpen}
+              onToggle={() => setEnvOpen((v) => !v)}
+            >
               <div className="target-tabs">
                 {targetNames.map((tName) => {
                   const tCfg = editedProject.targets[tName];
@@ -281,10 +311,14 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
               </div>
 
               {activeTargetConfig && renderTargetSettings(activeTargetTab, activeTargetConfig)}
-            </>
+            </CollapsibleSection>
           )}
 
-          <CollapsibleSection title="Naming Standards">
+          <CollapsibleSection
+            title="Naming Standards"
+            isOpen={namingOpen}
+            onToggle={() => setNamingOpen((v) => !v)}
+          >
             <NamingStandardsSettings
               config={editedProject.settings?.namingStandards as NamingStandardsConfig | undefined}
               onChange={(updated) => {
@@ -297,7 +331,11 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
             />
           </CollapsibleSection>
 
-          <CollapsibleSection title="Physical Isolation (Managed Tables)">
+          <CollapsibleSection
+            title="Physical Isolation (Managed Tables)"
+            isOpen={physicalOpen}
+            onToggle={() => setPhysicalOpen((v) => !v)}
+          >
             <div className="settings-section">
               <p className="section-description">
               Configure storage locations for managed tables at the catalog or schema level. Define
@@ -354,7 +392,11 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
             </div>
           </CollapsibleSection>
 
-          <CollapsibleSection title="External Locations (External Tables)">
+          <CollapsibleSection
+            title="External Locations (External Tables)"
+            isOpen={externalOpen}
+            onToggle={() => setExternalOpen((v) => !v)}
+          >
             <div className="settings-section">
               <p className="section-description">
               Configure storage locations for external tables. Define location names here and

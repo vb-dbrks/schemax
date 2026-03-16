@@ -2534,6 +2534,67 @@ body {
   opacity: 0.6;
 }
 
+.sections-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.sections-toggle-all-btn {
+  background: none;
+  border: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+}
+
+.sections-toggle-all-btn:hover {
+  opacity: 1;
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.env-list-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.env-list-header .section-description {
+  margin: 0;
+  flex: 1;
+}
+
+.env-toggle-all-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+}
+
+.env-toggle-all-btn:hover {
+  opacity: 1;
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
 /* Environment Sections */
 .environment-section {
   border: 1px solid var(--vscode-panel-border);

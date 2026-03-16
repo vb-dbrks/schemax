@@ -4,21 +4,27 @@ interface CollapsibleSectionProps {
   title: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  isOpen?: boolean;
+  onToggle?: () => void;
 }
 
 export function CollapsibleSection({
   title,
   children,
   defaultOpen = true,
+  isOpen,
+  onToggle,
 }: CollapsibleSectionProps): React.ReactElement {
-  const [open, setOpen] = useState(defaultOpen);
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const open = isOpen !== undefined ? isOpen : internalOpen;
+  const handleToggle = onToggle ?? (() => setInternalOpen((v) => !v));
 
   return (
     <div className="collapsible-section">
       <button
         type="button"
         className="collapsible-section__header"
-        onClick={() => setOpen(!open)}
+        onClick={handleToggle}
         aria-expanded={open}
         aria-controls={`collapsible-${title.replace(/\s+/g, "-")}`}
       >
