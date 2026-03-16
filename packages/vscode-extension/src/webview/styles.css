@@ -2513,7 +2513,9 @@ body {
   font-family: inherit;
   font-size: 13px;
   text-align: left;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .target-tab:hover {

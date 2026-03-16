@@ -72,8 +72,11 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
   const environmentNames = Object.keys(activeTargetConfig?.environments || {});
 
   const handleSave = () => {
-    const naming = (editedProject as { settings?: { namingStandards?: Record<string, { pattern?: string; enabled?: boolean }> } })
-      .settings?.namingStandards;
+    const naming = (
+      editedProject as {
+        settings?: { namingStandards?: Record<string, { pattern?: string; enabled?: boolean }> };
+      }
+    ).settings?.namingStandards;
     if (naming) {
       const objectTypes = ["catalog", "schema", "table", "view", "column"] as const;
       for (const key of objectTypes) {
@@ -133,7 +136,13 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
     environmentNames.forEach((env) => {
       if (!(env in paths)) paths[env] = "";
     });
-    setLocationModalData({ type, mode: "edit", name, description: location.description || "", paths });
+    setLocationModalData({
+      type,
+      mode: "edit",
+      name,
+      description: location.description || "",
+      paths,
+    });
     setShowLocationModal(true);
   };
 
@@ -161,7 +170,9 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
 
     if (mode === "add") {
       const existing =
-        type === "managed" ? editedProject.managedLocations || {} : editedProject.externalLocations || {};
+        type === "managed"
+          ? editedProject.managedLocations || {}
+          : editedProject.externalLocations || {};
       if (name in existing) {
         alert(`A ${type} location with name "${name}" already exists`);
         return;
@@ -304,7 +315,9 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
                       onClick={() => setActiveTargetTab(tName)}
                     >
                       <span className="target-tab__name">{tName}</span>
-                      <span className="target-tab__provider">{tCfg?.type} · v{tCfg?.version}</span>
+                      <span className="target-tab__provider">
+                        {tCfg?.type} · v{tCfg?.version}
+                      </span>
                     </button>
                   );
                 })}
@@ -338,57 +351,57 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
           >
             <div className="settings-section">
               <p className="section-description">
-              Configure storage locations for managed tables at the catalog or schema level. Define
-              location names here and specify paths for each environment.
-            </p>
+                Configure storage locations for managed tables at the catalog or schema level.
+                Define location names here and specify paths for each environment.
+              </p>
 
-            {Object.keys((editedProject.managedLocations as LocationMap) || {}).length > 0 ? (
-              <div className="location-list">
-                {Object.entries((editedProject.managedLocations as LocationMap) || {}).map(
-                  ([name, location]) => (
-                    <div key={name} className="location-item">
-                      <div className="location-header">
-                        <strong>{name}</strong>
-                        <div className="location-actions">
-                          <VSCodeButton
-                            appearance="icon"
-                            onClick={() => openEditLocationModal("managed", name)}
-                          >
-                            ✏️
-                          </VSCodeButton>
-                          <VSCodeButton
-                            appearance="icon"
-                            onClick={() => confirmDeleteLocation("managed", name)}
-                          >
-                            🗑️
-                          </VSCodeButton>
+              {Object.keys((editedProject.managedLocations as LocationMap) || {}).length > 0 ? (
+                <div className="location-list">
+                  {Object.entries((editedProject.managedLocations as LocationMap) || {}).map(
+                    ([name, location]) => (
+                      <div key={name} className="location-item">
+                        <div className="location-header">
+                          <strong>{name}</strong>
+                          <div className="location-actions">
+                            <VSCodeButton
+                              appearance="icon"
+                              onClick={() => openEditLocationModal("managed", name)}
+                            >
+                              ✏️
+                            </VSCodeButton>
+                            <VSCodeButton
+                              appearance="icon"
+                              onClick={() => confirmDeleteLocation("managed", name)}
+                            >
+                              🗑️
+                            </VSCodeButton>
+                          </div>
+                        </div>
+                        {location.description && (
+                          <p className="location-description">{location.description}</p>
+                        )}
+                        <div className="location-paths">
+                          {Object.entries(location.paths).map(([env, path]) => (
+                            <div key={env} className="path-row">
+                              <span className="path-env">{env}</span>
+                              <code className="path-value">{path}</code>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      {location.description && (
-                        <p className="location-description">{location.description}</p>
-                      )}
-                      <div className="location-paths">
-                        {Object.entries(location.paths).map(([env, path]) => (
-                          <div key={env} className="path-row">
-                            <span className="path-env">{env}</span>
-                            <code className="path-value">{path}</code>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                )}
-              </div>
-            ) : (
-              <div className="empty-state">
-                No managed locations configured. Catalogs and schemas will use the provider's
-                default storage.
-              </div>
-            )}
+                    )
+                  )}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  No managed locations configured. Catalogs and schemas will use the provider's
+                  default storage.
+                </div>
+              )}
 
-            <VSCodeButton onClick={() => openAddLocationModal("managed")}>
-              + Add Managed Location
-            </VSCodeButton>
+              <VSCodeButton onClick={() => openAddLocationModal("managed")}>
+                + Add Managed Location
+              </VSCodeButton>
             </div>
           </CollapsibleSection>
 
@@ -399,54 +412,54 @@ export function ProjectSettingsPanel({ project, onClose }: ProjectSettingsPanelP
           >
             <div className="settings-section">
               <p className="section-description">
-              Configure storage locations for external tables. Define location names here and
-              specify paths for each environment.
-            </p>
+                Configure storage locations for external tables. Define location names here and
+                specify paths for each environment.
+              </p>
 
-            {Object.keys((editedProject.externalLocations as LocationMap) || {}).length > 0 ? (
-              <div className="location-list">
-                {Object.entries((editedProject.externalLocations as LocationMap) || {}).map(
-                  ([name, location]) => (
-                    <div key={name} className="location-item">
-                      <div className="location-header">
-                        <strong>{name}</strong>
-                        <div className="location-actions">
-                          <VSCodeButton
-                            appearance="icon"
-                            onClick={() => openEditLocationModal("external", name)}
-                          >
-                            ✏️
-                          </VSCodeButton>
-                          <VSCodeButton
-                            appearance="icon"
-                            onClick={() => confirmDeleteLocation("external", name)}
-                          >
-                            🗑️
-                          </VSCodeButton>
+              {Object.keys((editedProject.externalLocations as LocationMap) || {}).length > 0 ? (
+                <div className="location-list">
+                  {Object.entries((editedProject.externalLocations as LocationMap) || {}).map(
+                    ([name, location]) => (
+                      <div key={name} className="location-item">
+                        <div className="location-header">
+                          <strong>{name}</strong>
+                          <div className="location-actions">
+                            <VSCodeButton
+                              appearance="icon"
+                              onClick={() => openEditLocationModal("external", name)}
+                            >
+                              ✏️
+                            </VSCodeButton>
+                            <VSCodeButton
+                              appearance="icon"
+                              onClick={() => confirmDeleteLocation("external", name)}
+                            >
+                              🗑️
+                            </VSCodeButton>
+                          </div>
+                        </div>
+                        {location.description && (
+                          <p className="location-description">{location.description}</p>
+                        )}
+                        <div className="location-paths">
+                          {Object.entries(location.paths).map(([env, path]) => (
+                            <div key={env} className="path-row">
+                              <span className="path-env">{env}</span>
+                              <code className="path-value">{path}</code>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      {location.description && (
-                        <p className="location-description">{location.description}</p>
-                      )}
-                      <div className="location-paths">
-                        {Object.entries(location.paths).map(([env, path]) => (
-                          <div key={env} className="path-row">
-                            <span className="path-env">{env}</span>
-                            <code className="path-value">{path}</code>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                )}
-              </div>
-            ) : (
-              <div className="empty-state">No external locations configured.</div>
-            )}
+                    )
+                  )}
+                </div>
+              ) : (
+                <div className="empty-state">No external locations configured.</div>
+              )}
 
-            <VSCodeButton onClick={() => openAddLocationModal("external")}>
-              + Add External Location
-            </VSCodeButton>
+              <VSCodeButton onClick={() => openAddLocationModal("external")}>
+                + Add External Location
+              </VSCodeButton>
             </div>
           </CollapsibleSection>
         </div>

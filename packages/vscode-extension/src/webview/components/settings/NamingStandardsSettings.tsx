@@ -1,58 +1,58 @@
-import React, { useState } from 'react';
-import { VSCodeButton, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
-import type { NamingStandardsConfig, NamingRule } from '../../models/unity';
+import React, { useState } from "react";
+import { VSCodeButton, VSCodeTextField } from "@vscode/webview-ui-toolkit/react";
+import type { NamingStandardsConfig, NamingRule } from "../../models/unity";
 
 interface NamingStandardsSettingsProps {
   config: NamingStandardsConfig | undefined;
   onChange: (config: NamingStandardsConfig) => void;
 }
 
-type ObjectTypeName = 'catalog' | 'schema' | 'table' | 'view' | 'column';
+type ObjectTypeName = "catalog" | "schema" | "table" | "view" | "column";
 
 const OBJECT_TYPES: { key: ObjectTypeName; label: string }[] = [
-  { key: 'catalog', label: 'Catalog' },
-  { key: 'schema', label: 'Schema' },
-  { key: 'table', label: 'Table' },
-  { key: 'view', label: 'View' },
-  { key: 'column', label: 'Column' },
+  { key: "catalog", label: "Catalog" },
+  { key: "schema", label: "Schema" },
+  { key: "table", label: "Table" },
+  { key: "view", label: "View" },
+  { key: "column", label: "Column" },
 ];
 
 interface TemplatePreset {
   label: string;
   description: string;
-  rules: Partial<Record<ObjectTypeName, Pick<NamingRule, 'pattern' | 'description'>>>;
+  rules: Partial<Record<ObjectTypeName, Pick<NamingRule, "pattern" | "description">>>;
 }
 
 const TEMPLATES: TemplatePreset[] = [
   {
-    label: 'Databricks Best Practices',
-    description: 'Lowercase snake_case for all object types',
+    label: "Databricks Best Practices",
+    description: "Lowercase snake_case for all object types",
     rules: {
-      catalog: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
-      schema: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
-      table: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
-      view: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
-      column: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
+      catalog: { pattern: "^[a-z][a-z0-9_]*$", description: "Lowercase snake_case" },
+      schema: { pattern: "^[a-z][a-z0-9_]*$", description: "Lowercase snake_case" },
+      table: { pattern: "^[a-z][a-z0-9_]*$", description: "Lowercase snake_case" },
+      view: { pattern: "^[a-z][a-z0-9_]*$", description: "Lowercase snake_case" },
+      column: { pattern: "^[a-z][a-z0-9_]*$", description: "Lowercase snake_case" },
     },
   },
   {
-    label: 'Data Warehouse Patterns',
-    description: 'Prefixed tables (dim_, fact_, stg_, int_), snake_case others',
+    label: "Data Warehouse Patterns",
+    description: "Prefixed tables (dim_, fact_, stg_, int_), snake_case others",
     rules: {
-      catalog: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
-      schema: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
+      catalog: { pattern: "^[a-z][a-z0-9_]*$", description: "Lowercase snake_case" },
+      schema: { pattern: "^[a-z][a-z0-9_]*$", description: "Lowercase snake_case" },
       table: {
-        pattern: '^(dim_|fact_|stg_|int_)[a-z0-9_]+$',
-        description: 'Prefixed table names',
+        pattern: "^(dim_|fact_|stg_|int_)[a-z0-9_]+$",
+        description: "Prefixed table names",
       },
-      view: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
-      column: { pattern: '^[a-z][a-z0-9_]*$', description: 'Lowercase snake_case' },
+      view: { pattern: "^[a-z][a-z0-9_]*$", description: "Lowercase snake_case" },
+      column: { pattern: "^[a-z][a-z0-9_]*$", description: "Lowercase snake_case" },
     },
   },
 ];
 
 function emptyRule(): NamingRule {
-  return { pattern: '', enabled: true, description: '' };
+  return { pattern: "", enabled: true, description: "" };
 }
 
 function applyTemplate(
@@ -110,7 +110,8 @@ export function NamingStandardsSettings({
   return (
     <div className="settings-section">
       <p className="naming-standards-info">
-        Unity Catalog always stores and shows object names in lowercase, regardless of how they are defined here.
+        Unity Catalog always stores and shows object names in lowercase, regardless of how they are
+        defined here.
       </p>
       <p
         className="section-description"
@@ -121,10 +122,7 @@ export function NamingStandardsSettings({
 
       <div className="naming-standards-header">
         <div className="naming-standards-options">
-          <label
-            className="naming-standards-checkbox"
-            title="Shows warning, not a hard block"
-          >
+          <label className="naming-standards-checkbox" title="Shows warning, not a hard block">
             <input
               type="checkbox"
               checked={config?.applyToRenames ?? false}
@@ -154,7 +152,7 @@ export function NamingStandardsSettings({
           onClick={() => setShowTemplates((v) => !v)}
           title="Apply a naming template to fill in patterns"
         >
-          {showTemplates ? 'Hide Templates' : 'Load Template'}
+          {showTemplates ? "Hide Templates" : "Load Template"}
         </VSCodeButton>
       </div>
 
@@ -185,7 +183,7 @@ export function NamingStandardsSettings({
           const rule = config?.[key];
           const enabled = rule?.enabled ?? false;
           return (
-            <div key={key} className={`naming-standards-rule ${enabled ? 'is-enabled' : ''}`}>
+            <div key={key} className={`naming-standards-rule ${enabled ? "is-enabled" : ""}`}>
               <div className="naming-standards-rule-header">
                 <label className="naming-standards-checkbox">
                   <input
@@ -202,13 +200,13 @@ export function NamingStandardsSettings({
                   <div className="naming-standards-field">
                     <label>Pattern (regex)</label>
                     <VSCodeTextField
-                      value={rule?.pattern ?? ''}
+                      value={rule?.pattern ?? ""}
                       placeholder="e.g. ^[a-z][a-z0-9_]*$"
                       onInput={(e) =>
-                        handleRuleChange(key, 'pattern', (e.target as HTMLInputElement).value)
+                        handleRuleChange(key, "pattern", (e.target as HTMLInputElement).value)
                       }
                     />
-                    {(rule?.pattern ?? '').trim() === '' && (
+                    {(rule?.pattern ?? "").trim() === "" && (
                       <p className="field-error" style={{ marginTop: 4, fontSize: 12 }}>
                         Pattern is required.
                       </p>
@@ -217,10 +215,10 @@ export function NamingStandardsSettings({
                   <div className="naming-standards-field">
                     <label>Description (optional)</label>
                     <VSCodeTextField
-                      value={rule?.description ?? ''}
+                      value={rule?.description ?? ""}
                       placeholder="e.g. Lowercase snake_case"
                       onInput={(e) =>
-                        handleRuleChange(key, 'description', (e.target as HTMLInputElement).value)
+                        handleRuleChange(key, "description", (e.target as HTMLInputElement).value)
                       }
                     />
                   </div>

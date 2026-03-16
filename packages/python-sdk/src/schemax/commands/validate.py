@@ -6,7 +6,7 @@ Validates SchemaX project files and state structure.
 
 import json
 import traceback
-import warnings
+import warnings as _warnings
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -210,7 +210,7 @@ def get_naming_validation_errors_and_warnings(
     try:
         return _compute()
     except Exception as e:
-        warnings.warn(
+        _warnings.warn(
             f"Naming validation skipped due to unexpected error: {e}",
             stacklevel=2,
         )

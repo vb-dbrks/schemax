@@ -1,5 +1,5 @@
-import React from 'react';
-import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
+import React from "react";
+import { VSCodeButton } from "@vscode/webview-ui-toolkit/react";
 
 interface NamingWarningModalProps {
   /** The full error message from Python (includes pattern info). */
@@ -54,7 +54,7 @@ export const NamingWarningModal: React.FC<NamingWarningModalProps> = ({
             Go Back
           </VSCodeButton>
           <VSCodeButton appearance="secondary" onClick={onProceed}>
-            {proceedLabel ?? 'Rename Anyway'}
+            {proceedLabel ?? "Rename Anyway"}
           </VSCodeButton>
         </div>
       </div>

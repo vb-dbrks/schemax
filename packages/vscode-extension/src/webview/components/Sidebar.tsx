@@ -418,7 +418,7 @@ export const Sidebar: React.FC = () => {
     const namingStandards = project?.settings?.namingStandards;
     const applyToRenames = namingStandards?.applyToRenames ?? false;
     const namingTypes = ["catalog", "schema", "table", "view"] as const;
-    type NamingType = typeof namingTypes[number];
+    type NamingType = (typeof namingTypes)[number];
     const isNamingType = (t: string): t is NamingType =>
       (namingTypes as readonly string[]).includes(t);
 
@@ -651,15 +651,23 @@ export const Sidebar: React.FC = () => {
       const result = await validateNaming(trimmedName, namingObjectType);
       if (!result.valid && result.error) {
         if (namingStandards?.strictMode) {
-          setAddError(result.error + (result.suggestion ? ` Suggestion: ${result.suggestion}` : ""));
+          setAddError(
+            result.error + (result.suggestion ? ` Suggestion: ${result.suggestion}` : "")
+          );
           return;
         } else {
           setNamingWarningModal({
             error: result.error,
             suggestion: result.suggestion,
-            proceedLabel: 'Add Anyway',
-            onUseSuggestion: (s) => { setNamingWarningModal(null); doAdd(s); },
-            onProceed: () => { setNamingWarningModal(null); doAdd(trimmedName); },
+            proceedLabel: "Add Anyway",
+            onUseSuggestion: (s) => {
+              setNamingWarningModal(null);
+              doAdd(s);
+            },
+            onProceed: () => {
+              setNamingWarningModal(null);
+              doAdd(trimmedName);
+            },
           });
           return;
         }

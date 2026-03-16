@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { getVsCodeApi } from '../vscode-api';
+import { useState, useCallback } from "react";
+import { getVsCodeApi } from "../vscode-api";
 
 export interface NameValidationResult {
   valid: boolean;
@@ -24,14 +24,14 @@ export function useNameValidation(): {
       setPending(true);
       return new Promise<NameValidationResult>((resolve) => {
         const handler = (event: MessageEvent) => {
-          if (event.data?.type === 'name-validation-result') {
-            window.removeEventListener('message', handler);
+          if (event.data?.type === "name-validation-result") {
+            window.removeEventListener("message", handler);
             setPending(false);
             resolve(event.data.payload as NameValidationResult);
           }
         };
-        window.addEventListener('message', handler);
-        vscode.postMessage({ type: 'validate-name', payload: { name, objectType } });
+        window.addEventListener("message", handler);
+        vscode.postMessage({ type: "validate-name", payload: { name, objectType } });
       });
     },
     []

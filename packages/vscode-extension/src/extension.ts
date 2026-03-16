@@ -1792,7 +1792,8 @@ async function openDesigner(context: vscode.ExtensionContext) {
             outputChannel.appendLine(`[SchemaX] Updating project configuration`);
 
             const currentProject = await storageV4.readProject(workspaceFolder.uri);
-            const payloadNaming = (payload.settings as Record<string, unknown> | undefined)?.namingStandards;
+            const payloadNaming = (payload.settings as Record<string, unknown> | undefined)
+              ?.namingStandards;
             const currentNaming = (currentProject as Record<string, unknown>).settings as
               | Record<string, unknown>
               | undefined;
@@ -1805,13 +1806,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
                 (payload.settings as Record<string, unknown>)?.namingStandards ?? {}
               );
               const applyResult = await pythonBackend.run(
-                [
-                  "naming",
-                  "apply",
-                  "--json",
-                  namingJson,
-                  workspaceFolder.uri.fsPath,
-                ],
+                ["naming", "apply", "--json", namingJson, workspaceFolder.uri.fsPath],
                 workspaceFolder.uri.fsPath
               );
               if (!applyResult.success) {
@@ -1836,7 +1831,10 @@ async function openDesigner(context: vscode.ExtensionContext) {
               namingStandards: diskSettings?.namingStandards ?? payloadSettings.namingStandards,
             };
 
-            await storageV4.writeProject(workspaceFolder.uri, mergedProject as Parameters<typeof storageV4.writeProject>[1]);
+            await storageV4.writeProject(
+              workspaceFolder.uri,
+              mergedProject as Parameters<typeof storageV4.writeProject>[1]
+            );
 
             const project = await storageV4.readProject(workspaceFolder.uri);
             const { state, changelog, provider } = await storageV4.loadCurrentState(
@@ -1922,9 +1920,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         }
         case "validate-name": {
           const { name, objectType } = message.payload as { name: string; objectType: string };
-          outputChannel.appendLine(
-            `[SchemaX] validate-name: name="${name}" type="${objectType}"`
-          );
+          outputChannel.appendLine(`[SchemaX] validate-name: name="${name}" type="${objectType}"`);
           try {
             const envelope = await pythonBackend.runJson<{
               valid: boolean;
@@ -1936,7 +1932,15 @@ async function openDesigner(context: vscode.ExtensionContext) {
               description: string | null;
             }>(
               "validate-name",
-              ["validate", "--naming", "--name", name, "--type", objectType, workspaceFolder.uri.fsPath],
+              [
+                "validate",
+                "--naming",
+                "--name",
+                name,
+                "--type",
+                objectType,
+                workspaceFolder.uri.fsPath,
+              ],
               workspaceFolder.uri.fsPath
             );
             const result = envelope.data ?? { valid: true };
