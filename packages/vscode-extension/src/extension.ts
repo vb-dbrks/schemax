@@ -1298,15 +1298,17 @@ async function openDesigner(context: vscode.ExtensionContext) {
   // Helper function to reload project data and send to webview
   async function reloadProject(
     workspaceFolder: vscode.WorkspaceFolder,
-    panel: vscode.WebviewPanel | undefined
+    panel: vscode.WebviewPanel | undefined,
+    options?: { validate?: boolean }
   ) {
     if (!panel) return;
 
+    const runValidation = options?.validate ?? false;
     try {
       const project = await storageV4.readProject(workspaceFolder.uri);
       const { state, changelog, provider, validationResult } = await storageV4.loadCurrentState(
         workspaceFolder.uri,
-        true
+        runValidation
       );
 
       // Check for conflicts
@@ -1356,7 +1358,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
         ops: changelog.ops,
         conflicts,
         staleSnapshots: staleSnapshots.length > 0 ? staleSnapshots : null,
-        validationResult,
+        validationResult: runValidation ? validationResult : null,
         provider: {
           ...defaultTarget,
           id: provider.id,
@@ -1390,12 +1392,12 @@ async function openDesigner(context: vscode.ExtensionContext) {
   // Reload project when conflict files are created or deleted
   conflictWatcher.onDidCreate(async () => {
     outputChannel.appendLine("[SchemaX] Conflict file detected - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   conflictWatcher.onDidDelete(async () => {
     outputChannel.appendLine("[SchemaX] Conflict file removed - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   // Watch for snapshot file changes (to detect stale snapshots)
@@ -1405,17 +1407,17 @@ async function openDesigner(context: vscode.ExtensionContext) {
   // Reload project when snapshots are created, changed, or deleted
   snapshotsWatcher.onDidCreate(async () => {
     outputChannel.appendLine("[SchemaX] Snapshot file created - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   snapshotsWatcher.onDidChange(async () => {
     outputChannel.appendLine("[SchemaX] Snapshot file changed - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   snapshotsWatcher.onDidDelete(async () => {
     outputChannel.appendLine("[SchemaX] Snapshot file deleted - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   // Watch for project.json changes (snapshot metadata)
@@ -1424,7 +1426,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
 
   projectJsonWatcher.onDidChange(async () => {
     outputChannel.appendLine("[SchemaX] project.json changed - reloading project");
-    await reloadProject(workspaceFolder, currentPanel);
+    await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
   // Reset when panel is closed
@@ -1443,7 +1445,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
       switch (message.type) {
         case "refresh-project": {
           outputChannel.appendLine("[SchemaX] Manual refresh requested");
-          await reloadProject(workspaceFolder, currentPanel);
+          await reloadProject(workspaceFolder, currentPanel, { validate: true });
           break;
         }
 
@@ -1757,7 +1759,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
               throw new Error(`[${errorCode}] ${errorMessage}`);
             }
 
-            await reloadProject(workspaceFolder, currentPanel);
+            await reloadProject(workspaceFolder, currentPanel, { validate: false });
             currentPanel?.webview.postMessage({
               type: "undo-completed",
               payload: {
@@ -1786,13 +1788,54 @@ async function openDesigner(context: vscode.ExtensionContext) {
         }
         case "update-project-config": {
           try {
-            const updatedProject = message.payload;
+            const payload = message.payload as Record<string, unknown>;
             outputChannel.appendLine(`[SchemaX] Updating project configuration`);
 
-            // Write updated project to disk
-            await storageV4.writeProject(workspaceFolder.uri, updatedProject);
+            const currentProject = await storageV4.readProject(workspaceFolder.uri);
+            const payloadNaming = (payload.settings as Record<string, unknown> | undefined)
+              ?.namingStandards;
+            const currentNaming = (currentProject as Record<string, unknown>).settings as
+              | Record<string, unknown>
+              | undefined;
+            const namingChanged =
+              JSON.stringify(payloadNaming ?? {}) !==
+              JSON.stringify((currentNaming?.namingStandards as Record<string, unknown>) ?? {});
 
-            // Reload state and provider
+            if (namingChanged) {
+              const namingJson = JSON.stringify(
+                (payload.settings as Record<string, unknown>)?.namingStandards ?? {}
+              );
+              const applyResult = await pythonBackend.run(
+                ["naming", "apply", "--json", namingJson, workspaceFolder.uri.fsPath],
+                workspaceFolder.uri.fsPath
+              );
+              if (!applyResult.success) {
+                outputChannel.appendLine(
+                  `[SchemaX] ERROR: naming apply failed: ${applyResult.stderr || applyResult.stdout}`
+                );
+                vscode.window.showErrorMessage(
+                  `Failed to apply naming standards: ${applyResult.stderr || applyResult.stdout || "CLI failed"}. Check SchemaX output.`
+                );
+                break;
+              }
+            }
+
+            const projectFromDisk = await storageV4.readProject(workspaceFolder.uri);
+            const mergedProject = { ...payload } as Record<string, unknown>;
+            const diskSettings = (projectFromDisk as Record<string, unknown>).settings as
+              | Record<string, unknown>
+              | undefined;
+            const payloadSettings = (payload.settings as Record<string, unknown>) ?? {};
+            mergedProject.settings = {
+              ...payloadSettings,
+              namingStandards: diskSettings?.namingStandards ?? payloadSettings.namingStandards,
+            };
+
+            await storageV4.writeProject(
+              workspaceFolder.uri,
+              mergedProject as Parameters<typeof storageV4.writeProject>[1]
+            );
+
             const project = await storageV4.readProject(workspaceFolder.uri);
             const { state, changelog, provider } = await storageV4.loadCurrentState(
               workspaceFolder.uri,
@@ -1801,7 +1844,6 @@ async function openDesigner(context: vscode.ExtensionContext) {
 
             outputChannel.appendLine(`[SchemaX] Project configuration updated successfully`);
 
-            // Send updated data to webview
             const updatedDefaultTarget = storageV4.getTargetConfig(project);
             const payloadForWebview = {
               ...project,
@@ -1852,10 +1894,10 @@ async function openDesigner(context: vscode.ExtensionContext) {
             const result = await runImportWithRequest(workspaceFolder, request, currentPanel);
             const wasDryRun = isImportFromSql(request) ? request.fromSql.dryRun : request.dryRun;
             if (result.success && !wasDryRun) {
-              await reloadProject(workspaceFolder, currentPanel);
+              await reloadProject(workspaceFolder, currentPanel, { validate: false });
             } else if (result.cancelled && !wasDryRun) {
               // Re-sync UI with disk in case cancellation happened during file writes.
-              await reloadProject(workspaceFolder, currentPanel);
+              await reloadProject(workspaceFolder, currentPanel, { validate: false });
             }
           } catch (error) {
             outputChannel.appendLine(`[SchemaX] ERROR: Import run failed: ${error}`);
@@ -1874,6 +1916,45 @@ async function openDesigner(context: vscode.ExtensionContext) {
         case "cancel-import": {
           cancelActiveImport();
           outputChannel.appendLine("[SchemaX] Import cancellation requested from webview");
+          break;
+        }
+        case "validate-name": {
+          const { name, objectType } = message.payload as { name: string; objectType: string };
+          outputChannel.appendLine(`[SchemaX] validate-name: name="${name}" type="${objectType}"`);
+          try {
+            const envelope = await pythonBackend.runJson<{
+              valid: boolean;
+              name: string;
+              objectType: string;
+              error: string | null;
+              suggestion: string | null;
+              pattern: string | null;
+              description: string | null;
+            }>(
+              "validate-name",
+              [
+                "validate",
+                "--naming",
+                "--name",
+                name,
+                "--type",
+                objectType,
+                workspaceFolder.uri.fsPath,
+              ],
+              workspaceFolder.uri.fsPath
+            );
+            const result = envelope.data ?? { valid: true };
+            currentPanel?.webview.postMessage({
+              type: "name-validation-result",
+              payload: result,
+            });
+          } catch (error) {
+            outputChannel.appendLine(`[SchemaX] ERROR: validate-name failed: ${error}`);
+            currentPanel?.webview.postMessage({
+              type: "name-validation-result",
+              payload: { valid: true },
+            });
+          }
           break;
         }
       }

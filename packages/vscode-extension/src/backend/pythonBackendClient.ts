@@ -163,7 +163,7 @@ export class PythonBackendClient {
         cwd,
         rendered,
         candidate.useShell,
-        options,
+        options
       );
       if (result.cancelled) {
         return result;
@@ -172,7 +172,9 @@ export class PythonBackendClient {
         this.log(`[SchemaX] Command succeeded: ${rendered}`);
         return result;
       }
-      this.log(`[SchemaX] Command failed (exit ${result.exitCode}): ${result.stderr?.split("\n")[0] ?? ""}`);
+      this.log(
+        `[SchemaX] Command failed (exit ${result.exitCode}): ${result.stderr?.split("\n")[0] ?? ""}`
+      );
       lastFailure = result;
     }
     return lastFailure;
@@ -251,7 +253,7 @@ export class PythonBackendClient {
     cwd: string,
     renderedCommand: string,
     useShell: boolean,
-    options: RunOptions,
+    options: RunOptions
   ): Promise<PythonCommandResult> {
     return new Promise((resolve) => {
       if (options.signal?.aborted) {

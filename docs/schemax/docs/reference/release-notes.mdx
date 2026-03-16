@@ -6,6 +6,29 @@ This page summarizes coordinated SchemaX releases across:
 - VS Code extension (`schemax-vscode`)
 - Documentation site (`docs/schemax`)
 
+## 0.2.12 (2026-03-16)
+
+### Highlights
+
+- **Naming Standards** — Define and enforce regex-based naming conventions for catalogs, schemas, tables, views, and columns. Rules are stored in `project.json` under `settings.namingStandards` and checked on add/rename in the Designer, and during `validate`, `sql`, and `apply`.
+- **`schemax naming` command group** — New CLI subcommands: `naming show`, `naming strict on|off`, `naming enforce-on-renames on|off`, `naming set-rule`, `naming remove-rule`, `naming load-template`, and `naming apply` (accepts JSON or stdin).
+- **`schemax validate --naming`** — Single-name validation: `schemax validate --naming --name my_table --type table` checks one name against the project's configured rules.
+- **Built-in templates** — Two presets available via CLI (`databricks`, `warehouse`) and VS Code (**Apply Template** button): Databricks Best Practices (lowercase snake_case) and Data Warehouse Patterns (prefixed tables).
+- **Strict mode** — When enabled, naming violations fail `validate` (exit 1) and block `sql` and `apply`. When disabled, violations appear as warnings only.
+- **Enforce on renames** — Optional soft-warning modal in the Designer when renaming an object to a non-compliant name.
+- **VS Code Naming Standards Settings panel** — New collapsible section in Project Settings with rule editor, template picker, and toggle controls.
+
+### Package versions
+
+- Python SDK/CLI: `0.2.12`
+- VS Code extension: `0.2.12`
+- Docs site package: `0.2.12`
+
+### Changelogs
+
+- [Python SDK changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/python-sdk/CHANGELOG.md)
+- [VS Code extension changelog](https://github.com/vb-dbrks/schemax-vscode/blob/main/packages/vscode-extension/CHANGELOG.md)
+
 ## 0.2.11 (2026-03-11)
 
 ### Highlights

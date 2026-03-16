@@ -6,11 +6,13 @@ Validates SchemaX project files and state structure.
 
 import json
 import traceback
+import warnings as _warnings
 from pathlib import Path
 from typing import Any, Protocol
 
 from rich.console import Console
 
+from schemax.core.naming import NamingStandardsConfig, validate_naming_standards
 from schemax.core.workspace_repository import WorkspaceRepository
 
 from .snapshot_rebase import detect_stale_snapshots
@@ -168,7 +170,60 @@ def _print_stale_snapshots_remediation(stale: list[dict]) -> None:
     console.print("[yellow]⚠️ Validation passed but snapshots need rebasing[/yellow]")
 
 
-def _run_validation_steps(
+def run_preflight_validation(
+    project: dict[str, Any],
+    state: Any,
+    changelog: dict[str, Any],
+    provider: Any,
+) -> tuple[list[str], list[str]]:
+    """Run dependency and naming validation. Returns (errors, warnings).
+
+    Used by sql and apply to fail when strict mode + naming violations or dependency errors.
+    """
+    dep_errors, dep_warnings = validate_dependencies(state, changelog.get("ops", []), provider)
+    naming_errors, naming_warnings = get_naming_validation_errors_and_warnings(project, state)
+    errors = dep_errors + naming_errors
+    warnings = dep_warnings + naming_warnings
+    return (errors, warnings)
+
+
+def get_naming_validation_errors_and_warnings(
+    project: dict[str, Any], state: Any
+) -> tuple[list[str], list[str]]:
+    """Return (errors, warnings) for naming standards.
+
+    When strict_mode is enabled, violations go to errors; otherwise to warnings.
+    Reused by validate command, workspace-state, and sql/apply pre-flight.
+    """
+
+    def _compute() -> tuple[list[str], list[str]]:
+        settings: dict[str, Any] = project.get("settings", {})
+        naming_raw: dict[str, Any] = settings.get("namingStandards", {})
+        if not naming_raw:
+            return [], []
+        config = NamingStandardsConfig.from_dict(naming_raw)
+        violations = validate_naming_standards(state, config)
+        if config.strict_mode and violations:
+            return (violations, [])
+        return ([], violations)
+
+    try:
+        return _compute()
+    except Exception as e:
+        _warnings.warn(
+            f"Naming validation skipped due to unexpected error: {e}",
+            stacklevel=2,
+        )
+        return [], []
+
+
+def _get_naming_warnings(project: dict, state: Any) -> list[str]:
+    """Return naming-standard violations as warning strings (soft check)."""
+    _errs, warnings = get_naming_validation_errors_and_warnings(project, state)
+    return warnings
+
+
+def _run_validation_steps(  # pylint: disable=too-complex
     workspace: Path,
     project: dict,
     state: Any,
@@ -176,7 +231,7 @@ def _run_validation_steps(
     provider: Any,
     json_output: bool,
 ) -> bool:
-    """Run state, dependency, and stale-snapshot checks. Returns True if valid."""
+    """Run state, dependency, naming, and stale-snapshot checks. Returns True if valid."""
     if not json_output:
         console.print("Validating project files...")
         console.print(f"  [green]✓[/green] project.json (version {project['version']})")
@@ -197,13 +252,37 @@ def _run_validation_steps(
         raise ValidationError("Circular dependencies detected")
 
     _print_dependency_status(dep_warnings, json_output)
+
+    naming_errors, naming_warnings = get_naming_validation_errors_and_warnings(project, state)
+    if naming_errors:
+        if json_output:
+            result = {
+                "valid": False,
+                "errors": naming_errors,
+                "warnings": dep_warnings,
+                "staleSnapshots": [],
+            }
+            print(json.dumps(result))
+        else:
+            console.print("[red]✗ Naming standard violations (strict mode):[/red]")
+            for msg in naming_errors:
+                console.print(f"  [red]•[/red] {msg}")
+        raise ValidationError("Naming standard violations (strict mode)")
+
+    all_warnings = dep_warnings + naming_warnings
+
+    if not json_output and naming_warnings:
+        console.print("[yellow]⚠  Naming standard violations:[/yellow]")
+        for w in naming_warnings:
+            console.print(f"  [yellow]•[/yellow] {w}")
+
     stale = detect_stale_snapshots(workspace)
 
     if json_output:
         result = {
             "valid": True,
             "errors": [],
-            "warnings": dep_warnings,
+            "warnings": all_warnings,
             "staleSnapshots": stale,
         }
         print(json.dumps(result))

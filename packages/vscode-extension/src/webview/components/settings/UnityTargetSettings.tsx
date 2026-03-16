@@ -77,13 +77,10 @@ export function UnityTargetSettings({
   onTargetConfigChange,
   onMappingErrorChange,
 }: UnityTargetSettingsProps) {
-  const environments: EnvironmentMap =
-    (targetConfig.environments as EnvironmentMap) || {};
+  const environments: EnvironmentMap = (targetConfig.environments as EnvironmentMap) || {};
   const environmentNames = Object.keys(environments);
 
-  const [expandedEnvs, setExpandedEnvs] = useState<Set<string>>(
-    new Set([activeEnv])
-  );
+  const [expandedEnvs, setExpandedEnvs] = useState<Set<string>>(new Set([activeEnv]));
   const [editingCatalog, setEditingCatalog] = useState<string | null>(null);
   const [editCatalogValue, setEditCatalogValue] = useState("");
   const [mappingTextByEnv, setMappingTextByEnv] = useState<Record<string, string>>({});
@@ -189,153 +186,144 @@ export function UnityTargetSettings({
 
   return (
     <>
-      {/* Environment Configuration */}
-      <div className="settings-section">
-        <h3>Environment Configuration</h3>
-        <p className="section-description">
-          Configure catalog mappings (Logical Isolation) for each environment.
-        </p>
+      <p className="section-description">
+        Configure catalog mappings (Logical Isolation) for each environment.
+      </p>
 
-        {Object.entries(environments).map(([envName, envConfig]) => (
-          <div key={envName} className="environment-section">
-            <div className="env-header" onClick={() => toggleEnv(envName)}>
-              <span className="env-toggle">{expandedEnvs.has(envName) ? "▼" : "▶"}</span>
-              <span className="env-name">{envName}</span>
-              {envName === activeEnv && <span className="active-indicator">● Active</span>}
-            </div>
+      {Object.entries(environments).map(([envName, envConfig]) => (
+        <div key={envName} className="environment-section">
+          <div className="env-header" onClick={() => toggleEnv(envName)}>
+            <span className="env-toggle">{expandedEnvs.has(envName) ? "▼" : "▶"}</span>
+            <span className="env-name">{envName}</span>
+            {envName === activeEnv && <span className="active-indicator">● Active</span>}
+          </div>
 
-            {expandedEnvs.has(envName) && (
-              <div className="env-content">
-                {/* Logical Isolation (Catalog Mapping) */}
-                <div className="isolation-section">
-                  <h4>Logical Isolation</h4>
-                  <p className="help-text">
-                    Configure logical-to-physical catalog mapping for this environment.
-                  </p>
+          {expandedEnvs.has(envName) && (
+            <div className="env-content">
+              {/* Logical Isolation (Catalog Mapping) */}
+              <div className="isolation-section">
+                <h4>Logical Isolation</h4>
+                <p className="help-text">
+                  Configure logical-to-physical catalog mapping for this environment.
+                </p>
 
-                  {editingCatalog === envName ? (
-                    <div className="inline-edit">
-                      <VSCodeTextField
-                        value={editCatalogValue}
-                        onInput={(e) =>
-                          setEditCatalogValue((e.target as HTMLInputElement).value)
-                        }
-                        placeholder="physical_catalog_name"
-                      />
-                      <VSCodeButton onClick={() => saveCatalogEdit(envName)}>Save</VSCodeButton>
-                      <VSCodeButton appearance="secondary" onClick={cancelCatalogEdit}>
-                        Cancel
-                      </VSCodeButton>
-                    </div>
-                  ) : (
-                    <div className="catalog-display">
-                      <span className="label">Tracking Catalog:</span>
-                      <code>{envConfig.topLevelName}</code>
-                      <VSCodeButton appearance="icon" onClick={() => startEditCatalog(envName)}>
-                        ✏️
-                      </VSCodeButton>
-                    </div>
-                  )}
-                  <div className="modal-field" style={{ marginTop: "10px" }}>
-                    <label>Catalog mappings (logical=physical)</label>
-                    <textarea
-                      className="import-bindings-textarea"
-                      value={mappingTextByEnv[envName] ?? ""}
-                      onChange={(e) => updateCatalogMappings(envName, e.target.value)}
-                      placeholder={"schemax_demo=dev_schemax_demo\nsamples=dev_samples"}
+                {editingCatalog === envName ? (
+                  <div className="inline-edit">
+                    <VSCodeTextField
+                      value={editCatalogValue}
+                      onInput={(e) => setEditCatalogValue((e.target as HTMLInputElement).value)}
+                      placeholder="physical_catalog_name"
                     />
-                    <p className="field-help">
-                      One mapping per line. SQL/apply requires mappings for all logical
-                      catalogs.
+                    <VSCodeButton onClick={() => saveCatalogEdit(envName)}>Save</VSCodeButton>
+                    <VSCodeButton appearance="secondary" onClick={cancelCatalogEdit}>
+                      Cancel
+                    </VSCodeButton>
+                  </div>
+                ) : (
+                  <div className="catalog-display">
+                    <span className="label">Tracking Catalog:</span>
+                    <code>{envConfig.topLevelName}</code>
+                    <VSCodeButton appearance="icon" onClick={() => startEditCatalog(envName)}>
+                      ✏️
+                    </VSCodeButton>
+                  </div>
+                )}
+                <div className="modal-field" style={{ marginTop: "10px" }}>
+                  <label>Catalog mappings (logical=physical)</label>
+                  <textarea
+                    className="import-bindings-textarea"
+                    value={mappingTextByEnv[envName] ?? ""}
+                    onChange={(e) => updateCatalogMappings(envName, e.target.value)}
+                    placeholder={"schemax_demo=dev_schemax_demo\nsamples=dev_samples"}
+                  />
+                  <p className="field-help">
+                    One mapping per line. SQL/apply requires mappings for all logical catalogs.
+                  </p>
+                  {mappingErrorByEnv[envName] && (
+                    <p
+                      className="field-error"
+                      style={{
+                        color: "var(--vscode-errorForeground)",
+                        marginTop: "4px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      {mappingErrorByEnv[envName]}
                     </p>
-                    {mappingErrorByEnv[envName] && (
-                      <p
-                        className="field-error"
-                        style={{
-                          color: "var(--vscode-errorForeground)",
-                          marginTop: "4px",
-                          fontSize: "12px",
-                        }}
-                      >
-                        {mappingErrorByEnv[envName]}
-                      </p>
-                    )}
-                    {logicalCatalogs.length > 0 && (
-                      <p className="field-help">
-                        Logical catalogs in project:{" "}
-                        {logicalCatalogs.map((catalog) => catalog.name).join(", ")}
-                      </p>
-                    )}
-                  </div>
+                  )}
+                  {logicalCatalogs.length > 0 && (
+                    <p className="field-help">
+                      Logical catalogs in project:{" "}
+                      {logicalCatalogs.map((catalog) => catalog.name).join(", ")}
+                    </p>
+                  )}
                 </div>
+              </div>
 
-                {/* Environment Details */}
-                <div className="isolation-section">
-                  <h4>Settings</h4>
-                  <div className="info-grid">
-                    <div className="info-row">
-                      <span className="info-label">Allow drift</span>
-                      <span className="info-value">{envConfig.allowDrift ? "Yes" : "No"}</span>
-                    </div>
-                    <div className="info-row">
-                      <span className="info-label">Require snapshot</span>
-                      <span className="info-value">
-                        {envConfig.requireSnapshot ? "Yes" : "No"}
-                      </span>
-                    </div>
+              {/* Environment Details */}
+              <div className="isolation-section">
+                <h4>Settings</h4>
+                <div className="info-grid">
+                  <div className="info-row">
+                    <span className="info-label">Allow drift</span>
+                    <span className="info-value">{envConfig.allowDrift ? "Yes" : "No"}</span>
                   </div>
-                </div>
-
-                {/* Deployment scope (managed categories) */}
-                <div className="isolation-section">
-                  <h4>Deployment scope</h4>
-                  <p className="help-text">
-                    What SchemaX manages in this environment. Governance only = comments, tags,
-                    grants, row filters, column masks (no CREATE
-                    catalog/schema/table/volume/function/materialized view).
-                  </p>
-                  <div className="managed-categories-list">
-                    {ALL_MANAGED_CATEGORIES.map(({ id, label }) => {
-                      const effective =
-                        envConfig.managedCategories ?? ALL_MANAGED_CATEGORIES.map((c) => c.id);
-                      const checked = effective.includes(id);
-                      return (
-                        <label key={id} className="managed-category-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleManagedCategory(envName, id)}
-                          />
-                          <span>{label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Existing objects (skip CREATE) */}
-                <div className="isolation-section">
-                  <h4>Existing objects</h4>
-                  <p className="help-text">
-                    Objects that already exist; SchemaX will not emit CREATE for these. Use when
-                    catalogs are created outside SchemaX.
-                  </p>
-                  <div className="modal-field" style={{ marginTop: "8px" }}>
-                    <label>Catalogs (logical names, comma or newline)</label>
-                    <textarea
-                      className="import-bindings-textarea"
-                      rows={2}
-                      value={(envConfig.existingObjects?.catalog ?? []).join(", ")}
-                      onChange={(e) => updateExistingCatalogs(envName, e.target.value)}
-                      placeholder="analytics, main"
-                    />
+                  <div className="info-row">
+                    <span className="info-label">Require snapshot</span>
+                    <span className="info-value">{envConfig.requireSnapshot ? "Yes" : "No"}</span>
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+
+              {/* Deployment scope (managed categories) */}
+              <div className="isolation-section">
+                <h4>Deployment scope</h4>
+                <p className="help-text">
+                  What SchemaX manages in this environment. Governance only = comments, tags,
+                  grants, row filters, column masks (no CREATE
+                  catalog/schema/table/volume/function/materialized view).
+                </p>
+                <div className="managed-categories-list">
+                  {ALL_MANAGED_CATEGORIES.map(({ id, label }) => {
+                    const effective =
+                      envConfig.managedCategories ?? ALL_MANAGED_CATEGORIES.map((c) => c.id);
+                    const checked = effective.includes(id);
+                    return (
+                      <label key={id} className="managed-category-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleManagedCategory(envName, id)}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Existing objects (skip CREATE) */}
+              <div className="isolation-section">
+                <h4>Existing objects</h4>
+                <p className="help-text">
+                  Objects that already exist; SchemaX will not emit CREATE for these. Use when
+                  catalogs are created outside SchemaX.
+                </p>
+                <div className="modal-field" style={{ marginTop: "8px" }}>
+                  <label>Catalogs (logical names, comma or newline)</label>
+                  <textarea
+                    className="import-bindings-textarea"
+                    rows={2}
+                    value={(envConfig.existingObjects?.catalog ?? []).join(", ")}
+                    onChange={(e) => updateExistingCatalogs(envName, e.target.value)}
+                    placeholder="analytics, main"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
     </>
   );
 }

@@ -21,6 +21,7 @@ const mockUnsetColumnTag = jest.fn();
 
 jest.mock('../../../src/webview/state/useDesignerStore', () => ({
   useDesignerStore: () => ({
+    project: null,
     addColumn: mockAddColumn,
     renameColumn: mockRenameColumn,
     dropColumn: mockDropColumn,
@@ -31,6 +32,17 @@ jest.mock('../../../src/webview/state/useDesignerStore', () => ({
     setColumnTag: mockSetColumnTag,
     unsetColumnTag: mockUnsetColumnTag,
   }),
+}));
+
+jest.mock('../../../src/webview/utils/useNameValidation', () => ({
+  useNameValidation: jest.fn(() => ({
+    validate: jest.fn(() => Promise.resolve({ valid: true, name: '', objectType: '', error: null, suggestion: null, pattern: null, description: null })),
+    pending: false,
+  })),
+}));
+
+jest.mock('../../../src/webview/components/NamingWarningModal', () => ({
+  NamingWarningModal: () => null,
 }));
 
 const columns: Column[] = [
