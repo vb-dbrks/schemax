@@ -1936,7 +1936,7 @@ async function openDesigner(context: vscode.ExtensionContext) {
               description: string | null;
             }>(
               "validate-name",
-              ["validate-name", "--name", name, "--type", objectType, workspaceFolder.uri.fsPath],
+              ["validate", "--naming", "--name", name, "--type", objectType, workspaceFolder.uri.fsPath],
               workspaceFolder.uri.fsPath
             );
             const result = envelope.data ?? { valid: true };

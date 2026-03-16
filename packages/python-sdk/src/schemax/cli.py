@@ -455,6 +455,38 @@ def _run_sql_command(
     )
 
 
+def _run_validate_naming(
+    name: str, object_type: str, workspace: str, json_output: bool, started_at: float
+) -> None:
+    """Handle --naming branch of the validate command."""
+    workspace_path = Path(workspace).resolve()
+    try:
+        data = validate_name_command(name=name, object_type=object_type, workspace=workspace_path)
+    except Exception as e:
+        if json_output:
+            _emit_json_error(
+                command="validate",
+                code="UNEXPECTED_ERROR",
+                message=str(e),
+                started_at=started_at,
+                exit_code=1,
+            )
+        else:
+            console.print(f"[red]✗ Error:[/red] {e}")
+        sys.exit(1)
+    if json_output:
+        _emit_json_success(
+            command="validate", data=data, warnings=[], started_at=started_at, exit_code=0
+        )
+        return
+    if data["valid"]:
+        console.print(f"[green]✓[/green] Name '{name}' is valid")
+    else:
+        console.print(f"[red]✗[/red] Name '{name}' is invalid: {data['error']}")
+        if data.get("suggestion"):
+            console.print(f"  Suggestion: {data['suggestion']}")
+
+
 @cli.command()
 @click.option("--json", "json_output", is_flag=True, help="Output validation results as JSON")
 @click.option(
@@ -462,10 +494,38 @@ def _run_sql_command(
     default=None,
     help="Target scope (v5 multi-target). Uses defaultTarget if omitted.",
 )
+@click.option(
+    "--naming",
+    "naming_mode",
+    is_flag=True,
+    default=False,
+    help="Validate a single object name against naming standards.",
+)
+@click.option("--name", "name", default=None, help="Object name to validate (requires --naming).")
+@click.option(
+    "--type",
+    "object_type",
+    default=None,
+    type=click.Choice(["catalog", "schema", "table", "view", "column"]),
+    help="Object type (requires --naming).",
+)
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
-def validate(workspace: str, json_output: bool, scope: str | None) -> None:
+def validate(
+    workspace: str,
+    json_output: bool,
+    scope: str | None,
+    naming_mode: bool,
+    name: str | None,
+    object_type: str | None,
+) -> None:
     """Validate .schemax/ project files"""
     started_at = perf_counter()
+    if naming_mode:
+        if not name or not object_type:
+            console.print("[red]✗[/red] --name and --type are required with --naming")
+            sys.exit(1)
+        _run_validate_naming(name, object_type, workspace, json_output, started_at)
+        return
     workspace_path = Path(workspace).resolve()
     try:
         _run_validate_command(workspace_path, json_output, started_at, scope=scope)
@@ -501,52 +561,6 @@ def validate(workspace: str, json_output: bool, scope: str | None) -> None:
             )
         else:
             console.print(f"[red]✗ Unexpected error:[/red] {e}")
-        sys.exit(1)
-
-
-@cli.command(name="validate-name")
-@click.option("--name", "name", required=True, help="Object name to validate")
-@click.option(
-    "--type",
-    "object_type",
-    required=True,
-    type=click.Choice(["catalog", "schema", "table", "view", "column"]),
-    help="Object type",
-)
-@click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
-@click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
-def validate_name_cli(name: str, object_type: str, json_output: bool, workspace: str) -> None:
-    """Validate a single object name against the project's naming standards."""
-    started_at = perf_counter()
-    workspace_path = Path(workspace).resolve()
-    try:
-        data = validate_name_command(name=name, object_type=object_type, workspace=workspace_path)
-        if json_output:
-            _emit_json_success(
-                command="validate-name",
-                data=data,
-                warnings=[],
-                started_at=started_at,
-                exit_code=0,
-            )
-            return
-        if data["valid"]:
-            console.print(f"[green]✓[/green] Name '{name}' is valid")
-        else:
-            console.print(f"[red]✗[/red] Name '{name}' is invalid: {data['error']}")
-            if data.get("suggestion"):
-                console.print(f"  Suggestion: {data['suggestion']}")
-    except Exception as e:
-        if json_output:
-            _emit_json_error(
-                command="validate-name",
-                code="UNEXPECTED_ERROR",
-                message=str(e),
-                started_at=started_at,
-                exit_code=1,
-            )
-        else:
-            console.print(f"[red]✗ Error:[/red] {e}")
         sys.exit(1)
 
 
