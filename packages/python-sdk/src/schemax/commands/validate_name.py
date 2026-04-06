@@ -10,10 +10,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from schemax.core.naming import NamingStandardsConfig, suggest_name, validate_name
+from schemax.core.naming import (
+    NamingStandardsConfig,
+    VALID_OBJECT_TYPES,
+    suggest_name,
+    validate_name,
+)
 from schemax.core.workspace_repository import WorkspaceRepository
-
-_VALID_OBJECT_TYPES = {"catalog", "schema", "table", "view", "column"}
 
 
 def validate_name_command(
@@ -55,11 +58,11 @@ def validate_name_command(
         "description": None,
     }
 
-    if object_type not in _VALID_OBJECT_TYPES:
+    if object_type not in VALID_OBJECT_TYPES:
         base["valid"] = False
         base["error"] = (
             f"Unknown object type '{object_type}'. "
-            f"Must be one of: {', '.join(sorted(_VALID_OBJECT_TYPES))}."
+            f"Must be one of: {', '.join(sorted(VALID_OBJECT_TYPES))}."
         )
         return base
 

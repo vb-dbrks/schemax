@@ -11,7 +11,7 @@ This page summarizes coordinated SchemaX releases across:
 ### Highlights
 
 - **Naming Standards** — Define and enforce regex-based naming conventions for catalogs, schemas, tables, views, and columns. Rules are stored in `project.json` under `settings.namingStandards` and checked on add/rename in the Designer, and during `validate`, `sql`, and `apply`.
-- **`schemax naming` command group** — New CLI subcommands: `naming show`, `naming strict on|off`, `naming enforce-on-renames on|off`, `naming set-rule`, `naming remove-rule`, `naming load-template`, and `naming apply` (accepts JSON or stdin).
+- **`schemax naming` command group** — New CLI subcommands: `naming show`, `naming strict on|off`, `naming enforce-on-renames on|off`, `naming set-rule`, `naming remove-rule`, `naming templates` (list preset ids and descriptions), `naming load-template`, and `naming set-config` (accepts JSON or stdin).
 - **`schemax validate --naming`** — Single-name validation: `schemax validate --naming --name my_table --type table` checks one name against the project's configured rules.
 - **Built-in templates** — Two presets available via CLI (`databricks`, `warehouse`) and VS Code (**Apply Template** button): Databricks Best Practices (lowercase snake_case) and Data Warehouse Patterns (prefixed tables).
 - **Strict mode** — When enabled, naming violations fail `validate` (exit 1) and block `sql` and `apply`. When disabled, violations appear as warnings only.

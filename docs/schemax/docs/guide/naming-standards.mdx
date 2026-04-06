@@ -78,12 +78,15 @@ schemax naming set-rule table '^[a-z][a-z0-9_]*$' --description 'Lowercase snake
 # Remove a rule for an object type (no validation for that type)
 schemax naming remove-rule table [workspace]
 
+# List built-in preset ids and descriptions (optional --json)
+schemax naming templates
+
 # Apply a built-in preset (databricks | warehouse)
 schemax naming load-template databricks [workspace]
 
-# Apply a full config from JSON or stdin
-schemax naming apply --json '{"strictMode": true, "table": {"pattern": "^[a-z][a-z0-9_]*$", "enabled": true}}' [workspace]
-schemax naming show --json | schemax naming apply --stdin [workspace]
+# Set a full config from JSON or stdin (writes project.json locally)
+schemax naming set-config --json '{"strictMode": true, "table": {"pattern": "^[a-z][a-z0-9_]*$", "enabled": true}}' [workspace]
+schemax naming show --json | schemax naming set-config --stdin [workspace]
 
 # Validate a single name against the project's naming rules
 schemax validate --naming --name my_table --type table [workspace]
@@ -134,5 +137,5 @@ When a name fails, SchemaX suggests a sanitised alternative (lowercased, hyphens
 ```bash
 # Copy naming config from one workspace to another
 cd /path/to/source && schemax naming show --json | \
-  schemax naming apply --stdin /path/to/target
+  schemax naming set-config --stdin /path/to/target
 ```

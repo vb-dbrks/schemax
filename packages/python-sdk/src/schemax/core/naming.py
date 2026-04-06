@@ -10,6 +10,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+# Single source of truth: object types that support naming standards (CLI, validate-name, config).
+VALID_OBJECT_TYPES: tuple[str, ...] = ("catalog", "schema", "table", "view", "column")
+
 
 @dataclass(slots=True, frozen=True)
 class NamingRule:
@@ -90,7 +93,7 @@ class NamingStandardsConfig:
             "applyToRenames": self.apply_to_renames,
             "strictMode": self.strict_mode,
         }
-        for key in ("catalog", "schema", "table", "view", "column"):
+        for key in VALID_OBJECT_TYPES:
             rule = getattr(self, key, None)
             if rule is not None:
                 out[key] = rule.to_dict()
@@ -153,8 +156,6 @@ def suggest_name(name: str, pattern: str) -> str:
 # ---------------------------------------------------------------------------
 # Bulk validation against full project state
 # ---------------------------------------------------------------------------
-
-_OBJECT_TYPES_TO_CHECK = ("catalog", "schema", "table", "view", "column")
 
 
 def validate_naming_standards(  # pylint: disable=too-many-nested-blocks,too-complex

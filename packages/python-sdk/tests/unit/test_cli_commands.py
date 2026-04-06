@@ -50,6 +50,26 @@ def test_runtime_info_json_output() -> None:
     assert isinstance(payload["data"]["supportedCommands"], list)
 
 
+def test_naming_templates_text_and_json() -> None:
+    """naming templates lists preset ids and descriptions; --json matches envelope."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["naming", "templates"])
+    assert result.exit_code == 0
+    assert "databricks" in result.output
+    assert "warehouse" in result.output
+
+    result_json = runner.invoke(cli, ["naming", "templates", "--json"])
+    assert result_json.exit_code == 0
+    payload = json.loads(result_json.output)
+    assert payload["schemaVersion"] == "1"
+    assert payload["command"] == "naming.templates"
+    assert payload["status"] == "success"
+    presets = payload["data"]["presets"]
+    ids = {p["id"] for p in presets}
+    assert "databricks" in ids and "warehouse" in ids
+    assert all(p.get("description") for p in presets)
+
+
 def test_init_fails_for_unknown_provider(temp_workspace: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["init", "--provider", "missing", str(temp_workspace)])

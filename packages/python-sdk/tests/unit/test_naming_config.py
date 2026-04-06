@@ -221,3 +221,13 @@ def test_get_naming_config_missing_project_raises(tmp_path: Path) -> None:
     (tmp_path / ".schemax").mkdir(exist_ok=True)
     with pytest.raises(FileNotFoundError):
         naming_config_cmd.get_naming_config(tmp_path)
+
+
+def test_list_presets_info_matches_presets() -> None:
+    """list_presets_info covers every PRESETS key with a description."""
+    info = naming_config_cmd.list_presets_info()
+    ids = {p["id"] for p in info}
+    assert ids == set(naming_config_cmd.PRESETS.keys())
+    for p in info:
+        assert p["description"]
+        assert p["description"] == naming_config_cmd.PRESET_DESCRIPTIONS[p["id"]]

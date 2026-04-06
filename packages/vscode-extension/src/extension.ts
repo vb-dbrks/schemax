@@ -1420,13 +1420,13 @@ async function openDesigner(context: vscode.ExtensionContext) {
     await reloadProject(workspaceFolder, currentPanel, { validate: false });
   });
 
-  // Watch for project.json changes (snapshot metadata)
+  // Watch for project.json changes (targets, naming standards, snapshot metadata, etc.)
   const projectJsonPattern = new vscode.RelativePattern(workspaceFolder, ".schemax/project.json");
   const projectJsonWatcher = vscode.workspace.createFileSystemWatcher(projectJsonPattern);
 
   projectJsonWatcher.onDidChange(async () => {
-    outputChannel.appendLine("[SchemaX] project.json changed - reloading project");
-    await reloadProject(workspaceFolder, currentPanel, { validate: false });
+    outputChannel.appendLine("[SchemaX] project.json changed - reloading project (with validation)");
+    await reloadProject(workspaceFolder, currentPanel, { validate: true });
   });
 
   // Reset when panel is closed
@@ -1806,12 +1806,12 @@ async function openDesigner(context: vscode.ExtensionContext) {
                 (payload.settings as Record<string, unknown>)?.namingStandards ?? {}
               );
               const applyResult = await pythonBackend.run(
-                ["naming", "apply", "--json", namingJson, workspaceFolder.uri.fsPath],
+                ["naming", "set-config", "--json", namingJson, workspaceFolder.uri.fsPath],
                 workspaceFolder.uri.fsPath
               );
               if (!applyResult.success) {
                 outputChannel.appendLine(
-                  `[SchemaX] ERROR: naming apply failed: ${applyResult.stderr || applyResult.stdout}`
+                  `[SchemaX] ERROR: naming set-config failed: ${applyResult.stderr || applyResult.stdout}`
                 );
                 vscode.window.showErrorMessage(
                   `Failed to apply naming standards: ${applyResult.stderr || applyResult.stdout || "CLI failed"}. Check SchemaX output.`

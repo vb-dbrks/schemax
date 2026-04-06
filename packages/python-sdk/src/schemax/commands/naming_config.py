@@ -1,7 +1,7 @@
 """
 Naming config command – get/set naming standards in project.json.
 
-Used by the `schemax naming` CLI and by the VS Code extension (via `naming apply`).
+Used by the `schemax naming` CLI and by the VS Code extension (via `naming set-config`).
 """
 
 from __future__ import annotations
@@ -11,10 +11,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from schemax.core.naming import NamingRule, NamingStandardsConfig
+from schemax.core.naming import NamingRule, NamingStandardsConfig, VALID_OBJECT_TYPES
 from schemax.core.workspace_repository import WorkspaceRepository
-
-VALID_OBJECT_TYPES = ("catalog", "schema", "table", "view", "column")
 
 
 # Presets aligned with extension TEMPLATES (Databricks Best Practices, etc.)
@@ -42,6 +40,24 @@ PRESETS: dict[str, NamingStandardsConfig] = {
         column=_rule("^[a-z][a-z0-9_]*$", "Lowercase snake_case"),
     ),
 }
+
+# Human-readable lines for CLI `naming templates` (keys must match PRESETS).
+PRESET_DESCRIPTIONS: dict[str, str] = {
+    "databricks": "Lowercase snake_case for catalogs, schemas, tables, views, and columns.",
+    "warehouse": "Prefixed table names (dim_, fact_, stg_, int_) plus lowercase snake_case for other object types.",
+}
+
+assert set(PRESETS.keys()) == set(
+    PRESET_DESCRIPTIONS.keys()
+), "PRESET_DESCRIPTIONS keys must match PRESETS keys"
+
+
+def list_presets_info() -> list[dict[str, str]]:
+    """Built-in preset ids with descriptions, sorted by id (for CLI and tooling)."""
+    return [
+        {"id": preset_id, "description": PRESET_DESCRIPTIONS[preset_id]}
+        for preset_id in sorted(PRESETS)
+    ]
 
 
 def get_naming_config(
@@ -189,7 +205,7 @@ def load_template(
     preset_id: str,
     workspace_repo: WorkspaceRepository | None = None,
 ) -> None:
-    """Apply a preset (databricks, warehouse, camelcase, pascalcase)."""
+    """Apply a built-in preset (see `list_presets_info` / CLI `naming templates`)."""
     if preset_id not in PRESETS:
         raise ValueError(
             f"Unknown preset '{preset_id}'. Must be one of: {', '.join(sorted(PRESETS))}."

@@ -475,16 +475,22 @@ def _run_validate_naming(
             console.print(f"[red]✗ Error:[/red] {e}")
         sys.exit(1)
     if json_output:
+        exit_code = 0 if data["valid"] else 1
         _emit_json_success(
-            command="validate", data=data, warnings=[], started_at=started_at, exit_code=0
+            command="validate",
+            data=data,
+            warnings=[],
+            started_at=started_at,
+            exit_code=exit_code,
         )
-        return
+        sys.exit(exit_code)
     if data["valid"]:
         console.print(f"[green]✓[/green] Name '{name}' is valid")
-    else:
-        console.print(f"[red]✗[/red] Name '{name}' is invalid: {data['error']}")
-        if data.get("suggestion"):
-            console.print(f"  Suggestion: {data['suggestion']}")
+        sys.exit(0)
+    console.print(f"[red]✗[/red] Name '{name}' is invalid: {data['error']}")
+    if data.get("suggestion"):
+        console.print(f"  Suggestion: {data['suggestion']}")
+    sys.exit(1)
 
 
 @cli.command()
@@ -569,8 +575,8 @@ def naming_group() -> None:
     """Get or set naming standards in project.json.
 
     Naming standards are stored under settings.namingStandards and are used by
-    validate, sql, and apply. Use 'naming show' to see the current config and
-    'naming load-template' to apply a preset (databricks, warehouse).
+    validate, sql, and apply. Use 'naming show' for the current config,
+    'naming templates' to list presets, and 'naming load-template' to apply one.
     """
 
 
@@ -603,7 +609,7 @@ def _run_naming_show(workspace_path: Path, json_output: bool) -> None:
     "--json",
     "json_output",
     is_flag=True,
-    help="Output the full naming config as JSON (for scripting or piping to naming apply).",
+    help="Output the full naming config as JSON (for scripting or piping to naming set-config).",
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def naming_show(json_output: bool, workspace: str) -> None:
@@ -752,10 +758,38 @@ def naming_remove_rule(object_type: str, workspace: str) -> None:
         sys.exit(1)
 
 
+@naming_group.command(name="templates")
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Output preset list as JSON (for scripting).",
+)
+def naming_templates(json_output: bool) -> None:
+    """List built-in naming presets (ids and descriptions for naming load-template)."""
+    presets = naming_config_cmd.list_presets_info()
+    if json_output:
+        started_at = perf_counter()
+        _emit_json_success(
+            command="naming.templates",
+            data={"presets": presets},
+            warnings=[],
+            started_at=started_at,
+            exit_code=0,
+        )
+        return
+    console.print("[bold]Naming presets[/bold]")
+    for p in presets:
+        console.print(f"  [bold]{p['id']}[/bold] — {p['description']}")
+    console.print(
+        "\nUse [bold]schemax naming load-template <preset>[/bold] [workspace] to apply a preset."
+    )
+
+
 @naming_group.command(name="load-template")
 @click.argument(
     "preset",
-    type=click.Choice(["databricks", "warehouse"]),
+    type=click.Choice(sorted(naming_config_cmd.PRESETS.keys())),
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
 def naming_load_template(preset: str, workspace: str) -> None:
@@ -781,7 +815,7 @@ def naming_load_template(preset: str, workspace: str) -> None:
         sys.exit(1)
 
 
-@naming_group.command(name="apply")
+@naming_group.command(name="set-config")
 @click.option(
     "--json",
     "json_str",
@@ -796,12 +830,12 @@ def naming_load_template(preset: str, workspace: str) -> None:
     help="Read full naming config JSON from stdin.",
 )
 @click.argument("workspace", type=click.Path(exists=True), required=False, default=".")
-def naming_apply(
+def naming_set_config(
     json_str: str | None,
     read_stdin: bool,
     workspace: str,
 ) -> None:
-    """Apply full naming config from JSON (for UI or scripting).
+    """Set full naming config from JSON (writes project.json locally; not DDL apply).
 
     Provide either --json '{"applyToRenames": false, ...}' or --stdin to pipe
     the config. Same shape as project.json settings.namingStandards (camelCase).
@@ -814,7 +848,7 @@ def naming_apply(
         sys.exit(1)
     try:
         naming_config_cmd.apply_naming_config_from_json(workspace_path, json_str)
-        console.print("[green]✓[/green] Naming config applied")
+        console.print("[green]✓[/green] Naming config saved")
     except FileNotFoundError:
         console.print(
             "[red]✗[/red] Project file not found. Run 'schemax init' to create a project."

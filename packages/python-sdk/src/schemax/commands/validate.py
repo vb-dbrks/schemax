@@ -217,12 +217,6 @@ def get_naming_validation_errors_and_warnings(
         return [], []
 
 
-def _get_naming_warnings(project: dict, state: Any) -> list[str]:
-    """Return naming-standard violations as warning strings (soft check)."""
-    _errs, warnings = get_naming_validation_errors_and_warnings(project, state)
-    return warnings
-
-
 def _run_validation_steps(  # pylint: disable=too-complex
     workspace: Path,
     project: dict,
