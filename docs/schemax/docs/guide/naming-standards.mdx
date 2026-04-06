@@ -1,0 +1,141 @@
+---
+sidebar_position: 17
+title: Naming Standards
+description: Enforce consistent naming conventions for Unity Catalog objects with regex-based rules, built-in templates, and strict mode.
+---
+
+# Naming Standards
+
+SchemaX lets you define and enforce naming conventions for Unity Catalog objects — catalogs, schemas, tables, views, and columns — using regex-based rules stored in `project.json`. Rules are checked when you add or rename objects in the VS Code Designer and during `validate`, `sql`, and `apply`.
+
+## Configuration
+
+Naming standards live under `settings.namingStandards` in `project.json`:
+
+```json
+{
+  "settings": {
+    "namingStandards": {
+      "strictMode": false,
+      "applyToRenames": false,
+      "catalog": { "pattern": "^[a-z][a-z0-9_]*$", "description": "Lowercase snake_case", "enabled": true },
+      "schema":  { "pattern": "^[a-z][a-z0-9_]*$", "description": "Lowercase snake_case", "enabled": true },
+      "table":   { "pattern": "^[a-z][a-z0-9_]*$", "description": "Lowercase snake_case", "enabled": true },
+      "view":    { "pattern": "^[a-z][a-z0-9_]*$", "description": "Lowercase snake_case", "enabled": true },
+      "column":  { "pattern": "^[a-z][a-z0-9_]*$", "description": "Lowercase snake_case", "enabled": true }
+    }
+  }
+}
+```
+
+Each rule has:
+- **`pattern`** — A Python-compatible full-match regex (e.g. `^[a-z][a-z0-9_]*$`).
+- **`enabled`** — `true` to enforce, `false` to disable without removing the rule.
+- **`description`** — Optional human-readable label shown in error messages.
+
+## VS Code Designer
+
+Open **Project Settings** (gear icon in the Designer toolbar) and expand the **Naming Standards** section. From there you can:
+
+- Apply a built-in template (see [Templates](#templates) below).
+- Add, edit, or remove rules per object type.
+- Toggle **Strict Mode** and **Enforce on Renames**.
+
+When you add or rename an object in the Designer:
+- **Add** — A matching rule is checked. In strict mode, a non-compliant name blocks the add. In warn-only mode, the add is allowed with a warning.
+- **Rename** — When **Enforce on Renames** is on, a soft warning modal appears; you can proceed or cancel.
+
+## CLI
+
+### Quick start
+
+```bash
+# Apply the Databricks preset (lowercase snake_case for all types)
+schemax naming load-template databricks
+
+# Turn on strict mode so validate/sql/apply fail on violations
+schemax naming strict on
+
+# Show the current config
+schemax naming show
+```
+
+### Commands
+
+```bash
+# Show naming config (--json for machine-readable output)
+schemax naming show [--json] [workspace]
+
+# Strict mode: on = fail on violations; off = warn only
+schemax naming strict on|off [workspace]
+
+# Enforce on renames: on = soft warning on non-compliant renames
+schemax naming enforce-on-renames on|off [workspace]
+
+# Add/update a rule for an object type
+schemax naming set-rule table '^[a-z][a-z0-9_]*$' --description 'Lowercase snake_case' [workspace]
+
+# Remove a rule for an object type (no validation for that type)
+schemax naming remove-rule table [workspace]
+
+# List built-in preset ids and descriptions (optional --json)
+schemax naming templates
+
+# Apply a built-in preset (databricks | warehouse)
+schemax naming load-template databricks [workspace]
+
+# Set a full config from JSON or stdin (writes project.json locally)
+schemax naming set-config --json '{"strictMode": true, "table": {"pattern": "^[a-z][a-z0-9_]*$", "enabled": true}}' [workspace]
+schemax naming show --json | schemax naming set-config --stdin [workspace]
+
+# Validate a single name against the project's naming rules
+schemax validate --naming --name my_table --type table [workspace]
+```
+
+### Validate integration
+
+`schemax validate` automatically checks all objects in the current state against configured naming rules. With **strict mode off**, violations appear as warnings. With **strict mode on**, violations are reported as errors and the command exits non-zero, blocking `sql` and `apply`.
+
+```bash
+schemax validate                # Full validation including naming
+schemax validate --naming --name BadTable --type table   # Single-name check
+```
+
+## Templates
+
+Two built-in presets are available via `schemax naming load-template` (CLI) or the **Apply Template** button in VS Code:
+
+| Preset | CLI name | Rules |
+|--------|----------|-------|
+| **Databricks Best Practices** | `databricks` | Lowercase snake_case (`^[a-z][a-z0-9_]*$`) for all object types. |
+| **Data Warehouse Patterns** | `warehouse` | Prefixed tables (`^(dim_\|fact_\|stg_\|int_)[a-z0-9_]+$`), lowercase snake_case for all other types. |
+
+Templates replace all existing rules and set `strictMode` and `applyToRenames` to `false`. Adjust those toggles separately after applying a template.
+
+## Strict Mode vs. Warn-Only
+
+| Mode | Add / Rename in Designer | `validate` | `sql` / `apply` |
+|------|--------------------------|-----------|-----------------|
+| **Strict off** | Warning shown; action allowed | Violations in warnings section | Allowed (warnings in output) |
+| **Strict on** | Non-compliant add blocked; rename shows warning | Violations in errors section (exit 1) | Blocked until violations fixed |
+
+## Custom Patterns
+
+Patterns are full-match Python regexes (equivalent to `re.fullmatch`). Examples:
+
+| Convention | Pattern |
+|------------|---------|
+| Lowercase snake_case | `^[a-z][a-z0-9_]*$` |
+| Prefixed DWH tables | `^(dim_\|fact_\|stg_\|int_)[a-z0-9_]+$` |
+| Allow digits at start | `^[a-z0-9][a-z0-9_]*$` |
+| Max 64 characters | `^[a-z][a-z0-9_]{0,63}$` |
+
+When a name fails, SchemaX suggests a sanitised alternative (lowercased, hyphens/spaces replaced with underscores, non-word characters stripped).
+
+## Pipe config between projects
+
+```bash
+# Copy naming config from one workspace to another
+cd /path/to/source && schemax naming show --json | \
+  schemax naming set-config --stdin /path/to/target
+```

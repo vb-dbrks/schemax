@@ -116,9 +116,27 @@ export interface TargetConfig {
   environments: Record<string, EnvironmentConfig>;
 }
 
+export interface NamingRule {
+  pattern: string;
+  enabled: boolean;
+  description?: string;
+  examples?: { valid: string[]; invalid: string[] };
+}
+
+export interface NamingStandardsConfig {
+  applyToRenames: boolean;
+  strictMode?: boolean;
+  catalog?: NamingRule;
+  schema?: NamingRule;
+  table?: NamingRule;
+  view?: NamingRule;
+  column?: NamingRule;
+}
+
 interface ProjectSettings {
   autoIncrementVersion: boolean;
   versionPrefix: string;
+  namingStandards?: NamingStandardsConfig;
 }
 
 interface SnapshotMetadata {
@@ -203,17 +221,12 @@ function migrateV4ToV5(v4: ProjectFileV4): ProjectFileV5 {
 /**
  * Get the target config for a given target name, falling back to defaultTarget.
  */
-export function getTargetConfig(
-  project: ProjectFileV5,
-  scope?: string | null
-): TargetConfig {
+export function getTargetConfig(project: ProjectFileV5, scope?: string | null): TargetConfig {
   const resolved = scope || project.defaultTarget || "default";
   const config = project.targets[resolved];
   if (!config) {
     const available = Object.keys(project.targets).join(", ");
-    throw new Error(
-      `Target '${resolved}' not found in project. Available targets: ${available}`
-    );
+    throw new Error(`Target '${resolved}' not found in project. Available targets: ${available}`);
   }
   return config;
 }

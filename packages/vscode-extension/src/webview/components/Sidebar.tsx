@@ -8,6 +8,8 @@ import {
 import { useDesignerStore } from "../state/useDesignerStore";
 import { extractDependenciesFromView } from "../utils/sqlParser";
 import { validateUnityCatalogObjectName } from "../utils/unityNames";
+import { useNameValidation } from "../utils/useNameValidation";
+import { NamingWarningModal } from "./NamingWarningModal";
 import type {
   UnityFunction,
   UnityMaterializedView,
@@ -222,6 +224,16 @@ export const Sidebar: React.FC = () => {
   const [addMVComment, setAddMVComment] = useState("");
   const [addMVSchedule, setAddMVSchedule] = useState("");
 
+  // Naming standards validation
+  const { validate: validateNaming, pending: namingValidationPending } = useNameValidation();
+  const [namingWarningModal, setNamingWarningModal] = useState<{
+    error: string;
+    suggestion: string | null;
+    onUseSuggestion: (name: string) => void;
+    onProceed: () => void;
+    proceedLabel?: string;
+  } | null>(null);
+
   const toggleCatalog = (catalogId: string) => {
     const newExpanded = new Set(expandedCatalogs);
     if (newExpanded.has(catalogId)) {
@@ -366,7 +378,27 @@ export const Sidebar: React.FC = () => {
     setAddVolumeLocation("");
   };
 
-  const handleRenameConfirm = (newName: string) => {
+  const applyRename = (id: string, type: string, newName: string) => {
+    if (type === "catalog") {
+      renameCatalog(id, newName);
+    } else if (type === "schema") {
+      renameSchema(id, newName);
+    } else if (type === "table") {
+      renameTable(id, newName);
+    } else if (type === "view") {
+      renameView(id, newName);
+    } else if (type === "volume") {
+      renameVolume(id, newName);
+    } else if (type === "function") {
+      renameFunction(id, newName);
+    } else if (type === "materialized_view") {
+      renameMaterializedView(id, newName);
+    }
+    setRenameError(null);
+    closeRenameDialog();
+  };
+
+  const handleRenameConfirm = async (newName: string) => {
     if (!renameDialog) {
       return;
     }
@@ -383,24 +415,33 @@ export const Sidebar: React.FC = () => {
       return;
     }
 
-    // Handle rename based on type
-    if (renameDialog.type === "catalog") {
-      renameCatalog(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "schema") {
-      renameSchema(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "table") {
-      renameTable(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "view") {
-      renameView(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "volume") {
-      renameVolume(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "function") {
-      renameFunction(renameDialog.id, trimmedName);
-    } else if (renameDialog.type === "materialized_view") {
-      renameMaterializedView(renameDialog.id, trimmedName);
+    const namingStandards = project?.settings?.namingStandards;
+    const applyToRenames = namingStandards?.applyToRenames ?? false;
+    const namingTypes = ["catalog", "schema", "table", "view"] as const;
+    type NamingType = (typeof namingTypes)[number];
+    const isNamingType = (t: string): t is NamingType =>
+      (namingTypes as readonly string[]).includes(t);
+
+    if (applyToRenames && isNamingType(renameDialog.type)) {
+      const result = await validateNaming(trimmedName, renameDialog.type);
+      if (!result.valid && result.error) {
+        setNamingWarningModal({
+          error: result.error,
+          suggestion: result.suggestion,
+          onUseSuggestion: (suggested) => {
+            setNamingWarningModal(null);
+            applyRename(renameDialog.id, renameDialog.type, suggested);
+          },
+          onProceed: () => {
+            setNamingWarningModal(null);
+            applyRename(renameDialog.id, renameDialog.type, trimmedName);
+          },
+        });
+        return;
+      }
     }
-    setRenameError(null);
-    closeRenameDialog();
+
+    applyRename(renameDialog.id, renameDialog.type, trimmedName);
   };
 
   const handleDropConfirm = () => {
@@ -424,7 +465,7 @@ export const Sidebar: React.FC = () => {
     setDropDialog(null);
   };
 
-  const handleAddConfirm = (name: string, format?: "delta" | "iceberg") => {
+  const handleAddConfirm = async (name: string, format?: "delta" | "iceberg") => {
     if (!addDialog) {
       return;
     }
@@ -436,155 +477,204 @@ export const Sidebar: React.FC = () => {
       return;
     }
 
-    // Flush any tag that was typed but not yet confirmed via "+"
-    const pendingTags =
-      addTagInput.tagName.trim() && addTagInput.tagValue.trim()
-        ? { ...addTags, [addTagInput.tagName.trim()]: addTagInput.tagValue.trim() }
-        : addTags;
-    const catalogs = project?.state.catalogs ?? [];
-
-    if (addDialog.type === "catalog") {
-      // Check for duplicate catalog name
-      const catalogExists = catalogs.some(
-        (catalog) => catalog.name.toLowerCase() === trimmedName.toLowerCase()
-      );
-      if (catalogExists) {
-        setAddError(`Catalog "${trimmedName}" already exists.`);
-        return;
-      }
-
-      const options: Record<string, unknown> = {};
-      if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
-      if (addComment) options.comment = addComment;
-      if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
-      addCatalog(trimmedName, Object.keys(options).length > 0 ? options : undefined);
-    } else if (addDialog.type === "schema" && addDialog.catalogId) {
-      // Check for duplicate schema name within the same catalog
-      const catalog = catalogs.find((entry) => entry.id === addDialog.catalogId);
-      if (catalog) {
-        const schemaExists = catalog.schemas?.some(
-          (schema) => schema.name.toLowerCase() === trimmedName.toLowerCase()
-        );
-        if (schemaExists) {
-          setAddError(`Schema "${trimmedName}" already exists in this catalog.`);
-          return;
+    // Determine object type for naming standards check, but only if a rule is configured
+    const namingStandards = project?.settings?.namingStandards;
+    let namingObjectType: string | null = null;
+    if (namingStandards) {
+      if (addDialog.type === "catalog" && namingStandards.catalog?.enabled) {
+        namingObjectType = "catalog";
+      } else if (addDialog.type === "schema" && namingStandards.schema?.enabled) {
+        namingObjectType = "schema";
+      } else if (addDialog.type === "table") {
+        const effectiveObjType = addDialog.objectType === "view" ? "view" : "table";
+        if (effectiveObjType === "view" && namingStandards.view?.enabled) {
+          namingObjectType = "view";
+        } else if (effectiveObjType === "table" && namingStandards.table?.enabled) {
+          namingObjectType = "table";
         }
-      }
-
-      const options: Record<string, unknown> = {};
-      if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
-      if (addComment) options.comment = addComment;
-      if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
-      addSchema(
-        addDialog.catalogId,
-        trimmedName,
-        Object.keys(options).length > 0 ? options : undefined
-      );
-      setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
-    } else if (addDialog.type === "table" && addDialog.schemaId) {
-      // Find the schema to check for duplicate table/view names
-      let schema: UnitySchema | null = null;
-      for (const catalog of catalogs) {
-        schema = catalog.schemas?.find((entry) => entry.id === addDialog.schemaId) ?? null;
-        if (schema) break;
-      }
-
-      if (schema) {
-        // Check for duplicate table or view name within the same schema
-        const tableExists = schema.tables?.some(
-          (table) => table.name.toLowerCase() === trimmedName.toLowerCase()
-        );
-        if (tableExists) {
-          setAddError(`Table or view "${trimmedName}" already exists in this schema.`);
-          return;
-        }
-      }
-
-      if (addDialog.objectType === "volume") {
-        if (addVolumeType === "external" && !addVolumeLocation?.trim()) {
-          setAddError("Location is required for external volumes.");
-          return;
-        }
-        addVolume(addDialog.schemaId!, trimmedName, addVolumeType, {
-          comment: addComment || undefined,
-          location:
-            addVolumeType === "external" ? addVolumeLocation?.trim() || undefined : undefined,
-        });
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
-        closeAddDialog();
-        return;
-      }
-      if (addDialog.objectType === "function") {
-        addFunction(
-          addDialog.schemaId!,
-          trimmedName,
-          addFunctionLanguage,
-          addFunctionBody || "NULL",
-          {
-            returnType: addFunctionReturnType || "STRING",
-            comment: addFunctionComment || undefined,
-          }
-        );
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
-        closeAddDialog();
-        return;
-      }
-      if (addDialog.objectType === "materialized_view") {
-        const mvError = validateMaterializedViewSQL(addMVDefinition || "");
-        if (mvError) {
-          setAddError(mvError);
-          return;
-        }
-        const parsed = parseMaterializedViewSQL(addMVDefinition || "");
-        const definitionToUse = parsed.cleanSQL || addMVDefinition || "SELECT 1";
-        const mvDependencies = extractDependenciesFromView(definitionToUse);
-        addMaterializedView(addDialog.schemaId!, trimmedName, definitionToUse, {
-          comment: addMVComment || undefined,
-          refreshSchedule: addMVSchedule || undefined,
-          extractedDependencies: { tables: mvDependencies.tables, views: mvDependencies.views },
-        });
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
-        closeAddDialog();
-        return;
-      }
-      if (addDialog.objectType === "view") {
-        // VIEW CREATION
-        const sqlError = validateViewSQL(addViewSQL);
-        if (sqlError) {
-          setAddError(sqlError);
-          return;
-        }
-
-        // Extract dependencies using sql-parser
-        const dependencies = extractDependenciesFromView(addViewSQL);
-
-        // Clean SQL (remove CREATE VIEW if present)
-        const parsed = parseViewSQL(addViewSQL);
-        const cleanSQL = parsed.cleanSQL || addViewSQL;
-
-        addView(addDialog.schemaId, trimmedName, cleanSQL, {
-          comment: addViewComment || undefined,
-          extractedDependencies: dependencies,
-        });
-
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
-      } else {
-        // TABLE CREATION
-        const options =
-          addTableType === "external"
-            ? {
-                external: true,
-                externalLocationName: addExternalLocationName,
-                path: addTablePath || undefined,
-              }
-            : undefined;
-
-        addTable(addDialog.schemaId, trimmedName, format || "delta", options);
-        setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
       }
     }
-    setAddError(null);
-    closeAddDialog();
+
+    const doAdd = (nameToUse: string) => {
+      // Flush any tag that was typed but not yet confirmed via "+"
+      const pendingTags =
+        addTagInput.tagName.trim() && addTagInput.tagValue.trim()
+          ? { ...addTags, [addTagInput.tagName.trim()]: addTagInput.tagValue.trim() }
+          : addTags;
+      const catalogs = project?.state.catalogs ?? [];
+
+      if (addDialog.type === "catalog") {
+        // Check for duplicate catalog name
+        const catalogExists = catalogs.some(
+          (catalog) => catalog.name.toLowerCase() === nameToUse.toLowerCase()
+        );
+        if (catalogExists) {
+          setAddError(`Catalog "${nameToUse}" already exists.`);
+          return;
+        }
+
+        const options: Record<string, unknown> = {};
+        if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
+        if (addComment) options.comment = addComment;
+        if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
+        addCatalog(nameToUse, Object.keys(options).length > 0 ? options : undefined);
+      } else if (addDialog.type === "schema" && addDialog.catalogId) {
+        // Check for duplicate schema name within the same catalog
+        const catalog = catalogs.find((entry) => entry.id === addDialog.catalogId);
+        if (catalog) {
+          const schemaExists = catalog.schemas?.some(
+            (schema) => schema.name.toLowerCase() === nameToUse.toLowerCase()
+          );
+          if (schemaExists) {
+            setAddError(`Schema "${nameToUse}" already exists in this catalog.`);
+            return;
+          }
+        }
+
+        const options: Record<string, unknown> = {};
+        if (addManagedLocationName) options.managedLocationName = addManagedLocationName;
+        if (addComment) options.comment = addComment;
+        if (Object.keys(pendingTags).length > 0) options.tags = pendingTags;
+        addSchema(
+          addDialog.catalogId,
+          nameToUse,
+          Object.keys(options).length > 0 ? options : undefined
+        );
+        setExpandedCatalogs(new Set(expandedCatalogs).add(addDialog.catalogId));
+      } else if (addDialog.type === "table" && addDialog.schemaId) {
+        // Find the schema to check for duplicate table/view names
+        let schema: UnitySchema | null = null;
+        for (const catalog of catalogs) {
+          schema = catalog.schemas?.find((entry) => entry.id === addDialog.schemaId) ?? null;
+          if (schema) break;
+        }
+
+        if (schema) {
+          // Check for duplicate table or view name within the same schema
+          const tableExists = schema.tables?.some(
+            (table) => table.name.toLowerCase() === nameToUse.toLowerCase()
+          );
+          if (tableExists) {
+            setAddError(`Table or view "${nameToUse}" already exists in this schema.`);
+            return;
+          }
+        }
+
+        if (addDialog.objectType === "volume") {
+          if (addVolumeType === "external" && !addVolumeLocation?.trim()) {
+            setAddError("Location is required for external volumes.");
+            return;
+          }
+          addVolume(addDialog.schemaId!, nameToUse, addVolumeType, {
+            comment: addComment || undefined,
+            location:
+              addVolumeType === "external" ? addVolumeLocation?.trim() || undefined : undefined,
+          });
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
+          closeAddDialog();
+          return;
+        }
+        if (addDialog.objectType === "function") {
+          addFunction(
+            addDialog.schemaId!,
+            nameToUse,
+            addFunctionLanguage,
+            addFunctionBody || "NULL",
+            {
+              returnType: addFunctionReturnType || "STRING",
+              comment: addFunctionComment || undefined,
+            }
+          );
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
+          closeAddDialog();
+          return;
+        }
+        if (addDialog.objectType === "materialized_view") {
+          const mvError = validateMaterializedViewSQL(addMVDefinition || "");
+          if (mvError) {
+            setAddError(mvError);
+            return;
+          }
+          const parsed = parseMaterializedViewSQL(addMVDefinition || "");
+          const definitionToUse = parsed.cleanSQL || addMVDefinition || "SELECT 1";
+          const mvDependencies = extractDependenciesFromView(definitionToUse);
+          addMaterializedView(addDialog.schemaId!, nameToUse, definitionToUse, {
+            comment: addMVComment || undefined,
+            refreshSchedule: addMVSchedule || undefined,
+            extractedDependencies: { tables: mvDependencies.tables, views: mvDependencies.views },
+          });
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId!));
+          closeAddDialog();
+          return;
+        }
+        if (addDialog.objectType === "view") {
+          // VIEW CREATION
+          const sqlError = validateViewSQL(addViewSQL);
+          if (sqlError) {
+            setAddError(sqlError);
+            return;
+          }
+
+          // Extract dependencies using sql-parser
+          const dependencies = extractDependenciesFromView(addViewSQL);
+
+          // Clean SQL (remove CREATE VIEW if present)
+          const parsed = parseViewSQL(addViewSQL);
+          const cleanSQL = parsed.cleanSQL || addViewSQL;
+
+          addView(addDialog.schemaId, nameToUse, cleanSQL, {
+            comment: addViewComment || undefined,
+            extractedDependencies: dependencies,
+          });
+
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
+        } else {
+          // TABLE CREATION
+          const options =
+            addTableType === "external"
+              ? {
+                  external: true,
+                  externalLocationName: addExternalLocationName,
+                  path: addTablePath || undefined,
+                }
+              : undefined;
+
+          addTable(addDialog.schemaId, nameToUse, format || "delta", options);
+          setExpandedSchemas(new Set(expandedSchemas).add(addDialog.schemaId));
+        }
+      }
+      setAddError(null);
+      closeAddDialog();
+    };
+
+    if (namingObjectType) {
+      const result = await validateNaming(trimmedName, namingObjectType);
+      if (!result.valid && result.error) {
+        if (namingStandards?.strictMode) {
+          setAddError(
+            result.error + (result.suggestion ? ` Suggestion: ${result.suggestion}` : "")
+          );
+          return;
+        } else {
+          setNamingWarningModal({
+            error: result.error,
+            suggestion: result.suggestion,
+            proceedLabel: "Add Anyway",
+            onUseSuggestion: (s) => {
+              setNamingWarningModal(null);
+              doAdd(s);
+            },
+            onProceed: () => {
+              setNamingWarningModal(null);
+              doAdd(trimmedName);
+            },
+          });
+          return;
+        }
+      }
+    }
+
+    doAdd(trimmedName);
   };
 
   if (!project) {
@@ -1168,7 +1258,9 @@ export const Sidebar: React.FC = () => {
             </div>
 
             <div className="modal-buttons">
-              <VSCodeButton type="submit">Save</VSCodeButton>
+              <VSCodeButton type="submit" disabled={namingValidationPending}>
+                {namingValidationPending ? "Checking…" : "Save"}
+              </VSCodeButton>
               <VSCodeButton type="button" appearance="secondary" onClick={closeRenameDialog}>
                 Cancel
               </VSCodeButton>
@@ -2008,13 +2100,26 @@ export const Sidebar: React.FC = () => {
             )}
             {addError && <p className="form-error">{addError}</p>}
             <div className="modal-buttons">
-              <VSCodeButton type="submit">Add</VSCodeButton>
+              <VSCodeButton type="submit" disabled={namingValidationPending}>
+                {namingValidationPending ? "Checking…" : "Add"}
+              </VSCodeButton>
               <VSCodeButton type="button" appearance="secondary" onClick={closeAddDialog}>
                 Cancel
               </VSCodeButton>
             </div>
           </form>
         </div>
+      )}
+
+      {namingWarningModal && (
+        <NamingWarningModal
+          error={namingWarningModal.error}
+          suggestion={namingWarningModal.suggestion}
+          onUseSuggestion={namingWarningModal.onUseSuggestion}
+          onProceed={namingWarningModal.onProceed}
+          onCancel={() => setNamingWarningModal(null)}
+          proceedLabel={namingWarningModal.proceedLabel}
+        />
       )}
     </div>
   );
